@@ -1,3 +1,4 @@
+import packageInfo from "../package.json";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
@@ -60,7 +61,7 @@ const initial: Bootstrap = {
   projects: [],
   sessions: [],
   settings: { effort: "medium", theme: "light" },
-  version: "0.1.0",
+  version: packageInfo.version,
   platform: "preview",
 };
 const modes = [

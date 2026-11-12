@@ -198,7 +198,7 @@ class CodexClient extends EventEmitter {
     });
     try {
       await this.request("initialize", {
-        clientInfo: { name: "flowrium", title: "Flowrium", version: "0.1.0" },
+        clientInfo: { name: "flowrium", title: "Flowrium", version: require("../package.json").version },
       });
       this.notify("initialized");
       this.ready = true;

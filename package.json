@@ -1,6 +1,6 @@
 {
   "name": "flowrium",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Codex와 ChatGPT를 연결하는 개인 개발 작업 공간",
   "author": "hyeondk",

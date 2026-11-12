@@ -51,6 +51,7 @@ jobs:
           if [ -n "$CSC_LINK" ]; then
             npx --no-install electron-builder --mac --${{ matrix.arch }} --publish never
           else
+            unset CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
             npx --no-install electron-builder --mac --${{ matrix.arch }} --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false
           fi
         env:
@@ -62,7 +63,15 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       - name: Windows 설치 파일 생성
         if: runner.os == 'Windows'
-        run: npx --no-install electron-builder --win --x64 --publish never
+        shell: pwsh
+        run: |
+          foreach ($name in @('WIN_CSC_LINK', 'WIN_CSC_KEY_PASSWORD', 'CSC_LINK', 'CSC_KEY_PASSWORD')) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              Remove-Item "Env:$name" -ErrorAction SilentlyContinue
+            }
+          }
+          npx --no-install electron-builder --win --x64 --publish never
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
