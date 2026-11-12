@@ -197,4 +197,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           STAGE_FROM_MAIN: ${{ github.event_name == 'workflow_dispatch' && inputs.stage_release }}
-          EXPECT_MAC: 'true'
+          EXPECT_MAC: ${{ github.event_name != 'workflow_dispatch' || inputs.platform != 'windows' }}
