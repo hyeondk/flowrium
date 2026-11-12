@@ -1,3 +1,4 @@
+import InputRequestPanel from "./InputRequestPanel";
 import { useWorkspaceDrafts } from "./useWorkspaceDrafts";
 import WorkspaceSidebar from "./WorkspaceSidebar";
 import { AssistantShortcut } from "./ProjectMemory";
@@ -359,13 +360,14 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             })
             .catch(fail);
       }
-      if (event.type === "approval") {
+      if (event.type === "inputResolved") setApprovals(prev=>prev.filter(row=>row.requestId!==event.requestId));
+      if (event.type === "approval" || event.type === "input") {
         setApprovals((prev) => [
           ...prev.filter((a) => a.requestId !== event.requestId),
           event,
         ]);
         notify(
-          "작업 실행에 대한 확인 요청이 도착했습니다. 해당 작업 대화에서 승인할 수 있습니다.",
+          event.type === "input" ? "Codex 질문이 도착했습니다. 작업 대화나 승인함에서 답할 수 있습니다." : "작업 실행에 대한 확인 요청이 도착했습니다. 해당 작업 대화에서 승인할 수 있습니다.",
         );
       }
       if (event.type === "error") {
@@ -396,15 +398,17 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         });
       }
     };
-    const changedSessions = new Set<string>();
+    const finishedSessions = new Set<string>();
+    const changedRequests = new Set<string>();
     let restoring = true;
     const off = api.onEvent(event => {
-      if (restoring && event.sessionId && ["approval","done"].includes(event.type)) changedSessions.add(event.sessionId);
+      if (restoring && event.type === "done" && event.sessionId) finishedSessions.add(event.sessionId);
+      if (restoring && event.requestId && ["approval","input","inputResolved"].includes(event.type)) changedRequests.add(event.requestId);
       handleEvent(event);
     });
     api.securityPending().then(events=>{
-      if(alive) events.filter(event=>!event.sessionId || !changedSessions.has(event.sessionId)).forEach(handleEvent);
-    }).catch(error=>{if(alive)fail(error);}).finally(()=>{restoring=false;changedSessions.clear();});
+      if(alive) events.filter(event=>!finishedSessions.has(event.sessionId || "") && !changedRequests.has(event.requestId || "")).forEach(handleEvent);
+    }).catch(error=>{if(alive)fail(error);}).finally(()=>{restoring=false;finishedSessions.clear();changedRequests.clear();});
     return () => {
       alive = false;
       off();
@@ -935,6 +939,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           {!approvals.length && <p>확인을 기다리는 요청이 없습니다.</p>}
           {approvals.map(event => {
             const owner=data.sessions.find(s=>s.id===event.sessionId);
+            if(event.type==="input") return <InputRequestPanel key={event.requestId} event={event} title={owner?.title} onOpen={owner?()=>selectSession(owner):undefined}/>;
             return <section className="approval-card" key={event.requestId}><h3>{owner?.title || "실행 요청"}</h3>
               <p>{event.details || event.method}</p><div>
               {owner && <button className="button subtle" onClick={()=>selectSession(owner)}>대화 열기</button>}
@@ -1308,7 +1313,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 </div>
               )}
               <div className="composer-area">
-                {sessionApprovals.map((event) => (
+                {sessionApprovals.map((event) => event.type === "input" ? <InputRequestPanel key={event.requestId} event={event}/> : (
                   <div
                     className="approval-card"
                     key={event.requestId}

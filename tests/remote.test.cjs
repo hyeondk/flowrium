@@ -72,7 +72,9 @@ test("휴대폰 연결은 키와 출처·잠금을 검사하고 종료 즉시 �
         () =>
           child.stderr.emit(
             "data",
-            Buffer.from("https://test-server.trycloudflare.com"),
+            Buffer.from(
+              "https://test-server.trycloudflare.com Registered tunnel connection",
+            ),
           ),
         10,
       );
@@ -152,7 +154,7 @@ test("휴대폰 연결은 키와 출처·잠금을 검사하고 종료 즉시 �
   );
   assert.equal((await fetch(detail, { headers })).status, 403);
   locked = false;
-  const call = (method, origin = base) =>
+  const call = (method, origin = base, args = [{}]) =>
     fetch(base + "/api/mobile/call", {
       method: "POST",
       headers: {
@@ -160,12 +162,76 @@ test("휴대폰 연결은 키와 출처·잠금을 검사하고 종료 즉시 �
         Origin: origin,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ method, args: [{}] }),
+      body: JSON.stringify({ method, args }),
     });
   assert.equal((await call("send", "https://invalid.test")).status, 403);
   assert.equal((await call("send")).status, 200);
   assert.equal(calls, 1);
   assert.equal((await call("terminalWrite")).status, 400);
+  const baseInput = {
+    type: "input",
+    requestId: "질문",
+    sessionId: sid,
+    isBlocking: true,
+  };
+  const question = {
+    id: "mode",
+    header: "형식",
+    question: "선호하는 형식",
+    options: [{ label: "요약", description: "짧은 문서" }],
+    isOther: true,
+    isSecret: false,
+  };
+  let questions = [
+    { ...baseInput, questions: [question] },
+    {
+      ...baseInput,
+      requestId: "보호",
+      details: "숨길 부가 원문",
+      questions: [{ ...question, question: "숨길 질문 원문", isSecret: true }],
+    },
+    {
+      type: "approval",
+      requestId: "승인",
+      sessionId: sid,
+      details: "작업 실행",
+    },
+  ];
+  let answerCalls = 0,
+    permissionCalls = 0;
+  handlers.set("securityPending", () => questions);
+  handlers.set("approval", async () => {
+    permissionCalls++;
+  });
+  handlers.set("answerInput", async () => {
+    answerCalls++;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  });
+  const mobile = await (
+    await fetch(base + "/api/mobile/state", { headers })
+  ).json();
+  assert.doesNotMatch(JSON.stringify(mobile), /숨길 (질문|부가) 원문/);
+  const secret = mobile.approvals.find((event) => event.requestId === "보호");
+  assert.equal(secret.desktopOnly, true);
+  assert.equal(secret.questions, undefined);
+  const sendAnswer = (id) =>
+    call("answerInput", base, [
+      { requestId: id, answers: { mode: { answers: ["요약"] } } },
+    ]);
+  assert.equal((await sendAnswer("보호")).status, 403);
+  assert.equal((await sendAnswer("승인")).status, 400);
+  assert.equal(
+    (await call("approval", base, [{ requestId: "질문", decision: "accept" }]))
+      .status,
+    400,
+  );
+  assert.equal(permissionCalls, 0);
+  assert.equal(answerCalls, 0);
+  const twins = await Promise.all([sendAnswer("질문"), sendAnswer("질문")]);
+  assert.deepEqual(twins.map((r) => r.status).sort(), [200, 400]);
+  assert.equal(answerCalls, 1);
+  assert.equal((await sendAnswer("질문")).status, 400);
+  questions = questions.filter((e) => e.requestId !== "질문");
   await api.stopRemoteAccess();
   assert.equal((await api.remoteAccess()).enabled, false);
   await assert.rejects(fetch(base + "/api/mobile/state", { headers }));

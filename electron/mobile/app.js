@@ -63,6 +63,7 @@ function resetHistory() {
   historyError = "";
 }
 const drafts = new Map();
+const questionDrafts = new Map();
 const node = (tag, text, className) => {
   const result = document.createElement(tag);
   if (text !== undefined) result.textContent = text;
@@ -99,6 +100,7 @@ const date = (text) =>
 const running = (id) => (data?.running ?? []).includes(id);
 const label = (name, field) => {
   const box = node("label", name);
+  field.setAttribute("aria-label", name);
   box.append(field);
   return box;
 };
@@ -158,6 +160,7 @@ function clearPrivateState(nextGate) {
   assetRequest++;
   signature = "";
   drafts.clear();
+  questionDrafts.clear();
   selectedSession = selectedProject = "";
   route = "projects";
   notice.hidden = true;
@@ -177,8 +180,17 @@ async function poll() {
     const next = await request("/api/mobile/state");
     if (epoch !== accessEpoch) return;
     next.approvals = (next.approvals || []).filter(
-      (event) => event.type === "approval" && event.requestId,
+      (event) =>
+        (event.type === "approval" || event.type === "input") &&
+        event.requestId,
     );
+    const openQuestions = new Set(
+      next.approvals
+        .filter((e) => e.type === "input" && !e.desktopOnly)
+        .map((e) => e.requestId),
+    );
+    for (const id of questionDrafts.keys())
+      if (!openQuestions.has(id)) questionDrafts.delete(id);
     const fresh = JSON.stringify(next);
     const changed = gate || fresh !== signature;
     data = next;
@@ -358,10 +370,124 @@ function sessionRow(s) {
     running(s.id) ? "실행 중" : undefined,
   );
 }
+function inputCard(entry) {
+  const card = node("section", undefined, "box mobile-question");
+  card.setAttribute("aria-label", "추가 질문");
+  card.append(
+    node("h2", "추가 질문"),
+    node("p", session(entry.sessionId)?.title || "실행 중인 대화", "hint"),
+  );
+  if (entry.desktopOnly || !entry.questions?.length) {
+    card.append(
+      node(
+        "p",
+        "이 질문은 데스크톱 Flowrium에서 확인하고 답해 주세요.",
+        "body",
+      ),
+    );
+    return card;
+  }
+  if (entry.isBlocking)
+    card.append(node("p", "답변을 보내면 작업이 이어집니다.", "hint"));
+  let fields = questionDrafts.get(entry.requestId);
+  if (!fields) {
+    fields = new Map();
+    questionDrafts.set(entry.requestId, fields);
+  }
+  const form = node("form");
+  for (const q of entry.questions) {
+    const fieldset = node("fieldset");
+    fieldset.append(node("legend", q.header || "질문"));
+    const draft = fields.get(q.id) || { selection: "", text: "" };
+    fields.set(q.id, draft);
+    const options = q.options || [];
+    if (options.length) {
+      const choices = [
+        ["", "보기 선택"],
+        ...options.map((o, i) => [String(i), o.label]),
+      ];
+      if (q.isOther) choices.push(["other", "직접 입력"]);
+      const picker = select(choices, draft.selection);
+      picker.required = true;
+      picker.disabled = busy;
+      picker.dataset.field = JSON.stringify([entry.requestId, q.id, "choice"]);
+      picker.addEventListener("change", () => {
+        draft.selection = picker.value;
+        render();
+      });
+      fieldset.append(label(q.question, picker));
+      const chosen =
+        draft.selection !== "" &&
+        draft.selection !== "other" &&
+        options[Number(draft.selection)];
+      if (chosen?.description)
+        fieldset.append(node("p", chosen.description, "hint"));
+    }
+    if (!options.length || draft.selection === "other") {
+      const text = node("textarea");
+      text.maxLength = 16000;
+      text.required = true;
+      text.disabled = busy;
+      text.value = draft.text;
+      text.dataset.field = JSON.stringify([entry.requestId, q.id, "text"]);
+      text.addEventListener("input", () => {
+        draft.text = text.value;
+      });
+      fieldset.append(
+        label(options.length ? q.question + " / 직접 입력" : q.question, text),
+      );
+    }
+    form.append(fieldset);
+  }
+  const submit = node("button", "질문 답변 보내기", "main-action");
+  submit.type = "submit";
+  submit.disabled = busy;
+  form.append(submit);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const answers = [];
+    for (const q of entry.questions) {
+      const draft = fields.get(q.id),
+        options = q.options || [];
+      const answer =
+        options.length && draft.selection !== "other"
+          ? options[Number(draft.selection)]?.label
+          : draft.text.trim();
+      if (!answer || (options.length && draft.selection === "")) {
+        showNotice("각 질문에 답해 주세요.");
+        return;
+      }
+      answers.push([q.id, { answers: [answer] }]);
+    }
+    const epoch = accessEpoch;
+    void run(async () => {
+      try {
+        await call("answerInput", {
+          requestId: entry.requestId,
+          answers: Object.fromEntries(answers),
+        });
+        if (epoch === accessEpoch && data) {
+          data.approvals = data.approvals.filter(
+            (e) => e.requestId !== entry.requestId,
+          );
+          showNotice("질문에 답했습니다.");
+        }
+      } finally {
+        questionDrafts.delete(entry.requestId);
+      }
+    });
+  });
+  card.append(form);
+  return card;
+}
 function approvals(list, root) {
   if (!list.length)
     root.append(node("p", "대기 중인 승인 요청이 없습니다.", "hint"));
   for (const entry of list) {
+    if (entry.type === "input") {
+      root.append(inputCard(entry));
+      continue;
+    }
     const card = node("section", undefined, "box");
     card.append(
       node("h2", session(entry.sessionId)?.title || "작업 승인 요청"),

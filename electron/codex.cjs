@@ -118,6 +118,7 @@ class CodexClient extends EventEmitter {
     this.proc = null;
     this.pending = new Map();
     this.approvals = new Map();
+    this.inputs = new Map();
     this.counter = 0;
     this.starting = null;
     this.ready = false;
@@ -150,7 +151,7 @@ class CodexClient extends EventEmitter {
     delete env.OPENAI_BASE_URL;
     const proc = (this.options.spawn || spawn)(
       descriptor.command,
-      [...descriptor.prefix, "app-server", "-c", 'model_provider="openai"'],
+      [...descriptor.prefix, "app-server", "-c", 'model_provider="openai"', "-c", "features.default_mode_request_user_input=true"],
       { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, shell: false, env },
     );
     this.proc = proc;
@@ -214,6 +215,7 @@ class CodexClient extends EventEmitter {
     }
     this.pending.clear();
     this.approvals.clear();
+    this.inputs.clear();
     this.emit("disconnect", error);
   }
   _write(message) {
@@ -261,6 +263,15 @@ class CodexClient extends EventEmitter {
       return;
     }
     if (message.method && "id" in message) {
+      if (message.method === "item/tool/requestUserInput") {
+        let params;
+        try { params = require("./input-request.cjs").questionParams(message.params); }
+        catch (error) { this._write({ id:message.id,error:{code:-32602,message:error.message} }); return; }
+        const requestId = randomUUID();
+        this.inputs.set(requestId,{ id:message.id,params });
+        this.emit("input", { requestId, params });
+        return;
+      }
       const supported = [
         "item/commandExecution/requestApproval",
         "item/fileChange/requestApproval",
@@ -289,6 +300,23 @@ class CodexClient extends EventEmitter {
       return;
     }
     if (message.method) this.emit("notification", message);
+  }
+  resolveInput(requestId, cancelled = false) {
+    const request = this.inputs.get(requestId);
+    if (!request) return;
+    try {
+      if (cancelled && this.ready) this._write({id:request.id,error:{code:-32800,message:"입력 요청이 종료됐습니다."}});
+    } finally {
+      this.inputs.delete(requestId);
+      this.emit("inputResolved",{requestId,threadId:request.params.threadId});
+    }
+  }
+  answerInput(requestId, answers) {
+    const request = this.inputs.get(requestId);
+    if (!request) throw new Error("이 질문은 이미 종료됐습니다.");
+    const result = require("./input-request.cjs").responseFor(request.params.questions,answers);
+    this._write({id:request.id,result});
+    this.resolveInput(requestId);
   }
   decide(requestId, decision) {
     const request = this.approvals.get(requestId);

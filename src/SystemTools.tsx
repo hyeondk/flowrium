@@ -174,7 +174,7 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
                 {p.name} / {p.pid}
               </span>
               <small>
-                {Math.round(p.memoryBytes / 1024 / 1024)}MB / CPU {p.cpu}%
+                {Math.round(p.memoryBytes / 1024 / 1024)}MB / CPU {p.cpu === null ? "측정 중" : p.cpu + "%"}
               </small>
               <button
                 disabled={busy}

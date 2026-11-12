@@ -1,0 +1,56 @@
+.input-request {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 13px;
+  border: 1px solid var(--border, #777);
+  border-radius: 8px;
+  word-break: keep-all;
+}
+.input-request header,
+.input-request h3,
+.input-request .input-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.input-request header {
+  justify-content: space-between;
+}
+.input-request h3,
+.input-request p {
+  margin: 0;
+}
+.input-request fieldset {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px;
+  border: 1px solid var(--border, #777);
+  border-radius: 6px;
+}
+.input-request .input-option span,
+.input-free {
+  display: grid;
+  gap: 2px;
+}
+.input-option small {
+  color: var(--muted);
+}
+.input-request .button.primary {
+  justify-self: start;
+}
+.input-free textarea,
+.input-free input {
+  width: 100%;
+  font: inherit;
+  border: 1px solid var(--border, #777);
+  background: var(--panel);
+  color: inherit;
+  border-radius: 5px;
+  padding: 7px;
+}
+.composer-area:has(.input-request) {
+  max-height: 72vh;
+  overflow-y: auto;
+}

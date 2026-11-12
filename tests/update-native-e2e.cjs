@@ -137,7 +137,8 @@ async function installPreviousWindows(folder) {
     const fetched=await fetch(sums.browser_download_url);assert.ok(fetched.ok);
     const list=Buffer.from(await fetched.arrayBuffer());
     assert.equal('sha256:'+createHash('sha256').update(list).digest('hex'),sums.digest);
-    previousHash=binary.digest.slice(7);
+    previousHash='12fa38f5666a2a55d4f34683b7ac2264eebbb9163ace166ca57f5e3043baca09';
+    assert.equal(binary.digest,'sha256:'+previousHash,'0.2.0 실설치 검증을 통과한 공개 파일과 달라졌습니다.');
     assert.ok(list.toString().split(/\r?\n/).some(row=>row.trim().split(/\s+/)[0]===previousHash && row.trim().split(/\s+/)[1]===name));
   }
   const file = path.join(path.dirname(folder), 'previous-installer.exe');
@@ -202,7 +203,7 @@ async function main() {
   const userData = mac && !unsigned
     ? path.join(os.homedir(), 'Library', 'Application Support', 'Flowrium') : path.join(temporary, 'profile');
   const assetName = 'Flowrium-' + version + '-' + suffix;
-  let binary, oldProcess, oldPid, oldApp, quitRequest, restartedPid;
+  let binary, oldProcess, oldPid, oldApp, quitRequest, restartedPid, projectFixture;
   try {
     if (mac) { await verifyMacRollback(temporary); await verifyMacReady(temporary); }
     await fs.mkdir(path.dirname(installed), { recursive: true });
@@ -237,10 +238,12 @@ async function main() {
       const { _electron } = require('playwright');
       const env = { ...process.env, CODEX_HOME: path.join(temporary, 'codex') };
       delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_RENDERER_URL;
+      if(previous==='0.2.0') projectFixture=await require('./update-installed-ui.cjs').seedOldProject(userData,temporary);
       oldApp = await _electron.launch({ executablePath: binary, args: ['--user-data-dir=' + userData], env, timeout: 60000 });
       oldProcess = oldApp.process();
       const oldWindow = await oldApp.firstWindow();
       await oldWindow.waitForLoadState('domcontentloaded');
+      if(projectFixture) await require('./update-installed-ui.cjs').writeOldDraft(oldWindow,projectFixture);
       const old = await oldApp.evaluate(({ app, BrowserWindow }) => ({
         pid: process.pid, version: app.getVersion(), profile: app.getPath('userData'), exe: app.getPath('exe'),
         nativeWindow: BrowserWindow.getAllWindows().some(w => !w.isDestroyed() && w.getNativeWindowHandle().some(Boolean)),
@@ -321,6 +324,14 @@ async function main() {
       '업데이트 도우미가 새 앱 준비 실패를 기록했습니다.');
     await waitFor(async () => !(await fs.readdir(userData)).some(entry => entry.startsWith('.flowrium-launch-')),
       5000, '새 프로세스가 확인한 기동 티켓이 정리되지 않았습니다.');
+    if (projectFixture) {
+      await powershell(`$p = Get-Process -Id ([int]$env:ID) -ErrorAction Stop
+        if ($p.Path -ne $env:BINARY) { throw 'Unexpected executable' }
+        if (!$p.CloseMainWindow() -or !$p.WaitForExit(20000)) { throw 'Updated app did not close normally' }`,
+        {ID:String(restartedPid),BINARY:binary});
+      restartedPid=undefined;
+      await require('./update-installed-ui.cjs').checkNewProfile(binary,temporary,userData,projectFixture,version);
+    }
     console.log('실제 설치 파일 교체 / 새 버전 재실행 확인', previous, '→', actual);
   } catch (error) {
     if (!mac && binary) {

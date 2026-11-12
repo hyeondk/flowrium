@@ -310,3 +310,18 @@ test("절전, 자리 비움, 업무 마감 잠금 / 승인 복원 / 작업 중�
   assert.deepEqual(blockers, ["prevent-app-suspension", 0]);
   assert.equal(notifications.length, 2);
 });
+test("계정이 바뀌면 잠금 중에 도착한 이전 계정의 질문을 취소하고 복원 목록에서 지운다", async (t) => {
+  const { controller, security, api } = await create(t);
+  await security.accountOwner({ type:"chatgpt",email:"first@example.invalid" });
+  await api.setSecurityPin("", "8822");await api.lockSecurity();
+  const state = {type:"input",requestId:"q",sessionId:"s",questions:[{id:"secret",isSecret:true}]};
+  controller.runs.set("s",{sessionId:"s"});
+  controller.client.inputs=new Map([["q",{}]]);
+  const calls=[];
+  controller.client.resolveInput=(id,cancel)=>{calls.push([id,cancel]);controller.client.inputs.delete(id);};
+  controller.emitEvent(state);
+  await security.accountOwner({ type:"chatgpt",email:"second@example.invalid" });
+  assert.deepEqual(calls,[["q",true]]);
+  await api.unlockSecurity("8822");
+  assert(!(await api.securityPending()).some(e=>e.type==="input"));
+});

@@ -5,8 +5,13 @@ on:
     tags: ['v*']
   workflow_dispatch:
     inputs:
+      platform:
+        description: 검증할 운영체제
+        type: choice
+        options: [all, windows]
+        default: all
       stage_release:
-        description: 두 운영체제 검증을 마치면 현재 커밋의 비공개 릴리스 준비
+        description: 선택한 운영체제 검증 후 현재 커밋의 비공개 릴리스 준비
         type: boolean
         default: false
 
@@ -26,15 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - label: Mac Apple Silicon
-            runner: macos-15
-            os: mac
-            arch: arm64
-          - label: Windows
-            runner: windows-latest
-            os: win
-            arch: x64
+        include: ${{ fromJSON(inputs.platform == 'windows' && '[{"label":"Windows","runner":"windows-latest","os":"win","arch":"x64"}]' || '[{"label":"Mac Apple Silicon","runner":"macos-15","os":"mac","arch":"arm64"},{"label":"Windows","runner":"windows-latest","os":"win","arch":"x64"}]') }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -61,6 +58,8 @@ jobs:
         timeout-minutes: 5
       - name: 다운로드 페이지 확인
         run: node scripts/verify-downloads.mjs
+      - name: 다운로드 페이지 실제 브라우저 확인
+        run: node tests/download-page-e2e.cjs
       - name: Mac 서명 및 공증 설정 확인
         id: signing
         if: runner.os == 'macOS'
@@ -139,6 +138,10 @@ jobs:
         run: node tests/teams-directed-e2e.cjs
       - name: 독립 Git 작업 환경과 통합
         run: node tests/team-worktrees-ui.cjs
+      - name: Codex 질문의 보기·직접 답변과 비밀 입력
+        run: |
+          node tests/input-request-e2e.cjs
+          node tests/input-native-e2e.cjs
       - name: 잠금·로그아웃·초안 복원
         run: node tests/security-e2e.cjs
       - name: 미전송 초안의 이전·계정별 복원

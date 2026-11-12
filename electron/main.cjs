@@ -250,6 +250,7 @@ async function launch() {
   register("interrupt", (id) =>
     controller.interrupt(text(id, "대화 식별자", 100)),
   );
+  register("answerInput", input => controller.answerInput(input));
   register("approval", (input) => {
     if (!input || !["accept", "decline"].includes(input.decision))
       throw new Error("승인 선택을 확인해 주세요.");

@@ -189,7 +189,7 @@ async function launchWindowsHelper(command, args, env, receipt, resultPath) {
     throw e;
   }
 }
-async function handoff({ platform, file, stage, version, target, parentPid, resultPath, signal }) {
+async function handoff({ platform, file, stage, version, target, parentPid, resultPath, signal, sha256 }) {
   let command, args;
   const env = { ...process.env };
   const token = randomUUID();
@@ -215,10 +215,9 @@ async function handoff({ platform, file, stage, version, target, parentPid, resu
       if (/^[0-9a-f]{64}\.exe$/.test(name) && name!==hash+'.exe') await fs.unlink(path.join(directory,name)).catch(()=>{});
     }
     await fs.writeFile(resultPath + '.log', '', { mode: 0o600 });
-    await fs.writeFile(file + ':Zone.Identifier', '[ZoneTransfer]\r\nZoneId=3\r\n');
     args = [];
     Object.assign(env, { FLOWRIUM_UPDATE_PID: String(parentPid), FLOWRIUM_UPDATE_STAGE: stage,
-      FLOWRIUM_UPDATE_FILE: file, FLOWRIUM_UPDATE_TARGET: target, FLOWRIUM_UPDATE_VERSION: version,
+      FLOWRIUM_UPDATE_FILE: file, FLOWRIUM_UPDATE_SHA256: sha256, FLOWRIUM_UPDATE_TARGET: target, FLOWRIUM_UPDATE_VERSION: version,
       FLOWRIUM_UPDATE_RESULT: resultPath, FLOWRIUM_UPDATE_TOKEN: token, FLOWRIUM_UPDATE_RECEIPT: receipt });
   }
   signal.throwIfAborted();
@@ -341,7 +340,7 @@ class DesktopUpdater extends EventEmitter {
       if (busy) return this.set('available', typeof busy === 'string' ? busy : '실행 중인 작업을 마친 뒤 업데이트해 주세요.');
       this.set('installing', '업데이트를 설치한 뒤 Flowrium을 다시 엽니다.', { progress: 100 });
       await this.transfer({ platform: this.platform, file, stage, version, target, parentPid: this.parentPid,
-        resultPath: this.resultPath, signal });
+        resultPath: this.resultPath, signal, sha256:expected });
       launched = true;
       this.readyToQuit = true;
       this.app.quit();

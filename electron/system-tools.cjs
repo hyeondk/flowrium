@@ -4,6 +4,7 @@ const fs = require("node:fs/promises"),
   path = require("node:path"),
   { randomUUID } = require("node:crypto");
 const exec = promisify(execFile);
+let previousWindowsCpu = new Map();
 function commandEnv() {
   try {
     return require("./runtime.cjs").runtimeEnvironment();
@@ -47,7 +48,7 @@ async function processList() {
     "powershell.exe",
   );
   const script =
-    "Get-Process | Where-Object { $_.SessionId -eq (Get-Process -Id $PID).SessionId } | Select-Object Id,ProcessName,WorkingSet64 | ConvertTo-Json -Compress";
+    "Get-Process | Where-Object { $_.SessionId -eq (Get-Process -Id $PID).SessionId } | Select-Object Id,ProcessName,CPU,WorkingSet64 | ConvertTo-Json -Compress";
   const { stdout } = await exec(
     ps,
     [
@@ -59,12 +60,18 @@ async function processList() {
     { timeout: 15000, windowsHide: true, maxBuffer: 1024 * 1024 },
   );
   const value = JSON.parse(stdout || "[]");
-  return (Array.isArray(value) ? value : [value]).map((v) => ({
-    pid: v.Id,
-    name: v.ProcessName,
-    cpu: 0,
-    memoryBytes: v.WorkingSet64,
-  }));
+  const now = Date.now();
+  const next = new Map();
+  const rows = (Array.isArray(value) ? value : [value]).map(v => {
+    const prior = previousWindowsCpu.get(v.Id);
+    const cpu = typeof v.CPU === "number" && prior && now > prior.at
+      ? Math.max(0, Math.min(100, Math.round((v.CPU - prior.value) * 100000 / (now - prior.at) / require("node:os").cpus().length)))
+      : null;
+    if (typeof v.CPU === "number") next.set(v.Id, { value: v.CPU, at: now });
+    return { pid: v.Id, name: v.ProcessName, cpu, memoryBytes: v.WorkingSet64 };
+  });
+  previousWindowsCpu = next;
+  return rows;
 }
 function registerSystemTools(register, store, { canRun = () => true } = {}) {
   const services = new Map();

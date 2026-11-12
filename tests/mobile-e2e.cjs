@@ -33,6 +33,8 @@ async function run() {
     let locked = false,
       requests = [],
       decisions = [],
+      answersReceived = [],
+      rejectNext = false,
       interrupted;
     const handlers = new Map(),
       register = (name, fn) => handlers.set(name, fn);
@@ -76,6 +78,15 @@ async function run() {
       decisions.push(input.decision);
       requests = [];
     });
+    register("answerInput", async (input) => {
+      if (rejectNext) {
+        rejectNext = false;
+        throw Error("질문 응답 시험 실패");
+      }
+      answersReceived.push(input);
+      requests = requests.filter((e) => e.requestId !== input.requestId);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    });
     register("securityPending", () => requests);
     const tunnel = new EventEmitter();
     tunnel.stdout = new EventEmitter();
@@ -97,7 +108,9 @@ async function run() {
           () =>
             tunnel.stderr.emit(
               "data",
-              Buffer.from("https://mobile-test.trycloudflare.com"),
+              Buffer.from(
+                "https://mobile-test.trycloudflare.com Registered tunnel connection",
+              ),
             ),
           15,
         );
@@ -207,6 +220,108 @@ async function run() {
     await btn("이번 작업 승인").click();
     await page.getByText("대기 중인 승인 요청이 없습니다.").waitFor();
     assert.deepEqual(decisions, ["accept"]);
+    const requestId = "업무 질문";
+    const followup = {
+      type: "input",
+      requestId,
+      sessionId: store.state.sessions[0].id,
+      isBlocking: true,
+      questions: [
+        {
+          id: "shape",
+          header: "형식",
+          question: "어떤 형식으로 작성할까요?",
+          options: [
+            { label: "표", description: "항목을 비교합니다." },
+            { label: "요약", description: "짧은 글입니다." },
+          ],
+          isSecret: false,
+          isOther: true,
+        },
+        {
+          id: "memo",
+          header: "범위",
+          question: "추가할 내용을 적어 주세요.",
+          options: [],
+          isSecret: false,
+          isOther: false,
+        },
+      ],
+    };
+    requests = [
+      followup,
+      {
+        ...followup,
+        requestId: "민감한 요청",
+        questions: [
+          {
+            ...followup.questions[0],
+            isSecret: true,
+            question: "보이지 않을 비밀 제목",
+          },
+        ],
+      },
+    ];
+    await page
+      .getByText("이 질문은 데스크톱 Flowrium에서 확인하고 답해 주세요.")
+      .waitFor();
+    assert.equal(await page.getByText("보이지 않을 비밀 제목").count(), 0);
+    assert.equal(await btn("이번 작업 승인").count(), 0);
+    const pick = page.getByLabel("어떤 형식으로 작성할까요?", { exact: true }),
+      free = page.getByLabel("추가할 내용을 적어 주세요.", { exact: true });
+    await pick.selectOption("other");
+    await page
+      .getByLabel("어떤 형식으로 작성할까요? / 직접 입력", { exact: true })
+      .fill("표와 그림");
+    await free.fill("단계별 설명");
+    store.state.sessions[0].updatedAt = new Date().toISOString();
+    await page.waitForTimeout(2150);
+    assert.equal(await free.inputValue(), "단계별 설명");
+    assert.equal(
+      await page
+        .getByLabel("어떤 형식으로 작성할까요? / 직접 입력", { exact: true })
+        .inputValue(),
+      "표와 그림",
+    );
+    rejectNext = true;
+    await btn("질문 답변 보내기").click();
+    await page
+      .locator("#notice")
+      .filter({ hasText: "질문 응답 시험 실패" })
+      .waitFor();
+    assert.equal(await free.inputValue(), "");
+    assert.equal(await pick.inputValue(), "");
+    await pick.selectOption({ label: "표" });
+    await page.getByText("항목을 비교합니다.", { exact: true }).waitFor();
+    await free.fill("현장 기록 기준");
+    await btn("질문 답변 보내기").click();
+    await page
+      .locator("#notice")
+      .filter({ hasText: "질문에 답했습니다." })
+      .waitFor();
+    assert.deepEqual(answersReceived, [
+      {
+        requestId,
+        answers: {
+          shape: { answers: ["표"] },
+          memo: { answers: ["현장 기록 기준"] },
+        },
+      },
+    ]);
+    requests = [{ ...followup, requestId: "잠금 시험" }];
+    await free.fill("잠금 뒤 지워질 내용");
+    locked = true;
+    await page
+      .getByRole("heading", { name: "작업 공간이 잠겼습니다" })
+      .waitFor();
+    assert.equal(await free.count(), 0);
+    locked = false;
+    await btn("다시 확인").click();
+    await btn("승인함").click();
+    await free.waitFor();
+    assert.equal(await free.inputValue(), "");
+    assert.equal(await pick.inputValue(), "");
+    requests = [];
     await btn("실행 중").click();
     await page.getByRole("button", { name: /현장 조사/ }).click();
     await btn("작업 중단").click();
@@ -235,7 +350,7 @@ async function run() {
     assert.equal(overflow, false);
     assert.equal(p.id, store.state.sessions[0].projectId);
     console.log(
-      "모바일 실제 브라우저 검증 / 로컬 서버 인증과 키 제거 / 프로젝트·팀·문서 / 업무 대화 생성·요청·중단·승인 / 입력 보존 / 본문 없는 목록과 최근·이전 기록 / 잠금과 복원 / 가로폭",
+      "모바일 실제 브라우저 검증 / 로컬 서버 인증과 키 제거 / 프로젝트·팀·문서 / 업무 대화 생성·요청·중단·승인 / 질문 선택·직접 입력·실패 복구·비밀 문항 차단 / 입력 보존 / 본문 없는 목록과 최근·이전 기록 / 잠금과 복원 / 가로폭",
     );
   } finally {
     if (window) await window.close();

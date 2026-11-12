@@ -6,6 +6,7 @@ let nextThread = 0;
 let nextTurn = 0;
 const turns = new Map();
 const approvalTurns = new Map();
+const inputTurns = new Map();
 const write = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 const notify = (method, params) => write({ method, params });
 function complete(threadId, turnId, message, policy) {
@@ -40,6 +41,13 @@ function complete(threadId, turnId, message, policy) {
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
   const request = JSON.parse(line);
   const { id, method, params = {} } = request;
+  if (!method && inputTurns.has(id)) {
+    const expected = inputTurns.get(id);inputTurns.delete(id);
+    const answers=request.result?.answers;
+    const valid=["요약","상세"].includes(answers?.style?.answers?.[0]) && answers?.source?.answers?.[0] && answers?.private?.answers?.[0];
+    complete(expected.threadId,expected.turnId, valid ? "질문 응답 형식 확인 / "+answers.style.answers[0]+" / "+answers.source.answers[0] : "질문 응답이 올바르지 않습니다.");
+    return;
+  }
   if (!method && approvalTurns.has(id)) {
     const run = approvalTurns.get(id);
     approvalTurns.delete(id);
@@ -126,6 +134,16 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     const prompt = params.input[0].text;
     if (prompt.includes("강제종료")) {
       setTimeout(() => process.exit(9), 20);
+      return;
+    }
+    if (prompt.includes("입력질문검증")) {
+      const requestId="input-"+turnId;
+      inputTurns.set(requestId,{threadId,turnId});
+      write({id:requestId,method:"item/tool/requestUserInput",params:{threadId,turnId,itemId:turnId+"-questions",isBlocking:true,questions:[
+        {id:"style",header:"보고서 형식",question:"어떤 형식으로 작성할까요?",options:[{label:"요약",description:"핵심 결과"},{label:"상세",description:"전체 근거"}]},
+        {id:"source",header:"근거 자료",question:"무슨 자료를 사용할까요?",isOther:true,options:[{label:"내부 자료",description:"프로젝트 자료"}]},
+        {id:"private",header:"검증 문구",question:"시험용 확인 문구를 입력해 주세요.",isSecret:true,options:null}
+      ]}});
       return;
     }
     if (prompt.includes("승인검증")) {

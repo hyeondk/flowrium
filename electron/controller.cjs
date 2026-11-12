@@ -34,6 +34,18 @@ class Controller extends EventEmitter {
         }),
       );
     });
+    this.client.on("input", ({ requestId, params }) => {
+      const run = this.findRun(params.threadId);
+      if (!run || run.cancelled || run.finalized || (run.turnId && run.turnId !== params.turnId)) {
+        this.client.resolveInput(requestId,true);
+        return;
+      }
+      this.emitEvent({ type:"input", sessionId:run.sessionId, requestId, questions:params.questions, isBlocking:params.isBlocking,
+        text:"Codex가 사용자에게 질문했습니다." });
+    });
+    this.client.on("inputResolved", ({ requestId,threadId }) => {
+      this.emitEvent({type:"inputResolved",sessionId:this.findRun(threadId)?.sessionId,requestId});
+    });
     this.client.on("approval", (request) => this.forwardApproval(request));
     this.client.on("unsupported", (message) => {
       const run = this.findRun(message.params?.threadId);
@@ -402,6 +414,8 @@ class Controller extends EventEmitter {
       return;
     }
     if (method === "serverRequest/resolved") {
+      for (const [key,request] of this.client.inputs || [])
+        if (request.id === params.requestId || String(request.id) === String(params.requestId)) this.client.resolveInput(key);
       for (const [key, request] of this.client.approvals)
         if (String(request.id) === String(params.requestId))
           this.client.approvals.delete(key);
@@ -454,6 +468,13 @@ class Controller extends EventEmitter {
         params.turn?.status || "completed",
         params.turn?.error?.message,
       );
+  }
+  answerInput(input) {
+    const request = input && this.client.inputs.get(input.requestId);
+    const run = request && this.findRun(request.params.threadId);
+    if (!run || run.cancelled || run.finalized || (run.turnId && run.turnId !== request.params.turnId))
+      throw new Error("이 질문은 이미 종료됐습니다.");
+    this.client.answerInput(input.requestId,input.answers);
   }
   forwardApproval({ requestId, method, params }) {
     const run = this.findRun(params.threadId);
@@ -514,6 +535,8 @@ class Controller extends EventEmitter {
     if (run.finalized) return;
     run.finalized = true;
     if (run.saveTimer) clearTimeout(run.saveTimer);
+    for (const [id, request] of this.client.inputs || [])
+      if (request.params.threadId === run.threadId) this.client.resolveInput(id);
     for (const [id, request] of this.client.approvals)
       if (request.params?.threadId === run.threadId)
         this.client.approvals.delete(id);

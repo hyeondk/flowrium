@@ -91,8 +91,15 @@ export interface Model {
   displayName: string;
   description?: string;
 }
+export interface InputQuestion {
+  id: string; header: string; question: string; options: { label: string; description: string }[];
+  isOther: boolean; isSecret: boolean;
+}
+export type InputAnswers = Record<string, { answers: string[] }>;
 export interface FlowriumEvent {
-  type: "delta" | "status" | "error" | "done" | "approval" | "session";
+  questions?: InputQuestion[];
+  isBlocking?: boolean;
+  type: "delta" | "status" | "error" | "done" | "approval" | "session" | "input" | "inputResolved";
   sessionId?: string;
   text?: string;
   status?: string;
@@ -151,6 +158,7 @@ export interface FlowriumAPI
     effort?: Effort;
   }): Promise<{ accepted: boolean }>;
   interrupt(sessionId: string): Promise<void>;
+  answerInput(input: { requestId: string; answers: InputAnswers }): Promise<void>;
   approval(input: {
     requestId: string;
     decision: "accept" | "decline";

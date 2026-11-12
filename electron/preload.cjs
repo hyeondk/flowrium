@@ -105,6 +105,7 @@ contextBridge.exposeInMainWorld(
     login: () => invoke("login"),
     send: (input) => invoke("send", input),
     interrupt: (id) => invoke("interrupt", id),
+    answerInput: input => invoke("answerInput",input),
     approval: (input) => invoke("approval", input),
     openExternal: (target) => invoke("openExternal", target),
     copyText: (value) => invoke("copyText", value),

@@ -37,7 +37,7 @@ export default function RemotePanel() {
       </h3>
       <p>
         이 컴퓨터를 켜 둔 상태에서 연결 주소를 휴대폰에 열면
-        프로젝트·대화·승인과 팀 상태를 확인할 수 있습니다.
+        프로젝트 / 대화 / 승인과 팀 상태를 확인할 수 있습니다.
       </p>
       <div className="settings-buttons">
         {state.enabled ? (

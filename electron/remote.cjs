@@ -11,6 +11,7 @@ const allowed = new Set([
   "openTeamNode",
   "updateWork",
   "approval",
+  "answerInput",
   "readWorkbench",
   "readWorkArtifact",
 ]);
@@ -96,6 +97,34 @@ function mobileMessages(s, params) {
     },
   };
 }
+function mobileInput(event) {
+  const { type, requestId, sessionId, isBlocking } = event;
+  const base = { type, requestId, sessionId, isBlocking: Boolean(isBlocking) };
+  if (
+    event.desktopOnly ||
+    !Array.isArray(event.questions) ||
+    !event.questions.length ||
+    event.questions.some(
+      (q) =>
+        !q || q.isSecret !== false || !q.id || typeof q.question !== "string",
+    )
+  )
+    return { ...base, desktopOnly: true };
+  return {
+    ...base,
+    questions: event.questions.map(
+      ({ id, header, question, options, isOther }) => ({
+        id,
+        header,
+        question,
+        isOther: Boolean(isOther),
+        options: Array.isArray(options)
+          ? options.map(({ label, description }) => ({ label, description }))
+          : [],
+      }),
+    ),
+  };
+}
 function registerRemote(
   register,
   {
@@ -108,6 +137,7 @@ function registerRemote(
     tunnelFactory = spawn,
   },
 ) {
+  const answeredInputs = new Set();
   let sequence = 0;
   let server,
     tunnel,
@@ -125,7 +155,10 @@ function registerRemote(
     message: status || undefined,
   });
   function update(event) {
-    if (event.type === "approval") approvals.set(event.requestId, event);
+    if (event.type === "approval" || event.type === "input")
+      approvals.set(event.requestId, event);
+    if (event.type === "input") answeredInputs.delete(event.requestId);
+    if (event.type === "inputResolved") approvals.delete(event.requestId);
     if (event.type === "done") {
       running.delete(event.sessionId);
       for (const [id, a] of approvals)
@@ -133,6 +166,16 @@ function registerRemote(
     }
     if (event.type === "status" && event.sessionId)
       running.add(event.sessionId);
+  }
+  async function readPending() {
+    const pending = handlers.get("securityPending");
+    const events = pending ? await pending() : [...approvals.values()];
+    const ids = new Set(
+      events.filter((e) => e.type === "input").map((e) => e.requestId),
+    );
+    for (const id of answeredInputs)
+      if (!ids.has(id)) answeredInputs.delete(id);
+    return events;
   }
   function authorized(req) {
     if (!key || !server?.listening) return false;
@@ -179,10 +222,7 @@ function registerRemote(
           const value = await guard("bootstrap", async () => {
             const snapshot = store.state,
               connection = await controller.connectionStatus();
-            const pending = handlers.get("securityPending");
-            const requests = pending
-              ? await pending()
-              : [...approvals.values()];
+            const requests = await readPending();
             return {
               projects: snapshot.projects.map((p) => ({
                 id: p.id,
@@ -201,7 +241,13 @@ function registerRemote(
                 accountLabel: connection.accountLabel,
               },
               running: [...controller.runs.keys()],
-              approvals: requests,
+              approvals: requests
+                .filter(
+                  (e) =>
+                    e.type === "approval" ||
+                    (e.type === "input" && !answeredInputs.has(e.requestId)),
+                )
+                .map((e) => (e.type === "input" ? mobileInput(e) : e)),
             };
           });
           if (isLocked()) {
@@ -279,17 +325,43 @@ function registerRemote(
           const handler = handlers.get(input.method);
           if (!handler)
             throw Error("이 앱 버전에서 사용할 수 없는 작업입니다.");
-          if (input.method === "approval") {
-            const id = input.args[0]?.requestId;
-            const pending = handlers.get("securityPending");
-            const requests = pending
-              ? await pending()
-              : [...approvals.values()];
-            if (!requests.some((v) => v.requestId === id))
-              throw Error("이 승인 요청은 이미 처리됐습니다.");
-            const result = await handler(...input.args);
-            approvals.delete(id);
-            json(res, 200, { result });
+          if (input.method === "approval" || input.method === "answerInput") {
+            const id = input.args[0]?.requestId,
+              isAnswer = input.method === "answerInput";
+            if (input.args.length !== 1 || typeof id !== "string" || !id)
+              throw Error("요청 식별자를 확인해 주세요.");
+            const pending = await readPending();
+            const found = pending.find(
+              (event) =>
+                event.requestId === id &&
+                event.type === (isAnswer ? "input" : "approval"),
+            );
+            if (!found || (isAnswer && answeredInputs.has(id)))
+              throw Error("이미 처리됐거나 해당 유형의 대기 요청이 없습니다.");
+            if (isAnswer && mobileInput(found).desktopOnly) {
+              json(res, 403, {
+                error: "이 질문에는 데스크톱에서 답해 주세요.",
+              });
+              return;
+            }
+            if (isAnswer) answeredInputs.add(id);
+            try {
+              const result = await guard(input.method, () =>
+                handler(input.args[0]),
+              );
+              approvals.delete(id);
+              if (isLocked()) {
+                json(res, 403, {
+                  locked: true,
+                  error: "데스크톱 Flowrium이 잠겨 있습니다.",
+                });
+                return;
+              }
+              json(res, 200, { result });
+            } catch (error) {
+              if (isAnswer) answeredInputs.delete(id);
+              throw error;
+            }
             return;
           }
           const result = await guard(input.method, () =>
@@ -349,6 +421,7 @@ function registerRemote(
     status = "";
     running.clear();
     approvals.clear();
+    answeredInputs.clear();
     const closed = active
       ? new Promise((resolve) => {
           active.closeAllConnections();
@@ -423,17 +496,24 @@ function registerRemote(
             ),
           35000,
         );
+        let output = "";
+        let candidate;
+        let connected = false;
         const line = (chunk) => {
-          const match = chunk
-            .toString()
-            .match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+          output = (output + chunk.toString()).slice(-16000);
+          const match = output.match(
+            /https:\/\/[a-z0-9-]+\.trycloudflare\.com/,
+          );
+          if (match) candidate = match[0];
+          if (output.includes("Registered tunnel connection")) connected = true;
           if (
-            match &&
+            candidate &&
+            connected &&
             attempt === sequence &&
             tunnel === spawned &&
             server === ownServer
           ) {
-            publicOrigin = match[0];
+            publicOrigin = candidate;
             clearTimeout(timer);
             resolve();
           }

@@ -7,12 +7,15 @@ const {text} = require("./store.cjs");
 
 function registerRepository(register, store, isUpdating) {
   const busy = new Set();
+  const readers = new Map();
   register("repositoryAction", async (id, input) => {
     const cwd = await fs.realpath(store.project(text(id,"프로젝트 식별자",100)).path);
     if (!input || typeof input !== "object") throw new Error("저장소 작업을 확인해 주세요.");
     if (isUpdating() || busy.has(cwd)) throw new Error("실행 중인 작업이 끝난 뒤 다시 시도해 주세요.");
     const readOnly = ["changes","diff","prs","repoLocal","repoActivity","repoPull","repoIssue","repoOpen"].includes(input.action);
-    if (!readOnly) busy.add(cwd);
+    if (!readOnly && readers.has(cwd)) throw new Error("저장소 조회가 끝난 뒤 다시 시도해 주세요.");
+    if (readOnly) readers.set(cwd,(readers.get(cwd)||0)+1);
+    else busy.add(cwd);
     const run = async (command, args) => {
       try {
         const env = { ...require("./runtime.cjs").runtimeEnvironment(), GIT_TERMINAL_PROMPT:"0", GH_PROMPT_DISABLED:"true", ...(readOnly && {GIT_OPTIONAL_LOCKS:"0"}) };
@@ -57,7 +60,7 @@ function registerRepository(register, store, isUpdating) {
         }
         const message=text(input.message,"커밋 제목",240);
         await git("add","-A","--",...files);
-        return git("commit","--only","-m",message,"--",...files);
+        return await git("commit","--only","-m",message,"--",...files);
       }
       if (!branch || branch.startsWith("-")) throw new Error("이름이 있는 로컬 브랜치를 선택해 주세요.");
       if (input.action === "push") return (await git("push","--set-upstream","origin","HEAD:refs/heads/"+branch)) || "현재 브랜치를 원격 저장소로 푸시했습니다.";
@@ -65,13 +68,17 @@ function registerRepository(register, store, isUpdating) {
       if (input.action === "createPR") {
         const base=text(input.base,"대상 브랜치",200);
         await git("check-ref-format","--branch",base);
-        return run("gh",["pr","create","--head",branch,"--base",base,"--title",text(input.title,"변경 요청 제목",240),"--body",text(input.body,"변경 요청 설명",10000)]);
+        return await run("gh",["pr","create","--head",branch,"--base",base,"--title",text(input.title,"변경 요청 제목",240),"--body",text(input.body,"변경 요청 설명",10000)]);
       }
       if (input.action === "merge" && Number.isSafeInteger(input.number) && input.number>0 && /^[a-f0-9]{40,64}$/.test(input.head))
         return (await run("gh",["pr","merge",String(input.number),"--merge","--match-head-commit",input.head])) || "선택한 변경 요청을 병합했습니다.";
       throw new Error("지원하지 않는 저장소 작업입니다.");
-    } finally {if (!readOnly) busy.delete(cwd);}
+    } finally {
+      if (!readOnly) busy.delete(cwd);
+      else if (readers.get(cwd)===1) readers.delete(cwd);
+      else readers.set(cwd,readers.get(cwd)-1);
+    }
   });
-  return () => busy.size > 0;
+  return () => busy.size > 0 || readers.size > 0;
 }
 module.exports = {registerRepository};

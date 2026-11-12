@@ -1,7 +1,7 @@
 export interface SystemProcess {
   pid: number;
   name: string;
-  cpu: number;
+  cpu: number | null;
   memoryBytes: number;
 }
 export interface ContainerInfo {

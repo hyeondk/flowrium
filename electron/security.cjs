@@ -357,6 +357,17 @@ function registerSecurity(
   },
 ) {
   const approvals = new Map();
+  let accountRevision = security.accountRevision;
+  function onSecurityState(state) {
+    if (state.accountRevision !== accountRevision) {
+      accountRevision = state.accountRevision;
+      for (const id of controller.client.inputs?.keys() || []) {
+        try { controller.client.resolveInput(id,true); } catch { /* 끊어진 연결에도 질문 원문을 남기지 않는다. */ }
+        approvals.delete(id);
+      }
+    }
+    syncPower();
+  }
   let blocker;
   const syncPower = () => {
     const needed =
@@ -381,7 +392,7 @@ function registerSecurity(
       }));
     for (const [id, event] of approvals) {
       if (
-        controller.client.approvals.has(id) &&
+        (event.type === "input" ? controller.client.inputs?.has(id) : controller.client.approvals.has(id)) &&
         controller.runs.has(event.sessionId)
       )
         events.push(event);
@@ -390,7 +401,8 @@ function registerSecurity(
     return events;
   }
   function observe(event) {
-    if (event.type === "approval") approvals.set(event.requestId, event);
+    if (event.type === "approval" || event.type === "input") approvals.set(event.requestId, event);
+    if (event.type === "inputResolved") approvals.delete(event.requestId);
     if (event.type === "done") {
       for (const [id, q] of approvals)
         if (q.sessionId === event.sessionId) approvals.delete(id);
@@ -404,7 +416,7 @@ function registerSecurity(
     }
     syncPower();
     const pref = security.data.preferences;
-    const approval = event.type === "approval" && pref.notifyApproval;
+    const approval = ["input","approval"].includes(event.type) && pref.notifyApproval;
     const done =
       event.type === "done" &&
       event.status !== "interrupted" &&
@@ -413,7 +425,7 @@ function registerSecurity(
       try {
         const n = new Notification({
           title: "Flowrium",
-          body: approval
+          body: event.type === "input" ? "답변을 기다리는 질문이 있습니다." : approval
             ? "승인을 기다리는 작업이 있습니다."
             : event.status === "completed"
               ? "작업을 완료했습니다."
@@ -470,6 +482,7 @@ function registerSecurity(
         cliPath: controller.client.descriptor?.label,
       };
       controller.loadedThreads.clear();
+
       await security.accountOwner(null, true);
       controller.emitEvent({
         type: "status",
@@ -498,7 +511,7 @@ function registerSecurity(
   idleTimer.unref();
   powerMonitor.on("suspend", onSuspend);
   powerMonitor.on("lock-screen", onSuspend);
-  security.on("state", syncPower);
+  security.on("state", onSecurityState);
   controller.on("event", observe);
   return {
     checkIdle,
@@ -506,7 +519,7 @@ function registerSecurity(
       clearInterval(idleTimer);
       powerMonitor.off("suspend", onSuspend);
       powerMonitor.off("lock-screen", onSuspend);
-      security.off("state", syncPower);
+      security.off("state", onSecurityState);
       controller.off("event", observe);
       if (blocker !== undefined) powerSaveBlocker.stop(blocker);
     },
