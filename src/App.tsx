@@ -1,3 +1,15 @@
+import { useWorkspaceDrafts } from "./useWorkspaceDrafts";
+import WorkspaceSidebar from "./WorkspaceSidebar";
+import { AssistantShortcut } from "./ProjectMemory";
+import PortfolioReports from "./PortfolioReports";
+import MusicPanel from "./MusicPanel";
+import IntegrationPanel from "./IntegrationPanel";
+import RemotePanel from "./RemotePanel";
+import { VoiceSettings, VoiceComposer, SpeakButton } from "./VoiceTools";
+import { useSecurity, SecurityPanel, LockScreen } from "./SecurityPanel";
+import { ProjectPortfolio } from "./ProjectPortfolio";
+import { ProjectOverview } from "./ProjectOverview";
+import type { PortfolioView, ProjectTab } from "../shared/portfolio";
 import TerminalPanel from "./TerminalPanel";
 import ProjectDetails from "./ProjectDetails";
 import { ActivityPanel, useWorkspaceShortcuts } from "./ActivityPanel";
@@ -56,9 +68,8 @@ import type {
   Session,
 } from "../shared/types";
 
-type View = "terminal" | "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
+type View = PortfolioView | "weekly" | "pause" | "music" | "overview" | "terminal" | "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
 type Activity = { text: string; status: string; error?: string };
-type Draft = { text: string; mode: Mode };
 type CodexHistoryItem = {
   id: string;
   title: string;
@@ -164,9 +175,18 @@ const upsert = (items: Session[], session: Session) =>
   );
 
 export default function App() {
+  const security = useSecurity();
+  if (!security.state.loaded && security.error) return <main className="loading-page"><p role="alert">{security.error}</p><button onClick={()=>void security.refresh().catch(()=>{})}>연결 다시 확인</button></main>;
+  if (!security.state.loaded) return <main className="loading-page"><LoaderCircle className="spin"/>작업 공간을 준비하고 있습니다.</main>;
+  if (security.state.locked) return <LockScreen security={security}/>;
+  return <UnlockedWorkspace key={security.state.accountRevision} security={security}/>;
+}
+function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>}) {
+  const [logoutOpen,setLogoutOpen] = useState(false);
+  const logoutDialog = useRef<HTMLDialogElement>(null);
+  useEffect(()=>{if(logoutOpen&&!logoutDialog.current?.open)logoutDialog.current?.showModal();},[logoutOpen]);
   const update = useDesktopUpdate();
   const [archived, setArchived] = useState<Record<string,boolean>>({});
-  const [showArchived, toggleArchived] = useState(false);
   const [data, setData] = useState(initial);
   const [loaded, setLoaded] = useState(false);
   const [projectId, setProjectId] = useState<string>();
@@ -180,13 +200,9 @@ export default function App() {
     return () => { active = false; };
   }, [data.projects]);
   const [sessionId, setSessionId] = useState<string>();
-  const [view, setView] = useState<View>("home");
-  const [drafts, setDrafts] = useState<Record<string, Draft>>(() => {
-    try { return JSON.parse(localStorage.getItem("flowrium.drafts") || "{}") || {}; } catch { return {}; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem("flowrium.drafts", JSON.stringify(drafts)); } catch { /* 입력 중인 초안은 메모리에 유지합니다. */ }
-  }, [drafts]);
+  const [view, setView] = useState<View>("dashboard");
+  const [projectTab,setProjectTab] = useState<ProjectTab>("home");
+  const {drafts,setDrafts,error:draftError,retry:retryDrafts} = useWorkspaceDrafts(security.state.accountRevision);
   const draftKey = sessionId
     ? `session:${sessionId}`
     : `project:${projectId || "unassigned"}`;
@@ -283,7 +299,8 @@ export default function App() {
         if (alive) { setConnection(value.status); setModels(value.models); }
       })
       .catch(fail);
-    const off = api.onEvent((event) => {
+    const handleEvent = (event:FlowriumEvent) => {
+      if (!alive) return;
       if (event.type === "session" && event.session) {
         setData((prev) => ({
           ...prev,
@@ -378,7 +395,16 @@ export default function App() {
           return next;
         });
       }
+    };
+    const changedSessions = new Set<string>();
+    let restoring = true;
+    const off = api.onEvent(event => {
+      if (restoring && event.sessionId && ["approval","done"].includes(event.type)) changedSessions.add(event.sessionId);
+      handleEvent(event);
     });
+    api.securityPending().then(events=>{
+      if(alive) events.filter(event=>!event.sessionId || !changedSessions.has(event.sessionId)).forEach(handleEvent);
+    }).catch(error=>{if(alive)fail(error);}).finally(()=>{restoring=false;changedSessions.clear();});
     return () => {
       alive = false;
       off();
@@ -472,7 +498,8 @@ export default function App() {
   }, [settingsOpen, pendingDelete, historyOpen]);
 
   useWorkspaceShortcuts({ board:()=>setView("home"), newChat:()=>void newSession(), history:()=>setView("history"), settings:()=>setSettingsOpen(true) });
-  async function chooseProject() {
+  function chooseProject() { return chooseProjectFor("home"); }
+  async function chooseProjectFor(nextView:"home"|"terminal") {
     if (!api)
       return notify("데스크톱 앱에서 실제 작업 폴더를 연결할 수 있습니다.");
     try {
@@ -493,17 +520,18 @@ export default function App() {
         });
         setProjectId(result.id);
         setSessionId(undefined);
-        setView("home");
+        setView(nextView);
         setSidebarOpen(false);
       }
     } catch (error) {
       fail(error);
     }
   }
-  function selectProject(value: Project) {
+  function selectProject(value: Project, tab:ProjectTab="home") {
     setProjectId(value.id);
     setSessionId(undefined);
-    setView("home");
+    setProjectTab(tab);
+    setView("overview");
     setSidebarOpen(false);
   }
   function selectSession(value: Session) {
@@ -519,7 +547,12 @@ export default function App() {
   async function openWork(value: Session, nextMode?: Mode, request?: string) {
     rememberSession(value);
     selectSession(value);
-    if (!request || !api) return;
+    if (!request) return;
+    try { await sendWorkRequest(value,request,nextMode); } catch(error) { fail(error); }
+  }
+  async function sendWorkRequest(value:Session,request:string,nextMode?:Mode) {
+    rememberSession(value);
+    if (!api) return;
     const mode = nextMode || "plan";
     const key = `session:${value.id}`;
     setDrafts(prev => ({ ...prev, [key]: { text: request, mode } }));
@@ -527,10 +560,8 @@ export default function App() {
       notify("업무 대화를 만들었습니다. 설정에서 계정을 연결한 뒤 요청을 보내세요.");
       return;
     }
-    try {
-      await api.send({ sessionId: value.id, text: request, mode, model: data.settings.model, effort: data.settings.effort });
-      setDrafts(prev => prev[key]?.text === request ? { ...prev, [key]: { text: "", mode } } : prev);
-    } catch (error) { fail(error); }
+    await api.send({ sessionId: value.id, text: request, mode, model: data.settings.model, effort: data.settings.effort });
+    setDrafts(prev => prev[key]?.text === request ? { ...prev, [key]: { text: "", mode } } : prev);
   }
   async function connect() {
     if (!api)
@@ -831,138 +862,16 @@ export default function App() {
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <aside className={`sidebar ${sidebarOpen ? "is-open" : ""}`}>
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            setView("home");
-            setSessionId(undefined);
-          }}
-        >
-          <span className="brand-mark">
-            <img src="./flowrium.png" alt="" width="33" height="33" />
-          </span>
-          <span>Flowrium</span>
-        </a>
-        <button className="sidebar-new" onClick={newSession}>
-          <Plus size={17} /> 새 자유 대화{" "}
-        </button>
-        <div className="nav-label">내 작업</div>
-        <nav aria-label="주 메뉴">
-          <button
-            className={view === "home" ? "nav-item active" : "nav-item"}
-            onClick={() => {
-              setView("home");
-              setSidebarOpen(false);
-            }}
-          >
-            <LayoutDashboard size={18} />
-            업무 보드
-            <span className="nav-dot" />
-          </button>
-          <button className={view === "activity" ? "nav-item active" : "nav-item"} onClick={()=>{setView("activity");setSidebarOpen(false);}}><Clock3 size={17}/>작업 현황</button>
-          <button className={view === "inbox" ? "nav-item active" : "nav-item"} onClick={()=>{setView("inbox");setSidebarOpen(false);}}><ShieldCheck size={17}/>승인함 <span className="nav-count">{approvals.length}</span></button>
-          {project && <button className={view === "team" ? "nav-item active" : "nav-item"} onClick={()=>{setView("team");setSidebarOpen(false);}}><MessageSquare size={17}/>프로젝트 팀</button>}
-          {project && <button className={view === "terminal" ? "nav-item active" : "nav-item"} onClick={()=>{setView("terminal");setSidebarOpen(false);}}><Terminal size={17}/>내장 터미널</button>}
-          {project && <button className={view === "repo" ? "nav-item active" : "nav-item"} onClick={()=>{setView("repo");setSidebarOpen(false);}}><Code2 size={17}/>형상관리</button>}
-          <button
-            className={view === "history" ? "nav-item active" : "nav-item"}
-            onClick={() => {
-              setView("history");
-              setSidebarOpen(false);
-            }}
-          >
-            <History size={18} />
-            작업 기록<span className="nav-count">{data.sessions.length}</span>
-          </button>
-          <button
-            className={view === "library" ? "nav-item active" : "nav-item"}
-            onClick={() => {
-              setView("library");
-              setSidebarOpen(false);
-            }}
-          >
-            <BookOpen size={18} />
-            프롬프트 보관함
-          </button>
-        </nav>
-        <div className="nav-label project-label">
-          프로젝트
-          <button
-            className="icon-button"
-            aria-label="프로젝트 연결"
-            onClick={chooseProject}
-          >
-            <Plus size={16} />
-          </button>
-        </div>
-        {project && <button className="project-detail-link" onClick={()=>{setView("details");setSidebarOpen(false);}}>현재 프로젝트 관리</button>}
-        {Object.values(archived).some(Boolean) && <button className="project-detail-link" onClick={()=>toggleArchived(!showArchived)}>{showArchived ? "보관 프로젝트 숨기기" : "보관 프로젝트 보기"}</button>}
-        <div className="project-list">
-          {data.projects.length ? (
-            data.projects.filter(p=>!archived[p.id] || showArchived || p.id===projectId).map((p) => (
-              <button
-                key={p.id}
-                className={`project-item ${p.id === projectId ? "selected" : ""}`}
-                onClick={() => selectProject(p)}
-                title={p.path}
-              >
-                <span className="project-avatar">
-                  {p.name.slice(0, 1).toUpperCase()}
-                </span>
-                <span>{p.name}{archived[p.id] ? " / 보관" : ""}</span>
-                {p.id === projectId && <ChevronRight size={14} />}
-              </button>
-            ))
-          ) : (
-            <div className="sidebar-empty">
-              <Folder size={21} />
-              <p>작업할 프로젝트 폴더를 선택하세요.</p>
-              <button onClick={chooseProject}>
-                폴더 연결 <Plus size={13} />
-              </button>
-            </div>
-          )}
-        </div>
-        {projectSessions.length > 0 && <div className="chat-switcher">
-          <div className="nav-label">최근 대화</div>
-          {projectSessions.slice(0, 7).map(s => <button key={s.id} title={s.title} className={s.id === sessionId && view === "workspace" ? "selected" : ""} onClick={() => selectSession(s)}>
-            <MessageSquare size={13} /><span>{s.title}</span>{activities[s.id] && <small>실행 중</small>}
-          </button>)}
-        </div>}
-        <div className="sidebar-bottom">
-          <button
-            className="connection-card"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <span
-              className={`connection-icon ${connection.authenticated ? "connected" : ""}`}
-            >
-              <Terminal size={18} />
-            </span>
-            <span>
-              <strong>Codex</strong>
-              <small>
-                {connection.authenticated
-                  ? "연결됨 / 작업 준비 완료"
-                  : "연결하고 시작하세요"}
-              </small>
-            </span>
-            <span
-              className={`status-dot ${connection.authenticated ? "online" : ""}`}
-            />
-          </button>
-          <button
-            className="nav-item settings-button"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings2 size={17} />
-            설정<span className="version">v{data.version}</span>
-          </button>
-        </div>
-      </aside>
+      <WorkspaceSidebar current={view} mobileOpen={sidebarOpen} projects={data.projects.filter(p=>!archived[p.id])}
+        selected={["overview","home","workspace","terminal"].includes(view)?projectId:undefined}
+        counts={Object.fromEntries(data.projects.map(p=>[p.id,{
+          running: data.sessions.filter(s=>s.projectId===p.id&&activities[s.id]).length,
+          waiting: approvals.filter(a=>data.sessions.some(s=>s.id===a.sessionId&&s.projectId===p.id)).length
+        }]))} account={connection.authenticated?(connection.accountLabel||"ChatGPT 연결됨"):undefined}
+        onGo={value=>{setView(value);setSidebarOpen(false);}} onProject={selectProject}
+        onSettings={()=>{setSettingsOpen(true);setSidebarOpen(false);}}
+        onLock={()=>{setSidebarOpen(false);if(!security.state.hasPin){setSettingsOpen(true);notify("설정에서 잠금 번호를 정하세요.");return;}void security.lock().catch(fail);}}
+        onLogout={()=>{setSidebarOpen(false);setLogoutOpen(true);}}/>
       <main className="main-shell">
         <header className="topbar">
           <div className="breadcrumbs">
@@ -976,15 +885,12 @@ export default function App() {
             <span>내 작업 공간</span>
             <ChevronRight size={13} />
             <strong>
-              {view === "history"
-                ? "작업 기록"
-                : view === "library"
-                  ? "프롬프트 보관함"
-                  : project?.name || "시작하기"}
+              {({dashboard:"대시보드",kickoff:"새 프로젝트",archive:"완료",outputs:"산출물",timeline:"날짜별 기록",weekly:"주간업무보고",pause:"업무 마감",music:"뮤직",history:"작업 기록",library:"프롬프트 보관함",activity:"작업 현황",inbox:"승인함",terminal:"터미널"} as Partial<Record<View,string>>)[view] || project?.name || "시작하기"}
             </strong>
             {!api && <span className="preview-badge">화면 미리보기</span>}
           </div>
           <div className="topbar-actions">
+            <AssistantShortcut projects={data.projects.filter(p=>!archived[p.id])} onOpen={openWork} onCreateProject={()=>setView("kickoff")}/>
             <button className="button subtle chatgpt-button" onClick={handoff}>
               <MessageSquare size={15} />
               <span>{view === "workspace" && session ? "ChatGPT로 이어가기" : "ChatGPT 열기"}</span>
@@ -1002,12 +908,18 @@ export default function App() {
             </button>
           </div>
         </header>
+        <MusicPanel visible={loaded&&view==="music"} locked={security.state.locked}/>
         {!settingsOpen && <UpdatePanel state={update} fail={fail} />}
         {!loaded ? (
           <div className="loading-page">
             <LoaderCircle className="spin" />
             작업 공간을 불러오고 있습니다.
           </div>
+        ) : view === "music" ? null : view === "weekly" || view === "pause" ? (
+          <PortfolioReports key={view} kind={view} projects={data.projects.filter(p=>!archived[p.id])} sessions={data.sessions} authenticated={connection.authenticated}
+            onStart={(record,request)=>sendWorkRequest(record,request,workKinds[record.workflow!.kind].mode)} onOpen={selectSession} onCreateProject={()=>setView("kickoff")}/>
+        ) : view === "terminal" && !project ? (
+          <div className="pf-page"><div className="pf-content"><h1>터미널</h1><section className="pf-welcome"><h2>터미널을 열 폴더를 연결하세요</h2><button onClick={()=>void chooseProjectFor("terminal")}>프로젝트 폴더 선택</button></section></div></div>
         ) : view === "details" && project ? (
           <div className="page-scroll"><div className="page-inner"><ProjectDetails key={project.id} project={project} onChange={value=>setArchived(prev=>({...prev,[value.projectId]:Boolean(value.archivedAt)}))}/></div></div>
         ) : view === "activity" ? (
@@ -1029,6 +941,27 @@ export default function App() {
               <button className="button subtle" disabled={deciding[event.requestId || ""]} onClick={()=>decide(event,"decline")}>거절</button>
               <button className="button primary" disabled={deciding[event.requestId || ""]} onClick={()=>decide(event,"accept")}>이번 작업 승인</button></div></section>;
           })}</div></div>
+        ) : (view==="dashboard"||view==="kickoff"||view==="archive"||view==="outputs"||view==="timeline") ? (
+          <ProjectPortfolio view={view} projects={data.projects} sessions={data.sessions}
+            onNavigate={setView} onProject={selectProject} onOpenSession={openWork} onChooseProject={chooseProject}
+            onSessionChange={rememberSession} onArchived={(id,value)=>setArchived(prev=>({...prev,[id]:value}))}
+            tools={<div className="pf-dashboard-tools" aria-label="작업 도구">
+              <button onClick={()=>setView("activity")}><Clock3 size={15}/>작업 현황</button>
+              <button onClick={()=>setView("inbox")}><ShieldCheck size={15}/>승인함{approvals.length>0&&<span>{approvals.length}</span>}</button>
+              <button onClick={()=>setView("history")}><History size={15}/>작업 기록</button>
+              <button onClick={()=>setView("library")}><BookOpen size={15}/>프롬프트 보관함</button>
+              <button onClick={()=>setView("home")}><LayoutDashboard size={15}/>업무 보드</button>
+              <button onClick={()=>void newSession()}><Plus size={15}/>새 자유 대화</button>
+            </div>}
+            onCreated={async p=>{
+              try { if(api) setData(await api.bootstrap()); selectProject(p); } catch(error){fail(error);}
+            }}/>
+        ) : view==="overview" && project ? (
+          <ProjectOverview key={project.id} project={project} sessions={projectSessions} tab={projectTab}
+            onTabChange={setProjectTab} onOpenSession={openWork} onBack={()=>setView("dashboard")}
+            onDetailsChange={d=>setArchived(prev=>({...prev,[d.projectId]:!!d.archivedAt}))}
+            renderPanel={tab=>tab==="work"?<Workbench project={project} sessions={projectSessions} onChooseProject={chooseProject} onOpen={openWork} onSessionChange={rememberSession}/>:
+              tab==="team"?<TeamPanel projectId={project.id} onOpen={openWork}/>:<RepositoryPanel project={project}/>}/>
         ) : view === "home" ? (
           <Workbench key={projectId || "welcome"} project={project} sessions={projectSessions} onChooseProject={chooseProject} onOpen={openWork} onSessionChange={rememberSession} />
         ) : view === "library" ? (
@@ -1256,6 +1189,7 @@ export default function App() {
                                 { hour: "2-digit", minute: "2-digit" },
                               )}
                             </time>
+                            {message.role==="assistant" && <SpeakButton text={message.text}/>}
                             {message.role !== "system" && (
                               <button
                                 className="icon-button copy-message"
@@ -1412,6 +1346,7 @@ export default function App() {
                     </div>
                   </div>
                 ))}
+                {draftError && <p role="alert" className="composer-draft-error">{draftError} <button onClick={retryDrafts}>초안 다시 불러오기</button></p>}
                 <div className={`composer ${running ? "working" : ""}`}>
                   <div className="composer-topline">
                     <span>
@@ -1457,6 +1392,9 @@ export default function App() {
                   />
                   <div className="composer-toolbar">
                     <div className="composer-options">
+                      <VoiceComposer key={draftKey} disabled={running||security.state.locked} onText={text=>setDrafts(prev=>{
+                        const draft=prev[draftKey];return {...prev,[draftKey]:{mode:draft?.mode||mode,text:[draft?.text,text].filter(Boolean).join("\n")}};
+                      })}/>
                       <label className="mode-select">
                         <currentMode.icon size={14} />
                         <select
@@ -1672,6 +1610,10 @@ export default function App() {
           </span>
         </footer>
       </main>
+      {logoutOpen && <dialog ref={logoutDialog} className="pf-logout" onCancel={()=>setLogoutOpen(false)} aria-label="계정 로그아웃">
+        <h2>로그아웃할까요?</h2><p>이 기기의 Codex에서 ChatGPT 계정을 로그아웃합니다. 같은 로그인 정보를 쓰는 Codex 앱과 명령줄에서도 다시 로그인해야 할 수 있습니다. 저장한 프로젝트와 대화는 보존됩니다.</p>
+        <div className="pf-actions"><button autoFocus onClick={()=>setLogoutOpen(false)}>취소</button><button onClick={()=>{setLogoutOpen(false);void security.logout().catch(fail);}}>로그아웃 확인</button></div>
+      </dialog>}
       {toast && (
         <div className="toast" role="status">
           <CheckCheck size={18} />
@@ -1893,6 +1835,10 @@ export default function App() {
             </div>
             <div className="modal-content">
               <UpdatePanel settings state={update} fail={fail} />
+              <SecurityPanel security={security}/>
+              <IntegrationPanel projectId={projectId}/>
+              <RemotePanel/>
+              <VoiceSettings/>
               <div className="settings-section">
                 <h3>
                   <Terminal size={17} />

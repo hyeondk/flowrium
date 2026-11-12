@@ -28,8 +28,11 @@ function validateWorkflow(w) {
       !Array.isArray(w.checklist) || w.checklist.length > 128 ||
       !w.checklist.every((i) => i && uuid.test(i.id) && bounded(i.text, 400) && typeof i.done === "boolean") ||
       new Set(w.checklist.map((i) => i.id)).size !== w.checklist.length) throw invalid();
+  if (w.reportProjects !== undefined && (w.kind !== "weekly" || !Array.isArray(w.reportProjects) ||
+      !w.reportProjects.length || w.reportProjects.length > 64 || w.reportProjects.some(id => !uuid.test(id)) ||
+      new Set(w.reportProjects).size !== w.reportProjects.length)) throw invalid();
   if (w.searchMode !== undefined && (w.kind !== "research" || !["live", "cached", "disabled"].includes(w.searchMode))) throw invalid();
-  if (w.teamSlot && (!uuid.test(w.teamSlot.runId) || !Number.isInteger(w.teamSlot.index) || w.teamSlot.index < 0 || w.teamSlot.index > 7 || (w.teamSlot.mode !== undefined && !["plan", "build", "review"].includes(w.teamSlot.mode)))) throw invalid();
+  if (w.teamSlot && ((w.teamSlot.isolated !== undefined && typeof w.teamSlot.isolated !== 'boolean') || !uuid.test(w.teamSlot.runId) || !Number.isInteger(w.teamSlot.index) || w.teamSlot.index < 0 || w.teamSlot.index > 7 || (w.teamSlot.mode !== undefined && !["plan", "build", "review"].includes(w.teamSlot.mode)))) throw invalid();
   if (w.source && (!uuid.test(w.source.sessionId) || !bounded(w.source.title, 300) || !bounded(w.source.summary, 12000))) throw invalid();
   if (w.completion && (!validTime(w.completion.at) || !bounded(w.completion.summary, 1000) || !Array.isArray(w.completion.commits) ||
       w.completion.commits.length > 30 || !w.completion.commits.every((c) => c && /^[0-9a-f]{4,64}$/i.test(c.hash) && validTime(c.at) && bounded(c.subject, 400)))) throw invalid();
@@ -221,22 +224,38 @@ async function workContext(store, id) {
     w.checklist.length && "업무 체크리스트:\n" + w.checklist.map((i) => (i.done ? "[x] " : "[ ] ") + i.text).join("\n"),
   ];
   if (["briefing", "weekly", "pause"].includes(w.kind)) {
-    const others = store.state.sessions.filter((item) => item.projectId === s.projectId && item.id !== s.id);
-    const completed = others.filter((item) => item.workflow?.completion && inPeriod(item.workflow.completion.at, w))
-      .sort((a, b) => b.workflow.completion.at.localeCompare(a.workflow.completion.at));
-    const active = others.filter((item) => item.workflow?.status !== "done")
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    lines.push("프로젝트의 실제 완료 기록:\n" + (completed.slice(0, 30).map((item) =>
-      dayHere(item.workflow.completion.at) + " / " + item.title + " / " + compact(item.workflow.completion.summary, 400)).join("\n") || "해당 기간 기록 없음"));
-    if (w.kind !== "weekly") lines.push("진행 중인 업무:\n" +
-      (active.slice(0, 30).map((item) => item.title + " / " + dayHere(item.updatedAt) +
-        (item.workflow?.checklist?.length ? " / 남은 항목: " + item.workflow.checklist.filter((i) => !i.done).map((i) => i.text).join(", ").slice(0, 300) : "")).join("\n") || "없음"));
-    const gitData = await gitOverview(await projectRoot(store.project(s.projectId)), w.from, w.to);
-    if (gitData.available) {
-      lines.push("프로젝트 Git 기록 (사실 확인용):\n" + (gitData.commits.map((c) => c.at + " " + c.hash + " " + c.subject).join("\n") || "해당 기간 커밋 없음"));
-      if (w.kind !== "weekly") lines.push("미커밋 파일:\n" + (gitData.changes.map((c) => c.code + " " + c.path).join("\n") || "없음"));
-      if (gitData.limited || gitData.reason) lines.push("표시 범위가 제한된 Git 기록입니다.");
-    } else lines.push(gitData.reason);
+    const ids = w.reportProjects || [s.projectId];
+    const perProject = Math.floor((47000 - lines.filter(Boolean).join("\n").length) / ids.length);
+    for (const projectId of ids) {
+      const project = store.state.projects.find(entry => entry.id === projectId);
+      if (!project) { lines.push("연결이 해제된 보고 대상 프로젝트가 있습니다."); continue; }
+      if (w.reportProjects) lines.push("\n프로젝트 / " + project.name);
+      const others = store.state.sessions.filter((item) => item.projectId === project.id && item.id !== s.id);
+      const completed = others.filter((item) => item.workflow?.completion && inPeriod(item.workflow.completion.at, w))
+        .sort((a, b) => b.workflow.completion.at.localeCompare(a.workflow.completion.at));
+      const active = others.filter((item) => item.workflow?.status !== "done")
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      const summaries = completed.slice(0, 30).map((item) =>
+        dayHere(item.workflow.completion.at) + " / " + item.title + " / " + compact(item.workflow.completion.summary, 400)).join("\n") || "해당 기간 기록 없음";
+      const evidenceLimit = ids.length > 1 ? Math.max(50, Math.floor((perProject - 240) / 2)) : 48000;
+      lines.push("프로젝트의 실제 완료 기록:\n" + summaries.slice(0, evidenceLimit));
+      if (w.kind !== "weekly") lines.push("진행 중인 업무:\n" +
+        (active.slice(0, 30).map((item) => item.title + " / " + dayHere(item.updatedAt) +
+          (item.workflow?.checklist?.length ? " / 남은 항목: " + item.workflow.checklist.filter((i) => !i.done).map((i) => i.text).join(", ").slice(0, 300) : "")).join("\n") || "없음"));
+      let gitData;
+      try { gitData = await gitOverview(await projectRoot(project), w.from, w.to); }
+      catch (error) {
+        if (!w.reportProjects) throw error;
+        lines.push("프로젝트 폴더 연결을 확인할 수 없어 커밋을 집계하지 못했습니다.");
+        continue;
+      }
+      if (gitData.available) {
+        const commitEvidence = gitData.commits.map((c) => c.at + " " + c.hash + " " + c.subject).join("\n") || "해당 기간 커밋 없음";
+        lines.push("프로젝트 Git 기록 (사실 확인용):\n" + commitEvidence.slice(0, evidenceLimit));
+        if (w.kind !== "weekly") lines.push("미커밋 파일:\n" + (gitData.changes.map((c) => c.code + " " + c.path).join("\n") || "없음"));
+        if (gitData.limited || gitData.reason) lines.push("표시 범위가 제한된 Git 기록입니다.");
+      } else lines.push(gitData.reason);
+    }
   }
   return "\n" + lines.filter(Boolean).join("\n").slice(0, 48000) + "\n";
 }
@@ -247,7 +266,12 @@ async function startWork(store, input, teamSlot) {
   const workflow = newWorkflow(input.kind);
   for (const name of ["brief", "role", "audience", "from", "to", "searchMode"])
     if (input[name] !== undefined) workflow[name] = input[name];
-  if (teamSlot) workflow.teamSlot = { runId: teamSlot.runId, index: teamSlot.index, ...(teamSlot.mode && { mode: teamSlot.mode }) };
+  if (input.reportProjects !== undefined) {
+    workflow.reportProjects = input.reportProjects;
+    validateWorkflow(workflow);
+    for (const id of workflow.reportProjects) store.project(id);
+  }
+  if (teamSlot) workflow.teamSlot = { runId: teamSlot.runId, index: teamSlot.index, ...(teamSlot.mode && { mode: teamSlot.mode }), ...(teamSlot.isolated === true && { isolated: true }) };
   if (!workflow.role) workflow.role = definitions[input.kind].role;
   if (input.sourceSessionId) {
     const source = store.session(input.sourceSessionId);
@@ -366,4 +390,4 @@ function registerWorkbench(register, store, { reveal, isRunning = () => false })
     await reveal(file);
   });
 }
-module.exports = { registerWorkbench, startWork, workContext, validateWorkflow };
+module.exports = { registerWorkbench, startWork, workContext, validateWorkflow, saveArtifact };

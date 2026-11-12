@@ -70,8 +70,9 @@ async function run() {
       const doc = await docTask.promise;
       try { assert.equal(doc.numPages, 2); } finally { await docTask.destroy(); }
     }
+    await page.getByRole("button", { name: "대시보드", exact: true }).click();
     await page.getByRole("button", { name: "업무 보드", exact: true }).click();
-    await page.getByRole("button", { name: "산출물", exact: true }).click();
+    await page.getByRole("navigation",{name:"작업실 화면"}).getByRole("button", { name: "산출물", exact: true }).click();
     await page.getByLabel("추가할 문서 선택").setInputFiles({ name: "입력 파일.md", mimeType: "text/markdown", buffer: Buffer.from("추가한 원문") });
     await page.getByRole("status").filter({ hasText: "문서 1개 추가" }).waitFor();
     const payload = await page.evaluateHandle(() => {

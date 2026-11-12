@@ -1,5 +1,6 @@
 const readline = require("node:readline");
 let initialized = false;
+let loggedOut = false;
 let acknowledged = false;
 let nextThread = 0;
 let nextTurn = 0;
@@ -27,7 +28,7 @@ function complete(threadId, turnId, message, policy) {
     item: {
       id: `${turnId}-item`,
       type: "agentMessage",
-      text: `확인한 결과입니다. / ${policy}`,
+      text: message || `확인한 결과입니다. / ${policy}`,
     },
   });
   notify("turn/completed", {
@@ -67,7 +68,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     write({
       id,
       result: {
-        account: process.argv.includes("--no-account")
+        account: loggedOut || process.argv.includes("--no-account")
           ? null
           : process.argv.includes("--api-account")
             ? { type: "apiKey" }
@@ -79,6 +80,15 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
         requiresOpenaiAuth: !process.argv.includes("--no-account"),
       },
     });
+    return;
+  }
+  if (method === "account/logout") {
+    loggedOut = true;
+    write({ id, result: {} });
+    return;
+  }
+  if (method === "account/rateLimits/read") {
+    write({ id, result: { rateLimits: { limitId: "codex", planType: "pro", primary: { usedPercent: 37, windowDurationMins: 300, resetsAt: 1900000000 } } } });
     return;
   }
   if (method === "model/list") {
@@ -135,7 +145,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     }
     if (prompt.includes("대기검증")) return;
     setTimeout(
-      () => complete(threadId, turnId, "", params.sandboxPolicy.type),
+      () => complete(threadId, turnId, require("./teams-fake-response.cjs").teamResponse(prompt, params.outputSchema), params.sandboxPolicy.type),
       30,
     );
     return;

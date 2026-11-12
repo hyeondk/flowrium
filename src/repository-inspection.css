@@ -1,0 +1,9 @@
+.repo-inspection { display: grid; gap: .75rem; margin-bottom: 1.5rem; word-break: keep-all; overflow-wrap: break-word; }
+.repo-inspection header, .repo-read-actions, .repo-inspection li { display: flex; align-items: baseline; flex-wrap: wrap; gap: .5rem; }
+.repo-inspection header h2, .repo-inspection header h3, .repo-inspection p { margin: 0; }
+.repo-inspection ul { display: grid; gap: .4rem; padding: 0; margin: .6rem 0; }
+.repo-inspection button { border: 1px solid var(--line, #cdced0); padding: .35rem .55rem; border-radius: .4rem; background: transparent; color: inherit; cursor: pointer; }
+.repo-inspection button:disabled { cursor: default; opacity: .5; }
+.repo-inspection summary { cursor: pointer; }
+.repo-inspection small { opacity: .75; }
+.repo-inspection .repo-description { white-space: pre-wrap; max-height: 22rem; overflow: auto; }

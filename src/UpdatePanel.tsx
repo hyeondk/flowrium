@@ -33,5 +33,7 @@ export function UpdatePanel({ state, settings = false, fail }: {
     </div>
     {available ? <button className="button primary" onClick={() => api.installUpdate().catch(fail)}><Download size={15} />업데이트 후 재시작</button>
       : (settings || state.status === "error") && <button className="button subtle" disabled={busy || state.status === "unsupported"} onClick={() => api.checkUpdate().catch(fail)}><RefreshCw size={14} />새 버전 확인</button>}
+    {state.status === "error" && <button className="button subtle" onClick={()=>api.openExternal("downloads").catch(fail)}>
+      <Download size={14}/>수동 설치 파일 받기</button>}
   </section>;
 }

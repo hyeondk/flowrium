@@ -11,10 +11,11 @@ function registerRepository(register, store, isUpdating) {
     const cwd = await fs.realpath(store.project(text(id,"프로젝트 식별자",100)).path);
     if (!input || typeof input !== "object") throw new Error("저장소 작업을 확인해 주세요.");
     if (isUpdating() || busy.has(cwd)) throw new Error("실행 중인 작업이 끝난 뒤 다시 시도해 주세요.");
-    busy.add(cwd);
+    const readOnly = ["changes","diff","prs","repoLocal","repoActivity","repoPull","repoIssue","repoOpen"].includes(input.action);
+    if (!readOnly) busy.add(cwd);
     const run = async (command, args) => {
       try {
-        const env = { ...process.env, GIT_TERMINAL_PROMPT:"0", GH_PROMPT_DISABLED:"true" };
+        const env = { ...require("./runtime.cjs").runtimeEnvironment(), GIT_TERMINAL_PROMPT:"0", GH_PROMPT_DISABLED:"true", ...(readOnly && {GIT_OPTIONAL_LOCKS:"0"}) };
         if (process.platform === "darwin") env.PATH += ":/opt/homebrew/bin:/usr/local/bin";
         const result = await exec(command,args,{cwd,env,encoding:"utf8",windowsHide:true,timeout:90000,maxBuffer:2*1024*1024});
         return result.stdout;
@@ -35,6 +36,8 @@ function registerRepository(register, store, isUpdating) {
       }
       if (await fs.realpath((await run("git",["rev-parse","--show-toplevel"])).trim()) !== cwd)
         throw new Error("형상관리를 사용하려면 Git 저장소의 최상위 폴더를 연결해 주세요.");
+      const {inspectionActions, inspectRepository} = require("./repository-inspection.cjs");
+      if (inspectionActions.has(input.action)) return await inspectRepository(input, run);
       const git = (...args) => run("git",args);
       const branch = (await git("branch","--show-current")).trim();
       if (input.action === "changes") {
@@ -67,7 +70,7 @@ function registerRepository(register, store, isUpdating) {
       if (input.action === "merge" && Number.isSafeInteger(input.number) && input.number>0 && /^[a-f0-9]{40,64}$/.test(input.head))
         return (await run("gh",["pr","merge",String(input.number),"--merge","--match-head-commit",input.head])) || "선택한 변경 요청을 병합했습니다.";
       throw new Error("지원하지 않는 저장소 작업입니다.");
-    } finally {busy.delete(cwd);}
+    } finally {if (!readOnly) busy.delete(cwd);}
   });
   return () => busy.size > 0;
 }

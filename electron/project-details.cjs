@@ -12,6 +12,24 @@ function field(value, max) {
   if (typeof value !== 'string' || value.length > max) throw invalid();
   return value.trim();
 }
+function kickoffFields(input) {
+  const fields = { name: 140, category: 80, phase: 80, privacy: 80, client: 200, owner: 150, members: 1500, goal: 4000,
+    startedAt: 10, dueDate: 10, repository: 300, notes: 8000 };
+  const values = {};
+  for (const [key, limit] of Object.entries(fields)) values[key] = field(input?.[key] ?? '', limit);
+  if (!values.phase) values.phase='킥오프';
+  if (!values.privacy) values.privacy='일반';
+  if (!values.name) throw new Error('프로젝트 이름을 입력해 주세요.');
+  for (const day of [values.startedAt, values.dueDate]) {
+    if (day && (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(day)) ||
+      new Date(day).toISOString().slice(0, 10) !== day)) throw invalid();
+  }
+  if (values.startedAt && values.dueDate && values.startedAt > values.dueDate) throw new Error('목표일이 시작일보다 빠릅니다.');
+  if (values.repository && !/^https:\/\/github\.com\/[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+\/?$/.test(values.repository)) {
+    throw new Error('GitHub 저장소의 HTTPS 주소를 입력해 주세요.');
+  }
+  return values;
+}
 function validate(data) {
   if (!UUID.test(data.projectId) || !UUID.test(data.revision)) throw invalid();
   field(data.owner, 150); field(data.goal, 4000);
@@ -21,6 +39,13 @@ function validate(data) {
   if (!Array.isArray(data.checklist) || data.checklist.length > 250 ||
       !data.checklist.every((item) => item && UUID.test(item.id) && !!field(item.text, 500) && typeof item.done === 'boolean') ||
       new Set(data.checklist.map((item) => item.id)).size !== data.checklist.length) throw invalid();
+  if (data.periodGoals !== undefined) {
+    if (!Array.isArray(data.periodGoals) || data.periodGoals.length>4000 || data.periodGoals.some(g=>!g ||
+      !UUID.test(g.id) || typeof g.done!=="boolean" || !field(g.text,500) ||
+      !(g.period==="month"?/^\d{4}-(0[1-9]|1[0-2])$/.test(g.key):g.period==="week" && /^\d{4}-\d{2}-\d{2}$/.test(g.key) &&
+      Number.isFinite(Date.parse(g.key)) && new Date(g.key).toISOString().slice(0,10)===g.key))) throw invalid();
+  }
+  if (data.kickoff !== undefined) kickoffFields(data.kickoff);
   return data;
 }
 async function folderFor(store, projectId) {
@@ -56,11 +81,32 @@ async function latest(folder, projectId) {
 }
 function apply(data, change) {
   switch (change?.action) {
+    case 'kickoff': {
+      const values = kickoffFields(change.input);
+      data.kickoff = values;
+      data.owner = values.owner;
+      data.goal = values.goal;
+      data.dueDate = values.dueDate;
+      break;
+    }
     case 'details':
       data.owner = field(change.owner, 150);
       data.goal = field(change.goal, 4000);
       data.dueDate = field(change.dueDate, 10);
       break;
+    case 'goal-add': {
+      data.periodGoals ||= [];
+      data.periodGoals.push({id:randomUUID(),period:change.period,key:change.key,text:field(change.text,500),done:false});
+      break;
+    }
+    case 'goal-check':
+    case 'goal-remove': {
+      const index=(data.periodGoals||[]).findIndex(g=>g.id===change.id);
+      if(index<0)throw invalid();
+      if(change.action==='goal-remove') data.periodGoals.splice(index,1);
+      else { if(typeof change.done!=='boolean')throw invalid(); data.periodGoals[index].done=change.done; }
+      break;
+    }
     case 'archive': data.archivedAt ||= new Date().toISOString(); break;
     case 'resume': data.archivedAt = null; break;
     case 'add': {
@@ -81,20 +127,24 @@ function apply(data, change) {
     }
     default: throw invalid();
   }
+  if (data.kickoff) Object.assign(data.kickoff, { owner: data.owner, goal: data.goal, dueDate: data.dueDate });
   return validate(data);
 }
-function registerProjectDetails(register, store) {
-  register('readProjectDetails', async (projectId) => latest(await folderFor(store, projectId), projectId));
-  register('updateProjectDetails', async (projectId, previous, change) => {
-    const folder = await folderFor(store, projectId);
-    const current = await latest(folder, projectId);
-    if (current.revision !== previous) throw conflict();
-    const data = apply({ ...current, revision: randomUUID() }, change);
-    try {
-      // 이전 리비전 하나에는 후속 파일을 하나만 기록할 수 있다.
-      await createJSON(path.join(folder, (previous || 'first') + '.json'), { version: 1, previous, data });
-    } catch (error) { if (error.code === 'EEXIST') throw conflict(); throw error; }
-    return data;
-  });
+async function readDetails(store, projectId) {
+  return latest(await folderFor(store, projectId), projectId);
 }
-module.exports = { registerProjectDetails };
+async function updateDetails(store, projectId, previous, change) {
+  const folder = await folderFor(store, projectId);
+  const current = await latest(folder, projectId);
+  if (current.revision !== previous) throw conflict();
+  const data = apply({ ...current, revision: randomUUID() }, change);
+  try {
+    await createJSON(path.join(folder, (previous || 'first') + '.json'), { version: 1, previous, data });
+  } catch (error) { if (error.code === 'EEXIST') throw conflict(); throw error; }
+  return data;
+}
+function registerProjectDetails(register, store) {
+  register('readProjectDetails', (projectId) => readDetails(store, projectId));
+  register('updateProjectDetails', (projectId, previous, change) => updateDetails(store, projectId, previous, change));
+}
+module.exports = { registerProjectDetails, readDetails, updateDetails, kickoffFields };

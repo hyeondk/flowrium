@@ -1,7 +1,8 @@
+import { DirectedBoard, TeamRunOptions, phaseName, type Strategy } from "./TeamPanelDirected";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, MessageSquare, Pencil, Play, Plus, Trash2, Users, X } from "lucide-react";
 import type { Session } from "../shared/types";
-import type { RoleStatus, TeamBoard, TeamDefinition, TeamInput, TeamRole } from "../shared/teams";
+import type { DirectOptions, RoleStatus, TeamBoard, TeamDefinition, TeamInput, TeamRole } from "../shared/teams";
 import "./teams.css";
 
 const modes = { plan: "계획", build: "구현", review: "검토" };
@@ -17,6 +18,8 @@ export default function TeamPanel({ projectId, onOpen }: { projectId: string; on
   const [board, setBoard] = useState<TeamBoard>({ teams: [], runs: [] });
   const [selected, setSelected] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [strategy, setStrategy] = useState<Strategy>("manual");
+  const [options,setOptions] = useState<DirectOptions>({ strategy:"manual" });
   const [editing, setEditing] = useState<TeamInput>();
   const [expanded, setExpanded] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -44,7 +47,8 @@ export default function TeamPanel({ projectId, onOpen }: { projectId: string; on
       clearTimeout(timer);
       timer = setTimeout(() => void refresh().catch(fail), 120);
     });
-    return () => { alive.current = false; ++readVersion.current; clearTimeout(timer); off?.(); };
+    const poll=setInterval(()=>void refresh().catch(fail),2200);
+    return () => { clearInterval(poll); alive.current = false; ++readVersion.current; clearTimeout(timer); off?.(); };
   }, [refresh]);
   async function perform(action: () => Promise<void>) {
     if (!api || operation.current) return;
@@ -77,6 +81,8 @@ export default function TeamPanel({ projectId, onOpen }: { projectId: string; on
         <label>실행 모드<select value={role.mode} onChange={(e) => setRole(i, { mode: e.target.value as TeamRole["mode"] })}>
           {Object.entries(modes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label className="team-instruction">역할 지시<textarea rows={2} maxLength={2000} value={role.instruction} required onChange={(e) => setRole(i, { instruction: e.target.value })}/></label>
+        <label>역할 모델<input placeholder="계정 기본 모델" value={role.model||""} maxLength={200} onChange={e=>setRole(i,{model:e.target.value})}/></label>
+        <label>담당 성향<input placeholder="예: 접근성을 우선하는 검토자" value={role.persona||""} maxLength={600} onChange={e=>setRole(i,{persona:e.target.value})}/></label>
         {editing.roles.length > 2 && <button type="button" onClick={() => setEditing({ ...editing, roles: editing.roles.filter((_, index) => i !== index) })}><X size={13}/>역할 제거</button>}
       </fieldset>)}
       <div className="team-actions">{editing.roles.length < 8 && <button type="button" onClick={() => setEditing({ ...editing, roles: [...editing.roles, { name: "", instruction: "", mode: "plan" }] })}><Plus size={14}/>역할 추가</button>}
@@ -86,9 +92,11 @@ export default function TeamPanel({ projectId, onOpen }: { projectId: string; on
       e.preventDefault();
       if (!prompt.trim()) return;
       void perform(async () => {
-        const key = JSON.stringify([team.id, prompt]);
+        const key = JSON.stringify([team.id, prompt, strategy, options]);
         if (requestToken.current?.key !== key) requestToken.current = { key, id: crypto.randomUUID() };
-        const run = await api!.runTeam(projectId, team.id, prompt, requestToken.current.id);
+        const run = strategy==="shared" ? await api!.runTeam(projectId, team.id, prompt, requestToken.current.id) :
+          await api!.directTeam(projectId,team.id,prompt,requestToken.current.id,{...options,strategy,
+            attachments:(options.attachments||[]).map(s=>s.trim()).filter(Boolean),decideOn:(options.decideOn||[]).map(s=>s.trim()).filter(Boolean)});
         if (alive.current) { setExpanded(run.id); setPrompt(""); }
         requestToken.current = null;
       });
@@ -103,16 +111,18 @@ export default function TeamPanel({ projectId, onOpen }: { projectId: string; on
           await api!.removeTeam(projectId, team.id, team.revision); if (alive.current) setConfirmDelete(false);
         })}>삭제</button></div>}
       <p className="team-members">{team.roles.map((role) => role.name + " (" + modes[role.mode] + ")").join(" / ")}</p>
-      <label>공동 요청<textarea value={prompt} rows={3} maxLength={12000} placeholder="각 역할에 함께 전달할 업무를 입력하세요." onChange={(e) => setPrompt(e.target.value)}/></label>
-      <div className="team-actions"><button className="team-primary" type="submit" disabled={busy || !prompt.trim()}><Play size={13}/>팀 실행</button></div>
-    </form> : <p className="team-empty">역할과 지시를 정해 팀을 만들면 같은 요청을 독립된 대화에서 동시에 수행합니다.</p>}
+      <TeamRunOptions strategy={strategy} setStrategy={setStrategy} options={options} setOptions={setOptions}/>
+      <label>공동 요청<textarea value={prompt} rows={3} maxLength={12000} placeholder="팀에 맡길 업무와 완료 기준을 입력하세요." onChange={(e) => setPrompt(e.target.value)}/></label>
+      <div className="team-actions"><button className="team-primary" type="submit" disabled={busy || !prompt.trim()}><Play size={13}/>{strategy==="manual"?"배정안 만들기":strategy==="plan"?"팀장에게 배정안 요청":"팀 실행"}</button></div>
+    </form> : <p className="team-empty">팀의 담당 역할을 만들고, 업무마다 실행할 사람과 과업을 선택하세요.</p>}
     {board.runs.length > 0 && <div className="team-history"><h3>팀 실행 기록</h3>
       {board.runs.map((run) => <article key={run.id}>
         <button type="button" className="team-entry" aria-expanded={expanded === run.id} onClick={() => setExpanded(expanded === run.id ? "" : run.id)}>
           {expanded === run.id ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}<strong>{run.name}</strong>
-          <span>{run.prompt}</span><time dateTime={run.createdAt}>{formatDate.format(new Date(run.createdAt))}</time>
+          <span>{run.prompt}{run.directed?" / "+phaseName[run.directed.phase]:""}</span><time dateTime={run.createdAt}>{formatDate.format(new Date(run.createdAt))}</time>
         </button>
-        {expanded === run.id && <div className="team-results"><p>{run.prompt}</p>
+        {expanded === run.id && run.directed && <DirectedBoard projectId={projectId} run={run} busy={busy} perform={perform} onOpen={onOpen}/>}
+        {expanded === run.id && !run.directed && <div className="team-results"><p>{run.prompt}</p>
           {run.roles.map((role, index) => <div key={index} className="team-result"><div><b>{role.name}</b><small>{statuses[role.status]}</small></div>
             <p>{role.summary}</p>{role.sessionId && <button type="button" disabled={busy} onClick={() => void perform(async () => {
               const session = await api!.openTeamRole(projectId, run.id, index); if (alive.current) onOpen(session);

@@ -1,0 +1,8 @@
+.team-trees {margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:8px;min-width:0;word-break:keep-all;}
+.team-trees header,.team-trees nav,.tree-files>div,.tree-actions,.tree-conflicts>div,.tree-confirm {display:flex;align-items:center;flex-wrap:wrap;gap:7px;}
+.team-trees header {justify-content:space-between;} .team-trees p,.team-trees nav,.team-trees pre,.tree-remote,.tree-conflicts {margin:8px 0;}
+.team-trees button {margin:2px;} .team-trees h4,.team-trees h5 {margin:0;} .team-trees nav [aria-pressed=true] {background:var(--panel-alt);}
+.team-trees input:not([type=checkbox]),.team-trees textarea {display:block;max-width:100%;border:1px solid var(--line);border-radius:4px;background:var(--input);color:var(--text);padding:5px;}
+.tree-files input[type=checkbox] {width:auto;} .tree-files label {display:inline-flex;align-items:center;gap:6px;} .tree-path,.team-trees pre {max-width:100%;overflow:auto;}
+.team-trees pre {max-height:320px;padding:10px;background:var(--panel-alt);font-size:12px;white-space:pre;}
+.tree-confirm,.tree-notice {padding:8px;background:var(--panel-alt);border-radius:6px;}

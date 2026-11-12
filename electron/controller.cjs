@@ -87,6 +87,7 @@ class Controller extends EventEmitter {
       this.client.request("model/list", { limit: 100, includeHidden: false }),
     ]);
     const record = account.account;
+    await this.accountObserved?.(record);
     const authenticated = record?.type === "chatgpt";
     const accountLabel = authenticated
       ? `ChatGPT${record.planType ? ` / ${record.planType}` : ""}`
@@ -132,6 +133,7 @@ class Controller extends EventEmitter {
       url.password
     )
       throw new Error("확인되지 않은 로그인 주소를 차단했습니다.");
+    this.loginId = result.loginId || null;
     return { authUrl: result.authUrl };
   }
   async saveSettings(input) {
@@ -157,7 +159,7 @@ class Controller extends EventEmitter {
       );
     await this.store.deleteSession(id);
   }
-  async send(input) {
+  async send(input, internal = {}) {
     if (!input || typeof input !== "object")
       throw new Error("작업 요청 형식이 올바르지 않습니다.");
     const message = text(input.text, "작업 내용");
@@ -185,6 +187,7 @@ class Controller extends EventEmitter {
       finalized: false,
       saveTimer: null,
       mode: input.mode,
+      ...(internal.outputSchema && { outputSchema: internal.outputSchema }),
     };
     if (this.runs.has(session.id) || this.editingSessions.has(session.id)) throw new Error("이 대화에서 작업이 이미 실행 중입니다.");
     this.runs.set(session.id, run);
@@ -196,7 +199,7 @@ class Controller extends EventEmitter {
       createdAt: new Date().toISOString(),
     };
     session.messages.push(userMessage);
-    if (!session.workflow && session.messages.filter((m) => m.role === "user").length === 1)
+    if (!session.workflow && !session.personalAssistant && session.messages.filter((m) => m.role === "user").length === 1)
       session.title = Array.from(message.replace(/\s+/g, " "))
         .slice(0, 42)
         .join("");
@@ -249,10 +252,12 @@ class Controller extends EventEmitter {
     const account = await this.client.request("account/read", {
       refreshToken: false,
     });
+    if (await this.accountObserved?.(account.account)) throw new Error("연결 계정이 바뀌었습니다. 현재 계정으로 요청할 내용을 확인한 뒤 다시 보내 주세요.");
     if (account.account?.type !== "chatgpt")
       throw new Error("작업하려면 ChatGPT 계정으로 로그인해 주세요.");
+    const cwd = await require("./team-worktrees.cjs").teamSessionDirectory(this.store, this.store.session(run.sessionId), input.mode, this);
     const threadParams = {
-      cwd: project.path,
+      cwd,
       approvalPolicy: input.mode === "build" ? "on-request" : "never",
       approvalsReviewer: "user",
       sandbox: input.mode === "build" ? "workspace-write" : "read-only",
@@ -294,25 +299,29 @@ class Controller extends EventEmitter {
     }
     this.loadedThreads.add(run.threadId);
     if (run.cancelled || run.finalized) return this.finish(run, "interrupted");
-    const workContext = this.store.session(run.sessionId).workflow
+    const currentSession = this.store.session(run.sessionId);
+    const memory = await require("./memory.cjs").memoryContext(this.store, currentSession);
+    const assistant = currentSession.personalAssistant ? "이 대화는 사용자가 지정한 개인 비서 대화입니다. 현재 요청에 직접 답하고 명시한 범위에서만 업무를 진행하세요.\n" : "";
+    const workContext = currentSession.workflow
       ? await require("./workbench.cjs").workContext(this.store, run.sessionId) : "";
     if (run.cancelled || run.finalized) return this.finish(run, "interrupted");
     const turn = await this.client.request("turn/start", {
+      ...(run.outputSchema && { outputSchema: run.outputSchema }),
       threadId: run.threadId,
       input: [
         {
           type: "text",
-          text: `한국어로 답변해 주세요. ${MODE_INSTRUCTIONS[input.mode]}\n\n${workContext}\n\n${restoredContext}${message}`,
+          text: `한국어로 답변해 주세요. ${MODE_INSTRUCTIONS[input.mode]}\n\n${assistant}${workContext}${memory}\n\n${restoredContext}${message}`,
         },
       ],
-      cwd: project.path,
+      cwd,
       approvalPolicy: input.mode === "build" ? "on-request" : "never",
       approvalsReviewer: "user",
       sandboxPolicy:
         input.mode === "build"
           ? {
               type: "workspaceWrite",
-              writableRoots: [project.path],
+              writableRoots: [cwd],
               networkAccess: false,
             }
           : { type: "readOnly" },
@@ -377,6 +386,7 @@ class Controller extends EventEmitter {
   }
   async notification({ method, params = {} }) {
     if (method === "account/login/completed") {
+      this.loginId = null;
       if (params.success) {
         this.emitEvent({
           type: "status",

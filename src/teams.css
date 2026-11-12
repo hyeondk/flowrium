@@ -20,3 +20,15 @@
 .team-result { border-left: 2px solid var(--line, #b9c0c6); padding-left: 12px; display: grid; justify-items: start; gap: 5px; min-width: 0; }
 .team-result small { margin-left: 8px; } .team-actions { justify-content: flex-end; }
 @media(max-width: 620px) { .team-role { grid-template-columns: minmax(0,1fr); } .team-entry time { width: 100%; margin-left: 20px; } }
+.team-directed, .team-assignment { margin: 14px 0; display: grid; gap: 12px; }
+.team-directed h4, .team-directed h3 { margin: 0 0 6px; }
+.team-directed p, .team-log p { white-space: pre-wrap; line-height: 1.6; overflow-wrap: break-word; }
+.team-options summary, .team-directed summary { font-size: 13px; cursor: pointer; color: var(--muted); }
+.team-limits { display:grid; grid-template-columns: repeat(auto-fit,minmax(min(160px,100%),1fr)); gap:8px; }
+.team-panel .team-check { display:flex; align-items:center; gap:8px; }.team-check input { width:auto; accent-color:var(--text); }
+.team-assignment fieldset, .team-node, .team-decision, .team-report { margin:0; min-width:0; padding:12px; border:1px solid var(--line); border-radius:7px; }
+.team-assignment fieldset .team-form {margin-top:5px;} .team-assignment>button { justify-self:start; }
+.team-node { display:grid; gap:7px; } .team-node-head, .team-node-actions {display:flex;align-items:center;flex-wrap:wrap;gap:7px;}
+.team-node-head span, .team-directed small {color:var(--muted);font-size:12px;}
+.team-node-actions button {font-size:12px;} .team-log {padding:10px 0;border-bottom:1px solid var(--line-soft); font-size:12px;}
+.team-report p {overflow-wrap:anywhere;} .team-decision {margin-bottom:8px;display:grid;gap:7px;}

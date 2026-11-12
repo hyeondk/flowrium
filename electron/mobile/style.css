@@ -1,0 +1,263 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f6;
+  --panel: #fff;
+  --text: #252728;
+  --soft: #636668;
+  --line: #d9dbdc;
+  --good: #e1ebe3;
+  --goodText: #3b5942;
+  --warn: #eee6d5;
+  --warnText: #6c5835;
+  --focus: #46647d;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    15px/1.6 -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  word-break: keep-all;
+}
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+button {
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  padding: 7px 10px;
+  min-height: 40px;
+}
+button:disabled {
+  opacity: 0.52;
+  cursor: default;
+}
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px max(16px, calc((100vw - 740px) / 2));
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+#home {
+  font-size: 20px;
+  letter-spacing: -0.045em;
+  font-weight: 700;
+  background: none;
+  border: 0;
+  padding-left: 0;
+}
+#status {
+  font-size: 12px;
+  color: var(--soft);
+}
+main {
+  width: min(760px, 100%);
+  margin: auto;
+  padding: 20px 16px 95px;
+}
+h1 {
+  font-size: clamp(23px, 6vw, 31px);
+  letter-spacing: -0.045em;
+  margin: 9px 0 8px;
+  line-height: 1.35;
+}
+h2 {
+  font-size: 17px;
+  letter-spacing: -0.025em;
+  line-height: 1.45;
+  margin: 18px 0 7px;
+}
+p {
+  margin: 6px 0 12px;
+}
+small,
+.hint {
+  font-size: 13px;
+  color: var(--soft);
+}
+.row,
+.box {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 7px 0;
+  text-align: left;
+}
+.row > span {
+  min-width: 0;
+  flex: 1;
+}
+.row strong,
+.row small {
+  display: block;
+}
+.row small {
+  margin-top: 3px;
+}
+.row i,
+.badge {
+  display: inline-flex;
+  font-style: normal;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--goodText);
+  background: var(--good);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+.badge.wait {
+  color: var(--warnText);
+  background: var(--warn);
+}
+.box {
+  display: block;
+}
+.box h2 {
+  margin-top: 0;
+}
+.actions,
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+.tabs button[aria-current="page"] {
+  border-color: var(--text);
+  font-weight: 650;
+}
+.main-action {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+form {
+  border: 1px solid var(--line);
+  padding: 13px;
+  border-radius: 8px;
+  background: var(--panel);
+}
+label {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--soft);
+}
+input,
+select,
+textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 9px;
+  background: var(--bg);
+  color: var(--text);
+}
+textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+.message {
+  margin: 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+}
+.message[data-role="user"] {
+  border-left: 3px solid #a3b3a7;
+}
+.body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.message > small {
+  display: block;
+  margin-bottom: 4px;
+}
+.row,
+.box,
+h1 {
+  overflow-wrap: anywhere;
+}
+#notice {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(94vw, 680px);
+  bottom: 62px;
+  z-index: 5;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--text);
+  color: var(--bg);
+  padding: 9px 13px;
+}
+#nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  padding: 7px 8px max(7px, env(safe-area-inset-bottom));
+}
+#nav button {
+  border: 0;
+  background: none;
+  min-width: 74px;
+}
+#nav button[aria-current="page"] {
+  font-weight: 700;
+  background: var(--bg);
+}
+#nav[hidden] {
+  display: none;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e2021;
+    --panel: #262829;
+    --text: #e8e9e8;
+    --soft: #b0b3b3;
+    --line: #414446;
+    --good: #344038;
+    --goodText: #d1e1d3;
+    --warn: #413a2f;
+    --warnText: #e7d8b8;
+    --focus: #b5cbdc;
+  }
+}

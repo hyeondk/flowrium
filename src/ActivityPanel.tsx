@@ -1,3 +1,4 @@
+import SystemTools from "./SystemTools";
 import { useEffect, useState } from "react";
 import { ListChecks, MessageSquare, RefreshCw, Square } from "lucide-react";
 import type { SystemActivity } from "../shared/activity";
@@ -100,6 +101,7 @@ export function ActivityPanel({ projects, sessions, activities, approvals, onOpe
       {!system && !systemError && <p>{api ? "시스템 정보를 읽고 있습니다." : "데스크톱 앱에서 확인할 수 있습니다."}</p>}
       {systemError && <p role="alert">{systemError}</p>}
     </section>
+    <SystemTools projects={projects}/>
     <section aria-label="전체 프로젝트의 업무">
       <div className="activity-section-title"><h2>업무 목록</h2><div className="activity-filter" aria-label="업무 범위">
         <button aria-pressed={source === "running"} onClick={()=>setSource("running")}>실행 중 {running.length}</button>

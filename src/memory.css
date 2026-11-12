@@ -1,0 +1,93 @@
+.memory-panel,
+.memory-editor,
+.memory-editor label,
+.memory-history,
+.assistant-dialog label {
+  display: grid;
+  gap: 8px;
+  word-break: keep-all;
+}
+.memory-panel {
+  margin-bottom: 14px;
+}
+.memory-panel header,
+.memory-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.memory-panel h2,
+.memory-panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+}
+.memory-panel p {
+  margin: 5px 0;
+  color: var(--muted);
+}
+.memory-panel button,
+.assistant-dialog button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border: 1px solid var(--border, #666);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.memory-panel .memory-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.memory-list {
+  display: grid;
+  gap: 6px;
+}
+.memory-list button {
+  text-align: left;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.memory-editor,
+.memory-history {
+  border-top: 1px solid var(--border, #666);
+  padding-top: 14px;
+}
+.memory-editor input:not([type="checkbox"]),
+.memory-editor textarea,
+.memory-editor select,
+.assistant-dialog select {
+  padding: 8px;
+  border: 1px solid var(--border, #666);
+  border-radius: 6px;
+  color: inherit;
+  background: var(--panel, #282c32);
+  font: inherit;
+}
+.memory-history p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.assistant-dialog {
+  width: min(420px, 90vw);
+  padding: 22px;
+  border: 1px solid var(--border, #666);
+  border-radius: 12px;
+  background: var(--panel, #fff);
+  color: var(--text);
+  word-break: keep-all;
+}
+.assistant-dialog .pf-actions {
+  margin-top: 18px;
+  justify-content: flex-end;
+}
+.assistant-dialog::backdrop {
+  background: #0007;
+}

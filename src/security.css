@@ -1,0 +1,93 @@
+.security-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: var(--bg, #111318);
+  color: var(--text, #ddd);
+  word-break: keep-all;
+}
+.security-unlock {
+  display: grid;
+  gap: 16px;
+  width: min(100%, 350px);
+}
+.security-unlock h1,
+.security-panel h3,
+.security-panel p {
+  margin: 0;
+}
+.security-unlock label,
+.security-pin-form label {
+  display: grid;
+  gap: 6px;
+}
+.security-unlock input,
+.security-pin-form input,
+.security-panel select {
+  padding: 8px 11px;
+  font: inherit;
+  border: 1px solid var(--border, #50545a);
+  border-radius: 6px;
+  background: var(--panel, #25282c);
+  color: inherit;
+}
+.security-panel {
+  display: grid;
+  gap: 12px;
+  word-break: keep-all;
+}
+.security-panel header,
+.security-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.security-panel header:not(:first-child) {
+  border-top: 1px solid var(--border, #50545a);
+  padding-top: 18px;
+  margin-top: 5px;
+}
+.security-panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.security-pin-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+.security-pin-form input {
+  width: 110px;
+}
+.security-pin-form label {
+  font-size: 12px;
+}
+.security-row input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+}
+.security-usage,
+.security-usage > div,
+.security-quota {
+  display: grid;
+  gap: 6px;
+}
+.security-usage > div {
+  padding-bottom: 8px;
+}
+.security-quota progress {
+  width: 100%;
+}
+.security-usage small {
+  opacity: 0.8;
+}
+@media (max-width: 600px) {
+  .security-panel header {
+    flex-wrap: wrap;
+  }
+}

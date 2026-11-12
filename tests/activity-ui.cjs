@@ -8,6 +8,7 @@ async function verifyActivityUI(page) {
   assert.ok(snapshot.freeMemoryBytes >= 0 && snapshot.totalMemoryBytes >= snapshot.freeMemoryBytes);
   assert.ok(Number.isFinite(Date.parse(snapshot.measuredAt)));
 
+  await button("대시보드").click();
   await button("작업 현황").click();
   await page.locator(".activity-metrics").waitFor();
   await page.getByRole("button", {name:/^전체 \d+$/}).click();
@@ -15,6 +16,7 @@ async function verifyActivityUI(page) {
   const composer = page.getByLabel("Codex에 보낼 작업 요청");
   await composer.fill("대기검증 / 전체 작업 현황에서 중단");
   await composer.press("Enter");
+  await button("대시보드").click();
   await button("작업 현황").click();
   const row = page.locator(".flow-activity li").filter({hasText:"대기검증 / 전체 작업 현황에서 중단"});
   await row.getByRole("button", {name:"중단", exact:true}).click();

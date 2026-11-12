@@ -1,6 +1,6 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { randomUUID } = require("node:crypto");
+const { randomUUID, createHash } = require("node:crypto");
 const { publicMessage } = require("./errors.cjs");
 const {
   ProjectStore,
@@ -332,10 +332,19 @@ class Store {
   async createSession(projectId, extra = {}) {
     this.project(projectId);
     const now = new Date().toISOString();
+    let id = randomUUID();
+    if (extra.personalAssistant === true) {
+      const hex = createHash("sha256").update("flowrium:personal-assistant:" + projectId).digest("hex");
+      id = [hex.slice(0,8),hex.slice(8,12),"8"+hex.slice(13,16),"a"+hex.slice(17,20),hex.slice(20,32)].join("-");
+      const existing = this.state.sessions.find(entry => entry.id === id);
+      if (existing && !existing.personalAssistant) throw new Error("비서 대화 식별자가 다른 대화와 겹칩니다. 기존 대화를 확인해 주세요.");
+      if (existing) return structuredClone(existing);
+    }
     const session = {
-      id: randomUUID(),
+      id,
       projectId,
       title: extra.title || "새로운 작업",
+      ...(extra.personalAssistant === true && { personalAssistant: true }),
       ...(extra.workflow && { workflow: extra.workflow }),
       messages: extra.messages || [],
       createdAt: now,

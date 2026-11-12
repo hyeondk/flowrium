@@ -1,13 +1,39 @@
+import type { MemoryAPI } from "./memory";
+import type { VoiceAPI } from "./voice";
+import type { RemoteAPI } from "./remote";
+import type { SystemToolsAPI } from "./system-tools";
+import type { SecurityAPI } from "./security";
+import type { IntegrationAPI } from "./integrations";
+import type { MusicAPI } from "./music";
+import type { TeamWorktreesAPI } from "./team-worktrees";
+import type { PortfolioAPI } from "./portfolio";
 import type { TerminalAPI } from "./terminal";
 import type { ActivityAPI } from "./activity";
 import type { ProjectDetailsAPI } from "./project-details";
 import type { TeamsAPI } from "./teams";
 import type { RepositoryAPI } from "./repository";
 import type { WorkbenchAPI, Workflow } from "./workbench";
-export interface ChatPreferences { model?: string; effort?: Effort; chatGptUrl?: string }
-export type ConversationEdit = {action:"preferences"; preferences:ChatPreferences} | { action: "rename"; title: string } | { action: "branch"; messageId?: string } | { action: "rewind"; messageId: string } | { action: "compact" };
+export interface ChatPreferences {
+  model?: string;
+  effort?: Effort;
+  chatGptUrl?: string;
+}
+export type ConversationEdit =
+  | { action: "preferences"; preferences: ChatPreferences }
+  | { action: "rename"; title: string }
+  | { action: "branch"; messageId?: string }
+  | { action: "rewind"; messageId: string }
+  | { action: "compact" };
 export interface UpdateState {
-  status: "idle" | "checking" | "current" | "available" | "downloading" | "installing" | "error" | "unsupported";
+  status:
+    | "idle"
+    | "checking"
+    | "current"
+    | "available"
+    | "downloading"
+    | "installing"
+    | "error"
+    | "unsupported";
   currentVersion: string;
   latestVersion?: string;
   launchFailed?: boolean;
@@ -29,6 +55,7 @@ export interface Message {
   createdAt: string;
 }
 export interface Session {
+  personalAssistant?: true;
   id: string;
   projectId: string;
   title: string;
@@ -81,8 +108,24 @@ export interface Bootstrap {
   version: string;
   platform: string;
 }
-export interface FlowriumAPI extends WorkbenchAPI, RepositoryAPI, TeamsAPI, ProjectDetailsAPI, ActivityAPI, TerminalAPI {
-  openSessionChatGPT(id:string): Promise<void>;
+export interface FlowriumAPI
+  extends
+    MemoryAPI,
+    VoiceAPI,
+    RemoteAPI,
+    SystemToolsAPI,
+    SecurityAPI,
+    IntegrationAPI,
+    MusicAPI,
+    TeamWorktreesAPI,
+    PortfolioAPI,
+    WorkbenchAPI,
+    RepositoryAPI,
+    TeamsAPI,
+    ProjectDetailsAPI,
+    ActivityAPI,
+    TerminalAPI {
+  openSessionChatGPT(id: string): Promise<void>;
   editConversation(id: string, input: ConversationEdit): Promise<Session>;
   updateState(): Promise<UpdateState>;
   checkUpdate(): Promise<UpdateState>;
@@ -113,7 +156,7 @@ export interface FlowriumAPI extends WorkbenchAPI, RepositoryAPI, TeamsAPI, Proj
     decision: "accept" | "decline";
   }): Promise<void>;
   openExternal(
-    target: "chatgpt" | "codex-docs" | "download-docs",
+    target: "chatgpt" | "codex-docs" | "download-docs" | "downloads",
   ): Promise<void>;
   copyText(text: string): Promise<void>;
   openProject(id: string): Promise<void>;

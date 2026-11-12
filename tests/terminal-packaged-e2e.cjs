@@ -27,7 +27,7 @@ async function main() {
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, project);
     const page = await app.firstWindow(); page.setDefaultTimeout(20000);
     const click = (name) => page.getByRole('button', { name, exact: true }).click();
-    await click('프로젝트 폴더 선택'); await click('내장 터미널'); await click('터미널 추가');
+    await click('프로젝트 폴더 선택'); await click('터미널'); await click('터미널 추가');
     const textbox = page.locator('.xterm-helper-textarea');
     async function send(command) {
       await textbox.focus();

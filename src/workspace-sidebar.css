@@ -1,0 +1,207 @@
+.app-shell .workspace-side {
+  position: relative;
+  display: flex;
+  width: 222px;
+  padding: 20px 12px 12px;
+  flex: 0 0 auto;
+  overflow-y: auto;
+  background: var(--sidebar);
+  border-right: 1px solid var(--line);
+  word-break: keep-all;
+}
+.side-brand-row,
+.side-brand,
+.side-project-head,
+.side-account,
+.workspace-side .side-row {
+  display: flex;
+  align-items: center;
+}
+.workspace-side button {
+  cursor: pointer;
+}
+.side-brand-row {
+  gap: 4px;
+  margin: 0 0 17px;
+}
+.side-brand {
+  gap: 10px;
+  flex: 1;
+  font-size: 18px;
+  letter-spacing: -0.055em;
+  font-weight: 700;
+  padding: 2px 5px;
+}
+.side-brand img {
+  flex: none;
+  border-radius: 8px;
+}
+.side-collapse,
+.side-project-head button {
+  height: 28px;
+  width: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  border-radius: 5px;
+}
+.side-collapse:hover,
+.side-project-head button:hover,
+.workspace-side .side-row:hover {
+  color: var(--text);
+  background: var(--panel-alt);
+}
+.workspace-side nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+.workspace-side .side-row {
+  width: 100%;
+  min-height: 35px;
+  gap: 10px;
+  text-align: left;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  margin: 1px 0;
+}
+.workspace-side .side-row svg {
+  flex: none;
+}
+.workspace-side .side-row[aria-current="page"],
+.side-project-head button[aria-current="page"] {
+  color: var(--text);
+  background: var(--selected);
+  border-color: var(--line);
+  font-weight: 650;
+}
+.side-group,
+.side-projects {
+  margin-top: 17px;
+}
+.workspace-side h2 {
+  margin: 0;
+  padding: 0 10px 5px;
+  color: var(--dim);
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.side-projects {
+  flex: 1;
+  min-height: 90px;
+}
+.side-project-head {
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+.side-project-head h2 {
+  padding-bottom: 0;
+}
+.side-project-list {
+  max-height: 24vh;
+  overflow: auto;
+}
+.side-project-list > p {
+  color: var(--dim);
+  margin: 5px 10px;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.side-project-list .side-project > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.side-account {
+  padding: 12px 10px 1px;
+  margin-top: 12px;
+  border-top: 1px solid var(--line-soft);
+  gap: 8px;
+  color: var(--dim);
+  font-size: 11px;
+}
+.side-account i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a5a5a3;
+  flex: none;
+}
+.side-account i[data-connected="true"] {
+  background: #8da18a;
+}
+.side-state {
+  margin-left: auto;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #deebe2;
+  color: #40584b;
+  font-size: 10px;
+}
+.side-state[data-state="승인 대기"] {
+  background: #f1e7ce;
+  color: #655538;
+}
+@media (min-width: 761px) {
+  .app-shell .workspace-side[data-compact="true"] {
+    width: 65px;
+    padding-inline: 9px;
+  }
+  .workspace-side[data-compact="true"]
+    :is(
+      .side-row > span,
+      .side-brand > span,
+      .side-account > span,
+      .side-project-list > p,
+      .side-projects h2,
+      .side-group h2,
+      .side-state
+    ) {
+    display: none;
+  }
+  .workspace-side[data-compact="true"]
+    :is(.side-row, .side-brand, .side-account, .side-project-head) {
+    justify-content: center;
+  }
+  .workspace-side[data-compact="true"] .side-brand-row {
+    flex-direction: column;
+    gap: 7px;
+  }
+  .workspace-side[data-compact="true"] .side-group {
+    border-top: 1px solid var(--line-soft);
+    padding-top: 7px;
+    margin-top: 9px;
+  }
+}
+@media (max-width: 760px) {
+  .app-shell .workspace-side {
+    position: fixed;
+    width: 218px;
+  }
+  .workspace-side .side-collapse {
+    display: none;
+  }
+}
+@media (max-height: 810px) {
+  .app-shell .workspace-side {
+    padding-top: 12px;
+  }
+  .side-group,
+  .side-projects {
+    margin-top: 10px;
+  }
+  .side-projects {
+    min-height: 55px;
+  }
+  .workspace-side .side-row {
+    min-height: 32px;
+    padding-block: 5px;
+  }
+}

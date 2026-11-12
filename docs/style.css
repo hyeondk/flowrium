@@ -621,3 +621,4 @@ button:focus-visible {
 }
 
 .source-build-link { display: inline-block; margin-top: 9px; font-size: 13px; color: inherit; text-underline-offset: 3px; }
+.download-card .mac-notice { margin:8px 0; max-width:38ch; font-size:13px; line-height:1.6; color:#526272; word-break:keep-all; }

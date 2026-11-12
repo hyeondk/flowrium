@@ -1,0 +1,48 @@
+const assert=require('node:assert/strict');
+const test=require('node:test');
+const fs=require('node:fs/promises');
+const path=require('node:path');
+const os=require('node:os');
+const run=require('node:util').promisify(require('node:child_process').execFile);
+const {inspectRepository}=require('../electron/repository-inspection.cjs');
+test('실제 저장소 연결 / 조회 / 오래된 연결 수정과 별도 푸시 주소 보호',async t=>{
+  const cwd=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-repo-info-'));
+  t.after(()=>fs.rm(cwd,{recursive:true,force:true,maxRetries:6,retryDelay:100}));
+  const command=async(cmd,args)=>(await run(cmd,args,{cwd,windowsHide:true})).stdout;
+  const execute=input=>inspectRepository(input,command);
+  await command('git',['init','-b','main']);
+  await command('git',['-c','user.name=테스트','-c','user.email=repo@example.invalid','commit','--allow-empty','-m','처음']);
+  const initial=await execute({action:'repoLocal'});
+  assert.equal(initial.branch,'main');assert.equal(initial.commits[0].subject,'처음');
+  const connect=(connectionKey,repository)=>execute({action:'repoConnect',connectionKey,repository});
+  await assert.rejects(connect(initial.connectionKey,'site/../bad'));
+  await connect(initial.connectionKey,'sample/project');
+  await assert.rejects(connect(initial.connectionKey,'sample/other'),/다시 확인/);
+  const connected=await execute({action:'repoLocal'});assert.equal(connected.repository,'sample/project');
+  await connect(connected.connectionKey,'sample/changed');
+  assert.equal((await execute({action:'repoLocal'})).repository,'sample/changed');
+  await command('git',['remote','set-url','--push','origin','https://github.com/sample/mirror.git']);
+  await assert.rejects(connect((await execute({action:'repoLocal'})).connectionKey,'sample/other'),/푸시 주소/);
+});
+test('원격 조회 실패 범위 / 요청 변경 파일 및 CI / 이슈 / 배포 상태 / 열린 주소 제한',async()=>{
+  const called=[];
+  const command=async(cmd,args)=>{
+    called.push([cmd,...args]);
+    if(cmd==='git')return args.length===1?'origin\n':'git@github.com:sample/repo.git\n';
+    if(args[0]==='api')return JSON.stringify(args[1].includes('/statuses')?[{state:'success'}]:[{id:25,environment:'preview',ref:'main'}]);
+    if(args[0]==='run')throw Error('실행 조회 권한 없음');
+    if(args[1]==='list')return JSON.stringify([{number:3,title:'검토',state:'OPEN'}]);
+    if(args[0]==='pr')return JSON.stringify({number:3,body:'설명',files:[{path:'a.txt',additions:3,deletions:0}],statusCheckRollup:[{name:'빌드',conclusion:'SUCCESS'}]});
+    return JSON.stringify({number:3,labels:[{name:'점검'}],assignees:[{login:'worker'}]});
+  };
+  const open=[];
+  const execute=input=>inspectRepository(input,command,url=>open.push(url));
+  const activity=await execute({action:'repoActivity'});
+  assert.equal(activity.repository,'sample/repo');assert.equal(activity.pulls.rows[0].number,3);assert.match(activity.runs.error,/권한/);
+  assert.equal(activity.deployments.rows[0].state,'success');assert.equal(activity.issues.rows.length,1);
+  const pr=await execute({action:'repoPull',number:3});assert.equal(pr.files[0].name,'a.txt');assert.equal(pr.checks[0].state,'SUCCESS');
+  assert.deepEqual((await execute({action:'repoIssue',number:3})).labels,['점검']);
+  await execute({action:'repoOpen',kind:'pull',number:3});assert.deepEqual(open,['https://github.com/sample/repo/pull/3']);
+  await assert.rejects(execute({action:'repoOpen',kind:'https://elsewhere.invalid',number:3}));
+  assert.equal(called.some(([,a,b])=>a==='pr'&&b==='merge'),false);
+});

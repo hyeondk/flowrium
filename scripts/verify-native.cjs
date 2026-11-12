@@ -99,6 +99,7 @@ async function verifyFreshAccount(binary, profile) {
     throw new Error(
       "검증할 앱 패키지를 찾지 못했습니다. 먼저 현재 운영체제용 패키지를 만들어 주세요.",
     );
+  await require("./prepare-runtime.cjs").verifyRuntime(path.join(resources,"runtime"));
   const packageName = `codex-${platform}-${arch}`;
   const openai = path.join(
     resources,
@@ -153,8 +154,10 @@ async function verifyFreshAccount(binary, profile) {
     const content = asar
       .extractFile(archive, path.normalize(file.replace(/^\/+/, "")))
       .toString("utf8");
-    if (/\/Users\/[^/\s"']+\/|[A-Z]:\\\\?Users\\\\?[^\\\s"']+\\/i.test(content))
-      throw new Error("앱 소스 안에 특정 사용자의 절대 경로가 있습니다.");
+    // Gmail's documented user alias is an API path, not a local account directory.
+    const localPaths = content.replaceAll("https://gmail.googleapis.com/gmail/v1/users/me/", "");
+    if (/\/Users\/[^/\s"']+\/|[A-Z]:\\\\?Users\\\\?[^\\\s"']+\\/i.test(localPaths))
+      throw new Error("앱 소스 안에 특정 사용자의 절대 경로가 있습니다. / " + file);
   }
   console.log(
     `번들 검증 완료 / ${platform} / ${arch} / ${version.stdout.trim()} / 인증과 프로젝트 기록 파일 없음`,

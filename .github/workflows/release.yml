@@ -45,6 +45,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: node scripts/check-release-tag.mjs
       - run: npm ci
+      - name: 독립 Node와 GitHub 실행 도구 준비
+        run: npm run prepare:runtime
       - name: Windows 업데이트 도우미 시작 검사
         if: runner.os == 'Windows'
         run: |
@@ -131,8 +133,29 @@ jobs:
         run: node tests/terminal-packaged-e2e.cjs
       - name: 실제 앱에서 업무 대화 검증
         run: node tests/desktop-e2e.cjs
+      - name: 대시보드와 프로젝트·보관·업무 도구
+        run: node tests/portfolio-e2e.cjs
+      - name: 팀 배정·결정·완료 보고
+        run: node tests/teams-directed-e2e.cjs
+      - name: 독립 Git 작업 환경과 통합
+        run: node tests/team-worktrees-ui.cjs
+      - name: 잠금·로그아웃·초안 복원
+        run: node tests/security-e2e.cjs
+      - name: 미전송 초안의 이전·계정별 복원
+        run: node tests/drafts-e2e.cjs
+      - name: 개인 메모와 프로젝트 지시·비서
+        run: node tests/memory-e2e.cjs
+      - name: 음악·음성 입력의 실제 화면
+        run: |
+          node tests/desktop-tools-e2e.cjs
+          node tests/voice-e2e.cjs
+      - name: 휴대폰 화면과 인증
+        run: node tests/mobile-e2e.cjs
       - name: 문서 내보내기 검증
         run: node tests/workbench-document-e2e.cjs
+      - name: Mac 앱의 실제 업데이트·수동 설치 버튼
+        if: runner.os == 'macOS'
+        run: node tests/update-mac-click-e2e.cjs
       - name: 운영체제별 업데이트 검증
         run: node tests/update-native-e2e.cjs ${{ runner.os == 'macOS' && steps.signing.outputs.ready != 'true' && '--expect-unsigned' || '' }}
       - name: 설치 파일 보관

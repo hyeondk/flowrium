@@ -74,7 +74,7 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
     </form>
   </section>;
 }
-function ArtifactPanel({ overview, project, sessions, onOpen, refresh }: { overview?: WorkOverview; project: Project; sessions: Session[]; onOpen: Open; refresh: () => void }) {
+export function ArtifactPanel({ overview, project, sessions, onOpen, refresh }: { overview?: WorkOverview; project: Project; sessions: Session[]; onOpen: Open; refresh: () => void }) {
   const [selected, setSelected] = useState<Artifact>();
   const [body, setBody] = useState("");
   const [error, setError] = useState("");

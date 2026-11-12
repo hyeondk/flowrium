@@ -37,15 +37,18 @@ async function run() {
   try {
     let page = await launch();
     const btn = name => page.getByRole("button", { name, exact: true });
-    const goHome = () => btn("업무 보드").click();
+    const goDashboard = () => page.locator(".workspace-side").getByRole("button",{name:"대시보드",exact:true}).click();
+    const goHome = async () => { await goDashboard(); await btn("업무 보드").click(); };
+    const projectTabs = () => page.getByRole("navigation",{name:"프로젝트 상세 탭"});
+    const goProject = () => page.locator(".side-project").first().click();
     await app.evaluate(({ dialog }, selection) => {
       dialog.showOpenDialog = async () => ({canceled: false, filePaths:[selection]});
     }, project);
     await btn("프로젝트 폴더 선택").click();
     await page.locator("[data-work-kind=task]").waitFor();
     await page.locator(".settings-button").click();
-    await btn("연결 확인").click();
-    await page.getByText("ChatGPT / pro", { exact: true }).waitFor();
+    await page.locator(".settings-section").filter({has:page.getByRole("heading",{name:"Codex 연결",exact:true})}).getByRole("button",{name:"연결 확인",exact:true}).click();
+    await page.getByRole("dialog",{name:"설정"}).getByText("ChatGPT / pro", { exact: true }).waitFor();
     await page.getByLabel("설정 닫기").click();
     for (const kind of ["research", "briefing", "weekly", "document", "pause", "task"]) {
       await page.locator(`[data-work-kind=${kind}]`).click();
@@ -79,7 +82,7 @@ async function run() {
       assert.equal(session.workflow.brief,"선택한 역할과 프로젝트 기록으로 확인해 주세요.", session.title+" 업무 지시 저장");
       assert(session.messages.some(m=>m.role==="assistant"),session.title+" 응답 저장");
     }
-    await page.getByRole("button",{name:"산출물",exact:true}).click();
+    await page.getByRole("navigation",{name:"작업실 화면"}).getByRole("button",{name:"산출물",exact:true}).click();
     await page.locator(".wb-file-row, .wb-line-item").first().click();
     await btn("원본 대화").click();
     await btn("대화 관리").click();
@@ -107,12 +110,13 @@ async function run() {
     await waitForSession(page,"되감기 시험",s=>s.messages.length === 0);
     await app.close(); app = undefined;
     page = await launch();
-    await page.locator("[data-work-kind=research]").waitFor();
-    await page.locator(".chat-switcher button").filter({hasText:"화면 검증 task"}).click();
+    await page.getByRole("heading",{name:"프로젝트 대시보드"}).waitFor();
+    await page.locator(".pf-row").filter({hasText:"화면 검증 task"}).click();
     const composer=page.getByLabel("Codex에 보낼 작업 요청");
     await composer.fill("승인검증");
     await composer.press("Enter");
     await page.locator(".approval-card").waitFor();
+    await goDashboard();
     await page.getByRole("button",{name:/^승인함/}).click();
     await btn("이번 작업 승인").click();
     await waitForSession(page,"화면 검증 task",s=>s.messages.some(m=>m.role==="assistant"&&m.text.includes("accept")));
@@ -121,7 +125,7 @@ async function run() {
     const research = restored.find(s=>s.title==="화면 검증 research");
     assert.equal(research.workflow.checklist[0].done, true);
     assert(research.messages.some(m=>m.role==="assistant"));
-    await btn("현재 프로젝트 관리").click();
+    await goProject();await projectTabs().getByRole("button",{name:"프로젝트 설정",exact:true}).click();
     await page.locator(".project-details summary").click();
     await page.getByLabel("프로젝트 담당자").fill("검증 담당");
     await page.getByLabel("프로젝트 목표").fill("공개 앱 검증");
@@ -133,15 +137,16 @@ async function run() {
     await btn("프로젝트 보관").click();
     await btn("프로젝트 재개").click();
     await btn("프로젝트 보관").waitFor();
-    await btn("작업 현황").click();
+    await goDashboard();await btn("작업 현황").click();
     await page.getByText("전체 CPU 사용률", {exact:true}).waitFor();
     await page.keyboard.press(process.platform === "darwin" ? "Meta+1" : "Control+1");
     await page.locator("[data-work-kind=research]").waitFor();
-    await btn("프로젝트 팀").click();
+    await goProject();await projectTabs().getByRole("button",{name:"팀",exact:true}).click();
     await btn("팀 만들기").click();
     await page.getByLabel("팀 이름").fill("시험 팀");
     await btn("팀 저장").click();
     await page.getByLabel("공동 요청").fill("시험 프로젝트의 요구와 검증 기준을 확인해 주세요.");
+    await page.getByLabel("업무 배정 방식").selectOption("shared");
     await btn("팀 실행").click();
     await page.locator(".team-result small").filter({hasText:"완료"}).nth(1).waitFor();
     await btn("역할 대화 열기").first().click();

@@ -21,7 +21,8 @@ function teamDefinition(input) {
   if (!Array.isArray(input.roles) || input.roles.length < 2 || input.roles.length > 8) throw invalid();
   const roles = input.roles.map((role) => {
     if (!['plan', 'build', 'review'].includes(role?.mode)) throw invalid();
-    return { name: text(role.name, 80), instruction: text(role.instruction, 2000), mode: role.mode };
+    return { name: text(role.name, 80), instruction: text(role.instruction, 2000), mode: role.mode,
+      ...(role.model && { model: text(role.model, 200) }), ...(role.persona && { persona: text(role.persona, 600) }) };
   });
   if (new Set(roles.map((role) => role.name)).size !== roles.length)
     throw new Error('각 역할을 구분할 수 있게 다른 이름을 입력해 주세요.');
@@ -125,9 +126,13 @@ function registerTeams(register, store, controller, { canRun = () => true } = {}
     const status = statuses.includes(event.status) ? event.status : 'failed';
     void serial(session.projectId, async () => {
       const { runs } = await folders(store, session.projectId);
+      try { await fs.access(path.join(runs, slot.runId + '.json')); } catch(e) { if (e.code === 'ENOENT') return; throw e; }
       await saveResult(runs, slot.runId, slot.index, status, roleSummary(session, status));
     }).catch((error) => controller.emitEvent({ type: 'error', sessionId: session.id,
       text: publicMessage(error, '팀 실행 결과를 보존하지 못했습니다. 역할 대화에서 확인해 주세요.') }));
+  });
+  const directed = require('./teams-directed.cjs').registerDirected(register, {
+    store, controller, canRun, serial, folders, readDefinitions, definition, teamDefinition,
   });
   register('readTeams', (projectId) => serial(projectId, async () => {
     const { teams, runs } = await folders(store, projectId);
@@ -139,7 +144,7 @@ function registerTeams(register, store, controller, { canRun = () => true } = {}
       history.push(await execution(store, controller, pending, projectId, runs, run));
     }
     return { teams: [...heads.values()].filter((item) => item.team).map(definition).sort((a,b) => a.name.localeCompare(b.name, 'ko')),
-      runs: history.sort((a,b) => b.createdAt.localeCompare(a.createdAt)) };
+      runs: [...history, ...await directed.list(projectId, runs)].sort((a,b) => b.createdAt.localeCompare(a.createdAt)) };
   }));
   async function modify(projectId, teamId, revision, value) {
     const { teams } = await folders(store, projectId);
@@ -196,5 +201,6 @@ function registerTeams(register, store, controller, { canRun = () => true } = {}
     if (!session) throw new Error('역할 대화가 삭제됐거나 시작되지 않았습니다. 실행 기록에서 결과를 확인해 주세요.');
     return structuredClone(session);
   });
+  return { isBusy: () => pending.size > 0 || directed.isBusy() };
 }
 module.exports = { registerTeams };

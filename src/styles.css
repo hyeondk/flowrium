@@ -12,40 +12,46 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   color-scheme: light;
-  --bg: #fff;
-  --sidebar: #f7f7f8;
-  --panel: #fafafa;
-  --panel-alt: #f0f0f1;
-  --line: #dedee1;
-  --line-soft: #e7e7e9;
-  --text: #29292d;
-  --muted: #5e5e66;
-  --dim: #73737c;
-  --accent: #29292d;
-  --accent-bright: #17171a;
-  --accent-bg: #eaeaec;
-  --white: #212124;
-  --input: #fff;
-  --danger: #803a3a;
+  --bg: #eef1f4;
+  --sidebar: #e3e7ec;
+  --panel: #f8f9fb;
+  --panel-alt: #d7e0e9;
+  --line: #c4cdd7;
+  --line-soft: #d3dbe3;
+  --text: #2c3541;
+  --muted: #526272;
+  --dim: #586775;
+  --accent: #526a80;
+  --accent-bright: #35495d;
+  --accent-bg: #d5e0ea;
+  --white: #263340;
+  --input: #fbfcfd;
+  --danger: #8b464b;
+  --tool-panel: #e0e6ed;
+  --card-subtle: #f0f4f7;
+  --selected: #d1dce7;
   --shadow: rgba(0, 0, 0, 0.08);
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #202022;
-  --sidebar: #19191b;
-  --panel: #262628;
-  --panel-alt: #303033;
-  --line: #454548;
-  --line-soft: #363639;
-  --text: #f1f1f2;
-  --muted: #b3b3ba;
-  --dim: #9999a0;
-  --accent: #e9e9ec;
+  --bg: #232831;
+  --sidebar: #20262d;
+  --panel: #2c343d;
+  --panel-alt: #394655;
+  --line: #506070;
+  --line-soft: #404c58;
+  --text: #e9eef3;
+  --muted: #b8c5d1;
+  --dim: #a6b4c2;
+  --accent: #b3c8db;
   --accent-bright: #fff;
-  --accent-bg: #353538;
+  --accent-bg: #394959;
   --white: #fff;
-  --input: #272729;
+  --input: #282f37;
   --danger: #e3b7b7;
+  --tool-panel: #303b47;
+  --card-subtle: #303942;
+  --selected: #3b4b5b;
   --shadow: rgba(0, 0, 0, 0.16);
 }
 * {
@@ -401,6 +407,7 @@ kbd {
   flex-direction: column;
 }
 .topbar {
+  background: var(--panel);
   height: 65px;
   flex-shrink: 0;
   display: flex;
@@ -2409,3 +2416,6 @@ kbd {
   .chat-switcher { flex-shrink:0; max-height:120px; }
   .sidebar .nav-label { margin-top:10px; }
 }
+.integration-panel details{margin:10px 0}.integration-panel label{display:grid;gap:6px;margin:12px 0}.integration-panel input{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:8px;border-radius:6px}.integration-tabs,.integration-search{display:flex;gap:8px;margin:12px 0}.integration-search input{flex:1;min-width:0}.integration-item{border-top:1px solid var(--line);padding:12px 0;display:flex;justify-content:space-between;gap:10px}.integration-item small{display:block;font-size:11px;color:var(--muted);margin:4px 0}.integration-item p{font-size:12px;line-height:1.7}.integration-item a,.integration-item button{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);margin:8px 0}.integration-item>div:first-child{flex:1;min-width:0}
+.system-tools{margin-top:26px;padding:20px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}.system-service-form,.system-process{display:flex;align-items:center;gap:10px;margin:12px 0}.system-tools select{background:var(--panel);color:var(--text);border:1px solid var(--line);padding:8px;max-width:100%}.system-service{margin:12px 0;padding:12px;background:var(--panel-alt);border-radius:8px}.system-service>span,.system-service>button{margin-left:12px;font-size:12px}.system-service pre{font:12px/1.6 ui-monospace,monospace;white-space:pre-wrap;max-height:240px;overflow:auto;padding:8px}.system-process{justify-content:space-between;border-bottom:1px solid var(--line);padding:9px 0;font-size:12px}.system-process>span{min-width:0}.system-process small{display:block;color:var(--muted);word-break:keep-all}.system-process button{padding:6px;border-radius:5px;background:var(--panel-alt)}.system-confirm{display:flex;align-items:center;gap:8px;padding:12px;background:var(--panel-alt);margin:12px 0}
+.voice-composer{position:relative;display:inline-flex;align-items:center;gap:4px}.voice-composer>small{font-size:10px;color:var(--muted)}.voice-message{position:absolute;z-index:9;bottom:100%;right:0;min-width:240px;max-width:320px;background:var(--panel);border:1px solid var(--line);box-shadow:0 8px 22px #0002;border-radius:8px;padding:12px;font-size:12px;line-height:1.7}

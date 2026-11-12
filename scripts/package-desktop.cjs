@@ -149,6 +149,7 @@ async function main(args = process.argv.slice(2)) {
       console.log(
         "로컬 개발용 임시 서명을 사용합니다. 정식 배포용 서명과 공증은 별도로 설정해 주세요.",
       );
+    await require("./prepare-runtime.cjs").prepareRuntime(projectRoot);
     await runBuilder(builderCli, builderArgs, projectRoot);
     const artifacts = (
       await fs.readdir(output, { withFileTypes: true })

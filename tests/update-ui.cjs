@@ -11,6 +11,13 @@ async function verifyUpdateUI(app, page) {
   });
   const failed=page.getByRole("region",{name:"프로그램 업데이트"});
   await failed.getByText("지난 업데이트 실패").waitFor();
+  await app.evaluate(({shell})=>{ globalThis.__flowriumOriginalOpen=shell.openExternal; shell.openExternal = async url => { globalThis.__flowriumDownloadPage=url; }; });
+  try {
+    await failed.getByRole("button",{name:"수동 설치 파일 받기"}).click();
+    assert.equal(await app.evaluate(()=>globalThis.__flowriumDownloadPage),"https://hyeondk.github.io/flowrium/");
+  } finally {
+    await app.evaluate(({shell})=>{shell.openExternal=globalThis.__flowriumOriginalOpen; delete globalThis.__flowriumOriginalOpen; delete globalThis.__flowriumDownloadPage;});
+  }
   await failed.getByRole("button",{name:"새 버전 확인"}).click();
   await failed.getByText("재시도했습니다.").waitFor();
   await app.evaluate(({ipcMain,BrowserWindow}) => {

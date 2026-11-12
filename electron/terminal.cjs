@@ -52,7 +52,8 @@ function registerTerminal(register, store, { canOpen = () => true, env = process
     store.project(projectId);
     return [...sessions.values()].filter((s) => s.projectId === projectId).map(sessionInfo);
   });
-  register('terminalOpen', async (projectId) => {
+  register('terminalOpen', async (projectId, purpose) => {
+    if (purpose !== undefined && purpose !== 'github-login') throw new Error('지원하지 않는 터미널 시작 요청입니다.');
     const project = store.project(projectId);
     const cwd = await fs.realpath(project.path);
     if (path.relative(cwd, project.path) !== '' || !(await fs.stat(cwd)).isDirectory())
@@ -60,10 +61,16 @@ function registerTerminal(register, store, { canOpen = () => true, env = process
     if (stopping || !canOpen()) throw new Error('앱 업데이트 중에는 터미널을 열 수 없습니다.');
     if (sessions.size >= MAX_SESSIONS) throw new Error('열지 않는 터미널을 닫은 뒤 새 터미널을 추가해 주세요.');
     const windows = process.platform === 'win32';
-    const shell = windows ? path.join(env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') :
+    let shell = windows ? path.join(env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') :
       (env.SHELL && path.isAbsolute(env.SHELL) ? env.SHELL : '/bin/zsh');
-    const args = windows ? ['-NoLogo'] : ['-l'];
-    const childEnv = { ...env, TERM: 'xterm-256color', TERM_PROGRAM: 'Flowrium' };
+    let args = windows ? ['-NoLogo'] : ['-l'];
+    const runtime = require('./runtime.cjs');
+    if (purpose === 'github-login') {
+      const binary=runtime.runtimePaths().gh;
+      shell=await fs.access(binary).then(()=>binary,()=> 'gh');
+      args=['auth','login','--hostname','github.com','--web'];
+    }
+    const childEnv = { ...runtime.runtimeEnvironment(env), TERM: 'xterm-256color', TERM_PROGRAM: 'Flowrium' };
     delete childEnv.ELECTRON_RUN_AS_NODE;
     let pty;
     try {
@@ -71,7 +78,7 @@ function registerTerminal(register, store, { canOpen = () => true, env = process
     } catch {
       throw new Error('로컬 셸을 실행하지 못했습니다. 셸 설치와 프로젝트 폴더 접근 권한을 확인해 주세요.');
     }
-    const s = { id: randomUUID(), projectId, title: path.basename(shell, '.exe') + ' ' + (++next), startDir: cwd,
+    const s = { id: randomUUID(), projectId, title: purpose === 'github-login' ? 'GitHub 로그인' : path.basename(shell, '.exe') + ' ' + (++next), startDir: cwd,
       pty, data: '', offset: 0, closed: false, exitCode: null };
     s.exited = new Promise((resolve) => {
       pty.onExit(({ exitCode }) => {

@@ -12,7 +12,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { DesktopUpdater, artifactSuffix } = require('../electron/updater.cjs');
 const run = promisify(execFile);
 const version = require('../package.json').version;
-const previous = '0.1.2';
+const previous = version === '0.2.0' ? '0.1.2' : '0.2.0';
 const fixture = process.argv.includes('--unsigned-fixture');
 const unsigned = fixture || process.argv.includes('--expect-unsigned');
 const mac = process.platform === 'darwin';
@@ -122,8 +122,24 @@ int main(int argc, char** argv) {
   console.log('macOS 교체 도우미 / 실제 네이티브 프로세스의 준비 확인 후 이전 번들 정리 통과');
 }
 async function installPreviousWindows(folder) {
-  const url = 'https://github.com/hyeondk/flowrium/releases/download/v0.1.2/Flowrium-0.1.2-win-x64.exe';
-  const previousHash = 'ff7b59fc1a309a0906b5335cec606bd6ea2450ab9ba54ea641ac16cbbc064ddf';
+  const name = 'Flowrium-'+previous+'-win-x64.exe';
+  const base = 'https://github.com/hyeondk/flowrium/releases/download/v'+previous+'/';
+  const url = base+name;
+  let previousHash = 'ff7b59fc1a309a0906b5335cec606bd6ea2450ab9ba54ea641ac16cbbc064ddf';
+  if (previous === '0.2.0') {
+    const response=await fetch('https://api.github.com/repos/hyeondk/flowrium/releases/tags/v'+previous);
+    assert.ok(response.ok,'0.2.0 공개 릴리스 사전 설치 정보가 필요합니다.');
+    const release=await response.json();
+    assert.equal(release.tag_name,'v'+previous); assert.equal(release.draft,false); assert.equal(release.prerelease,false);
+    const binary=release.assets.find(a=>a.name===name),sums=release.assets.find(a=>a.name==='SHA256SUMS.txt');
+    assert.equal(binary?.browser_download_url,url);assert.equal(sums?.browser_download_url,base+'SHA256SUMS.txt');
+    assert.match(binary.digest,/^sha256:[0-9a-f]{64}$/);
+    const fetched=await fetch(sums.browser_download_url);assert.ok(fetched.ok);
+    const list=Buffer.from(await fetched.arrayBuffer());
+    assert.equal('sha256:'+createHash('sha256').update(list).digest('hex'),sums.digest);
+    previousHash=binary.digest.slice(7);
+    assert.ok(list.toString().split(/\r?\n/).some(row=>row.trim().split(/\s+/)[0]===previousHash && row.trim().split(/\s+/)[1]===name));
+  }
   const file = path.join(path.dirname(folder), 'previous-installer.exe');
   const response = await fetch(url, { signal: AbortSignal.timeout(240000) });
   assert.ok(response.ok, '이전 공개 설치 파일 다운로드 실패');
@@ -236,36 +252,44 @@ async function main() {
       oldPid = old.pid;
       console.log('이전 설치 및 실제 창 확인', previous, oldPid, binary, '/ 실행기', oldProcess.pid);
     }
-    const updater = new DesktopUpdater({
-      app: { isPackaged: true, getPath: () => userData, getVersion: () => previous,
-        quit: () => {
-          if (mac) oldProcess.kill();
-          else quitRequest = oldApp.evaluate(({ app }) => {
-            // 버튼으로 업데이트하는 현재 버전과 동일하게 Electron의 정상 종료를 요청한다.
-            setTimeout(() => app.quit(), 50);
-          });
-        } },
-      parentPid: oldPid, execPath: binary,
-      fetchImpl: async (target) => {
-        if (target === url + 'SHA256SUMS.txt') return new Response(sums);
-        if (target === url + assetName) return new Response(createReadStream(file));
-        assert.equal(target, 'https://api.github.com/repos/hyeondk/flowrium/releases/latest');
-        return Response.json(manifest);
-      },
-    });
-    assert.equal((await updater.check()).status, 'available');
-    const result = await updater.install();
-    if (unsigned) {
-      assert.equal(result.status, 'error');
-      assert.match(result.message, /Developer ID/);
-      assert.equal(await digest(binary), before);
-      assert.equal(oldProcess.exitCode, null);
-      assert.equal(oldProcess.signalCode, null);
-      assert.equal((await fs.readdir(path.dirname(installed))).some((s) => s.startsWith('.flowrium-update-')), false);
-      console.log('임시 서명 ZIP 차단 / 기존 설치 및 실행 프로세스 보존 확인');
-      return;
+    if (!mac && previous === '0.2.0') {
+      const click=require('./update-installed-ui.cjs');
+      await click.bindUpdateTransport(oldApp,{manifest,sums:sums.toString('utf8'),file,
+        assetURL:url+assetName,sumsURL:url+'SHA256SUMS.txt'});
+      await click.clickAvailable(oldApp,version);
+      console.log('이전 공개 설치본의 실제 업데이트 배너에서 설치 버튼을 눌렀습니다.');
+    } else {
+      const updater = new DesktopUpdater({
+        app: { isPackaged: true, getPath: () => userData, getVersion: () => previous,
+          quit: () => {
+            if (mac) oldProcess.kill();
+            else quitRequest = oldApp.evaluate(({ app }) => {
+              // 버튼으로 업데이트하는 현재 버전과 동일하게 Electron의 정상 종료를 요청한다.
+              setTimeout(() => app.quit(), 50);
+            });
+          } },
+        parentPid: oldPid, execPath: binary,
+        fetchImpl: async (target) => {
+          if (target === url + 'SHA256SUMS.txt') return new Response(sums);
+          if (target === url + assetName) return new Response(createReadStream(file));
+          assert.equal(target, 'https://api.github.com/repos/hyeondk/flowrium/releases/latest');
+          return Response.json(manifest);
+        },
+      });
+      assert.equal((await updater.check()).status, 'available');
+      const result = await updater.install();
+      if (unsigned) {
+        assert.equal(result.status, 'error');
+        assert.match(result.message, /Developer ID/);
+        assert.equal(await digest(binary), before);
+        assert.equal(oldProcess.exitCode, null);
+        assert.equal(oldProcess.signalCode, null);
+        assert.equal((await fs.readdir(path.dirname(installed))).some((s) => s.startsWith('.flowrium-update-')), false);
+        console.log('임시 서명 ZIP 차단 / 기존 설치 및 실행 프로세스 보존 확인');
+        return;
+      }
+      assert.equal(result.status, 'installing', result.message);
     }
-    assert.equal(result.status, 'installing', result.message);
     if (!mac) {
       await quitRequest;
       await waitFor(() => oldProcess.exitCode !== null || oldProcess.signalCode !== null, 35000, '이전 Electron 프로세스가 정상 종료되지 않았습니다.');
@@ -293,7 +317,7 @@ async function main() {
     assert.equal(actual, version);
     await waitFor(async () => !(await fs.readdir(mac ? path.dirname(installed) : path.join(userData, 'updates')))
       .some((entry) => entry.startsWith('.flowrium-update-')), 15000, '설치 임시 파일 정리가 완료되지 않았습니다.');
-    assert.equal(await fs.readFile(updater.resultPath, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e)), '',
+    assert.equal(await fs.readFile(path.join(userData,'last-update-result.txt'), 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e)), '',
       '업데이트 도우미가 새 앱 준비 실패를 기록했습니다.');
     await waitFor(async () => !(await fs.readdir(userData)).some(entry => entry.startsWith('.flowrium-launch-')),
       5000, '새 프로세스가 확인한 기동 티켓이 정리되지 않았습니다.');

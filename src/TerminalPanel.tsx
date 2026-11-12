@@ -83,12 +83,17 @@ export default function TerminalPanel({ projectId }: { projectId: string }) {
     catch (e) { if (alive.current) setError(problem(e)); }
     finally { actionBusy.current = false; if (alive.current) setBusy(false); }
   }
+  function openSession(purpose?: "github-login") {
+    void action(async () => {
+      const s = await api!.terminalOpen(projectId, purpose);
+      if (!alive.current) return;
+      setSessions((list) => [...list, s]); setSelected(s.id);
+    });
+  }
   return <section className="terminal-panel" aria-label="내장 터미널">
     <header><div><SquareTerminal size={20}/><h2>내장 터미널</h2></div>
-      <button type="button" disabled={busy} onClick={() => void action(async () => {
-        const s = await api!.terminalOpen(projectId); if (!alive.current) return;
-        setSessions((list) => [...list, s]); setSelected(s.id);
-      })}><Plus size={15}/>터미널 추가</button></header>
+      <button type="button" disabled={busy} onClick={() => openSession("github-login")}>GitHub 로그인</button>
+      <button type="button" disabled={busy} onClick={() => openSession()}><Plus size={15}/>터미널 추가</button></header>
     {error && <p role="alert" className="terminal-error">{error}</p>}
     {sessions.length === 0 ? <p className="terminal-empty">프로젝트 폴더에서 터미널을 열어 명령을 실행하세요.</p> :
       <><nav className="terminal-tabs" aria-label="터미널 세션">{sessions.map((s) => <button type="button" key={s.id}

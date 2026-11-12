@@ -38,6 +38,7 @@ function validateSession(session, projectId) {
       session.sourceThreadId.length > 300)
   )
     throw new Error("가져온 대화의 원본 식별자가 올바르지 않습니다.");
+  if (session.personalAssistant !== undefined && session.personalAssistant !== true) throw new Error("개인 비서 대화 형식이 올바르지 않습니다.");
   if (session.preferences !== undefined) require("./chat-preferences.cjs").preferences(session.preferences);
   if (session.workflow !== undefined) require("./workbench.cjs").validateWorkflow(session.workflow);
   const ids = new Set();

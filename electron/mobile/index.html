@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Flowrium / 모바일 작업 공간</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <header class="bar">
+      <button id="home" aria-label="대시보드" type="button">Flowrium</button
+      ><span id="status" role="status">연결 중</span>
+    </header>
+    <main id="content" tabindex="-1"></main>
+    <p id="notice" role="status" hidden></p>
+    <nav id="nav" aria-label="모바일 메뉴">
+      <button type="button" data-view="projects">프로젝트</button
+      ><button type="button" data-view="running">실행 중</button
+      ><button type="button" data-view="approvals">승인함</button>
+    </nav>
+  </body>
+</html>
