@@ -1,13 +1,16 @@
+import type { TerminalAPI } from "./terminal";
 import type { ActivityAPI } from "./activity";
 import type { ProjectDetailsAPI } from "./project-details";
 import type { TeamsAPI } from "./teams";
 import type { RepositoryAPI } from "./repository";
 import type { WorkbenchAPI, Workflow } from "./workbench";
-export type ConversationEdit = { action: "rename"; title: string } | { action: "branch"; messageId?: string } | { action: "rewind"; messageId: string } | { action: "compact" };
+export interface ChatPreferences { model?: string; effort?: Effort; chatGptUrl?: string }
+export type ConversationEdit = {action:"preferences"; preferences:ChatPreferences} | { action: "rename"; title: string } | { action: "branch"; messageId?: string } | { action: "rewind"; messageId: string } | { action: "compact" };
 export interface UpdateState {
   status: "idle" | "checking" | "current" | "available" | "downloading" | "installing" | "error" | "unsupported";
   currentVersion: string;
   latestVersion?: string;
+  launchFailed?: boolean;
   progress?: number;
   message: string;
 }
@@ -32,6 +35,7 @@ export interface Session {
   threadId?: string;
   sourceThreadId?: string;
   workflow?: Workflow;
+  preferences?: ChatPreferences;
   messages: Message[];
   createdAt: string;
   updatedAt: string;
@@ -77,7 +81,8 @@ export interface Bootstrap {
   version: string;
   platform: string;
 }
-export interface FlowriumAPI extends WorkbenchAPI, RepositoryAPI, TeamsAPI, ProjectDetailsAPI, ActivityAPI {
+export interface FlowriumAPI extends WorkbenchAPI, RepositoryAPI, TeamsAPI, ProjectDetailsAPI, ActivityAPI, TerminalAPI {
+  openSessionChatGPT(id:string): Promise<void>;
   editConversation(id: string, input: ConversationEdit): Promise<Session>;
   updateState(): Promise<UpdateState>;
   checkUpdate(): Promise<UpdateState>;

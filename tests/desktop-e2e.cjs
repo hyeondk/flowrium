@@ -5,6 +5,16 @@ const os = require("node:os");
 const { _electron: electron } = require("playwright");
 const { Store } = require("../electron/store.cjs");
 const root = path.resolve(__dirname, "..");
+async function waitForSession(page, title, test) {
+  const deadline = Date.now() + 16000;
+  while (Date.now() < deadline) {
+    const session = await page.evaluate(async name =>
+      (await window.flowrium.bootstrap()).sessions.find(s => s.title === name), title);
+    if (session && test(session)) return;
+    await new Promise(resolve => setTimeout(resolve, 70));
+  }
+  throw new Error(title + "의 저장 결과를 기다리다 시간이 초과됐습니다.");
+}
 
 async function run() {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "flowrium-e2e-"));
@@ -43,7 +53,7 @@ async function run() {
       await form.locator("input").first().fill("화면 검증 " + kind);
       await form.locator("textarea").fill("선택한 역할과 프로젝트 기록으로 확인해 주세요.");
       await btn("업무 시작").click();
-      await page.locator(".message.assistant").first().waitFor();
+      await waitForSession(page,"화면 검증 "+kind,s=>s.messages.some(m=>m.role==="assistant" && m.text.includes("확인한 결과")));
       await page.getByRole("heading",{name:"화면 검증 "+kind,exact:true}).waitFor();
       if (kind === "research") {
         await btn("리서치 / 진행 중").click();
@@ -65,10 +75,23 @@ async function run() {
     const sessions = (await snapshot()).sessions;
     assert.equal(sessions.length, 6);
     assert.equal(new Set(sessions.map(s=>s.threadId)).size, 6);
-    assert(sessions.every(s=>s.workflow.brief.includes("선택한 역할") && s.messages.some(m=>m.role==="assistant")));
+    for (const session of sessions) {
+      assert.equal(session.workflow.brief,"선택한 역할과 프로젝트 기록으로 확인해 주세요.", session.title+" 업무 지시 저장");
+      assert(session.messages.some(m=>m.role==="assistant"),session.title+" 응답 저장");
+    }
     await page.getByRole("button",{name:"산출물",exact:true}).click();
     await page.locator(".wb-file-row, .wb-line-item").first().click();
     await btn("원본 대화").click();
+    await btn("대화 관리").click();
+    await page.getByLabel("이 대화의 모델").selectOption("test-model");
+    await page.getByLabel("이 대화의 추론 강도").selectOption("low");
+    const chatAddress="https://chatgpt.com/c/11111111-2222-3333-4444-555555555555";
+    await page.getByLabel("이어갈 ChatGPT 대화 주소").fill(chatAddress);
+    await btn("대화 연결 설정 저장").click();
+    await page.locator(".conversation-popover").waitFor({state:"hidden"});
+    await app.evaluate(({shell})=>{shell.openExternal=async value=>{globalThis.flowriumTestExternal=value;};});
+    await page.locator(".chatgpt-button").click();
+    assert.equal(await app.evaluate(()=>globalThis.flowriumTestExternal),chatAddress);
     await btn("대화 관리").click();
     await btn("여기까지 새 대화로 분기").click();
     await page.getByRole("heading",{name:"분기 / 화면 검증 research",exact:true}).waitFor();
@@ -81,7 +104,7 @@ async function run() {
     await page.getByLabel("기준 요청").selectOption({index:1});
     await btn("이 요청 전으로 되감기").click();
     await btn("되감기 확인").click();
-    await page.waitForFunction(async()=> (await window.flowrium.bootstrap()).sessions.find(s=>s.title==="되감기 시험")?.messages.length === 0);
+    await waitForSession(page,"되감기 시험",s=>s.messages.length === 0);
     await app.close(); app = undefined;
     page = await launch();
     await page.locator("[data-work-kind=research]").waitFor();
@@ -92,7 +115,7 @@ async function run() {
     await page.locator(".approval-card").waitFor();
     await page.getByRole("button",{name:/^승인함/}).click();
     await btn("이번 작업 승인").click();
-    await page.waitForFunction(async()=> (await window.flowrium.bootstrap()).sessions.find(s=>s.title==="화면 검증 task")?.messages.some(m=>m.role==="assistant"&&m.text.includes("accept")));
+    await waitForSession(page,"화면 검증 task",s=>s.messages.some(m=>m.role==="assistant"&&m.text.includes("accept")));
     const restored = (await snapshot()).sessions;
     assert.equal(restored.length, 7);
     const research = restored.find(s=>s.title==="화면 검증 research");

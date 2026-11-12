@@ -63,13 +63,15 @@ test('정상 알림 후 설치를 클릭하면 검증한 파일을 한 번만 �
 });
 
 test('기존 작업 중이거나 다운로드할 때 새 작업이 시작되면 설치하지 않는다', async (t) => {
-  let busy = true;
+  let busy = "내장 터미널의 세션을 닫은 뒤 업데이트해 주세요.";
   const { updater, counts, temporary } = await fixture(t, { isBusy: () => busy,
-    onFile: () => { busy = true; return new Response(payload); } });
+    onFile: () => { busy = "실행 중인 세션을 닫아 주세요."; return new Response(payload); } });
   await updater.check();
   assert.equal((await updater.install()).status, 'available');
+  assert.match(updater.getState().message, /내장 터미널/);
   busy = false;
   assert.equal((await updater.install()).status, 'available');
+  assert.match(updater.getState().message, /실행 중인 세션/);
   assert.deepEqual(counts(), [0, 0]);
   assert.equal((await fs.readdir(temporary)).some((file) => file.startsWith('.flowrium-update-')), false);
 });
@@ -91,4 +93,34 @@ test('다른 저장소 파일, 누락 및 중복 자산을 차단한다', () => 
     [{ ...asset(name, payload), browser_download_url: 'https://github.com/someone/else' }, release().assets[1]]])
     assert.throws(() => selectRelease({ ...release(), assets: changes }, '0.1.2', 'mac-arm64.zip'));
   assert.throws(() => checksum(sums.toString().repeat(2), name));
+});
+
+test('이전 설치 실패는 새 후보가 없어도 다음 실행의 일반 화면에서 다시 시도할 수 있다', async (t) => {
+  const { updater } = await fixture(t);
+  await fs.mkdir(path.dirname(updater.resultPath), { recursive: true });
+  await fs.writeFile(updater.resultPath, 'failed');
+  await updater.start();
+  t.after(() => updater.stop());
+  assert.equal(updater.getState().launchFailed, true);
+  assert.equal(updater.getState().status, 'error');
+  assert.equal(updater.getState().latestVersion, undefined);
+  assert.equal((await updater.check()).status, 'available');
+});
+test('기동 티켓은 해당 설치 경로·버전·프로세스의 시작 및 화면 준비 순서를 구분한다', async (t) => {
+  const { acknowledgeUpdateLaunch } = require('../electron/updater.cjs');
+  const { randomUUID } = require('node:crypto');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'flowrium-ack-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const token = randomUUID();
+  const base = path.join(dir, '.flowrium-launch-' + token);
+  const argv = ['--flowrium-update-token=' + token];
+  const app = { isPackaged: true, getVersion: () => '1.0.0', getPath: k => k === 'exe' ? process.execPath : dir };
+  assert.equal(await acknowledgeUpdateLaunch(app, 'starting', argv), false);
+  await fs.writeFile(base + '.json', JSON.stringify({version: '1.0.0', executable: process.execPath}));
+  assert.equal(await acknowledgeUpdateLaunch(app, 'ready', argv), false);
+  assert.equal(await acknowledgeUpdateLaunch({...app, getVersion: () => '0.9.1'}, 'starting', argv), false);
+  assert.equal(await acknowledgeUpdateLaunch({...app, getPath: () => dir}, 'starting', argv), false);
+  assert.equal(await acknowledgeUpdateLaunch(app, 'starting', argv), true);
+  assert.equal(await acknowledgeUpdateLaunch(app, 'ready', argv), true);
+  assert.equal(await fs.readFile(base + '.ready', 'utf8'), String(process.pid));
 });

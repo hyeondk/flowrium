@@ -1,6 +1,6 @@
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs/promises');
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const path = require('node:path');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
@@ -141,30 +141,67 @@ async function prepareMac(file, stage, version, target, signal) {
   await fs.unlink(file);
   return bundle;
 }
+const launchFlag = '--flowrium-update-token=';
+const launchToken = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+function receiptBase(userData, token) {
+  return path.join(userData, '.flowrium-launch-' + token);
+}
+// 새 프로세스가 기존 앱에서 발행한 티켓과 같은 설치본일 때만 준비 단계를 기록한다.
+async function acknowledgeUpdateLaunch(app, phase, argv = process.argv) {
+  if (!app.isPackaged || !['starting', 'ready'].includes(phase)) return false;
+  const token = argv.find((arg) => typeof arg === 'string' && arg.startsWith(launchFlag))?.slice(launchFlag.length);
+  if (!token || !launchToken.test(token)) return false;
+  const base = receiptBase(app.getPath('userData'), token);
+  try {
+    const ticket = JSON.parse(await fs.readFile(base + '.json', 'utf8'));
+    if (ticket.version !== app.getVersion() || typeof ticket.executable !== 'string') return false;
+    const [expected, actual] = await Promise.all([ticket.executable, app.getPath('exe')].map(exe => fs.stat(exe, { bigint: true })));
+    if (!expected.isFile() || !actual.isFile() || expected.dev !== actual.dev || expected.ino !== actual.ino) return false;
+    if (actual.ino === 0n && path.relative(await fs.realpath(ticket.executable), await fs.realpath(app.getPath('exe'))) !== '') return false;
+    const pid = String(process.pid);
+    if (phase === 'ready' && (await fs.readFile(base + '.starting', 'utf8')).trim() !== pid) return false;
+    try { await fs.writeFile(base + '.' + phase, pid, { flag: 'wx', mode: 0o600 }); }
+    catch (error) { if (error.code !== 'EEXIST') throw error; }
+    return true;
+  } catch { return false; }
+}
+async function cleanReceipt(base) {
+  await Promise.all(['.json', '.starting', '.ready'].map((ext) => fs.rm(base + ext, { force: true }).catch(() => {})));
+}
 async function handoff({ platform, file, stage, version, target, parentPid, resultPath, signal }) {
   let command, args;
   const env = { ...process.env };
+  const token = randomUUID();
+  const receipt = receiptBase(path.dirname(resultPath), token);
+  const executable = platform === 'darwin' ? path.join(target, 'Contents', 'MacOS', 'Flowrium') : target;
   if (platform === 'darwin') {
     const prepared = await prepareMac(file, stage, version, target, signal);
     const script = path.join(stage, 'install.sh');
     await fs.writeFile(script, await fs.readFile(path.join(__dirname, 'update-helpers', 'mac.sh')), { mode: 0o600 });
     command = '/bin/sh';
-    args = [script, String(parentPid), stage, target, prepared, resultPath];
+    args = [script, String(parentPid), stage, target, prepared, resultPath, token, receipt];
   } else {
     const script = await fs.readFile(path.join(__dirname, 'update-helpers', 'windows.ps1'), 'utf8');
+    await fs.writeFile(resultPath + '.log', '', { mode: 0o600 });
     await fs.writeFile(file + ':Zone.Identifier', '[ZoneTransfer]\r\nZoneId=3\r\n');
     command = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
     args = ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')];
     Object.assign(env, { FLOWRIUM_UPDATE_PID: String(parentPid), FLOWRIUM_UPDATE_STAGE: stage,
       FLOWRIUM_UPDATE_FILE: file, FLOWRIUM_UPDATE_TARGET: target, FLOWRIUM_UPDATE_VERSION: version,
-      FLOWRIUM_UPDATE_RESULT: resultPath });
+      FLOWRIUM_UPDATE_RESULT: resultPath, FLOWRIUM_UPDATE_TOKEN: token, FLOWRIUM_UPDATE_RECEIPT: receipt });
   }
   signal.throwIfAborted();
-  await new Promise((resolve, reject) => {
-    const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true, env });
-    child.once('error', reject);
-    child.once('spawn', () => { child.unref(); resolve(); });
-  });
+  await fs.writeFile(receipt + '.json', JSON.stringify({ version, executable }), { flag: 'wx', mode: 0o600 });
+  try {
+    await new Promise((resolve, reject) => {
+      const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true, env });
+      child.once('error', reject);
+      child.once('spawn', () => { child.unref(); resolve(); });
+    });
+  } catch (error) {
+    await cleanReceipt(receipt);
+    throw error;
+  }
 }
 
 class DesktopUpdater extends EventEmitter {
@@ -201,7 +238,7 @@ class DesktopUpdater extends EventEmitter {
       await fs.unlink(this.resultPath);
       if (result === 'failed') {
         clearTimeout(first);
-        this.set('error', '새 버전을 실행하지 못했습니다. 기존 앱에서 다시 업데이트하거나 다운로드 페이지의 설치 파일을 사용해 주세요.');
+        this.set('error', '지난 업데이트에서 새 앱이 준비되지 않았습니다. 새 버전을 다시 확인하거나 다운로드 페이지에서 설치 파일을 받을 수 있습니다.', { launchFailed: true });
       }
     } catch { /* 첫 실행에는 이전 결과가 없습니다. */ }
   }
@@ -229,7 +266,8 @@ class DesktopUpdater extends EventEmitter {
   async install() {
     if (this.operation) return this.operation;
     if (this.isInstalling() || !this.candidate) return this.getState();
-    if (this.isBusy()) return this.set('available', '실행 중인 작업을 마친 뒤 업데이트해 주세요.');
+    const busy = this.isBusy();
+    if (busy) return this.set('available', typeof busy === 'string' ? busy : '실행 중인 작업을 마친 뒤 업데이트해 주세요.');
     this.operation = this.downloadAndInstall(this.candidate).catch((error) => this.set('error', errorText(error)))
       .finally(() => { this.operation = null; });
     return this.operation;
@@ -263,7 +301,8 @@ class DesktopUpdater extends EventEmitter {
       } finally { await output.close(); }
       if (count !== asset.size || expected !== hash.digest('hex'))
         throw new Error('설치 파일의 크기 또는 SHA-256 값이 일치하지 않습니다. 다시 다운로드해 주세요.');
-      if (this.isBusy()) return this.set('available', '실행 중인 작업을 마친 뒤 업데이트해 주세요.');
+      const busy = this.isBusy();
+      if (busy) return this.set('available', typeof busy === 'string' ? busy : '실행 중인 작업을 마친 뒤 업데이트해 주세요.');
       this.set('installing', '업데이트를 설치한 뒤 Flowrium을 다시 엽니다.', { progress: 100 });
       await this.transfer({ platform: this.platform, file, stage, version, target, parentPid: this.parentPid,
         resultPath: this.resultPath, signal });
@@ -277,4 +316,4 @@ class DesktopUpdater extends EventEmitter {
   }
 }
 
-module.exports = { DesktopUpdater, newer, selectRelease, checksum, artifactSuffix, handoff };
+module.exports = { acknowledgeUpdateLaunch, DesktopUpdater, newer, selectRelease, checksum, artifactSuffix, handoff };

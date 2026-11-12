@@ -1,13 +1,16 @@
 import { useState } from "react";
-import type { Session, ConversationEdit } from "../shared/types";
+import type { Session, ConversationEdit, Model, Effort } from "../shared/types";
 
-export function ConversationTools({session, running, onOpen, onChange, notify, fail}: {
-  session: Session; running: boolean; onOpen: (session: Session) => void; onChange: (session: Session) => void;
+export function ConversationTools({session, models, running, onOpen, onChange, notify, fail}: {
+  session: Session; models: Model[]; running: boolean; onOpen: (session: Session) => void; onChange: (session: Session) => void;
   notify: (message: string) => void; fail: (error: unknown) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [title, setTitle] = useState(session.title);
+  const [model, setModel] = useState(session.preferences?.model || "");
+  const [effort, setEffort] = useState(session.preferences?.effort || "");
+  const [address, setAddress] = useState(session.preferences?.chatGptUrl || "");
   const [messageId, select] = useState("");
   const [confirm, setConfirm] = useState(false);
   async function apply(change: ConversationEdit) {
@@ -16,7 +19,7 @@ export function ConversationTools({session, running, onOpen, onChange, notify, f
     try {
       const value = await window.flowrium.editConversation(session.id, change);
       if (change.action === "branch") onOpen(value); else onChange(value);
-      notify(change.action === "compact" ? "Codex에 문맥 압축을 요청했습니다." : change.action === "rewind" ? "선택한 요청 직전으로 대화를 되감았습니다." : change.action === "branch" ? "분기한 대화를 열었습니다." : "대화 이름을 변경했습니다.");
+      notify(change.action === "preferences" ? "이 대화의 연결 설정을 저장했습니다." : change.action === "compact" ? "Codex에 문맥 압축을 요청했습니다." : change.action === "rewind" ? "선택한 요청 직전으로 대화를 되감았습니다." : change.action === "branch" ? "분기한 대화를 열었습니다." : "대화 이름을 변경했습니다.");
       setOpen(false); setConfirm(false); select("");
     } catch (error) { fail(error); }
     finally { setBusy(false); }
@@ -26,6 +29,12 @@ export function ConversationTools({session, running, onOpen, onChange, notify, f
     {open && <fieldset disabled={running || busy} className="conversation-popover">
       <label>대화 이름<input aria-label="대화 이름" maxLength={300} value={title} onChange={e=>setTitle(e.target.value)} /></label>
       <button className="button subtle" disabled={!title.trim()} onClick={()=>apply({ action:"rename", title })}>이름 저장</button>
+      <label>이 대화의 모델<select value={model} onChange={e=>setModel(e.target.value)}><option value="">앱 기본 설정</option>
+        {model && !models.some(m=>m.id===model) && <option value={model}>{model}</option>}
+        {models.map(m=><option key={m.id} value={m.id}>{m.displayName || m.id}</option>)}</select></label>
+      <label>이 대화의 추론 강도<select value={effort} onChange={e=>setEffort(e.target.value)}><option value="">앱 기본 설정</option><option value="low">낮음</option><option value="medium">보통</option><option value="high">높음</option></select></label>
+      <label>이어갈 ChatGPT 대화 주소<input type="url" placeholder="https://chatgpt.com/c/…" value={address} onChange={e=>setAddress(e.target.value)}/></label>
+      <button className="button subtle" onClick={()=>apply({action:"preferences",preferences:{model:model || undefined,effort:(effort || undefined) as Effort | undefined,chatGptUrl:address.trim() || undefined}})}>대화 연결 설정 저장</button>
       <label>기준 요청<select aria-label="기준 요청" value={messageId} onChange={e=>{select(e.target.value);setConfirm(false);}}>
         <option value="">대화 끝</option>
         {session.messages.filter(m=>m.role==="user").map((m,i)=><option value={m.id} key={m.id}>{i+1} / {m.text.slice(0,48)}</option>)}

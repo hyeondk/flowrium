@@ -16,11 +16,15 @@
     "check": "npm run build && npm test",
     "dist": "npm run build && node scripts/package-desktop.cjs",
     "dist:mac": "npm run build && node scripts/package-desktop.cjs --mac",
-    "dist:win": "npm run build && node scripts/package-desktop.cjs --win"
+    "dist:win": "npm run build && node scripts/package-desktop.cjs --win",
+    "postinstall": "node electron/terminal.cjs --prepare"
   },
   "dependencies": {
     "@openai/codex": "0.167.2",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
     "markdown-it": "15.0.3",
+    "node-pty": "1.1.0",
     "pptxgenjs": "4.0.1"
   },
   "devDependencies": {
@@ -50,10 +54,15 @@
       "dist/**/*",
       "electron/**/*",
       "assets/flowrium.png",
-      "package.json"
+      "package.json",
+      "!node_modules/node-pty/{third_party,src,build}/**/*",
+      "!node_modules/node-pty/**/*.pdb",
+      "!node_modules/node-pty/prebuilds/{win32-arm64,darwin-x64}/**/*",
+      "!node_modules/node-pty/prebuilds/!(*-${arch})/**/*"
     ],
     "asarUnpack": [
-      "node_modules/@openai/**/*"
+      "node_modules/@openai/**/*",
+      "node_modules/node-pty/**/*"
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
@@ -102,6 +111,7 @@
     },
     "dmg": {
       "sign": true
-    }
+    },
+    "npmRebuild": false
   }
 }

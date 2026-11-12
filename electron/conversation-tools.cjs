@@ -31,7 +31,9 @@ function registerConversationTools(register, controller) {
           messages: session.messages.slice(0, input.messageId ? index + 1 : undefined).map(message => ({ ...message, id: randomUUID() })),
         });
       }
-      if (input?.action === "rename") {
+      if (input?.action === "preferences") {
+        session.preferences = require("./chat-preferences.cjs").preferences(input.preferences);
+      } else if (input?.action === "rename") {
         session.title = text(input.title, "대화 이름", 300);
       } else if (input?.action === "rewind" && index >= 0 && session.messages[index].role === "user") {
         // 이후 대화의 Codex 문맥이 다시 섞이지 않도록 다음 요청은 남긴 기록으로 시작한다.

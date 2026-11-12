@@ -4,6 +4,11 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      stage_release:
+        description: 두 운영체제 검증을 마치면 현재 커밋의 비공개 릴리스 준비
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -96,6 +101,8 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
       - name: 번들 Codex 실행 파일 확인
         run: node scripts/verify-native.cjs
+      - name: 패키지 내장 터미널 검증
+        run: node tests/terminal-packaged-e2e.cjs
       - name: 실제 앱에서 업무 대화 검증
         run: node tests/desktop-e2e.cjs
       - name: 문서 내보내기 검증
@@ -115,7 +122,7 @@ jobs:
             release/Flowrium-*-${{ matrix.os }}-${{ matrix.arch }}.exe
 
   draft:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && inputs.stage_release)
     name: 초안 릴리스 저장
     needs: build
     runs-on: ubuntu-latest
@@ -138,4 +145,5 @@ jobs:
         run: node scripts/save-draft-release.mjs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STAGE_FROM_MAIN: ${{ github.event_name == 'workflow_dispatch' && inputs.stage_release }}
           EXPECT_MAC: ${{ needs.build.outputs.mac_ready }}

@@ -41,6 +41,73 @@ async function macFixture(bundle, fixtureVersion) {
   await run('/usr/bin/codesign', ['--force', '--sign', '-', bundle]);
   return bin;
 }
+// 기동 즉시 종료되는 앱으로 교체 후 기존 번들이 복원되는지 실제 LaunchServices로 검증한다.
+// 정식 업데이트의 서명/공증 검증은 아래 DesktopUpdater 경로에서 별도로 수행한다.
+async function verifyMacRollback(temporary) {
+  const root = path.join(temporary, '복원 검증');
+  const installed = path.join(root, 'Flowrium.app');
+  const stage = path.join(root, 'staging');
+  const prepared = path.join(stage, 'new', 'Flowrium.app');
+  await fs.mkdir(path.dirname(prepared), { recursive: true });
+  const old = await macFixture(installed, '0.1.2');
+  const before = await digest(old);
+  const newer = await macFixture(prepared, version);
+  await fs.copyFile('/usr/bin/false', newer);
+  await run('/usr/bin/codesign', ['--force', '--sign', '-', prepared]);
+  const token = require('node:crypto').randomUUID();
+  const receipt = path.join(root, 'receipt');
+  const result = path.join(root, 'result');
+  await fs.writeFile(receipt + '.json', '{}');
+  await assert.rejects(run('/bin/sh', [path.join(__dirname, '..', 'electron', 'update-helpers', 'mac.sh'),
+    '2147483647', stage, installed, prepared, result, token, receipt], { timeout: 150000 }),
+    (err) => err.code === 1);
+  assert.equal(await digest(old), before);
+  assert.equal((await fs.readFile(result, 'utf8')).trim(), 'failed');
+  for (const f of [stage, receipt + '.json']) await assert.rejects(fs.access(f), { code: 'ENOENT' });
+  console.log('macOS 실행 요청 직후 종료된 새 앱 감지 / 기존 앱 복원 / 검증 자료 정리 확인');
+}
+// 확인 신호를 기록하는 최소 네이티브 앱을 통해 같은 교체 도우미의 성공 경로도 검사한다.
+async function verifyMacReady(temporary) {
+  const root = path.join(temporary, '준비 검증');
+  const installed = path.join(root, 'Flowrium.app');
+  const stage = path.join(root, 'staging');
+  const prepared = path.join(stage, 'new', 'Flowrium.app');
+  await fs.mkdir(path.dirname(prepared), { recursive: true });
+  await macFixture(installed, previous);
+  const executable = await macFixture(prepared, version);
+  const receipt = path.join(root, 'receipt');
+  const token = require('node:crypto').randomUUID();
+  const source = path.join(root, 'ready.c');
+  const stamp = path.join(root, 'started-pid');
+  const marker = (file) => `f = fopen(${JSON.stringify(file)}, "w"); if (!f) return 3; fprintf(f,"%d",getpid()); fclose(f);`;
+  await fs.writeFile(source, `#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
+int main(int argc, char** argv) {
+  int valid=0; for(int i=1;i<argc;i++) if(!strcmp(argv[i],"--flowrium-update-token=${token}")) valid=1;
+  if(!valid) return 2;
+  FILE* f; ${marker(stamp)} ${marker(receipt + '.starting')} ${marker(receipt + '.ready')}
+  sleep(8); return 0;
+}`);
+  await run('/usr/bin/cc', [source, '-o', executable]);
+  await run('/usr/bin/codesign', ['--force', '--sign', '-', prepared]);
+  const expected = await digest(executable);
+  await fs.writeFile(receipt + '.json', '{}');
+  try {
+    await run('/bin/sh', [path.join(__dirname, '..', 'electron', 'update-helpers', 'mac.sh'),
+      '2147483647', stage, installed, prepared, path.join(root, 'result'), token, receipt], { timeout: 145000 });
+    assert.equal(await digest(path.join(installed, 'Contents', 'MacOS', 'Flowrium')), expected);
+    for (const f of [stage, receipt + '.json', receipt + '.ready', path.join(root, 'result')])
+      await assert.rejects(fs.access(f), { code: 'ENOENT' });
+  } finally {
+    const pid = Number(await fs.readFile(stamp, 'utf8').catch(() => 0));
+    if (pid > 0) {
+      const command = await run('/bin/ps', ['-p', String(pid), '-o', 'command=']).catch(() => null);
+      if (command?.stdout.includes('--flowrium-update-token=' + token)) process.kill(pid, 'SIGTERM');
+    }
+  }
+  console.log('macOS 교체 도우미 / 실제 네이티브 프로세스의 준비 확인 후 이전 번들 정리 통과');
+}
 async function installPreviousWindows(folder) {
   const url = 'https://github.com/hyeondk/flowrium/releases/download/v0.1.2/Flowrium-0.1.2-win-x64.exe';
   const previousHash = 'ff7b59fc1a309a0906b5335cec606bd6ea2450ab9ba54ea641ac16cbbc064ddf';
@@ -70,6 +137,21 @@ async function processIds(executable) {
     exit 0`, { BINARY: executable });
   return stdout.trim().split(/\s+/).filter(Boolean).map(Number);
 }
+async function updateTrace(userData) {
+  const file = path.join(userData, 'last-update-result.txt.log');
+  const content = await fs.readFile(file, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e));
+  return content.trim().split(/\r?\n/).filter(Boolean).flatMap(line => {
+    try { return [JSON.parse(line)]; } catch { return []; } // 다음 폴링에서 작성이 끝난 줄을 읽는다.
+  });
+}
+async function windowsSnapshot(binary) {
+  const code = `$p = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.ProcessName -match '^(Flowrium.*|smartscreen|consent)$' -or $_.MainWindowTitle -match 'Security Warning|Windows protected|Open File'
+  } | Select-Object Id,ProcessName,Path,MainWindowTitle,@{Name='Window';Expression={$_.MainWindowHandle.ToInt64()}})
+  $v = if (Test-Path -LiteralPath $env:BINARY) { [Diagnostics.FileVersionInfo]::GetVersionInfo($env:BINARY).ProductVersion }
+  [pscustomobject]@{version=$v;target=$env:BINARY;processes=$p} | ConvertTo-Json -Depth 3 -Compress`;
+  return JSON.parse((await powershell(code, { BINARY: binary })).stdout.trim());
+}
 async function waitFor(operation, timeout, message) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -87,10 +169,14 @@ async function main() {
     '실제 설치 및 재실행은 격리된 GitHub 호스팅 러너에서 실행합니다.');
   const temporary = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'flowrium-native-update-')));
   const installed = path.join(temporary, 'installed apps', mac ? 'Flowrium.app' : 'Flowrium');
-  const userData = path.join(temporary, 'profile');
+  // Windows는 기존 앱과 새 앱의 동일한 임시 프로필 사용을 확인한다.
+  // Mac 정식 번들의 기본 프로필 검증은 비어 있는 일회용 호스팅 러너에서만 실행한다.
+  const userData = mac && !unsigned
+    ? path.join(os.homedir(), 'Library', 'Application Support', 'Flowrium') : path.join(temporary, 'profile');
   const assetName = 'Flowrium-' + version + '-' + suffix;
-  let binary, oldProcess, restartedPid;
+  let binary, oldProcess, oldApp, quitRequest, restartedPid;
   try {
+    if (mac) { await verifyMacRollback(temporary); await verifyMacReady(temporary); }
     await fs.mkdir(path.dirname(installed), { recursive: true });
     const file = fixture ? path.join(temporary, assetName) : path.resolve('release', assetName);
     if (fixture) {
@@ -107,16 +193,29 @@ async function main() {
         .map(([name, size, hash]) => ({ name, size, digest: 'sha256:' + hash, browser_download_url: url + name })) };
     binary = mac ? await macFixture(installed, previous) : await installPreviousWindows(installed);
     const before = await digest(binary);
-    oldProcess = spawn(binary, mac ? ['300'] : [], { stdio: 'ignore' });
-    await new Promise((resolve, reject) => { oldProcess.once('spawn', resolve); oldProcess.once('error', reject); });
-    if (!mac) await waitFor(async () => (await processIds(binary)).includes(oldProcess.pid),
-      90000, '이전 설치 버전의 창이 열리지 않았습니다.');
+    if (mac) {
+      oldProcess = spawn(binary, ['300'], { stdio: 'ignore' });
+      await new Promise((resolve, reject) => { oldProcess.once('spawn', resolve); oldProcess.once('error', reject); });
+    } else {
+      const { _electron } = require('playwright');
+      const env = { ...process.env, CODEX_HOME: path.join(temporary, 'codex') };
+      delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_RENDERER_URL;
+      oldApp = await _electron.launch({ executablePath: binary, args: ['--user-data-dir=' + userData], env, timeout: 60000 });
+      oldProcess = oldApp.process();
+      await oldApp.firstWindow();
+      assert.equal((await oldApp.evaluate(({ app }) => app.getVersion())), previous);
+      assert.equal(path.relative(userData, await oldApp.evaluate(({ app }) => app.getPath('userData'))), '');
+      await waitFor(async () => (await processIds(binary)).includes(oldProcess.pid), 30000, '이전 버전의 실제 창 확인 실패');
+      console.log('이전 설치 및 창 확인', previous, oldProcess.pid, binary);
+    }
     const updater = new DesktopUpdater({
       app: { isPackaged: true, getPath: () => userData, getVersion: () => previous,
         quit: () => {
           if (mac) oldProcess.kill();
-          else void powershell('(Get-Process -Id ([int]$env:OLD_PID)).CloseMainWindow()', { OLD_PID: String(oldProcess.pid) })
-            .catch(() => oldProcess.kill());
+          else quitRequest = oldApp.evaluate(({ app }) => {
+            // 버튼으로 업데이트하는 현재 버전과 동일하게 Electron의 정상 종료를 요청한다.
+            setTimeout(() => app.quit(), 50);
+          });
         } },
       parentPid: oldProcess.pid, execPath: binary,
       fetchImpl: async (target) => {
@@ -139,10 +238,26 @@ async function main() {
       return;
     }
     assert.equal(result.status, 'installing', result.message);
-    restartedPid = await waitFor(async () => {
-      const ids = await processIds(binary);
-      return ids.find((pid) => pid !== oldProcess.pid);
-    }, 180000, '업데이트 이후 새 앱 프로세스가 실행되지 않았습니다.');
+    if (!mac) {
+      await quitRequest;
+      await waitFor(() => oldProcess.exitCode !== null || oldProcess.signalCode !== null, 35000, '이전 Electron 프로세스가 정상 종료되지 않았습니다.');
+      console.log('이전 프로세스 종료 확인', oldProcess.pid, oldProcess.exitCode);
+      let printed = 0;
+      const ready = await waitFor(async () => {
+        const records = await updateTrace(userData);
+        for (const record of records.slice(printed)) console.log('업데이트 도우미 /', record.step, JSON.stringify(record.detail));
+        printed = records.length;
+        const failure = records.find(r => r.step === 'failed');
+        if (failure) throw new Error('업데이트 도우미 실패 / ' + JSON.stringify(failure.detail));
+        return records.find(r => r.step === 'app-ready');
+      }, 420000, '설치 또는 새 앱 준비 신호가 제한 시간 안에 도착하지 않았습니다.');
+      restartedPid = ready.detail.appPid;
+      assert.notEqual(restartedPid, oldProcess.pid);
+      await waitFor(async () => (await processIds(binary)).includes(restartedPid), 30000, '준비 신호를 보낸 새 앱의 실제 창 확인 실패');
+    } else {
+      restartedPid = await waitFor(async () => (await processIds(binary)).find(pid => pid !== oldProcess.pid),
+        180000, '업데이트 이후 새 앱 프로세스가 실행되지 않았습니다.');
+    }
     const actual = mac ? (await run('/usr/libexec/PlistBuddy',
       ['-c', 'Print :CFBundleShortVersionString', path.join(installed, 'Contents', 'Info.plist')])).stdout.trim() :
       (await powershell('[Diagnostics.FileVersionInfo]::GetVersionInfo($env:BINARY).ProductVersion',
@@ -150,12 +265,27 @@ async function main() {
     assert.equal(actual, version);
     await waitFor(async () => !(await fs.readdir(mac ? path.dirname(installed) : path.join(userData, 'updates')))
       .some((entry) => entry.startsWith('.flowrium-update-')), 15000, '설치 임시 파일 정리가 완료되지 않았습니다.');
+    assert.equal(await fs.readFile(updater.resultPath, 'utf8').catch(e => e.code === 'ENOENT' ? '' : Promise.reject(e)), '',
+      '업데이트 도우미가 새 앱 준비 실패를 기록했습니다.');
+    await waitFor(async () => !(await fs.readdir(userData)).some(entry => entry.startsWith('.flowrium-launch-')),
+      5000, '새 프로세스가 확인한 기동 티켓이 정리되지 않았습니다.');
     console.log('실제 설치 파일 교체 / 새 버전 재실행 확인', previous, '→', actual);
+  } catch (error) {
+    if (!mac && binary) {
+      console.error('Windows 검증 실패 시점', JSON.stringify(await windowsSnapshot(binary).catch(e => ({ error: e.message }))));
+      const records = await updateTrace(userData).catch(() => []);
+      console.error('업데이트 전체 기록', JSON.stringify(records));
+      // 실패한 일회용 러너에서 시험 도우미/복구 창이 정리 작업을 가로막지 않게 한다.
+      const helper = records.find(r => r.step === 'helper-start')?.helperPid;
+      if (helper) await run('taskkill.exe', ['/PID', String(helper), '/T', '/F']).catch(() => {});
+    }
+    throw error;
   } finally {
     if (restartedPid) {
       if (mac) process.kill(restartedPid, 'SIGTERM');
       else await run('taskkill.exe', ['/PID', String(restartedPid), '/T', '/F']).catch(() => {});
     }
+    if (oldApp && oldProcess.exitCode === null && oldProcess.signalCode === null) await oldApp.close().catch(() => {});
     if (oldProcess && oldProcess.exitCode === null && oldProcess.signalCode === null) oldProcess.kill();
     if (!mac && binary) {
       const uninstaller = path.join(installed, 'Uninstall Flowrium.exe');

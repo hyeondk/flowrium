@@ -23,7 +23,7 @@ export function UpdatePanel({ state, settings = false, fail }: {
   if (!api || !state) return null;
   const busy = ["checking", "downloading", "installing"].includes(state.status);
   const available = state.status === "available";
-  const visible = available || (state.status === "error" && !!state.latestVersion) || ["downloading", "installing"].includes(state.status);
+  const visible = available || (state.status === "error" && (!!state.latestVersion || state.launchFailed)) || ["downloading", "installing"].includes(state.status);
   if (!settings && !visible) return null;
   return <section className={settings ? "settings-section" : "update-banner"} aria-label="프로그램 업데이트">
     <div aria-live="polite">

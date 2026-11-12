@@ -260,7 +260,8 @@ class Controller extends EventEmitter {
     const research = this.store.session(run.sessionId).workflow;
     if (research?.kind === "research" && research.searchMode)
       threadParams.config = { web_search: research.searchMode };
-    const model = input.model || this.store.state.settings.model;
+    const prefs = this.store.session(run.sessionId).preferences;
+    const model = prefs?.model || input.model || this.store.state.settings.model;
     if (model) threadParams.model = model;
     let result;
     let restoredContext = "";
@@ -316,7 +317,7 @@ class Controller extends EventEmitter {
             }
           : { type: "readOnly" },
       ...(model ? { model } : {}),
-      effort: input.effort || this.store.state.settings.effort,
+      effort: prefs?.effort || input.effort || this.store.state.settings.effort,
     });
     if (!turn.turn?.id) throw new Error("Codex 작업을 시작하지 못했습니다.");
     run.turnId = turn.turn.id;

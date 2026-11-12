@@ -1,3 +1,4 @@
+import TerminalPanel from "./TerminalPanel";
 import ProjectDetails from "./ProjectDetails";
 import { ActivityPanel, useWorkspaceShortcuts } from "./ActivityPanel";
 import TeamPanel from "./TeamPanel";
@@ -55,7 +56,7 @@ import type {
   Session,
 } from "../shared/types";
 
-type View = "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
+type View = "terminal" | "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
 type Activity = { text: string; status: string; error?: string };
 type Draft = { text: string; mode: Mode };
 type CodexHistoryItem = {
@@ -676,7 +677,8 @@ export default function App() {
         .filter(Boolean)
         .join("\n\n");
       await api.copyText(context);
-      await api.openExternal("chatgpt");
+      if (session) await api.openSessionChatGPT(session.id);
+      else await api.openExternal("chatgpt");
       notify("작업 문맥을 복사했습니다. 열린 ChatGPT 대화에 붙여넣어 주세요.");
     } catch (error) {
       fail(error);
@@ -863,6 +865,7 @@ export default function App() {
           <button className={view === "activity" ? "nav-item active" : "nav-item"} onClick={()=>{setView("activity");setSidebarOpen(false);}}><Clock3 size={17}/>작업 현황</button>
           <button className={view === "inbox" ? "nav-item active" : "nav-item"} onClick={()=>{setView("inbox");setSidebarOpen(false);}}><ShieldCheck size={17}/>승인함 <span className="nav-count">{approvals.length}</span></button>
           {project && <button className={view === "team" ? "nav-item active" : "nav-item"} onClick={()=>{setView("team");setSidebarOpen(false);}}><MessageSquare size={17}/>프로젝트 팀</button>}
+          {project && <button className={view === "terminal" ? "nav-item active" : "nav-item"} onClick={()=>{setView("terminal");setSidebarOpen(false);}}><Terminal size={17}/>내장 터미널</button>}
           {project && <button className={view === "repo" ? "nav-item active" : "nav-item"} onClick={()=>{setView("repo");setSidebarOpen(false);}}><Code2 size={17}/>형상관리</button>}
           <button
             className={view === "history" ? "nav-item active" : "nav-item"}
@@ -1009,6 +1012,8 @@ export default function App() {
           <div className="page-scroll"><div className="page-inner"><ProjectDetails key={project.id} project={project} onChange={value=>setArchived(prev=>({...prev,[value.projectId]:Boolean(value.archivedAt)}))}/></div></div>
         ) : view === "activity" ? (
           <ActivityPanel projects={data.projects} sessions={data.sessions} activities={activities} approvals={approvals} onOpen={selectSession} onInterrupt={id=>api!.interrupt(id)}/>
+        ) : view === "terminal" && project ? (
+          <TerminalPanel key={project.id} projectId={project.id}/>
         ) : view === "team" && project ? (
           <div className="page-scroll"><div className="page-inner"><TeamPanel key={project.id} projectId={project.id} onOpen={openWork}/></div></div>
         ) : view === "repo" && project ? (
@@ -1187,7 +1192,7 @@ export default function App() {
                       <h2>{session.title}</h2>
                     </div>
                     <div className="session-actions">
-                      <ConversationTools key={session.id} session={session} running={running} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} />
+                      <ConversationTools key={session.id} session={session} models={models} running={running} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} />
                       <button
                         className="icon-button"
                         aria-label="대화 내보내기"
@@ -1476,7 +1481,7 @@ export default function App() {
                         <span className="small-codex-icon">
                           <Terminal size={12} />
                         </span>
-                        {data.settings.model || "Codex 기본 모델"}
+                        {session?.preferences?.model || data.settings.model || "Codex 기본 모델"}
                         <ChevronDown size={12} />
                       </button>
                     </div>

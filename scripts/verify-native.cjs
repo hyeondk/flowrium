@@ -8,8 +8,8 @@ const { spawn, spawnSync } = require("node:child_process");
 const asar = require("@electron/asar");
 const pkg = require("../package.json");
 
-async function verifyFreshAccount(binary) {
-  const environment = { ...process.env };
+async function verifyFreshAccount(binary, profile) {
+  const environment = { ...process.env, CODEX_HOME: profile };
   for (const name of ["OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_ACCESS_TOKEN"])
     delete environment[name];
   const child = spawn(binary, ["app-server"], {
@@ -93,19 +93,9 @@ async function verifyFreshAccount(binary) {
     throw new Error(
       "Mac arm64 / Windows x64 실행기에서 검증해 주세요.",
     );
-  const candidates =
-    platform === "darwin"
-      ? [
-          path.resolve(
-            `release/mac${arch === "arm64" ? "-arm64" : ""}/Flowrium.app/Contents/Resources`,
-          ),
-          path.resolve(`release/mac-${arch}/Flowrium.app/Contents/Resources`),
-        ]
-      : [path.resolve("release/win-unpacked/resources")];
-  const resources = candidates.find((directory) =>
-    fs.existsSync(path.join(directory, "app.asar")),
-  );
-  if (!resources)
+  const resources = process.argv[2] ? path.resolve(process.argv[2]) :
+    path.resolve(process.platform === "darwin" ? "release/mac-arm64/Flowrium.app/Contents/Resources" : "release/win-unpacked/resources");
+  if (!fs.existsSync(path.join(resources, "app.asar")))
     throw new Error(
       "검증할 앱 패키지를 찾지 못했습니다. 먼저 현재 운영체제용 패키지를 만들어 주세요.",
     );
@@ -148,6 +138,9 @@ async function verifyFreshAccount(binary) {
   const files = asar
     .listPackage(archive)
     .map((file) => file.replaceAll("\\", "/"));
+  const permittedRoots = new Set(["dist", "electron", "assets", "package.json", "node_modules"]);
+  const unexpected = files.find(file => !permittedRoots.has(file.split("/")[1]));
+  if (unexpected) throw new Error("실행에 필요 없는 파일이 패키지에 들어 있습니다. " + unexpected);
   const forbidden =
     /(?:^|\/)(?:\.flowrium|\.codex|\.env(?:\.[^/]*)?|auth\.json|config\.toml|deploy_key|workspace\.json)(?:\/|$)/i;
   if (files.some((file) => forbidden.test(file)))
@@ -166,11 +159,12 @@ async function verifyFreshAccount(binary) {
   console.log(
     `번들 검증 완료 / ${platform} / ${arch} / ${version.stdout.trim()} / 인증과 프로젝트 기록 파일 없음`,
   );
-  if (process.env.GITHUB_ACTIONS === "true") await verifyFreshAccount(binary);
-  else
-    console.log(
-      "새 계정 상태 확인은 GitHub Actions에서만 실행합니다. 현재 사용자 계정은 변경하지 않았습니다.",
-    );
+  const profile = await fsp.mkdtemp(path.join(require("node:os").tmpdir(), "flowrium-fresh-account-"));
+  try {
+    await verifyFreshAccount(binary, profile);
+  } finally {
+    await fsp.rm(profile, { recursive: true, force: true, maxRetries: 4, retryDelay: 200 });
+  }
 })().catch((error) => {
   console.error(error.message);
   process.exitCode = 1;

@@ -3,11 +3,13 @@ import { resolve, join } from "node:path";
 import { validRepository } from "../docs/releases.mjs";
 
 const repository = process.env.GITHUB_REPOSITORY;
-const tag = process.env.GITHUB_REF_NAME;
+
 const token = process.env.GITHUB_TOKEN;
 const pkg = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 );
+const manual = process.env.STAGE_FROM_MAIN === "true" && process.env.GITHUB_REF === "refs/heads/main";
+const tag = manual ? `v${pkg.version}` : process.env.GITHUB_REF_NAME;
 if (
   !validRepository(repository) ||
   !token ||
@@ -68,6 +70,7 @@ if (lookup.ok) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       tag_name: tag,
+      target_commitish: process.env.GITHUB_SHA,
       name: `Flowrium ${tag}`,
       draft: true,
       prerelease: false,

@@ -2,6 +2,18 @@
 const assert = require("node:assert/strict");
 async function verifyUpdateUI(app, page) {
   await app.evaluate(({ipcMain,BrowserWindow}) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    ipcMain.removeHandler("flowrium:checkUpdate");
+    ipcMain.handle("flowrium:checkUpdate", () => {
+      win.webContents.send("flowrium:update", {status:"available",currentVersion:"0.2.0",latestVersion:"0.2.1",message:"재시도했습니다."});
+    });
+    win.webContents.send("flowrium:update", {status:"error",currentVersion:"0.2.0",message:"지난 업데이트 실패",launchFailed:true});
+  });
+  const failed=page.getByRole("region",{name:"프로그램 업데이트"});
+  await failed.getByText("지난 업데이트 실패").waitFor();
+  await failed.getByRole("button",{name:"새 버전 확인"}).click();
+  await failed.getByText("재시도했습니다.").waitFor();
+  await app.evaluate(({ipcMain,BrowserWindow}) => {
     const win=BrowserWindow.getAllWindows()[0];
     const show=(status,message,extra={})=>win.webContents.send("flowrium:update",{status,message,currentVersion:"0.2.0",latestVersion:"0.2.1",...extra});
     ipcMain.removeHandler("flowrium:installUpdate");

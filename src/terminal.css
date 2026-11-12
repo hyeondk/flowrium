@@ -1,0 +1,12 @@
+.terminal-panel { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: clamp(14px,3vw,24px); }
+.terminal-panel header, .terminal-panel header > div, .terminal-panel nav, .terminal-panel footer { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.terminal-panel header, .terminal-panel footer { justify-content: space-between; }
+.terminal-panel h2 { margin: 0; font-size: 18px; }
+.terminal-panel button { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; border: 1px solid var(--line); padding: 7px 10px; border-radius: 6px; }
+.terminal-panel button:hover:enabled, .terminal-tabs button[aria-pressed=true] { background: var(--panel-alt); }
+.terminal-tabs, .terminal-shell, .terminal-panel footer { margin-top: 12px; }
+.terminal-shell { min-width: 0; width: 100%; height: clamp(240px,50vh,660px); background: #1b1d20; border-radius: 6px; padding: 9px; overflow: hidden; }
+.terminal-shell .xterm { height: 100%; }
+.terminal-empty, .terminal-error { margin-top: 12px; font-size: 13px; word-break: keep-all; }
+.terminal-error { color: var(--danger); }
+.terminal-panel footer span { min-width: 0; max-width: 100%; overflow-x: auto; font-size: 12px; color: var(--muted); }

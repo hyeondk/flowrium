@@ -14,10 +14,11 @@ const { Store, text } = require("./store.cjs");
 const { Controller } = require("./controller.cjs");
 const { publicMessage } = require("./errors.cjs");
 
-const { DesktopUpdater } = require("./updater.cjs");
+const { DesktopUpdater, acknowledgeUpdateLaunch } = require("./updater.cjs");
 const { registerWorkbench } = require("./workbench.cjs");
 app.setName("Flowrium");
 let updater;
+let terminals;
 let window;
 let controller;
 let quitting = false;
@@ -99,6 +100,7 @@ function createWindow() {
   } else window.loadURL(productionUrl);
 }
 async function launch() {
+  await acknowledgeUpdateLaunch(app, "starting");
   const store = new Store(app.getPath("userData"));
   try {
     await store.load();
@@ -109,7 +111,10 @@ async function launch() {
   }
   controller = new Controller(store);
   const repositoryBusy = require("./repository-actions.cjs").registerRepository(register, store, () => updater.isInstalling());
-  updater = new DesktopUpdater({ app, isBusy: () => repositoryBusy() || controller.runs.size > 0 || controller.editingSessions.size > 0 });
+  terminals = require("./terminal.cjs").registerTerminal(register, store, { canOpen: () => !updater.isInstalling() });
+  updater = new DesktopUpdater({ app, isBusy: () => terminals.isBusy()
+    ? "내장 터미널의 세션을 닫은 뒤 업데이트해 주세요."
+    : repositoryBusy() || controller.runs.size > 0 || controller.editingSessions.size > 0 });
   updater.on("state", (state) => {
     if (window && !window.isDestroyed()) window.webContents.send("flowrium:update", state);
   });
@@ -128,11 +133,11 @@ async function launch() {
     if (window && !window.isDestroyed())
       window.webContents.send("flowrium:event", payload);
   });
-  register("bootstrap", () => ({
-    ...store.snapshot(),
-    version: app.getVersion(),
-    platform: process.platform,
-  }));
+  register("bootstrap", async () => {
+    const snapshot = { ...store.snapshot(), version: app.getVersion(), platform: process.platform };
+    await acknowledgeUpdateLaunch(app, "ready");
+    return snapshot;
+  });
   register("chooseProject", async () => {
     const choice = await dialog.showOpenDialog(window, {
       title: "Flowrium에서 작업할 프로젝트 폴더 선택",
@@ -183,6 +188,10 @@ async function launch() {
     "download-docs":
       "https://docs.github.com/ko/pages/getting-started-with-github-pages/creating-a-github-pages-site",
   };
+  register("openSessionChatGPT", (id) => {
+    const session = store.session(text(id, "대화 식별자", 100));
+    return shell.openExternal(require("./chat-preferences.cjs").chatAddress(session.preferences?.chatGptUrl) || links.chatgpt);
+  });
   register("openExternal", (target) => {
     if (!Object.hasOwn(links, target))
       throw new Error("지원하지 않는 외부 링크입니다.");
@@ -313,9 +322,6 @@ else {
     if (quitting || !controller) return;
     event.preventDefault();
     quitting = true;
-    controller
-      .shutdown()
-      .catch(() => {})
-      .finally(() => app.quit());
+    Promise.allSettled([controller.shutdown(), terminals?.shutdown()]).finally(() => app.quit());
   });
 }
