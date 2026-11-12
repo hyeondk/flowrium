@@ -48,7 +48,7 @@ test('실제 역할별 작업 폴더 / 선택 커밋 / 충돌 보존·해결 / �
   await assert.rejects(action({action:'finish',index:-1,head:b.integration.head}),/남은 충돌/);
   await action({action:'resolve',index:-1,head:b.integration.head,file:'common.txt',side:'theirs'});
   await action({action:'finish',index:-1,head:b.integration.head});
-  b=await board();assert.equal(b.integration.mergeHead,'');assert.equal(await fs.readFile(path.join(b.integration.directory,'common.txt'),'utf8'),'second\n');
+  b=await board();assert.equal(b.integration.mergeHead,'');assert.match(await fs.readFile(path.join(b.integration.directory,'common.txt'),'utf8'),/^second\r?\n$/);
   assert.equal(await git(root,'rev-parse','HEAD'),b.base);
   await fs.writeFile(path.join(c.directory,'ignored.tmp'),'preserve');
   await assert.rejects(action({action:'cleanup',index:1,head:b.roles[1].head}),/무시한 파일/);
@@ -57,7 +57,7 @@ test('실제 역할별 작업 폴더 / 선택 커밋 / 충돌 보존·해결 / �
   assert.equal((await board()).roles[1].archived,true);
   await action({action:'restore',index:1});
   assert.equal((await board()).roles[1].head,b.roles[1].head);
-  assert.equal(await fs.readFile(path.join(c.directory,'common.txt'),'utf8'),'second\n');
+  assert.match(await fs.readFile(path.join(c.directory,'common.txt'),'utf8'),/^second\r?\n$/);
 });
 test('사용자 선택 역할만 생성 / QA 쓰기 금지 / 실제 Codex RPC에 원래 폴더 대신 역할 폴더 전달',async(t)=>{
   const {store,controller,project,run,root,prepare,board,action}=await setup(t);

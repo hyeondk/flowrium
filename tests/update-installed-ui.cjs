@@ -38,6 +38,7 @@ async function seedOldProject(userData,temporary) {
   const {Store}=require('../electron/store.cjs');
   const directory=path.join(temporary,'이전 프로젝트');
   await fs.mkdir(directory);
+  await fs.mkdir(path.join(temporary,'codex'),{recursive:true});
   const store=new Store(userData);await store.load();
   const project=await store.addProject(directory);
   const text='이전 설치에서 작성한 검증용 메시지';
