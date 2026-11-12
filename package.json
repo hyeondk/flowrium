@@ -45,6 +45,7 @@
   "build": {
     "appId": "io.github.hyeondk.flowrium",
     "productName": "Flowrium",
+    "beforePack": "./scripts/build-win-updater.cjs",
     "artifactName": "Flowrium-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release",

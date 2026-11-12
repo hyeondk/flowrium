@@ -202,11 +202,21 @@ async function handoff({ platform, file, stage, version, target, parentPid, resu
     command = '/bin/sh';
     args = [script, String(parentPid), stage, target, prepared, resultPath, token, receipt];
   } else {
-    const script = await fs.readFile(path.join(__dirname, 'update-helpers', 'windows.ps1'), 'utf8');
+    const source = await fs.readFile(path.join(__dirname, 'update-helpers', 'Flowrium.Update.exe'));
+    const directory = path.join(path.dirname(resultPath),'update-helper');
+    await fs.mkdir(directory,{recursive:true,mode:0o700});
+    const hash=createHash('sha256').update(source).digest('hex');
+    command=path.join(directory,hash+'.exe');
+    try { await fs.writeFile(command,source,{flag:'wx',mode:0o700}); }
+    catch (e) {
+      if(e.code!=='EEXIST' || createHash('sha256').update(await fs.readFile(command)).digest('hex')!==hash) throw e;
+    }
+    for(const name of await fs.readdir(directory)) {
+      if (/^[0-9a-f]{64}\.exe$/.test(name) && name!==hash+'.exe') await fs.unlink(path.join(directory,name)).catch(()=>{});
+    }
     await fs.writeFile(resultPath + '.log', '', { mode: 0o600 });
     await fs.writeFile(file + ':Zone.Identifier', '[ZoneTransfer]\r\nZoneId=3\r\n');
-    command = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-    args = ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')];
+    args = [];
     Object.assign(env, { FLOWRIUM_UPDATE_PID: String(parentPid), FLOWRIUM_UPDATE_STAGE: stage,
       FLOWRIUM_UPDATE_FILE: file, FLOWRIUM_UPDATE_TARGET: target, FLOWRIUM_UPDATE_VERSION: version,
       FLOWRIUM_UPDATE_RESULT: resultPath, FLOWRIUM_UPDATE_TOKEN: token, FLOWRIUM_UPDATE_RECEIPT: receipt });

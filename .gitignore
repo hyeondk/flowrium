@@ -8,3 +8,5 @@ release/
 .env.*
 !.env.example
 .flowrium/
+
+electron/update-helpers/Flowrium.Update.exe

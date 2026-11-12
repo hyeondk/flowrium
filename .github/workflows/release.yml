@@ -47,7 +47,9 @@ jobs:
       - run: npm ci
       - name: Windows 업데이트 도우미 시작 검사
         if: runner.os == 'Windows'
-        run: node tests/update-native-e2e.cjs --windows-helper-smoke
+        run: |
+          node scripts/build-win-updater.cjs
+          node tests/update-native-e2e.cjs --windows-helper-smoke
       - run: npm run build
       - name: 가상 터미널 검증
         if: runner.os == 'Windows'
