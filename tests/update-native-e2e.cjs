@@ -145,10 +145,9 @@ async function processIds(executable) {
       return match && match[2] === executable ? [Number(match[1])] : [];
     });
   }
-  const { stdout } = await powershell(`Get-Process -Name Flowrium -ErrorAction SilentlyContinue |
-    Where-Object { $_.Path -eq $env:BINARY -and $_.MainWindowHandle -ne 0 } | ForEach-Object { $_.Id }
-    exit 0`, { BINARY: executable });
-  return stdout.trim().split(/\s+/).filter(Boolean).map(Number);
+  const snapshot = await windowsSnapshot(executable);
+  return snapshot.processes.filter(p => p.Path && path.relative(executable, p.Path) === '' && p.Window > 0)
+    .map(p => Number(p.Id));
 }
 async function updateTrace(userData) {
   const file = path.join(userData, 'last-update-result.txt.log');
@@ -187,7 +186,7 @@ async function main() {
   const userData = mac && !unsigned
     ? path.join(os.homedir(), 'Library', 'Application Support', 'Flowrium') : path.join(temporary, 'profile');
   const assetName = 'Flowrium-' + version + '-' + suffix;
-  let binary, oldProcess, oldApp, quitRequest, restartedPid;
+  let binary, oldProcess, oldPid, oldApp, quitRequest, restartedPid;
   try {
     if (mac) { await verifyMacRollback(temporary); await verifyMacReady(temporary); }
     await fs.mkdir(path.dirname(installed), { recursive: true });
@@ -208,6 +207,7 @@ async function main() {
     const before = await digest(binary);
     if (mac) {
       oldProcess = spawn(binary, ['--hold'], { stdio: ['ignore','pipe','ignore'] });
+      oldPid = oldProcess.pid;
       let ready = '';
       oldProcess.stdout.on('data', chunk => { ready += chunk.toString(); });
       let startError;
@@ -223,11 +223,18 @@ async function main() {
       delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_RENDERER_URL;
       oldApp = await _electron.launch({ executablePath: binary, args: ['--user-data-dir=' + userData], env, timeout: 60000 });
       oldProcess = oldApp.process();
-      await oldApp.firstWindow();
-      assert.equal((await oldApp.evaluate(({ app }) => app.getVersion())), previous);
-      assert.equal(path.relative(userData, await oldApp.evaluate(({ app }) => app.getPath('userData'))), '');
-      await waitFor(async () => (await processIds(binary)).includes(oldProcess.pid), 30000, '이전 버전의 실제 창 확인 실패');
-      console.log('이전 설치 및 창 확인', previous, oldProcess.pid, binary);
+      const oldWindow = await oldApp.firstWindow();
+      await oldWindow.waitForLoadState('domcontentloaded');
+      const old = await oldApp.evaluate(({ app, BrowserWindow }) => ({
+        pid: process.pid, version: app.getVersion(), profile: app.getPath('userData'), exe: app.getPath('exe'),
+        nativeWindow: BrowserWindow.getAllWindows().some(w => !w.isDestroyed() && w.getNativeWindowHandle().some(Boolean)),
+      }));
+      assert.equal(old.version, previous);
+      assert.equal(path.relative(userData, old.profile), '');
+      assert.equal(path.relative(binary, old.exe), '');
+      assert.equal(old.nativeWindow, true);
+      oldPid = old.pid;
+      console.log('이전 설치 및 실제 창 확인', previous, oldPid, binary, '/ 실행기', oldProcess.pid);
     }
     const updater = new DesktopUpdater({
       app: { isPackaged: true, getPath: () => userData, getVersion: () => previous,
@@ -238,7 +245,7 @@ async function main() {
             setTimeout(() => app.quit(), 50);
           });
         } },
-      parentPid: oldProcess.pid, execPath: binary,
+      parentPid: oldPid, execPath: binary,
       fetchImpl: async (target) => {
         if (target === url + 'SHA256SUMS.txt') return new Response(sums);
         if (target === url + assetName) return new Response(createReadStream(file));
@@ -273,7 +280,7 @@ async function main() {
         return records.find(r => r.step === 'app-ready');
       }, 420000, '설치 또는 새 앱 준비 신호가 제한 시간 안에 도착하지 않았습니다.');
       restartedPid = ready.detail.appPid;
-      assert.notEqual(restartedPid, oldProcess.pid);
+      assert.notEqual(restartedPid, oldPid);
       await waitFor(async () => (await processIds(binary)).includes(restartedPid), 30000, '준비 신호를 보낸 새 앱의 실제 창 확인 실패');
     } else {
       restartedPid = await waitFor(async () => (await processIds(binary)).find(pid => pid !== oldProcess.pid),

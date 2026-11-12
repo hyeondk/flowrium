@@ -63,16 +63,32 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "서명 또는 공증 설정 대기 / 검증용 Mac 패키지만 빌드합니다."
+            echo "Apple 공증 정보 없음 / 임시 서명 Mac 배포본을 검사합니다."
           fi
         env:
           CERT: ${{ secrets.MAC_CSC_LINK }}
           ACCOUNT: ${{ secrets.APPLE_ID }}
           PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           TEAM: ${{ secrets.APPLE_TEAM_ID }}
-      - name: Mac 보안 거절 경로 검증용 패키지 생성
+      - name: Mac 임시 서명 패키지 생성
         if: runner.os == 'macOS' && steps.signing.outputs.ready != 'true'
         run: npx --no-install electron-builder --mac --arm64 --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.dmg.sign=false
+      - name: 임시 서명 디스크 이미지 설치 및 실행 검증
+        if: runner.os == 'macOS' && steps.signing.outputs.ready != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          image=(release/Flowrium-*-mac-arm64.dmg)
+          scratch=$(mktemp -d)
+          mkdir "$scratch/mount" "$scratch/Applications"
+          hdiutil verify "${image[0]}"
+          hdiutil attach -quiet -readonly -nobrowse -mountpoint "$scratch/mount" "${image[0]}"
+          trap 'hdiutil detach "$scratch/mount" -quiet; /bin/rm -rf "$scratch"' EXIT
+          app="$scratch/Applications/Flowrium.app"
+          ditto "$scratch/mount/Flowrium.app" "$app"
+          codesign --verify --deep --strict "$app"
+          test "$(lipo -archs "$app/Contents/MacOS/Flowrium")" = arm64
+          node tests/terminal-packaged-e2e.cjs "$app"
       - name: Mac 배포용 앱 서명 및 공증 / 디스크 이미지 공증
         if: runner.os == 'macOS' && steps.signing.outputs.ready == 'true'
         shell: bash
@@ -115,7 +131,6 @@ jobs:
       - name: 운영체제별 업데이트 검증
         run: node tests/update-native-e2e.cjs ${{ runner.os == 'macOS' && steps.signing.outputs.ready != 'true' && '--expect-unsigned' || '' }}
       - name: 설치 파일 보관
-        if: runner.os == 'Windows' || steps.signing.outputs.ready == 'true'
         uses: actions/upload-artifact@v6
         with:
           name: flowrium-${{ matrix.os }}-${{ matrix.arch }}
@@ -151,4 +166,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           STAGE_FROM_MAIN: ${{ github.event_name == 'workflow_dispatch' && inputs.stage_release }}
-          EXPECT_MAC: ${{ needs.build.outputs.mac_ready }}
+          EXPECT_MAC: 'true'
