@@ -303,6 +303,7 @@ async function main() {
       console.error('Windows 검증 실패 시점', JSON.stringify(await windowsSnapshot(binary).catch(e => ({ error: e.message }))));
       const records = await updateTrace(userData).catch(() => []);
       console.error('업데이트 전체 기록', JSON.stringify(records));
+      console.error('도우미 시작 기록', (await fs.readFile(path.join(userData,'last-update-result.txt.startup.txt'),'utf8').catch(()=> '')).slice(-3000));
       // 실패한 일회용 러너에서 시험 도우미/복구 창이 정리 작업을 가로막지 않게 한다.
       const helper = records.find(r => r.step === 'helper-start')?.helperPid;
       if (helper) await run('taskkill.exe', ['/PID', String(helper), '/T', '/F']).catch(() => {});
@@ -324,4 +325,24 @@ async function main() {
     await fs.rm(temporary, { recursive: true, force: true, maxRetries: 12, retryDelay: 500 });
   }
 }
-main().catch((error) => { console.error(error); process.exitCode = 1; });
+async function windowsHelperSmoke() {
+  assert.equal(process.platform,'win32');
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-helper-'));
+  try {
+    const file=path.join(temp,'unused.exe'), result=path.join(temp,'result');
+    await fs.writeFile(file,'');
+    try {
+      await require('../electron/updater.cjs').handoff({platform:'win32',file,stage:temp,version,
+        target:path.join(temp,'Flowrium.exe'),parentPid:process.pid,resultPath:result,signal:AbortSignal.timeout(30000)});
+      const marker=(await fs.readdir(temp)).find(item=>item.endsWith('.helper'));
+      const helper=Number(await fs.readFile(path.join(temp,marker),'utf8'));
+      assert.ok(helper>0);
+      await run('taskkill.exe',['/PID',String(helper),'/T','/F']);
+      console.log('Windows 보조 프로세스 정상 기동 및 부모 프로세스 대기 확인');
+    } catch(error) {
+      console.error('도우미 시작 기록', (await fs.readFile(result+'.startup.txt','utf8').catch(()=> '')).slice(-4000));
+      throw error;
+    }
+  } finally {await fs.rm(temp,{recursive:true,force:true,maxRetries:8,retryDelay:200});}
+}
+(process.argv.includes('--windows-helper-smoke') ? windowsHelperSmoke() : main()).catch((error) => { console.error(error); process.exitCode = 1; });

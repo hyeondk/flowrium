@@ -11,6 +11,7 @@ function Write-FlowriumUpdateTrace([string]$step, [hashtable]$detail = @{}) {
     try { [IO.File]::AppendAllText($log, (ConvertTo-Json $record -Compress) + [Environment]::NewLine, $encoding) } catch {}
 }
 try {
+    [IO.File]::WriteAllText($receipt + '.helper', [string]$PID, $encoding)
     Write-FlowriumUpdateTrace 'helper-start' @{ parentPid = $env:FLOWRIUM_UPDATE_PID; target = $env:FLOWRIUM_UPDATE_TARGET; expectedVersion = $env:FLOWRIUM_UPDATE_VERSION }
     # 부모가 Get-Process와 WaitForExit 사이에서 종료되어도 실패로 판정하지 않는다.
     $parentLimit = [DateTime]::UtcNow.AddSeconds(120)
@@ -72,6 +73,6 @@ try {
         if ($answer -eq [Windows.Forms.DialogResult]::Yes) { Start-Process 'https://hyeondk.github.io/flowrium/' }
     }
 } finally {
-    foreach ($suffix in '.json', '.starting', '.ready') { Remove-Item -LiteralPath ($receipt + $suffix) -Force -ErrorAction SilentlyContinue }
+    foreach ($suffix in '.json', '.starting', '.ready', '.helper') { Remove-Item -LiteralPath ($receipt + $suffix) -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $env:FLOWRIUM_UPDATE_STAGE -Recurse -Force -ErrorAction SilentlyContinue
 }

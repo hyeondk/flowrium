@@ -168,6 +168,27 @@ async function acknowledgeUpdateLaunch(app, phase, argv = process.argv) {
 async function cleanReceipt(base) {
   await Promise.all(['.json', '.starting', '.ready'].map((ext) => fs.rm(base + ext, { force: true }).catch(() => {})));
 }
+async function launchWindowsHelper(command, args, env, receipt, resultPath) {
+  const diagnostic = resultPath + '.startup.txt';
+  const output = await fs.open(diagnostic, 'w', 0o600);
+  let child;
+  try {
+    child = spawn(command, args, { detached:true, windowsHide:true, env, stdio:['ignore',output.fd,output.fd] });
+    await new Promise((resolve,reject) => { child.once('error',reject); child.once('spawn',resolve); });
+  } finally { await output.close(); }
+  const expires = Date.now()+20000;
+  try {
+    while (Date.now()<expires && child.exitCode===null && child.signalCode===null) {
+      const acknowledged = await fs.readFile(receipt+'.helper','utf8').catch(e => e.code==='ENOENT'?'':Promise.reject(e));
+      if (acknowledged.trim()===String(child.pid)) { child.unref(); return; }
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    throw new Error('Windows 업데이트 도우미가 시작되지 않았습니다. 기존 앱을 계속 사용하거나 다운로드 페이지에서 설치할 수 있습니다. 종료 코드 / '+String(child.exitCode));
+  } catch(e) {
+    if (child.exitCode===null && child.signalCode===null) child.kill();
+    throw e;
+  }
+}
 async function handoff({ platform, file, stage, version, target, parentPid, resultPath, signal }) {
   let command, args;
   const env = { ...process.env };
@@ -193,6 +214,10 @@ async function handoff({ platform, file, stage, version, target, parentPid, resu
   signal.throwIfAborted();
   await fs.writeFile(receipt + '.json', JSON.stringify({ version, executable }), { flag: 'wx', mode: 0o600 });
   try {
+    if (platform==='win32') {
+      await launchWindowsHelper(command,args,env,receipt,resultPath);
+      return;
+    }
     await new Promise((resolve, reject) => {
       const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true, env });
       child.once('error', reject);
@@ -200,6 +225,7 @@ async function handoff({ platform, file, stage, version, target, parentPid, resu
     });
   } catch (error) {
     await cleanReceipt(receipt);
+    if (platform==='win32') await fs.rm(receipt+'.helper',{force:true});
     throw error;
   }
 }
