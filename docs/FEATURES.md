@@ -1,5 +1,7 @@
 # Flowrium 기능 비교와 검증 범위
 
+**이 표는 원본과 동등하게 완성했다는 판정이 아닙니다.** 2026년 11월 13일 추가 소스 감사에서 부분 대응 19개 / 미구현 9개, 총 28개 잔여 작업군을 확인했습니다. 개인 비서 자동화 / 대화 간 협업 / 모바일 조작 등은 아래의 큰 기능명만으로 동등하게 볼 수 없습니다. [잔여 기능 감사와 작업량](PARITY-AUDIT-0.3.0.md)을 함께 확인하세요. API 경로 114개와 Flowrium 자체 시험 개수는 전체 기능의 완료율이 아닙니다.
+
 비교 대상은 Mac에 설치된 Maestro 0.1.0 실행기와 로컬 원본 소스 개정 `9caac0a`입니다. 앱 실행기는 이미 실행 중인 로컬 서버의 창을 열었습니다. 별도의 브라우저 세션에서 신규 프로젝트 / 설정 / 산출물 / 완료 / 터미널 경로가 모두 로그인 화면으로 이동하는 것도 확인했습니다. 로그인된 개인 기록과 배포 키는 사용하지 않았습니다. [Maestro 공개 페이지](https://lhk228.github.io/maestro-download/)
 
 원본 소스의 `src/routes.tsx`, 사이드바, 프로젝트 탭, 설정, 114개 `src/app/api/**/route.ts` 파일을 기능별로 대조했습니다. 하나의 기능이 여러 API를 사용할 수 있습니다. 아래에서 ‘소스 확인’은 화면과 처리 코드의 연결을 추적했다는 뜻입니다. ‘실행 확인’은 해당 동작과 결과를 실제로 관찰한 경우에만 표시합니다.
@@ -30,15 +32,15 @@
 | --- | ---: | --- | --- |
 | 대시보드와 프로젝트 | 15 | `cards` / `dashboard` / `dashboard/charts` / `goals` / `next` / `projects` / `projects/[slug]` / `projects/[slug]/card` / `projects/[slug]/docs` / `projects/[slug]/github` / `projects/[slug]/home` / `projects/[slug]/services` / `projects/[slug]/settings` / `projects/[slug]/work` / `projects/order` | 킥오프 / 아홉 탭 / 기간별 목표 / 업무 및 최근 기록을 실제 화면에서 확인했습니다. 원본 프로젝트 카드 묶음 내보내기와 일괄 가져오기, 순서 변경, 최근 14일 커밋 그래프는 별도 기능입니다. |
 | 폴더와 파일 | 7 | `folders` / `open` / `pick-folder` / `uploads` / `uploads/[id]` / `workspace-root` / `workspace-root/pick` | 프로젝트마다 독립된 폴더 선택, 파일 선택 / 끌어놓기, 원본 보존과 위치 열기를 확인했습니다. |
-| 업무 대화와 기록 | 16 | `chats` / `chats/[id]` / `chats/[id]/compact` / `chats/[id]/context` / `chats/[id]/fork` / `chats/[id]/interrupt` / `chats/[id]/items` / `chats/[id]/mail` / `chats/[id]/messages` / `chats/[id]/options` / `chats/[id]/rewind` / `chats/[id]/stream` / `chats/[id]/tasks` / `commands` / `jobs` / `work` | 여섯 업무의 생성 / 독립 요청 / 재진입, 모델 설정 / 분기 / 되감기 / 상태 변경을 실제 앱에서 확인했습니다. 원본 채팅의 메일 작업과 세부 명령 전체를 검증하지 않았습니다. |
+| 업무 대화와 기록 | 16 | `chats` / `chats/[id]` / `chats/[id]/compact` / `chats/[id]/context` / `chats/[id]/fork` / `chats/[id]/interrupt` / `chats/[id]/items` / `chats/[id]/mail` / `chats/[id]/messages` / `chats/[id]/options` / `chats/[id]/rewind` / `chats/[id]/stream` / `chats/[id]/tasks` / `commands` / `jobs` / `work` | 기본 업무 대화와 편집을 실제 앱에서 확인했습니다. 원본의 `mail`은 이메일이 아니라 실행 중 지시 우편함이며 해당 대기열과 일반 대화 간 전달은 미구현입니다. 채팅 첨부도 없고 분기와 되감기의 내부 문맥 보존 방식이 다릅니다. |
 | 실행 상태와 결정 | 7 | `activity` / `decisions/[id]` / `decisions/hidden` / `events` / `inbox` / `inbox/[id]` / `live` | 실행 중 목록, 중단, 대기 요청 승인, 팀의 결정과 답변을 지원합니다. 원본의 숨긴 결정 보관 방식은 별도입니다. |
 | 산출물 | 5 | `outputs` / `outputs/[id]` / `outputs/[id]/export` / `outputs/[id]/file/[...path]` / `outputs/docs` | 지원 문서 탐색 / 검색 / 미리보기 / 업무 결과의 네 가지 형식 저장 / 원본 대화 이동을 확인했습니다. |
-| 팀과 메모 | 7 | `memory` / `memory/avatar/[id]` / `memory/link` / `memory/transfer` / `memory/undo` / `secretary` / `team` | 역할별 실행과 결정, 독립 작업 폴더, 개인 비서 대화, 역할에 연결하는 메모와 복원을 제공합니다. 원본의 캐릭터 아바타는 제외합니다. |
-| 저장소와 배포 활동 | 8 | `github/accounts` / `github/prs` / `github/pulls` / `github/pulls/merge` / `push` / `repo-ship` / `repo-ship/clean` / `ship` | 로컬 변경, 커밋, GitHub 변경 요청과 병합, 이슈와 실행 / 배포 현황을 조회합니다. 원격 조직 계정별 권한 조합은 미검증입니다. |
+| 팀과 메모 | 7 | `memory` / `memory/avatar/[id]` / `memory/link` / `memory/transfer` / `memory/undo` / `secretary` / `team` | 기본 팀 실행과 메모 / 복원은 있습니다. 원본의 동적 PM 운영 / 자동 QA 반복 / AI 기억 쓰기와 이동 / 비서의 주기 감시와 보고 및 예약 / 업무 위임 추적은 동등하게 구현하지 않았습니다. 캐릭터 아바타는 제외합니다. |
+| 저장소와 배포 활동 | 7 | `github/accounts` / `github/prs` / `github/pulls` / `github/pulls/merge` / `repo-ship` / `repo-ship/clean` / `ship` | 로컬 변경과 개별 커밋 / 푸시 / 변경 요청 및 병합, 현황 조회가 있습니다. 여러 계정 라우팅 / 여러 저장소의 단계별 통합 실행과 재개 / 저장소 정리는 미구현이거나 부분 대응입니다. |
 | 터미널과 시스템 | 10 | `awake` / `diag` / `docker` / `server/preview` / `server/restart` / `storage` / `system` / `system/advise` / `terminal` / `terminal/[id]` | 프로젝트별 터미널과 서비스, 자원, 프로세스와 컨테이너, 잠자기 방지를 지원합니다. 원본 서버 재시작, 탐색 지연 로그 및 오래된 기록 일괄 정리는 이 비교의 검증 범위에서 제외했습니다. |
 | 설정과 계정 | 14 | `app-info` / `auth` / `codex-auth` / `codex-models` / `lock` / `lock/verify` / `login/callback` / `login/config` / `login/handoff` / `login/logout` / `login/start` / `models` / `settings` / `usage` | 기기별 공식 계정 로그인, 모델 / 추론 강도, PIN 잠금, 사용량 요청, 로그아웃을 제공합니다. 로그인 공급자별 쿠키 인계는 원본 서버의 방식입니다. |
 | 외부 자료와 음성 | 9 | `google` / `google/calendar` / `google/callback` / `google/connect` / `google/drive` / `google/drive/file` / `voice/server` / `voice/stt` / `voice/tts` | Google 계정의 읽기와 지원 문서 가져오기, 음성 파일 / 녹음 인식, 답변 읽기를 제공합니다. 개인 계정 승인, 유료 인식 호출과 실제 마이크 하드웨어는 별도입니다. |
-| 모바일 | 8 | `mobile/kakao` / `mobile/kakao/ask` / `mobile/kakao/callback` / `mobile/kakao/disconnect` / `mobile/kakao/send` / `mobile/kakao/start` / `mobile/link-mail` / `mobile/tunnel` | 선택형 HTTPS 터널과 모바일 브라우저가 같은 업무를 이어갑니다. 카카오 전송 / 문의와 메일 회신으로 링크 받기는 포함하지 않습니다. |
+| 모바일 | 9 | `mobile/kakao` / `mobile/kakao/ask` / `mobile/kakao/callback` / `mobile/kakao/disconnect` / `mobile/kakao/send` / `mobile/kakao/start` / `mobile/link-mail` / `mobile/tunnel` / `push` | 기본 대화 / 승인 / 조회와 선택형 HTTPS 연결을 제공합니다. 원본 `push`는 Git 푸시가 아니라 휴대폰 웹 푸시입니다. 웹 푸시 / 팀 생성과 실행 제어 / 첨부 / 모바일 비서와 설정 / 카카오 / 메일 링크 수신은 포함하지 않습니다. |
 | 음악과 자료실 | 5 | `atlas` / `atlas/ask` / `constellation/sizes` / `music/info` / `music/lyrics` | 음악 재생목록, 직접 입력하는 가사와 메모를 지원합니다. 자동 가사 수집, 원본 장식 화면과 디자인 자료실은 제외합니다. |
 | 자체 갱신과 엔진 훅 | 3 | `hooks` / `hooks/install` / `update` | GitHub 릴리스의 플랫폼 설치 파일과 확인값으로 앱을 갱신합니다. 원본 전용 엔진 훅 설치는 대상에서 제외했습니다. |
 
