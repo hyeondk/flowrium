@@ -1,28 +1,247 @@
 <!doctype html>
 <html lang="ko">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="theme-color" content="#ffffff" />
-<meta name="description" content="ChatGPT 계정으로 Codex와 함께 작업하는 개인용 데스크톱 앱 Flowrium. Mac과 Windows에서 프로젝트와 대화의 맥락을 이어갑니다." />
-<title>Flowrium / 나만의 작업 흐름</title>
-<link rel="icon" href="./mark.svg" type="image/svg+xml" />
-<link rel="stylesheet" href="./style.css" />
-<script type="module" src="./site.js"></script>
-</head>
-<body>
-<a class="skip-link" href="#main">본문으로 이동</a>
-<header class="site-header wrap"><a class="brand" href="./"><img src="./mark.svg" width="32" height="32" alt="" />Flowrium</a><nav aria-label="주 메뉴"><a href="#workspace">작업 공간</a><a href="#download">다운로드</a><a id="source-link" class="source-link" href="https://github.com/hyeondk/flowrium" target="_blank" rel="noopener noreferrer">소스 보기 ↗</a></nav></header>
-<main id="main">
-<section class="hero wrap" aria-labelledby="hero-title"><span class="eyebrow">ChatGPT와 함께하는 개인 작업 공간</span><h1 id="hero-title">생각에서 실행까지.<br />나만의 흐름으로.</h1><p>프로젝트를 연결하고, Codex와 작업하고,<br class="desktop-break" /> ChatGPT로 생각을 이어가세요.<br class="desktop-break" /> 필요한 것만 담은 작업 공간, Flowrium.</p><div class="hero-actions"><a class="button primary" href="#download">Flowrium 다운로드 <span aria-hidden="true">↓</span></a><a class="text-link" href="#workspace">작업 공간 살펴보기 ↗</a></div><span class="hero-platforms">Mac / Windows / 초기 개발 버전</span></section>
-<section class="workspace-section wrap" id="workspace" aria-labelledby="workspace-title"><div class="section-heading"><div><span class="eyebrow">작업에만 집중할 수 있도록</span><h2 id="workspace-title">새 작업, 가볍게 시작하세요.</h2></div><p>계획 / 구현 / 검토<br />필요한 맥락을 한곳에.</p></div><figure class="app-preview"><img src="./workspace.png" width="1440" height="980" alt="Flowrium 실제 앱 화면. 왼쪽 프로젝트와 작업 목록, 중앙 새 작업과 계획 / 구현 / 검토 선택, 오른쪽 프로젝트 맥락 패널이 표시됩니다." /><figcaption>Flowrium 초기 버전의 실제 실행 화면</figcaption></figure><div class="features"><article><span class="feature-number">01 /</span><h3>프로젝트마다 독립적으로</h3><p>폴더와 대화를 연결하세요. 프로젝트 안에 작업 기록을 보관하고 다시 연결해 이어갑니다.</p></article><article><span class="feature-number">02 /</span><h3>ChatGPT 계정으로 실행</h3><p>Codex를 연결해 계획부터 구현과 검토까지. 진행 상황을 읽고 필요한 요청을 승인하세요.</p></article><article><span class="feature-number">03 /</span><h3>기기의 경계를 넘어</h3><p>Dropbox 프로젝트 폴더를 연결하면 같은 대화 기록을 다른 컴퓨터에서도 다시 불러올 수 있습니다.</p></article></div></section>
-<section class="download-section" id="download" aria-labelledby="download-title"><div class="wrap"><div class="download-heading"><span class="eyebrow">당신의 컴퓨터에서 시작하세요</span><h2 id="download-title">Flowrium 다운로드</h2><p>사용하는 컴퓨터에 맞는 설치 파일을 선택하세요.</p></div><div class="release-notice" role="status" aria-live="polite"><span id="release-status">공개된 설치 파일을 확인하고 있습니다.</span><button id="retry-releases" type="button" hidden>다시 확인</button></div><div class="download-grid">
-<article class="download-card"><span class="os-symbol" aria-hidden="true">⌘</span><h3>Mac</h3><p>Apple Silicon</p><span class="architecture">M 시리즈 칩 / arm64</span><a class="download-button" data-download="mac-arm64" aria-disabled="true" tabindex="-1">설치 파일 준비 중 <span aria-hidden="true">↓</span></a><small data-file="mac-arm64">공개 릴리스가 등록되면 활성화됩니다.</small></article>
-<article class="download-card"><span class="os-symbol" aria-hidden="true">⌘</span><h3>Mac</h3><p>Intel</p><span class="architecture">Intel 프로세서 / x64</span><a class="download-button" data-download="mac-x64" aria-disabled="true" tabindex="-1">설치 파일 준비 중 <span aria-hidden="true">↓</span></a><small data-file="mac-x64">공개 릴리스가 등록되면 활성화됩니다.</small></article>
-<article class="download-card"><svg class="os-symbol windows-symbol" aria-hidden="true" viewBox="0 0 32 32"><path d="M2 5l12-2v12H2zm14-2l14-2v14H16zM2 17h12v12L2 27zm14 0h14v14l-14-2z" fill="currentColor" /></svg><h3>Windows</h3><p>64비트 PC</p><span class="architecture">Intel / AMD 프로세서 / x64</span><a class="download-button" data-download="win-x64" aria-disabled="true" tabindex="-1">설치 파일 준비 중 <span aria-hidden="true">↓</span></a><small data-file="win-x64">공개 릴리스가 등록되면 활성화됩니다.</small></article>
-</div><div class="download-footnote"><p>초기 버전은 정식 배포 서명과 Apple 공증이 완료되지 않았을 수 있습니다. 설치 전 릴리스 설명에서 서명 상태와 검증 범위를 확인해 주세요.</p><a id="releases-link" href="https://github.com/hyeondk/flowrium/releases" target="_blank" rel="noopener noreferrer">전체 릴리스와 검증 정보 ↗</a></div></div></section>
-<section class="getting-started wrap" aria-labelledby="start-title"><div><span class="eyebrow">처음 사용하는 분을 위해</span><h2 id="start-title">세 단계로 시작하세요.</h2><a class="text-link" href="https://github.com/hyeondk/flowrium#시작하기" target="_blank" rel="noopener noreferrer">설치와 사용 안내 ↗</a></div><ol><li><span>01</span><div><h3>Flowrium 설치</h3><p>Mac은 앱을 응용 프로그램 폴더로 옮기고, Windows는 설치 프로그램을 실행하세요.</p></div></li><li><span>02</span><div><h3>ChatGPT 계정 연결</h3><p>앱에서 Codex를 연결하고 ChatGPT 계정으로 로그인하세요.</p></div></li><li><span>03</span><div><h3>프로젝트 연결</h3><p>작업할 로컬 폴더나 Dropbox 프로젝트 폴더를 고르고 새 작업을 시작하세요.</p></div></li></ol></section>
-</main><footer class="site-footer wrap"><a class="brand" href="./"><img src="./mark.svg" width="24" height="24" alt="" />Flowrium</a><p>생각이 흐르고, 작업이 이어지는 곳.</p><span>개인 프로젝트 / 초기 개발 버전</span></footer>
-<noscript><p class="noscript-note">자동 다운로드 확인에는 자바스크립트가 필요합니다. 전체 릴리스 링크에서 설치 파일의 공개 여부를 확인해 주세요.</p></noscript>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <meta
+      name="description"
+      content="ChatGPT 계정으로 Codex와 함께 작업하는 개인용 데스크톱 앱 Flowrium. Mac과 Windows에서 프로젝트와 대화의 맥락을 이어갑니다."
+    />
+    <title>Flowrium / 나만의 작업 흐름</title>
+    <link rel="icon" href="./mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./site.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문으로 이동</a>
+    <header class="site-header wrap">
+      <a class="brand" href="./"
+        ><img src="./mark.svg" width="32" height="32" alt="" />Flowrium</a
+      >
+      <nav aria-label="주 메뉴">
+        <a href="#workspace">작업 공간</a><a href="#download">다운로드</a
+        ><a
+          id="source-link"
+          class="source-link"
+          href="https://github.com/hyeondk/flowrium"
+          target="_blank"
+          rel="noopener noreferrer"
+          >소스 보기 ↗</a
+        >
+      </nav>
+    </header>
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <span class="eyebrow">ChatGPT와 함께하는 개인 작업 공간</span>
+        <h1 id="hero-title">생각에서 실행까지.<br />나만의 흐름으로.</h1>
+        <p>
+          프로젝트를 연결하고, Codex와 작업하고,<br class="desktop-break" />
+          ChatGPT로 생각을 이어가세요.<br class="desktop-break" />
+          필요한 것만 담은 작업 공간, Flowrium.
+        </p>
+        <div class="hero-actions">
+          <a class="button primary" href="#download"
+            >Flowrium 다운로드 <span aria-hidden="true">↓</span></a
+          ><a class="text-link" href="#workspace">작업 공간 살펴보기 ↗</a>
+        </div>
+        <span class="hero-platforms">Mac / Windows / 초기 개발 버전</span>
+      </section>
+      <section
+        class="workspace-section wrap"
+        id="workspace"
+        aria-labelledby="workspace-title"
+      >
+        <div class="section-heading">
+          <div>
+            <span class="eyebrow">작업에만 집중할 수 있도록</span>
+            <h2 id="workspace-title">새 작업, 가볍게 시작하세요.</h2>
+          </div>
+          <p>계획 / 구현 / 검토<br />필요한 맥락을 한곳에.</p>
+        </div>
+        <figure class="app-preview">
+          <img
+            src="./workspace.png"
+            width="1440"
+            height="980"
+            alt="Flowrium 실제 앱 화면. 왼쪽 프로젝트와 작업 목록, 중앙 새 작업과 계획 / 구현 / 검토 선택, 오른쪽 프로젝트 맥락 패널이 표시됩니다."
+          />
+          <figcaption>Flowrium 초기 버전의 실제 실행 화면</figcaption>
+        </figure>
+        <div class="features">
+          <article>
+            <span class="feature-number">01 /</span>
+            <h3>프로젝트마다 독립적으로</h3>
+            <p>
+              폴더와 대화를 연결하세요. 프로젝트 안에 작업 기록을 보관하고 다시
+              연결해 이어갑니다.
+            </p>
+          </article>
+          <article>
+            <span class="feature-number">02 /</span>
+            <h3>ChatGPT 계정으로 실행</h3>
+            <p>
+              Codex를 연결해 계획부터 구현과 검토까지. 진행 상황을 읽고 필요한
+              요청을 승인하세요.
+            </p>
+          </article>
+          <article>
+            <span class="feature-number">03 /</span>
+            <h3>기기의 경계를 넘어</h3>
+            <p>
+              Dropbox 프로젝트 폴더를 연결하면 같은 대화 기록을 다른
+              컴퓨터에서도 다시 불러올 수 있습니다.
+            </p>
+          </article>
+        </div>
+      </section>
+      <section
+        class="download-section"
+        id="download"
+        aria-labelledby="download-title"
+      >
+        <div class="wrap">
+          <div class="download-heading">
+            <span class="eyebrow">당신의 컴퓨터에서 시작하세요</span>
+            <h2 id="download-title">Flowrium 다운로드</h2>
+            <p>사용하는 컴퓨터에 맞는 설치 파일을 선택하세요.</p>
+          </div>
+          <div class="release-notice" role="status" aria-live="polite">
+            <span id="release-status"
+              >공개된 설치 파일을 확인하고 있습니다.</span
+            ><button id="retry-releases" type="button" hidden>다시 확인</button>
+          </div>
+          <div class="download-grid">
+            <article class="download-card">
+              <span class="os-symbol" aria-hidden="true">⌘</span>
+              <h3>Mac</h3>
+              <p>Apple Silicon</p>
+              <span class="architecture">M 시리즈 칩 / arm64</span
+              ><a
+                class="download-button"
+                data-download="mac-arm64"
+                aria-disabled="true"
+                tabindex="-1"
+                >설치 파일 준비 중 <span aria-hidden="true">↓</span></a
+              ><small data-file="mac-arm64"
+                >공개 릴리스가 등록되면 활성화됩니다.</small
+              >
+            </article>
+            <article class="download-card">
+              <span class="os-symbol" aria-hidden="true">⌘</span>
+              <h3>Mac</h3>
+              <p>Intel</p>
+              <span class="architecture">Intel 프로세서 / x64</span
+              ><a
+                class="download-button"
+                data-download="mac-x64"
+                aria-disabled="true"
+                tabindex="-1"
+                >설치 파일 준비 중 <span aria-hidden="true">↓</span></a
+              ><small data-file="mac-x64"
+                >공개 릴리스가 등록되면 활성화됩니다.</small
+              >
+            </article>
+            <article class="download-card">
+              <svg
+                class="os-symbol windows-symbol"
+                aria-hidden="true"
+                viewBox="0 0 32 32"
+              >
+                <path
+                  d="M2 5l12-2v12H2zm14-2l14-2v14H16zM2 17h12v12L2 27zm14 0h14v14l-14-2z"
+                  fill="currentColor"
+                />
+              </svg>
+              <h3>Windows</h3>
+              <p>64비트 PC</p>
+              <span class="architecture">Intel / AMD 프로세서 / x64</span
+              ><a
+                class="download-button"
+                data-download="win-x64"
+                aria-disabled="true"
+                tabindex="-1"
+                >설치 파일 준비 중 <span aria-hidden="true">↓</span></a
+              ><small data-file="win-x64"
+                >공개 릴리스가 등록되면 활성화됩니다.</small
+              >
+            </article>
+          </div>
+          <div class="download-footnote">
+            <p>
+              초기 버전은 정식 배포 서명과 Apple 공증이 완료되지 않았을 수
+              있습니다. 설치 전 릴리스 설명에서 서명 상태와 검증 범위를 확인해
+              주세요.
+            </p>
+            <a
+              id="releases-link"
+              href="https://github.com/hyeondk/flowrium/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+              >전체 릴리스와 검증 정보 ↗</a
+            >
+          </div>
+        </div>
+      </section>
+      <section class="getting-started wrap" aria-labelledby="start-title">
+        <div>
+          <span class="eyebrow">처음 사용하는 분을 위해</span>
+          <h2 id="start-title">세 단계로 시작하세요.</h2>
+          <a
+            class="text-link"
+            href="https://github.com/hyeondk/flowrium#시작하기"
+            target="_blank"
+            rel="noopener noreferrer"
+            >설치와 사용 안내 ↗</a
+          >
+        </div>
+        <ol>
+          <li>
+            <span>01</span>
+            <div>
+              <h3>Flowrium 설치</h3>
+              <p>
+                Mac은 앱을 응용 프로그램 폴더로 옮기고, Windows는 설치
+                프로그램을 실행하세요.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span>02</span>
+            <div>
+              <h3>본인의 ChatGPT 계정 연결</h3>
+              <p>
+                각자 자신의 계정으로 Codex에 로그인합니다. 배포자의 로그인
+                정보와 대화 기록은 포함되지 않습니다.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span>03</span>
+            <div>
+              <h3>프로젝트 연결</h3>
+              <p>
+                자신의 로컬 폴더나 Dropbox 프로젝트 폴더를 고르고 새 작업을
+                시작하세요. 연결된 프로젝트의 기존 Codex 대화는 제공되는
+                사용자와 응답 본문을 선별해 가져올 수 있습니다.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+    </main>
+    <footer class="site-footer wrap">
+      <a class="brand" href="./"
+        ><img src="./mark.svg" width="24" height="24" alt="" />Flowrium</a
+      >
+      <p>생각이 흐르고, 작업이 이어지는 곳.</p>
+      <span>개인 프로젝트 / 초기 개발 버전</span>
+    </footer>
+    <noscript
+      ><p class="noscript-note">
+        자동 다운로드 확인에는 자바스크립트가 필요합니다. 전체 릴리스 링크에서
+        설치 파일의 공개 여부를 확인해 주세요.
+      </p></noscript
+    >
+  </body>
 </html>

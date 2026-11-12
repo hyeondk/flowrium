@@ -1,0 +1,104 @@
+name: 데스크톱 설치 파일 만들기
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Mac Apple Silicon
+            runner: macos-15
+            os: mac
+            arch: arm64
+          - label: Mac Intel
+            runner: macos-15-intel
+            os: mac
+            arch: x64
+          - label: Windows
+            runner: windows-latest
+            os: win
+            arch: x64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: 버전과 태그 확인
+        run: node scripts/check-release-tag.mjs
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: 다운로드 페이지 확인
+        run: node scripts/verify-downloads.mjs
+      - name: Mac 설치 파일 생성
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          if [ -n "$CSC_LINK" ]; then
+            npx --no-install electron-builder --mac --${{ matrix.arch }} --publish never
+          else
+            npx --no-install electron-builder --mac --${{ matrix.arch }} --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false
+          fi
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' && 'true' || 'false' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Windows 설치 파일 생성
+        if: runner.os == 'Windows'
+        run: npx --no-install electron-builder --win --x64 --publish never
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      - name: 번들 Codex 실행 파일 확인
+        run: node scripts/verify-native.cjs
+      - name: 설치 파일 보관
+        uses: actions/upload-artifact@v6
+        with:
+          name: flowrium-${{ matrix.os }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            release/Flowrium-*-${{ matrix.os }}-${{ matrix.arch }}.dmg
+            release/Flowrium-*-${{ matrix.os }}-${{ matrix.arch }}.zip
+            release/Flowrium-*-${{ matrix.os }}-${{ matrix.arch }}.exe
+
+  draft:
+    name: 초안 릴리스 저장
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: flowrium-*
+          merge-multiple: true
+          path: release
+      - name: 체크섬 생성
+        run: node scripts/create-checksums.mjs release
+      - name: 초안 릴리스에만 업로드
+        run: node scripts/save-draft-release.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

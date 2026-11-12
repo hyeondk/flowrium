@@ -1,0 +1,91 @@
+{
+  "name": "flowrium",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Codex와 ChatGPT를 연결하는 개인 개발 작업 공간",
+  "author": "hyeondk",
+  "license": "UNLICENSED",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev:vite": "vite --host 127.0.0.1",
+    "dev": "node scripts/dev.cjs",
+    "build": "tsc --noEmit && vite build",
+    "start": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "check": "npm run build && npm test",
+    "dist": "npm run build && node scripts/package-desktop.cjs",
+    "dist:mac": "npm run build && node scripts/package-desktop.cjs --mac",
+    "dist:win": "npm run build && node scripts/package-desktop.cjs --win"
+  },
+  "dependencies": {
+    "@openai/codex": "0.167.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "electron": "45.3.1",
+    "electron-builder": "26.18.0",
+    "playwright": "^1.58.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-markdown": "10.1.0",
+    "lucide-react": "1.72.0"
+  },
+  "build": {
+    "appId": "io.github.hyeondk.flowrium",
+    "productName": "Flowrium",
+    "artifactName": "Flowrium-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "assets/flowrium.png",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/@openai/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "icon": "assets/flowrium.icns",
+      "hardenedRuntime": true,
+      "extendInfo": {
+        "NSHumanReadableCopyright": "Flowrium"
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/flowrium.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "hyeondk",
+      "repo": "flowrium",
+      "releaseType": "draft"
+    }
+  }
+}
