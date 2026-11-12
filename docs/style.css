@@ -619,3 +619,5 @@ button:focus-visible {
     scroll-behavior: auto;
   }
 }
+
+.source-build-link { display: inline-block; margin-top: 9px; font-size: 13px; color: inherit; text-underline-offset: 3px; }

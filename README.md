@@ -1,6 +1,6 @@
 # Flowrium
 
-리서치 / 브리핑 / 문서 작성 / 주간업무보고 / 업무 마감 / 자유 업무를 프로젝트마다 독립된 대화로 운영하는 데스크톱 앱입니다. 예를 들어 리서치 대화에서 자료를 조사한 뒤 그 답변을 산출물로 저장하고, 담당자가 읽을 브리핑은 별도 대화에서 작성할 수 있습니다. 폴더를 다시 열면 각 업무의 요청과 체크리스트, 답변이 남아 있습니다.
+본인의 ChatGPT 계정으로 로그인해 프로젝트별로 원하는 대화를 직접 열고 이어가는 데스크톱 앱입니다. 리서치 / 브리핑 / 문서 작성 / 주간업무보고 / 업무 마감 / 자유 업무를 각각 운영할 수 있습니다. 예를 들어 리서치 대화에서 자료를 조사한 뒤 그 답변을 산출물로 저장하고, 담당자가 읽을 브리핑은 별도 대화에서 작성할 수 있습니다. 폴더를 다시 열면 각 업무의 요청과 체크리스트, 답변이 남아 있습니다.
 
 [다운로드](https://hyeondk.github.io/flowrium/) / [릴리스와 설치 파일](https://github.com/hyeondk/flowrium/releases) / [기능별 지원 범위와 검증 기록](docs/FEATURES.md)
 
@@ -91,6 +91,22 @@ Mac에서 `npm run dist:mac`, Windows에서 `npm run dist:win`을 실행하면 `
 GitHub Pages의 게시 원본은 GitHub Actions입니다. `pages.yml`이 `docs/`를 [다운로드 페이지](https://hyeondk.github.io/flowrium/)에 게시합니다. 최신 정식 공개 릴리스의 태그와 이름이 일치하는 설치 파일만 페이지에 연결합니다. Mac은 업데이트용 ZIP도 필요하고 모든 플랫폼에 SHA-256 목록이 필요합니다. 이전 0.1.x Mac 설치 파일은 현재 다운로드 대상에서 제외합니다.
 
 버전 태그는 `package.json`에 맞춰 `v0.2.0` 형식으로 작성합니다. 릴리스 정의와 플랫폼별 검증은 [.github/workflows](.github/workflows)에 있습니다. 저장소를 옮기면 다운로드 페이지의 `docs/release-config.mjs`와 앱 업데이트 대상 저장소, 패키징의 `build.publish` 설정을 함께 확인하세요.
+
+<a id="local-mac"></a>
+
+### Apple Silicon 맥에서 직접 설치하기
+
+Apple 개발자 계정이 없어도 본인 맥에서 소스를 빌드해 사용할 수 있습니다. Node.js 24 이상과 Git이 설치된 Apple Silicon 맥의 터미널에서 실행하세요.
+
+```sh
+git clone https://github.com/hyeondk/flowrium.git
+cd flowrium
+npm ci
+npm run dist:mac
+open release
+```
+
+생성된 디스크 이미지에서 Flowrium을 응용 프로그램 폴더로 옮겨 여세요. 처음 실행한 뒤 자신의 ChatGPT 계정을 연결하고 프로젝트 폴더를 선택합니다. 이 방법은 각 사용자가 자기 컴퓨터에서 직접 생성하는 로컬 빌드입니다. 웹으로 배포할 맥 설치 파일은 아래의 서명과 공증을 거칩니다.
 
 ### Mac 서명과 공증 설정
 
