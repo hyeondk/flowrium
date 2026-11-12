@@ -46,7 +46,12 @@ jobs:
         run: node scripts/check-release-tag.mjs
       - run: npm ci
       - run: npm run build
+      - name: 가상 터미널 검증
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: node --test --test-reporter=spec tests/terminal.test.cjs
       - run: npm test
+        timeout-minutes: 5
       - name: 다운로드 페이지 확인
         run: node scripts/verify-downloads.mjs
       - name: Mac 서명 및 공증 설정 확인

@@ -25,11 +25,26 @@ async function digest(file) {
   for await (const chunk of createReadStream(file)) hash.update(chunk);
   return hash.digest('hex');
 }
-async function macFixture(bundle, fixtureVersion) {
+async function macFixture(bundle, fixtureVersion, exitImmediately = false) {
   const contents = path.join(bundle, 'Contents');
   const bin = path.join(contents, 'MacOS', 'Flowrium');
   await fs.mkdir(path.dirname(bin), { recursive: true });
-  await fs.copyFile('/bin/sleep', bin);
+  const source = path.join(path.dirname(bundle), 'fixture.c');
+  // Apple 시스템 실행 파일을 복사해 다시 서명하면 macOS 버전과 CPU 하위 유형에 따라
+  // 시작 단계에서 죽을 수 있다. 검증 러너 CPU에서 직접 만든 작은 앱을 사용한다.
+  await fs.writeFile(source, `#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+int main(int argc, char **argv) {
+  if (${exitImmediately ? 1 : 0}) return 1;
+  if (argc == 2 && !strcmp(argv[1], "--hold")) {
+    puts("FLOWRIUM_FIXTURE_READY"); fflush(stdout);
+    for (;;) pause();
+  }
+  return 0;
+}`);
+  try { await run('/usr/bin/cc', [source, '-o', bin]); }
+  finally { await fs.rm(source, { force: true }); }
   await fs.writeFile(path.join(contents, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>io.github.hyeondk.flowrium</string>
@@ -51,9 +66,7 @@ async function verifyMacRollback(temporary) {
   await fs.mkdir(path.dirname(prepared), { recursive: true });
   const old = await macFixture(installed, '0.1.2');
   const before = await digest(old);
-  const newer = await macFixture(prepared, version);
-  await fs.copyFile('/usr/bin/false', newer);
-  await run('/usr/bin/codesign', ['--force', '--sign', '-', prepared]);
+  await macFixture(prepared, version, true);
   const token = require('node:crypto').randomUUID();
   const receipt = path.join(root, 'receipt');
   const result = path.join(root, 'result');
@@ -194,8 +207,16 @@ async function main() {
     binary = mac ? await macFixture(installed, previous) : await installPreviousWindows(installed);
     const before = await digest(binary);
     if (mac) {
-      oldProcess = spawn(binary, ['300'], { stdio: 'ignore' });
-      await new Promise((resolve, reject) => { oldProcess.once('spawn', resolve); oldProcess.once('error', reject); });
+      oldProcess = spawn(binary, ['--hold'], { stdio: ['ignore','pipe','ignore'] });
+      let ready = '';
+      oldProcess.stdout.on('data', chunk => { ready += chunk.toString(); });
+      let startError;
+      oldProcess.once('error', error => { startError = error; });
+      await waitFor(() => {
+        if (startError) throw startError;
+        assert.equal(oldProcess.exitCode, null); assert.equal(oldProcess.signalCode, null);
+        return ready.includes('FLOWRIUM_FIXTURE_READY');
+      }, 10000, '기존 검증 앱에서 기동 신호가 오지 않았습니다.');
     } else {
       const { _electron } = require('playwright');
       const env = { ...process.env, CODEX_HOME: path.join(temporary, 'codex') };

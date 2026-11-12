@@ -74,7 +74,15 @@ function registerTerminal(register, store, { canOpen = () => true, env = process
     const s = { id: randomUUID(), projectId, title: path.basename(shell, '.exe') + ' ' + (++next), startDir: cwd,
       pty, data: '', offset: 0, closed: false, exitCode: null };
     s.exited = new Promise((resolve) => {
-      pty.onExit(({ exitCode }) => { s.closed = true; s.exitCode = exitCode; resolve(); });
+      pty.onExit(({ exitCode }) => {
+        // node-pty 1.1.0 keeps its ConPTY output worker's pipe server listening
+        // when the user types exit. Dispose that session's worker after the
+        // output stream closes. Calling kill here could target a reused PID.
+        if (windows) pty._agent?._conoutSocketWorker?.dispose();
+        s.closed = true;
+        s.exitCode = exitCode;
+        resolve();
+      });
     });
     pty.onData((data) => {
       s.offset += data.length;
