@@ -159,7 +159,7 @@ async function verifyFreshAccount(binary) {
     /^\/(?:electron\/.*\.(?:cjs|js)|dist\/.*\.(?:html|css|js))$/.test(name),
   )) {
     const content = asar
-      .extractFile(archive, file.replace(/^\//, ""))
+      .extractFile(archive, path.normalize(file.replace(/^\/+/, "")))
       .toString("utf8");
     if (/\/Users\/[^/\s"']+\/|[A-Z]:\\\\?Users\\\\?[^\\\s"']+\\/i.test(content))
       throw new Error("앱 소스 안에 특정 사용자의 절대 경로가 있습니다.");
