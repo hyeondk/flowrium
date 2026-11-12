@@ -47,8 +47,8 @@ function hasMacSigningKey(config, env = process.env) {
 
 function buildArguments(platform, architecture, output, adHoc = false) {
   if (
-    !["arm64", "x64", "ia32"].includes(architecture) ||
-    (platform === "--mac" && architecture === "ia32")
+    !((platform === "--mac" && architecture === "arm64") ||
+      (platform === "--win" && architecture === "x64"))
   )
     throw new Error("현재 컴퓨터의 아키텍처를 지원하지 않습니다.");
   if (!path.isAbsolute(output) || UNSAFE_SHELL_PATH.test(output))

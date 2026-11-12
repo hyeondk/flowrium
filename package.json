@@ -1,8 +1,8 @@
 {
   "name": "flowrium",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
-  "description": "Codex와 ChatGPT를 연결하는 개인 개발 작업 공간",
+  "description": "프로젝트마다 독립된 AI 업무 대화를 운영하는 데스크톱 앱",
   "author": "hyeondk",
   "license": "UNLICENSED",
   "main": "electron/main.cjs",
@@ -19,7 +19,9 @@
     "dist:win": "npm run build && node scripts/package-desktop.cjs --win"
   },
   "dependencies": {
-    "@openai/codex": "0.167.2"
+    "@openai/codex": "0.167.2",
+    "markdown-it": "15.0.3",
+    "pptxgenjs": "4.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -27,13 +29,14 @@
     "@types/react-dom": "^19.0.0",
     "electron": "45.3.1",
     "electron-builder": "26.18.0",
+    "lucide-react": "1.72.0",
+    "pdfjs-dist": "6.5.438",
     "playwright": "^1.58.0",
-    "typescript": "7.0.2",
-    "vite": "8.3.8",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
-    "lucide-react": "1.72.0"
+    "typescript": "7.0.2",
+    "vite": "8.3.8"
   },
   "build": {
     "appId": "io.github.hyeondk.flowrium",
@@ -55,8 +58,18 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
       ],
       "icon": "assets/flowrium.icns",
       "hardenedRuntime": true,
@@ -86,6 +99,9 @@
       "owner": "hyeondk",
       "repo": "flowrium",
       "releaseType": "draft"
+    },
+    "dmg": {
+      "sign": true
     }
   }
 }

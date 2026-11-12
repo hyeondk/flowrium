@@ -9,7 +9,7 @@ const { ProjectStore } = require("../electron/project-store.cjs");
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "flowrium-portable-"));
-  const directory = path.join(root, "Dropbox 프로젝트");
+  const directory = path.join(root, "로컬 프로젝트");
   await fs.mkdir(directory);
   const store = new Store(path.join(root, "컴퓨터A 설정"));
   await store.load();
@@ -109,7 +109,7 @@ test("다른 컴퓨터에서 먼저 바뀐 대화는 덮어쓰지 않고 모든 
   assert.equal(restored.id, project.id);
 });
 
-test("같은 부모에서 갈라진 개정과 Dropbox 충돌 사본을 발견하면 원본을 유지한다", async (t) => {
+test("같은 부모에서 갈라진 개정과 충돌 사본을 발견하면 원본을 유지한다", async (t) => {
   const { directory, session } = await fixture(t);
   const history = path.join(directory, ".flowrium", "sessions");
   const originalName = (await fs.readdir(history))[0];

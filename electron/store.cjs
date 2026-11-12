@@ -329,14 +329,15 @@ class Store {
     if (!session) throw new Error("대화를 찾을 수 없습니다.");
     return session;
   }
-  async createSession(projectId) {
+  async createSession(projectId, extra = {}) {
     this.project(projectId);
     const now = new Date().toISOString();
     const session = {
       id: randomUUID(),
       projectId,
-      title: "새로운 작업",
-      messages: [],
+      title: extra.title || "새로운 작업",
+      ...(extra.workflow && { workflow: extra.workflow }),
+      messages: extra.messages || [],
       createdAt: now,
       updatedAt: now,
     };

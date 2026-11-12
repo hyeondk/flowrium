@@ -1,0 +1,94 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { createHash } = require('node:crypto');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { DesktopUpdater, newer, selectRelease, checksum, artifactSuffix } = require('../electron/updater.cjs');
+
+const base = 'https://github.com/hyeondk/flowrium/releases/download/v0.2.0/';
+const name = 'Flowrium-0.2.0-mac-arm64.zip';
+const payload = Buffer.from('새 버전의 배포 파일');
+const sha = (value) => createHash('sha256').update(value).digest('hex');
+const sums = Buffer.from(sha(payload) + '  ' + name + '\n');
+function asset(name, value) {
+  return { name, size: value.length, browser_download_url: base + name, digest: 'sha256:' + sha(value) };
+}
+function release() {
+  return { tag_name: 'v0.2.0', draft: false, prerelease: false,
+    assets: [asset(name, payload), asset('SHA256SUMS.txt', sums)] };
+}
+async function fixture(t, options = {}) {
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'flowrium-updater-test-'));
+  t.after(() => fs.rm(temporary, { recursive: true, force: true }));
+  const target = path.join(temporary, 'Flowrium.app', 'Contents', 'MacOS', 'Flowrium');
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  let exits = 0, transfers = 0;
+  const get = async (url) => {
+    if (url.includes('api.github.com')) return Response.json(options.release || release());
+    if (url.endsWith('SHA256SUMS.txt')) return new Response(options.sums || sums);
+    assert.equal(url, base + name);
+    if (options.onFile) return options.onFile();
+    return new Response(options.payload || payload);
+  };
+  const app = { isPackaged: true, getPath: () => path.join(temporary, 'settings'),
+    getVersion: () => '0.1.2', quit: () => { exits++; } };
+  const updater = new DesktopUpdater({ app, platform: 'darwin', arch: 'arm64', execPath: target,
+    fetchImpl: get, isBusy: options.isBusy,
+    transfer: async ({ file }) => { transfers++; assert.deepEqual(await fs.readFile(file), payload); } });
+  return { updater, temporary, counts: () => [exits, transfers] };
+}
+
+test('정식 버전의 숫자 비교와 플랫폼 선택', () => {
+  assert.equal(newer('0.10.0', '0.9.12'), true);
+  for (const candidate of ['0.1.2', '0.0.9', '1.2.0-beta', '03.0.0', '../0.2.2', '1.2.3.4'])
+    assert.equal(newer(candidate, '0.1.2'), false);
+  assert.equal(artifactSuffix('darwin', 'x64'), null);
+  assert.equal(artifactSuffix('win32', 'x64'), 'win-x64.exe');
+  for (const override of [{ draft: true }, { prerelease: true }, { tag_name: 'v0.1.0' }])
+    assert.equal(selectRelease({ ...release(), ...override }, '0.1.2', 'mac-arm64.zip'), null);
+});
+
+test('정상 알림 후 설치를 클릭하면 검증한 파일을 한 번만 넘긴다', async (t) => {
+  const { updater, counts } = await fixture(t);
+  const events = [];
+  updater.on('state', (state) => events.push(state));
+  assert.equal((await updater.check()).status, 'available');
+  assert.deepEqual(counts(), [0, 0]);
+  const [first, second] = await Promise.all([updater.install(), updater.install()]);
+  assert.equal(first.status, 'installing');
+  assert.deepEqual(first, second);
+  assert.deepEqual(counts(), [1, 1]);
+  assert.ok(events.some(({ status, progress }) => status === 'downloading' && progress === 100));
+});
+
+test('기존 작업 중이거나 다운로드할 때 새 작업이 시작되면 설치하지 않는다', async (t) => {
+  let busy = true;
+  const { updater, counts, temporary } = await fixture(t, { isBusy: () => busy,
+    onFile: () => { busy = true; return new Response(payload); } });
+  await updater.check();
+  assert.equal((await updater.install()).status, 'available');
+  busy = false;
+  assert.equal((await updater.install()).status, 'available');
+  assert.deepEqual(counts(), [0, 0]);
+  assert.equal((await fs.readdir(temporary)).some((file) => file.startsWith('.flowrium-update-')), false);
+});
+
+test('변조, 잘린 파일, 과대 파일, 다른 서버로의 이동 및 검증 목록 오류는 종료 전에 차단한다', async (t) => {
+  for (const options of [{ payload: Buffer.alloc(payload.length) }, { payload: Buffer.from('x') },
+    { payload: Buffer.alloc(payload.length + 1) }, { sums: Buffer.alloc(sums.length) },
+    { onFile: () => Response.redirect('https://attacker.example/payload') }]) {
+    const { updater, counts, temporary } = await fixture(t, options);
+    assert.equal((await updater.check()).status, 'available');
+    assert.equal((await updater.install()).status, 'error');
+    assert.deepEqual(counts(), [0, 0]);
+    assert.equal((await fs.readdir(temporary)).some((file) => file.startsWith('.flowrium-update-')), false);
+  }
+});
+
+test('다른 저장소 파일, 누락 및 중복 자산을 차단한다', () => {
+  for (const changes of [[asset(name, payload)], [...release().assets, asset(name, payload)],
+    [{ ...asset(name, payload), browser_download_url: 'https://github.com/someone/else' }, release().assets[1]]])
+    assert.throws(() => selectRelease({ ...release(), assets: changes }, '0.1.2', 'mac-arm64.zip'));
+  assert.throws(() => checksum(sums.toString().repeat(2), name));
+});

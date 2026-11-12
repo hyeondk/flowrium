@@ -1,0 +1,29 @@
+.flow-activity {
+  flex: 1; min-width: 0; height: 100%; overflow-y: auto;
+  padding: clamp(18px, 4vw, 52px); color: var(--text); word-break: keep-all;
+}
+.flow-activity > header, .activity-section-title, .activity-buttons, .activity-filter { display: flex; align-items: center; gap: 10px; }
+.flow-activity > header { margin-bottom: 24px; }
+.flow-activity h1, .flow-activity h2, .flow-activity h3, .flow-activity p, .flow-activity dd { margin: 0; }
+.flow-activity h1 { font-size: 26px; }
+.flow-activity h2 { font-size: 18px; }
+.flow-activity h3 { font-size: 15px; }
+.flow-activity > section, .flow-activity > details { margin-bottom: 18px; border: 1px solid var(--line); border-radius: 10px; padding: clamp(14px, 2.2vw, 24px); }
+.activity-section-title { flex-wrap: wrap; justify-content: space-between; margin-bottom: 12px; }
+.activity-metrics { display: flex; gap: 16px 32px; flex-wrap: wrap; margin: 16px 0; }
+.activity-metrics dt, .flow-activity small, .flow-activity p { color: var(--muted); font-size: 12px; }
+.activity-metrics dd { margin-top: 4px; font-size: 18px; }
+.flow-activity ul { list-style: none; margin: 0; padding: 0; }
+.flow-activity li { display: flex; justify-content: space-between; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line-soft); }
+.flow-activity li > div:first-child { min-width: 0; }
+.activity-buttons { flex-wrap: wrap; justify-content: end; flex-shrink: 0; }
+.activity-request { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: pre-line; margin-top: 3px; }
+.activity-filter button { padding: 4px 8px; background: var(--panel); color: var(--muted); border: 1px solid var(--line); border-radius: 5px; }
+.activity-filter button[aria-pressed=true] { color: var(--text); border-color: var(--text); }
+.flow-activity summary { cursor: pointer; }
+.activity-shortcuts { display: grid; gap: 8px; margin: 12px 0 0; font-size: 13px; }
+.activity-shortcuts > div { display: flex; gap: 16px; justify-content: space-between; }
+@media (max-width: 720px) {
+  .flow-activity li { flex-direction: column; }
+  .activity-buttons { justify-content: start; }
+}

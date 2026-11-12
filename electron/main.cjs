@@ -14,7 +14,10 @@ const { Store, text } = require("./store.cjs");
 const { Controller } = require("./controller.cjs");
 const { publicMessage } = require("./errors.cjs");
 
+const { DesktopUpdater } = require("./updater.cjs");
+const { registerWorkbench } = require("./workbench.cjs");
 app.setName("Flowrium");
+let updater;
 let window;
 let controller;
 let quitting = false;
@@ -79,6 +82,9 @@ function createWindow() {
     (_contents, _permission, callback) => callback(false),
   );
   window.webContents.session.setPermissionCheckHandler(() => false);
+  window.on("close", (event) => {
+    if (updater?.isInstalling() && !updater.readyToQuit) event.preventDefault();
+  });
   window.on("closed", () => {
     window = null;
   });
@@ -102,6 +108,22 @@ async function launch() {
     return;
   }
   controller = new Controller(store);
+  const repositoryBusy = require("./repository-actions.cjs").registerRepository(register, store, () => updater.isInstalling());
+  updater = new DesktopUpdater({ app, isBusy: () => repositoryBusy() || controller.runs.size > 0 || controller.editingSessions.size > 0 });
+  updater.on("state", (state) => {
+    if (window && !window.isDestroyed()) window.webContents.send("flowrium:update", state);
+  });
+  register("updateState", () => updater.getState());
+  register("checkUpdate", () => updater.check());
+  register("installUpdate", () => updater.install());
+  require("./conversation-tools.cjs").registerConversationTools(register, controller);
+  require("./teams.cjs").registerTeams(register, store, controller, { canRun: () => !updater.isInstalling() });
+  register("readSystemActivity", require("./activity.cjs").readSystemActivity);
+  require("./project-details.cjs").registerProjectDetails(register, store);
+  registerWorkbench(register, store, {
+    reveal: (file) => shell.showItemInFolder(file),
+    isRunning: (id) => controller.runs.has(id) || controller.editingSessions.has(id),
+  });
   controller.on("event", (payload) => {
     if (window && !window.isDestroyed())
       window.webContents.send("flowrium:event", payload);
@@ -140,7 +162,10 @@ async function launch() {
     if (result.authUrl) await shell.openExternal(result.authUrl);
     return result;
   });
-  register("send", (input) => controller.send(input));
+  register("send", (input) => {
+    if (updater.isInstalling()) throw new Error("업데이트가 진행 중입니다. 재시작 후 요청해 주세요.");
+    return controller.send(input);
+  });
   register("interrupt", (id) =>
     controller.interrupt(text(id, "대화 식별자", 100)),
   );
@@ -258,6 +283,7 @@ async function launch() {
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   createWindow();
+  updater.start();
   app.on("activate", () => {
     if (!window) createWindow();
   });
@@ -278,10 +304,12 @@ else {
       dialog.showErrorBox("Flowrium 실행 오류", error.message);
       app.quit();
     });
+  app.on("will-quit", () => updater?.stop());
   app.on("window-all-closed", () => {
     if (process.platform !== "darwin") app.quit();
   });
   app.on("before-quit", (event) => {
+    if (updater?.isInstalling() && !updater.readyToQuit) { event.preventDefault(); return; }
     if (quitting || !controller) return;
     event.preventDefault();
     quitting = true;

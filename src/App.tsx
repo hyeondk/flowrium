@@ -1,3 +1,11 @@
+import ProjectDetails from "./ProjectDetails";
+import { ActivityPanel, useWorkspaceShortcuts } from "./ActivityPanel";
+import TeamPanel from "./TeamPanel";
+import RepositoryPanel from "./RepositoryPanel";
+import { ConversationTools } from "./ConversationTools";
+import Workbench, { WorkSessionControls } from "./Workbench";
+import { UpdatePanel, useDesktopUpdate } from "./UpdatePanel";
+import { workKinds } from "../shared/workbench";
 import packageInfo from "../package.json";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -47,7 +55,7 @@ import type {
   Session,
 } from "../shared/types";
 
-type View = "workspace" | "history" | "library";
+type View = "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
 type Activity = { text: string; status: string; error?: string };
 type Draft = { text: string; mode: Mode };
 type CodexHistoryItem = {
@@ -155,21 +163,39 @@ const upsert = (items: Session[], session: Session) =>
   );
 
 export default function App() {
+  const update = useDesktopUpdate();
+  const [archived, setArchived] = useState<Record<string,boolean>>({});
+  const [showArchived, toggleArchived] = useState(false);
   const [data, setData] = useState(initial);
   const [loaded, setLoaded] = useState(false);
   const [projectId, setProjectId] = useState<string>();
+  useEffect(() => {
+    let active = true;
+    for (const project of data.projects) {
+      api?.readProjectDetails(project.id).then(value => {
+        if (active) setArchived(prev=>({...prev,[project.id]:Boolean(value.archivedAt)}));
+      }).catch(()=>{});
+    }
+    return () => { active = false; };
+  }, [data.projects]);
   const [sessionId, setSessionId] = useState<string>();
-  const [view, setView] = useState<View>("workspace");
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [view, setView] = useState<View>("home");
+  const [drafts, setDrafts] = useState<Record<string, Draft>>(() => {
+    try { return JSON.parse(localStorage.getItem("flowrium.drafts") || "{}") || {}; } catch { return {}; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("flowrium.drafts", JSON.stringify(drafts)); } catch { /* 입력 중인 초안은 메모리에 유지합니다. */ }
+  }, [drafts]);
   const draftKey = sessionId
     ? `session:${sessionId}`
     : `project:${projectId || "unassigned"}`;
   const input = drafts[draftKey]?.text || "";
-  const mode = drafts[draftKey]?.mode || "plan";
+  const workflow = data.sessions.find(s => s.id === sessionId)?.workflow;
+  const mode = drafts[draftKey]?.mode || workflow?.teamSlot?.mode || (workflow ? workKinds[workflow.kind].mode : "plan");
   const setInput = (text: string) =>
     setDrafts((prev) => ({
       ...prev,
-      [draftKey]: { text, mode: prev[draftKey]?.mode || "plan" },
+      [draftKey]: { text, mode: prev[draftKey]?.mode || mode },
     }));
   const setMode = (nextMode: Mode) =>
     setDrafts((prev) => ({
@@ -251,9 +277,9 @@ export default function App() {
         }
       });
     api
-      .connectionStatus()
+      .connect()
       .then((value) => {
-        if (alive) setConnection(value);
+        if (alive) { setConnection(value.status); setModels(value.models); }
       })
       .catch(fail);
     const off = api.onEvent((event) => {
@@ -284,15 +310,7 @@ export default function App() {
         );
       if (event.type === "status" && event.sessionId)
         setActivities((prev) =>
-          prev[event.sessionId!]
-            ? {
-                ...prev,
-                [event.sessionId!]: {
-                  ...prev[event.sessionId!],
-                  status: event.text || "작업 중입니다",
-                },
-              }
-            : prev,
+          ({ ...prev, [event.sessionId!]: { ...prev[event.sessionId!], text: prev[event.sessionId!]?.text || "", status: event.text || "작업 중입니다" } }),
         );
       if (event.type === "status" && !event.sessionId) {
         if (event.status === "disconnected") {
@@ -452,6 +470,7 @@ export default function App() {
     };
   }, [settingsOpen, pendingDelete, historyOpen]);
 
+  useWorkspaceShortcuts({ board:()=>setView("home"), newChat:()=>void newSession(), history:()=>setView("history"), settings:()=>setSettingsOpen(true) });
   async function chooseProject() {
     if (!api)
       return notify("데스크톱 앱에서 실제 작업 폴더를 연결할 수 있습니다.");
@@ -473,7 +492,7 @@ export default function App() {
         });
         setProjectId(result.id);
         setSessionId(undefined);
-        setView("workspace");
+        setView("home");
         setSidebarOpen(false);
       }
     } catch (error) {
@@ -483,7 +502,7 @@ export default function App() {
   function selectProject(value: Project) {
     setProjectId(value.id);
     setSessionId(undefined);
-    setView("workspace");
+    setView("home");
     setSidebarOpen(false);
   }
   function selectSession(value: Session) {
@@ -492,6 +511,25 @@ export default function App() {
     setView("workspace");
     stickToBottom.current = true;
     setSidebarOpen(false);
+  }
+  function rememberSession(value: Session) {
+    setData(prev => ({ ...prev, sessions: upsert(prev.sessions, value) }));
+  }
+  async function openWork(value: Session, nextMode?: Mode, request?: string) {
+    rememberSession(value);
+    selectSession(value);
+    if (!request || !api) return;
+    const mode = nextMode || "plan";
+    const key = `session:${value.id}`;
+    setDrafts(prev => ({ ...prev, [key]: { text: request, mode } }));
+    if (!connection.authenticated) {
+      notify("업무 대화를 만들었습니다. 설정에서 계정을 연결한 뒤 요청을 보내세요.");
+      return;
+    }
+    try {
+      await api.send({ sessionId: value.id, text: request, mode, model: data.settings.model, effort: data.settings.effort });
+      setDrafts(prev => prev[key]?.text === request ? { ...prev, [key]: { text: "", mode } } : prev);
+    } catch (error) { fail(error); }
   }
   async function connect() {
     if (!api)
@@ -621,6 +659,7 @@ export default function App() {
         "데스크톱 앱에서 작업 문맥을 복사해 ChatGPT를 열 수 있습니다.",
       );
     try {
+      if (view !== "workspace") { await api.openExternal("chatgpt"); return; }
       const context = [
         "# Flowrium 작업 인수인계",
         project ? `프로젝트: ${project.name}` : "",
@@ -695,6 +734,11 @@ export default function App() {
         ...prev,
         sessions: prev.sessions.filter((s) => s.id !== pendingDelete),
       }));
+      setDrafts(prev => {
+        const next = { ...prev };
+        delete next[`session:${pendingDelete}`];
+        return next;
+      });
       if (sessionId === pendingDelete) setSessionId(undefined);
       setPendingDelete(undefined);
       notify("작업 기록을 삭제했습니다.");
@@ -791,31 +835,35 @@ export default function App() {
           href="#"
           onClick={(e) => {
             e.preventDefault();
-            setView("workspace");
+            setView("home");
             setSessionId(undefined);
           }}
         >
           <span className="brand-mark">
-            <Waves size={23} />
+            <img src="./flowrium.png" alt="" width="33" height="33" />
           </span>
           <span>Flowrium</span>
         </a>
         <button className="sidebar-new" onClick={newSession}>
-          <Plus size={17} /> 새 작업{" "}
+          <Plus size={17} /> 새 자유 대화{" "}
         </button>
         <div className="nav-label">내 작업</div>
         <nav aria-label="주 메뉴">
           <button
-            className={view === "workspace" ? "nav-item active" : "nav-item"}
+            className={view === "home" ? "nav-item active" : "nav-item"}
             onClick={() => {
-              setView("workspace");
+              setView("home");
               setSidebarOpen(false);
             }}
           >
             <LayoutDashboard size={18} />
-            작업 공간
+            업무 보드
             <span className="nav-dot" />
           </button>
+          <button className={view === "activity" ? "nav-item active" : "nav-item"} onClick={()=>{setView("activity");setSidebarOpen(false);}}><Clock3 size={17}/>작업 현황</button>
+          <button className={view === "inbox" ? "nav-item active" : "nav-item"} onClick={()=>{setView("inbox");setSidebarOpen(false);}}><ShieldCheck size={17}/>승인함 <span className="nav-count">{approvals.length}</span></button>
+          {project && <button className={view === "team" ? "nav-item active" : "nav-item"} onClick={()=>{setView("team");setSidebarOpen(false);}}><MessageSquare size={17}/>프로젝트 팀</button>}
+          {project && <button className={view === "repo" ? "nav-item active" : "nav-item"} onClick={()=>{setView("repo");setSidebarOpen(false);}}><Code2 size={17}/>형상관리</button>}
           <button
             className={view === "history" ? "nav-item active" : "nav-item"}
             onClick={() => {
@@ -847,9 +895,11 @@ export default function App() {
             <Plus size={16} />
           </button>
         </div>
+        {project && <button className="project-detail-link" onClick={()=>{setView("details");setSidebarOpen(false);}}>현재 프로젝트 관리</button>}
+        {Object.values(archived).some(Boolean) && <button className="project-detail-link" onClick={()=>toggleArchived(!showArchived)}>{showArchived ? "보관 프로젝트 숨기기" : "보관 프로젝트 보기"}</button>}
         <div className="project-list">
           {data.projects.length ? (
-            data.projects.map((p) => (
+            data.projects.filter(p=>!archived[p.id] || showArchived || p.id===projectId).map((p) => (
               <button
                 key={p.id}
                 className={`project-item ${p.id === projectId ? "selected" : ""}`}
@@ -859,20 +909,26 @@ export default function App() {
                 <span className="project-avatar">
                   {p.name.slice(0, 1).toUpperCase()}
                 </span>
-                <span>{p.name}</span>
+                <span>{p.name}{archived[p.id] ? " / 보관" : ""}</span>
                 {p.id === projectId && <ChevronRight size={14} />}
               </button>
             ))
           ) : (
             <div className="sidebar-empty">
               <Folder size={21} />
-              <p>Dropbox 또는 로컬의 프로젝트 폴더를 선택하세요.</p>
+              <p>작업할 프로젝트 폴더를 선택하세요.</p>
               <button onClick={chooseProject}>
                 폴더 연결 <Plus size={13} />
               </button>
             </div>
           )}
         </div>
+        {projectSessions.length > 0 && <div className="chat-switcher">
+          <div className="nav-label">최근 대화</div>
+          {projectSessions.slice(0, 7).map(s => <button key={s.id} title={s.title} className={s.id === sessionId && view === "workspace" ? "selected" : ""} onClick={() => selectSession(s)}>
+            <MessageSquare size={13} /><span>{s.title}</span>{activities[s.id] && <small>실행 중</small>}
+          </button>)}
+        </div>}
         <div className="sidebar-bottom">
           <button
             className="connection-card"
@@ -900,7 +956,7 @@ export default function App() {
             onClick={() => setSettingsOpen(true)}
           >
             <Settings2 size={17} />
-            설정<span className="version">초안 {data.version}</span>
+            설정<span className="version">v{data.version}</span>
           </button>
         </div>
       </aside>
@@ -928,7 +984,7 @@ export default function App() {
           <div className="topbar-actions">
             <button className="button subtle chatgpt-button" onClick={handoff}>
               <MessageSquare size={15} />
-              <span>ChatGPT 열기</span>
+              <span>{view === "workspace" && session ? "ChatGPT로 이어가기" : "ChatGPT 열기"}</span>
               <ExternalLink size={12} />
             </button>
             <span className="topbar-divider" />
@@ -943,11 +999,33 @@ export default function App() {
             </button>
           </div>
         </header>
+        {!settingsOpen && <UpdatePanel state={update} fail={fail} />}
         {!loaded ? (
           <div className="loading-page">
             <LoaderCircle className="spin" />
             작업 공간을 불러오고 있습니다.
           </div>
+        ) : view === "details" && project ? (
+          <div className="page-scroll"><div className="page-inner"><ProjectDetails key={project.id} project={project} onChange={value=>setArchived(prev=>({...prev,[value.projectId]:Boolean(value.archivedAt)}))}/></div></div>
+        ) : view === "activity" ? (
+          <ActivityPanel projects={data.projects} sessions={data.sessions} activities={activities} approvals={approvals} onOpen={selectSession} onInterrupt={id=>api!.interrupt(id)}/>
+        ) : view === "team" && project ? (
+          <div className="page-scroll"><div className="page-inner"><TeamPanel key={project.id} projectId={project.id} onOpen={openWork}/></div></div>
+        ) : view === "repo" && project ? (
+          <RepositoryPanel key={project.id} project={project}/>
+        ) : view === "inbox" ? (
+          <div className="page-scroll"><div className="page-inner repo-actions"><h1>승인함</h1>
+          {!approvals.length && <p>확인을 기다리는 요청이 없습니다.</p>}
+          {approvals.map(event => {
+            const owner=data.sessions.find(s=>s.id===event.sessionId);
+            return <section className="approval-card" key={event.requestId}><h3>{owner?.title || "실행 요청"}</h3>
+              <p>{event.details || event.method}</p><div>
+              {owner && <button className="button subtle" onClick={()=>selectSession(owner)}>대화 열기</button>}
+              <button className="button subtle" disabled={deciding[event.requestId || ""]} onClick={()=>decide(event,"decline")}>거절</button>
+              <button className="button primary" disabled={deciding[event.requestId || ""]} onClick={()=>decide(event,"accept")}>이번 작업 승인</button></div></section>;
+          })}</div></div>
+        ) : view === "home" ? (
+          <Workbench key={projectId || "welcome"} project={project} sessions={projectSessions} onChooseProject={chooseProject} onOpen={openWork} onSessionChange={rememberSession} />
         ) : view === "library" ? (
           <div className="page-scroll">
             <div className="page-inner library-page">
@@ -1109,6 +1187,7 @@ export default function App() {
                       <h2>{session.title}</h2>
                     </div>
                     <div className="session-actions">
+                      <ConversationTools key={session.id} session={session} running={running} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} />
                       <button
                         className="icon-button"
                         aria-label="대화 내보내기"
@@ -1132,6 +1211,7 @@ export default function App() {
                       </button>
                     </div>
                   </div>
+                  {session.workflow && <WorkSessionControls key={session.id} session={session} onSessionChange={rememberSession} running={running} />}
                   <div
                     className="messages"
                     ref={messages}
@@ -1227,7 +1307,7 @@ export default function App() {
                 </>
               ) : (
                 <div className="welcome-content">
-                  <h1>새 작업</h1>
+                  <h1>새 자유 대화</h1>
                   <p className="welcome-description">
                     프로젝트를 선택하고 Codex에게 요청할 내용을 적으세요.
                   </p>
@@ -1242,7 +1322,7 @@ export default function App() {
                       <p>
                         {project
                           ? project.path
-                          : "Dropbox의 기존 프로젝트 폴더를 그대로 선택할 수 있습니다."}
+                          : "이 컴퓨터에서 작업할 폴더를 선택하세요."}
                       </p>
                     </div>
                     <button
@@ -1807,6 +1887,7 @@ export default function App() {
               </button>
             </div>
             <div className="modal-content">
+              <UpdatePanel settings state={update} fail={fail} />
               <div className="settings-section">
                 <h3>
                   <Terminal size={17} />
@@ -1952,7 +2033,7 @@ export default function App() {
               <div className="settings-note">
                 <ShieldCheck size={17} />
                 <p>
-                  Dropbox에서 작업할 프로젝트 폴더를 각각 연결하세요. 대화는 각
+                  작업할 프로젝트 폴더를 각각 연결하세요. 대화는 각
                   프로젝트의 .flowrium 폴더에 저장됩니다. 요청을 보내면 해당
                   문맥이 Codex로 전달됩니다. ChatGPT로 이어갈 때는 복사된 내용을
                   직접 붙여넣습니다.
@@ -1967,7 +2048,7 @@ export default function App() {
               </button>
             </div>
             <div className="modal-footer">
-              <span>Flowrium / 초안 {data.version}</span>
+              <span>Flowrium / v{data.version}</span>
               <button
                 className="button secondary"
                 onClick={() => setSettingsOpen(false)}

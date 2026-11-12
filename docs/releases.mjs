@@ -1,6 +1,5 @@
 export const platforms = Object.freeze([
   { id: "mac-arm64", os: "mac", arch: "arm64", extension: "dmg" },
-  { id: "mac-x64", os: "mac", arch: "x64", extension: "dmg" },
   { id: "win-x64", os: "win", arch: "x64", extension: "exe" },
 ]);
 
@@ -16,47 +15,37 @@ export function releaseAssets(release, repository) {
   if (
     !validRepository(repository) ||
     !release ||
-    release.draft ||
-    release.prerelease ||
+    release.draft !== false ||
+    release.prerelease !== false ||
     !Array.isArray(release.assets)
-  )
-    return {};
-  const result = {};
-  const prefix = `https://github.com/${repository}/releases/download/`;
-  for (const platform of platforms) {
-    const suffix = `-${platform.os}-${platform.arch}.${platform.extension}`;
-    const asset = release.assets.find((entry) => {
-      if (
-        !entry ||
-        typeof entry.name !== "string" ||
-        !entry.name.startsWith("Flowrium-") ||
-        !entry.name.endsWith(suffix) ||
-        entry.state !== "uploaded" ||
-        !(entry.size > 0) ||
-        typeof entry.browser_download_url !== "string"
+  ) return {};
+
+  const tag = release.tag_name;
+  const version = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(tag);
+  if (!version) return {};
+  const base = `https://github.com/${repository}/releases/download/${tag}/`;
+  const uploaded = new Map(
+    release.assets
+      .filter((asset) =>
+        asset && typeof asset.name === "string" && asset.state === "uploaded" &&
+        Number.isSafeInteger(asset.size) && asset.size > 0 &&
+        asset.browser_download_url === base + asset.name,
       )
-        return false;
-      try {
-        const url = new URL(entry.browser_download_url);
-        return (
-          url.href.startsWith(prefix) &&
-          url.protocol === "https:" &&
-          !url.username &&
-          !url.password &&
-          !url.search &&
-          !url.hash &&
-          decodeURIComponent(url.pathname.split("/").pop()) === entry.name
-        );
-      } catch {
-        return false;
-      }
-    });
-    if (asset)
-      result[platform.id] = {
-        name: asset.name,
-        url: asset.browser_download_url,
-        size: asset.size,
-      };
+      .map((asset) => [asset.name, asset]),
+  );
+  if (!uploaded.has("SHA256SUMS.txt")) return {};
+
+  const result = {};
+  for (const {id, extension} of platforms) {
+    const stem = `Flowrium-${tag.slice(1)}-${id}`;
+    const asset = uploaded.get(`${stem}.${extension}`);
+    if (!asset) continue;
+    if (id === "mac-arm64") {
+      // 0.1.x 배포는 공증 확인 전 파일이다. 신규 Mac 배포에는 업데이트용 ZIP을 함께 게시한다.
+      if ((version[1] === "0" && Number(version[2]) < 2) || !uploaded.has(`${stem}.zip`))
+        continue;
+    }
+    result[id] = { name: asset.name, url: asset.browser_download_url, size: asset.size };
   }
   return result;
 }

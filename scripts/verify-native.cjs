@@ -86,13 +86,12 @@ async function verifyFreshAccount(binary) {
   const arch = process.arch;
   const targets = {
     "darwin-arm64": "aarch64-apple-darwin",
-    "darwin-x64": "x86_64-apple-darwin",
     "win32-x64": "x86_64-pc-windows-msvc",
   };
   const target = targets[`${platform}-${arch}`];
   if (!target)
     throw new Error(
-      "Mac arm64 / Mac x64 / Windows x64 실행기에서 검증해 주세요.",
+      "Mac arm64 / Windows x64 실행기에서 검증해 주세요.",
     );
   const candidates =
     platform === "darwin"

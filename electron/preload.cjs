@@ -4,6 +4,32 @@ const invoke = (method, ...args) =>
 contextBridge.exposeInMainWorld(
   "flowrium",
   Object.freeze({
+    importWorkFiles: (projectId, files) => invoke("importWorkFiles", projectId, files),
+    readWorkbench: (id) => invoke("readWorkbench", id),
+    startWork: (input) => invoke("startWork", input),
+    updateWork: (id, change) => invoke("updateWork", id, change),
+    saveWorkArtifact: (id, messageId, format) => invoke("saveWorkArtifact", id, messageId, format),
+    readWorkArtifact: (projectId, path) => invoke("readWorkArtifact", projectId, path),
+    revealWorkArtifact: (projectId, path) => invoke("revealWorkArtifact", projectId, path),
+    repositoryAction: (id, input) => invoke("repositoryAction", id, input),
+    readSystemActivity: () => invoke("readSystemActivity"),
+    readProjectDetails: (id) => invoke("readProjectDetails", id),
+    updateProjectDetails: (id, rev, change) => invoke("updateProjectDetails", id, rev, change),
+    readTeams: (id) => invoke("readTeams", id),
+    saveTeam: (id, input) => invoke("saveTeam", id, input),
+    removeTeam: (id, team, revision) => invoke("removeTeam", id, team, revision),
+    runTeam: (id, team, prompt, request) => invoke("runTeam", id, team, prompt, request),
+    openTeamRole: (id, run, index) => invoke("openTeamRole", id, run, index),
+    editConversation: (id, action) => invoke("editConversation", id, action),
+    updateState: () => invoke("updateState"),
+    checkUpdate: () => invoke("checkUpdate"),
+    installUpdate: () => invoke("installUpdate"),
+    onUpdate: (callback) => {
+      if (typeof callback !== "function") throw new TypeError("업데이트 처리 함수가 필요합니다.");
+      const listener = (_event, state) => callback(state);
+      ipcRenderer.on("flowrium:update", listener);
+      return () => ipcRenderer.removeListener("flowrium:update", listener);
+    },
     bootstrap: () => invoke("bootstrap"),
     chooseProject: () => invoke("chooseProject"),
     createSession: (projectId) => invoke("createSession", projectId),

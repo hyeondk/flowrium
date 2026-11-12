@@ -38,6 +38,7 @@ function validateSession(session, projectId) {
       session.sourceThreadId.length > 300)
   )
     throw new Error("가져온 대화의 원본 식별자가 올바르지 않습니다.");
+  if (session.workflow !== undefined) require("./workbench.cjs").validateWorkflow(session.workflow);
   const ids = new Set();
   for (const message of session.messages) {
     if (
@@ -57,7 +58,7 @@ function validateSession(session, projectId) {
 }
 function conflict() {
   return new Error(
-    "다른 컴퓨터의 변경 또는 동기화 충돌을 발견했습니다. 기존 기록을 덮어쓰지 않았습니다. 대화를 내보내고 Dropbox 동기화가 끝난 뒤 다시 연결해 주세요.",
+    "다른 컴퓨터의 변경 또는 동기화 충돌을 발견했습니다. 원본은 보존했습니다. 대화를 내보낸 뒤 프로젝트 폴더의 변경 사항을 확인하고 다시 연결해 주세요.",
   );
 }
 async function readJSON(file) {
@@ -294,4 +295,4 @@ async function projectDirectory(directory) {
     await fs.mkdir(directory, { recursive: true });
   }
 }
-module.exports = { ProjectStore, validateSession, validateDate, UUID };
+module.exports = { ProjectStore, validateSession, validateDate, UUID, readJSON, createJSON, projectDirectory };

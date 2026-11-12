@@ -1,0 +1,22 @@
+.team-panel { margin: 20px 0; padding: clamp(16px, 3vw, 26px); border: 1px solid var(--line, #ced3d7); border-radius: 12px; color: inherit; background: var(--surface, transparent); word-break: keep-all; overflow-wrap: normal; min-width: 0; }
+.team-panel h2, .team-panel h3, .team-panel p { margin: 0; }
+.team-panel h2 { font-size: 18px; } .team-panel h3 { font-size: 15px; }
+.team-head, .team-head > div, .team-actions, .team-selector { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.team-head { justify-content: space-between; } .team-form, .team-history { margin-top: 18px; display: grid; gap: 12px; min-width: 0; }
+.team-panel button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line, #b9c0c6); border-radius: 6px; padding: 7px 10px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 13px; }
+.team-panel button:disabled { opacity: .5; cursor: default; } .team-panel button:hover:enabled { background: var(--hover, #8882); }
+.team-panel button.team-primary { color: var(--bg, white); background: var(--text, #202831); } .team-panel button.team-primary:hover:enabled { opacity: .87; background: var(--text, #202831); }
+.team-panel label { display: grid; min-width: 0; gap: 5px; font-size: 13px; }
+.team-panel input, .team-panel select, .team-panel textarea { min-width: 0; width: 100%; padding: 8px 10px; border: 1px solid var(--line, #b9c0c6); border-radius: 6px; background: var(--bg, transparent); color: inherit; font: inherit; box-sizing: border-box; word-break: keep-all; }
+.team-panel textarea { resize: vertical; } .team-selector { align-items: end; } .team-selector label { flex: 1; }
+.team-role { border: 1px solid var(--line, #b9c0c6); border-radius: 8px; margin: 0; padding: 10px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.team-role legend { font-size: 12px; padding: 0 4px; } .team-instruction { grid-column: 1/-1; } .team-role button { justify-self: start; }
+.team-panel .team-empty, .team-panel .team-error { margin-top: 12px; } .team-members, .team-empty, .team-entry time, .team-result small { font-size: 12px; color: var(--muted, #717781); }
+.team-error { color: var(--danger, #a33); font-size: 13px; } .team-history article { border-top: 1px solid var(--line, #b9c0c6); padding-top: 8px; min-width: 0; }
+.team-panel button.team-entry { border: 0; width: 100%; padding: 5px 0; text-align: left; flex-wrap: wrap; }
+.team-entry span { flex: 1; min-width: 0; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+.team-results { padding: 9px 0; display: grid; gap: 10px; font-size: 13px; }
+.team-results p { white-space: pre-wrap; max-width: 100%; overflow-x: auto; line-height: 1.55; }
+.team-result { border-left: 2px solid var(--line, #b9c0c6); padding-left: 12px; display: grid; justify-items: start; gap: 5px; min-width: 0; }
+.team-result small { margin-left: 8px; } .team-actions { justify-content: flex-end; }
+@media(max-width: 620px) { .team-role { grid-template-columns: minmax(0,1fr); } .team-entry time { width: 100%; margin-left: 20px; } }

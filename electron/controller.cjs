@@ -20,6 +20,7 @@ class Controller extends EventEmitter {
     this.options = options;
     this.client = options.client || new CodexClient(options);
     this.runs = new Map();
+    this.editingSessions = new Set();
     this.loadedThreads = new Set();
     this.status = { available: false, authenticated: false };
     this.history = new HistoryImporter(store, this.client, () =>
@@ -39,7 +40,7 @@ class Controller extends EventEmitter {
       this.emitEvent({
         type: "error",
         sessionId: run?.sessionId,
-        text: "Codex가 이 초안에서 지원하지 않는 추가 입력을 요청했습니다. 요청은 거절됐습니다.",
+        text: "Codex가 Flowrium에서 지원하지 않는 추가 입력을 요청했습니다. 요청은 거절됐습니다.",
       });
     });
     this.client.on("disconnect", (error) => {
@@ -150,7 +151,7 @@ class Controller extends EventEmitter {
     return next;
   }
   async deleteSession(id) {
-    if (this.runs.has(id))
+    if (this.runs.has(id) || this.editingSessions.has(id))
       throw new Error(
         "실행 중인 대화는 삭제할 수 없습니다. 먼저 작업을 중지해 주세요.",
       );
@@ -166,7 +167,8 @@ class Controller extends EventEmitter {
       throw new Error("추론 강도를 확인해 주세요.");
     if (input.model) text(input.model, "모델", 300);
     const session = this.store.session(input.sessionId);
-    if (this.runs.has(session.id))
+    if (session.workflow?.status === "done") throw new Error("완료한 업무입니다. 다시 진행하려면 업무를 재개해 주세요.");
+    if (this.runs.has(session.id) || this.editingSessions.has(session.id))
       throw new Error("이 대화에서 작업이 이미 실행 중입니다.");
     const project = this.store.project(session.projectId);
     if (!(await fs.stat(project.path)).isDirectory())
@@ -184,6 +186,7 @@ class Controller extends EventEmitter {
       saveTimer: null,
       mode: input.mode,
     };
+    if (this.runs.has(session.id) || this.editingSessions.has(session.id)) throw new Error("이 대화에서 작업이 이미 실행 중입니다.");
     this.runs.set(session.id, run);
     const previous = { title: session.title, updatedAt: session.updatedAt };
     const userMessage = {
@@ -193,7 +196,7 @@ class Controller extends EventEmitter {
       createdAt: new Date().toISOString(),
     };
     session.messages.push(userMessage);
-    if (session.messages.filter((m) => m.role === "user").length === 1)
+    if (!session.workflow && session.messages.filter((m) => m.role === "user").length === 1)
       session.title = Array.from(message.replace(/\s+/g, " "))
         .slice(0, 42)
         .join("");
@@ -254,6 +257,9 @@ class Controller extends EventEmitter {
       approvalsReviewer: "user",
       sandbox: input.mode === "build" ? "workspace-write" : "read-only",
     };
+    const research = this.store.session(run.sessionId).workflow;
+    if (research?.kind === "research" && research.searchMode)
+      threadParams.config = { web_search: research.searchMode };
     const model = input.model || this.store.state.settings.model;
     if (model) threadParams.model = model;
     let result;
@@ -287,12 +293,15 @@ class Controller extends EventEmitter {
     }
     this.loadedThreads.add(run.threadId);
     if (run.cancelled || run.finalized) return this.finish(run, "interrupted");
+    const workContext = this.store.session(run.sessionId).workflow
+      ? await require("./workbench.cjs").workContext(this.store, run.sessionId) : "";
+    if (run.cancelled || run.finalized) return this.finish(run, "interrupted");
     const turn = await this.client.request("turn/start", {
       threadId: run.threadId,
       input: [
         {
           type: "text",
-          text: `한국어로 답변해 주세요. ${MODE_INSTRUCTIONS[input.mode]}\n\n${restoredContext}${message}`,
+          text: `한국어로 답변해 주세요. ${MODE_INSTRUCTIONS[input.mode]}\n\n${workContext}\n\n${restoredContext}${message}`,
         },
       ],
       cwd: project.path,
@@ -363,7 +372,7 @@ class Controller extends EventEmitter {
         session: structuredClone(this.store.session(run.sessionId)),
       });
     // Stream in memory and persist at the end of a turn (including interruption
-    // and process failure). Token deltas never create Dropbox revision files.
+    // and process failure). Token deltas never create project revision files.
   }
   async notification({ method, params = {} }) {
     if (method === "account/login/completed") {

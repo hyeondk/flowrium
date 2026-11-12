@@ -1,0 +1,13 @@
+.project-details { margin: 16px 0; padding: 12px 16px; border: 1px solid var(--line); border-radius: 9px; word-break: keep-all; }
+.project-details summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.project-details summary span { margin-left: 10px; font-size: 12px; color: var(--muted); }
+.pd-body, .pd-body form, .pd-body label, .pd-checklist { display: grid; gap: 8px; min-width: 0; }
+.pd-body { margin-top: 12px; gap: 14px; } .pd-body label, .pd-checklist h3 { font-size: 13px; }
+.pd-fields { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.pd-body input:not([type=checkbox]), .pd-body textarea { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 5px; background: var(--input); color: var(--text); padding: 7px 9px; font: inherit; }
+.pd-body textarea { resize: vertical; word-break: keep-all; } .pd-body button, .pd-error button { display: inline-flex; align-items: center; gap: 5px; justify-self: start; border: 1px solid var(--line); border-radius: 5px; padding: 5px 8px; color: inherit; font-size: 13px; }
+.pd-check, .pd-body .pd-add, .pd-body .pd-check label { display: flex; align-items: center; gap: 6px; }
+.pd-check { justify-content: space-between; } .pd-check input { width: auto; }
+.pd-add input { flex: 1; } .pd-body button:hover:enabled { background: var(--panel-alt); }
+.pd-error { margin-top: 8px; color: var(--danger); font-size: 13px; word-break: keep-all; }
+@media(max-width: 580px) { .pd-fields { grid-template-columns: 1fr; } }

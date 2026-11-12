@@ -27,7 +27,6 @@ async function resolveCodex(configured, options = {}) {
     const architecture = options.arch || process.arch;
     const triple = {
       "darwin-arm64": "aarch64-apple-darwin",
-      "darwin-x64": "x86_64-apple-darwin",
       "win32-x64": "x86_64-pc-windows-msvc",
       "win32-arm64": "aarch64-pc-windows-msvc",
       "linux-x64": "x86_64-unknown-linux-musl",
@@ -274,7 +273,7 @@ class CodexClient extends EventEmitter {
           id: message.id,
           error: {
             code: -32601,
-            message: "이 입력 방식은 Flowrium 초안에서 지원하지 않습니다.",
+            message: "이 입력 방식은 Flowrium에서 지원하지 않습니다.",
           },
         });
         this.emit("unsupported", message);

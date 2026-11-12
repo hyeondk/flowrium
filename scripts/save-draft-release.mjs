@@ -20,13 +20,12 @@ const directory = resolve("release");
 const names = (await readdir(directory)).filter(
   (name) =>
     name === "SHA256SUMS.txt" ||
-    /^Flowrium-[0-9A-Za-z.-]+-(?:mac-(?:arm64|x64)\.(?:dmg|zip)|win-x64\.exe)$/.test(
+    /^Flowrium-[0-9A-Za-z.-]+-(?:mac-arm64\.(?:dmg|zip)|win-x64\.exe)$/.test(
       name,
     ),
 );
 for (const required of [
-  `Flowrium-${pkg.version}-mac-arm64.dmg`,
-  `Flowrium-${pkg.version}-mac-x64.dmg`,
+  ...(process.env.EXPECT_MAC === "true" ? [`Flowrium-${pkg.version}-mac-arm64.dmg`, `Flowrium-${pkg.version}-mac-arm64.zip`] : []),
   `Flowrium-${pkg.version}-win-x64.exe`,
   "SHA256SUMS.txt",
 ]) {
