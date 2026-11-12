@@ -28,6 +28,6 @@ Mac과 Windows의 배포 파일, 설치 후 실행과 업데이트 검증 결과
 
 ## 기존 Maestro 제거 판단
 
-설치된 Flowrium 0.2.0에는 자체 Electron 런타임, Apple Silicon용 Codex, 터미널 모듈이 들어 있습니다. 앱 실행 코드에서 Maestro 설치 경로 참조를 찾지 못했고 Maestro 런타임을 제외한 실행 경로로 내장 Codex의 동작을 확인했습니다.
+설치된 Flowrium 0.3.0에는 자체 Electron 런타임, Apple Silicon용 Codex, 터미널 모듈과 Node.js / npm / GitHub CLI / Cloudflare 터널 실행기가 들어 있습니다. Maestro 런타임을 제외한 실행 경로에서 내장 도구와 Codex를 확인했습니다. 실제 DMG에서 앱을 복사해 설치하고 버전과 기존 ChatGPT 연결을 확인한 뒤 정상 종료했습니다. 설치된 Maestro 앱과 사용자 자료는 삭제하지 않았습니다.
 
 Maestro 앱 제거와 Maestro의 데이터·개발 도구 정리는 다른 작업입니다. Maestro 설치본은 홈 폴더의 workspace/maestro/data/state에 자신의 상태를, .maestro에 설정과 실행 도구를 둘 수 있습니다. 개발·배포에 Maestro의 런타임이나 GitHub CLI를 사용했다면 독립 설치 여부를 확인합니다. Flowrium에서 실제 프로젝트를 열어 업무·산출물의 이전과 복원, 업데이트를 확인한 뒤 앱 번들을 제거할 수 있습니다. 기존 상태 폴더나 실행 도구까지 정리하려면 필요한 자료를 백업하고 개발·배포 도구를 독립 경로로 먼저 전환합니다.

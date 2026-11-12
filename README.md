@@ -2,7 +2,7 @@
 
 본인의 ChatGPT 계정으로 로그인해 프로젝트별로 원하는 대화를 직접 열고 이어가는 데스크톱 앱입니다. 리서치 / 브리핑 / 문서 작성 / 주간업무보고 / 업무 마감 / 자유 업무를 각각 운영할 수 있습니다. 예를 들어 리서치 대화에서 자료를 조사한 뒤 그 답변을 산출물로 저장하고, 담당자가 읽을 브리핑은 별도 대화에서 작성할 수 있습니다. 폴더를 다시 열면 각 업무의 요청과 체크리스트, 답변이 남아 있습니다.
 
-[다운로드](https://hyeondk.github.io/flowrium/) / [릴리스와 설치 파일](https://github.com/hyeondk/flowrium/releases) / [기능별 지원 범위와 검증 기록](docs/FEATURES.md)
+[다운로드](https://hyeondk.github.io/flowrium/) / [릴리스와 설치 파일](https://github.com/hyeondk/flowrium/releases) / [기능별 지원 범위](docs/FEATURES.md) / [0.3.0 검증 기록](docs/VALIDATION-0.3.0.md)
 
 ![예시 프로젝트로 촬영한 실제 대시보드. 왼쪽의 프로젝트 및 도구 메뉴, 세 프로젝트의 목표와 최근 업무가 표시됩니다.](docs/workspace.png)
 

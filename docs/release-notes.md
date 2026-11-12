@@ -15,3 +15,8 @@
 - 0.1.x에서는 새 설치 파일을 한 번 직접 받으세요. 앱을 교체해도 프로젝트의 `.flowrium/` 폴더는 보존됩니다.
 - 이 컴퓨터에서 연결한 폴더와 일치하는 기존 Codex 대화의 사용자 메시지와 응답을 가져올 수 있습니다. 일반 ChatGPT 웹에서는 전달할 내용을 복사해 붙여 넣습니다.
 - 설치 파일의 SHA-256 확인값은 같은 릴리스에 첨부된 `SHA256SUMS.txt`에 있습니다.
+
+## 검증 범위
+
+- Mac에서는 실제 DMG에서 설치한 0.3.0과 기존 ChatGPT 계정 연결을 확인했습니다. Windows에서는 공개된 0.2.0의 업데이트 버튼으로 0.3.0 설치와 재시작, 프로젝트 / 메시지 / 미전송 초안 보존을 확인했습니다.
+- 두 운영체제에서 업무 화면과 패키지 터미널을 검사했습니다. Google 계정 승인 / 유료 음성 인식 / 실제 휴대전화 외부 회선 접속은 별도 검증이 필요합니다. [0.3.0 검증 기록](https://github.com/hyeondk/flowrium/blob/main/docs/VALIDATION-0.3.0.md) / [원본과 기능별 지원 범위](https://github.com/hyeondk/flowrium/blob/main/docs/FEATURES.md)
