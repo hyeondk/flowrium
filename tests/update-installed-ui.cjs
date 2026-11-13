@@ -93,6 +93,7 @@ async function checkNewProfile(binary,temporary,userData,fixture,version) {
   try {
     assert.equal(await app.evaluate(({app})=>app.getVersion()),version);
     const page=await app.firstWindow();
+    await page.setViewportSize({width:1440,height:1000});
     await checkProject(page,fixture);
     const migrated=await page.evaluate(async id=>{
       const api=window.flowrium, security=await api.securityState();
