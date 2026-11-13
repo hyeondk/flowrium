@@ -1,0 +1,38 @@
+{
+  "source": "51efc2fe89940726ebf8879cf876c969ff916936",
+  "appBuildSource": "d1b38199d4077284dc4d0060868ebfa3626030ba",
+  "laterChanges": "검사와 배포 워크플로만 변경 / 앱 실행 소스 66개 바이트 일치",
+  "version": "0.6.0",
+  "architecture": "arm64",
+  "signing": "ad-hoc",
+  "notarized": false,
+  "unit": {
+    "passed": 201,
+    "failed": 0,
+    "skipped": 0
+  },
+  "checks": {
+    "dmgChecksum": true,
+    "codesignIntegrity": true,
+    "dmgZipInstalledAppAsarMatch": true,
+    "nativeRuntimeFreshAccount": true,
+    "packagedTerminalAndDocument": true,
+    "packagedPortsVoiceMigration": true,
+    "updateButtonRejectsUnnotarized": true,
+    "nativeUpdateRollbackAndReadiness": true,
+    "terminalInstallerBackupAndTamperProtection": true
+  },
+  "installed": "/Applications/Flowrium.app",
+  "backup": "/Applications/Flowrium.app.backup-20261113-234550-57199",
+  "gatekeeper": {
+    "accepted": false,
+    "exitCode": 3,
+    "result": "/Applications/Flowrium.app: rejected"
+  },
+  "finalTaskAppProcessCount": 0,
+  "cleanup": {
+    "temporaryItemsRemoved": 51,
+    "runtimePreserved": true,
+    "releaseSourceAppAndBackupPreserved": true
+  }
+}

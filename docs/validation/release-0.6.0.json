@@ -1,0 +1,23 @@
+{
+  "source": "51efc2fe89940726ebf8879cf876c969ff916936",
+  "releaseId": 444349355,
+  "hashes": {
+    "Flowrium-0.6.0-mac-arm64.dmg": "806777914796c4a50c20dc5833a8db1219c91d9dd0ad8f0bb6b0fc54172643bf",
+    "Flowrium-0.6.0-mac-arm64.zip": "95afea6ab9af83da247f6c90333a90c34eb32df7a65dbc6055c88cef6cf694cf",
+    "Flowrium-0.6.0-source.tar.gz": "b13a2b0f04ce5f7aceb82d9e5c44a7f2afb28bcc5ba37a73cf6f407f170a43b2",
+    "Flowrium-0.6.0-win-x64.exe": "a8a72a0c63eb9ecf22646384a03dc8392959e15e80a9c4725f81295112301ccd",
+    "flowrium-install-support.cjs": "27e8bc3eedfd45e91fb0004a88e14b8f94f99056f0d63c27006acc368bce1cdc",
+    "install.ps1": "8f8a27b08aa765fd868468ff42dcb48f23b2b357b79e5c889908339cc0f8ec58",
+    "install.sh": "6598fb3e89e6e33ec7bf30cb074c1a10e13f22d71039a749a11af47c25748902",
+    "SHA256SUMS.txt": "441bb651d1a48acb4c7af319415cfe8f8d056e12a2262b19c16c5e3dfab5bfd2",
+    "SOURCE-COMMIT.txt": "40a310291d515d803830569a29afd7362858b0cc54fcfdc9f22d5eeb2527829d"
+  },
+  "publishedAt": "2026-11-13T15:11:15Z",
+  "windowsRun": "https://github.com/hyeondk/flowrium/actions/runs/43446713139",
+  "windowsArtifact": {
+    "id": 14048233996,
+    "size": 323119656,
+    "sha256": "695daa5f4e64c819c95f7f0b023eaf62ec715edaa5b672723c7e43155efbf500"
+  },
+  "downloadPage": "https://hyeondk.github.io/flowrium/"
+}

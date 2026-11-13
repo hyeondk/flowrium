@@ -1,0 +1,14 @@
+{
+  "source": "51efc2fe89940726ebf8879cf876c969ff916936",
+  "run": "https://github.com/hyeondk/flowrium/actions/runs/43446717744",
+  "job": 131957975353,
+  "conclusion": "success",
+  "features": [
+    "전체 자료 이관",
+    "로컬 음성 서버 실행 관리",
+    "자동 포트표",
+    "주간업무보고 / 업무 마감 중앙 팝업"
+  ],
+  "accountTests": "모의 모델과 합성 자료 / 실제 Windows 앱·서버 프로세스",
+  "personalDataMigrated": false
+}

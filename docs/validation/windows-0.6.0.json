@@ -1,0 +1,29 @@
+{
+  "source": "51efc2fe89940726ebf8879cf876c969ff916936",
+  "run": "https://github.com/hyeondk/flowrium/actions/runs/43446713139",
+  "job": 131957959319,
+  "conclusion": "success",
+  "unit": {
+    "total": 201,
+    "passed": 200,
+    "failed": 0,
+    "skipped": 1,
+    "skipReason": "기록 폴더의 심볼릭 링크 검사 / Windows 링크 생성 권한 의존"
+  },
+  "checks": {
+    "allRequiredChecks": true,
+    "packagedFreshAccount": true,
+    "packagedTerminalAndDocuments": true,
+    "allDesktopRegression": true,
+    "nativeInstallerAndBackup": true,
+    "previousVersion": "0.5.0",
+    "actualUpdateButtonDownloadInstallRestart": true,
+    "projectMessageDraftModeRestored": true,
+    "newFeatureE2E": true
+  },
+  "artifact": {
+    "id": 14048233996,
+    "size": 323119656,
+    "sha256": "695daa5f4e64c819c95f7f0b023eaf62ec715edaa5b672723c7e43155efbf500"
+  }
+}
