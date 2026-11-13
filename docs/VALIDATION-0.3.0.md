@@ -1,6 +1,6 @@
 # Flowrium 0.3.0 검증 기록
 
-2026년 11월 13일 / 한국 시간 기준입니다. [기능별 지원 범위와 원본 비교](FEATURES.md) / [Windows 검증 작업](https://github.com/hyeondk/flowrium/actions/runs/43263488257/job/131340720286)
+2026년 11월 13일 / 한국 시간 기준입니다. [기능별 지원 범위](FEATURES.md) / [Windows 검증 작업](https://github.com/hyeondk/flowrium/actions/runs/43263488257/job/131340720286)
 
 ## 검증한 설치본
 
@@ -38,4 +38,4 @@ Google 계정의 실제 동의 / 유료 OpenAI 음성 인식 / 실제 마이크 
 
 ## 작업 종료 정리
 
-맥에 설치한 새 Flowrium을 정상 종료하고 작업에서 실행한 Flowrium / 시험용 Electron 프로세스가 0개인 것을 확인했습니다. 기존 Maestro와 사용자 자료는 보존했습니다. 최종 설치 파일과 이전 설치본, 실행 필수 도구는 보존하고 종료된 시험 스크립트와 중간 로그는 정리했습니다.
+맥에 설치한 새 Flowrium을 정상 종료하고 작업에서 실행한 Flowrium / 시험용 Electron 프로세스가 0개인 것을 확인했습니다. 사용자 자료는 보존했습니다. 최종 설치 파일과 이전 설치본, 실행 필수 도구는 보존하고 종료된 시험 스크립트와 중간 로그는 정리했습니다.

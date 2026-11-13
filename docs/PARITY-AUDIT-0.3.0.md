@@ -1,22 +1,15 @@
-# Maestro 대비 Flowrium 0.3.0 잔여 기능 감사
+# Flowrium 0.3.0 기능 확장 계획
 
-2026년 11월 13일 기준입니다. **Flowrium 0.3.0은 Maestro의 모든 업무 기능을 재현한 버전이 아닙니다.** 주요 메뉴와 기본 업무 흐름을 구현했지만, 채팅 입력 / 대화 간 협업 / 개인 비서 자동화 / 여러 저장소 운영 / 모바일의 세부 동작이 남아 있습니다.
+2026년 11월 13일 기준입니다. 이 문서는 공개된 0.3.0에서 보완할 사용자 동작 28개를 정리합니다. 다음 버전의 구현과 기능별 검증을 진행하고 있습니다.
 
-## 비교 기준과 판정
+부분 대응 19개 / 미구현 9개는 0.3.0 기준의 잔여 작업군입니다. 이미 지원하는 모든 기능을 분모로 삼은 완료율이 아닙니다. 테스트 개수와 제품 기능 개수도 다릅니다.
 
-- 비교 대상: 설치된 Maestro 실행기 0.1.0과 로컬 원본 소스 `9caac0a`, Flowrium 0.3.0의 소스 `7787667`.
-- 이번 검사는 원본 화면과 실제 처리 코드의 정적 대조입니다. 이전 배포의 실행 검증도 참고했지만 이번에 모든 원본 동작을 다시 실행한 검사는 아닙니다. 앱을 실행하거나 개인 계정과 자료를 사용하지 않았습니다.
-- **부분**: 대응 기능은 있으나 아래 적힌 원본 동작이 부족하거나 다른 결과를 만듭니다. **없음**: 해당 사용자 동작을 위한 앱 기능을 찾지 못했습니다. AI에게 직접 지시하거나 터미널에서 수동 실행할 수 있다는 이유로 앱 기능이 있다고 세지 않았습니다.
-- 아래는 차이가 발견된 동작을 묶은 **잔여 28개 작업군**입니다. 부분 19개 / 없음 9개입니다. 이미 대응한 모든 기능을 포함한 분모가 아니므로 전체 완료율로 환산할 수 없습니다. 원본 API 114개도 사용자 기능 114개를 뜻하지 않습니다.
-- Flowrium 자체 테스트 82개는 Flowrium의 검사 조건이며, 원본 기능 82개가 동등하다는 증거가 아닙니다.
+## 0.3.0에서 이용 가능한 흐름
 
-## 현재 이용 가능한 기본 흐름
+프로젝트 생성과 폴더별 연결 / 목표와 체크리스트 / 보관과 재개 / 여섯 종류의 독립 업무 대화 / 응답과 중단 / 승인과 추가 질문 / 모델 선택 / 기간별 보고 / 네 형식의 답변 저장 / 역할 배정과 수동 팀 검토 / Git 작업 폴더와 병합 / 다중 터미널 / 기기 잠금 / 음악 재생 / 모바일 기본 대화를 제공합니다. 세부 제한과 개선 대상은 아래에 구분했습니다. [배포 검증 기록](VALIDATION-0.3.0.md)
 
-프로젝트 생성과 폴더별 연결 / 목표와 체크리스트 / 프로젝트 보관과 재개 / 여섯 종류의 독립 업무 대화 / 응답과 중단 / 승인과 추가 질문 / 모델 선택 / 기간별 보고 / 네 형식의 답변 저장 / 역할 배정과 수동 팀 검토 / Git 작업 폴더와 병합 / 다중 터미널 / 기기 잠금 / 음악 재생 / 모바일 기본 대화는 대응 기능이 있습니다. 각 영역 안에 아래의 차이가 남아 있습니다.
+## 보완 작업 28개
 
-Windows는 실제 공개 구버전에서 설치형 업데이트와 기록 보존을 확인했습니다. Mac은 실제 설치와 계정 연결을 확인했고, 현재 미공증 버전의 앱 내 교체를 차단한 뒤 수동 설치로 안내합니다. [배포 검증 기록](VALIDATION-0.3.0.md)
-
-## 잔여 작업 28개
 
 | 번호 | 작업군 | 상태 | 더 필요한 동작 |
 | ---: | --- | --- | --- |
@@ -49,27 +42,8 @@ Windows는 실제 공개 구버전에서 설치형 업데이트와 기록 보존
 | 27 | 음성의 연속 사용 | 부분 | 로컬 인식과 합성 / 말소리 감지 / 무음 종료 / 호출어와 연속 대화. 현재는 수동 녹음 후 유료 API 인식과 시스템 답변 읽기 |
 | 28 | 자동 가사 | 없음 | 자동 가사 검색 / 시간에 맞춘 가사 표시. 현재는 직접 입력한 가사와 메모 |
 
-## 주요 근거
-
-표의 경로에서 ‘원본’은 Maestro 소스, ‘현재’는 이 저장소의 Flowrium 소스를 뜻합니다.
-
-| 확인한 차이 | 원본 근거 | 현재 근거 |
-| --- | --- | --- |
-| 첨부와 대기열 | `src/components/chat/ChatDrawer.tsx:1953` / `src/server/mailbox.ts:84` | `src/App.tsx:627` / `electron/controller.cjs:323` |
-| 내부 대화 상태 | `src/server/chats.ts:1699` / `src/server/chats.ts:1715` | `electron/conversation-tools.cjs:25` / `electron/controller.cjs:297` |
-| 문맥과 설정 | `src/server/chats.ts:1414` / `src/components/chat/ChatPrefs.tsx:40` | `src/ConversationTools.tsx:32` / `electron/controller.cjs:330` |
-| 대화 간 협업 | `src/server/mailbox.ts:154` / `src/server/session-ask.ts:1` | `electron/controller.cjs` / `electron/teams-directed.cjs`에 일반 대화 간 전달 도구 없음 |
-| 프로젝트와 목표 | `src/lib/projects.ts:100` / `src/server/goals.ts:27` / `src/server/project-actions.ts:113` | `shared/types.ts:45` / `electron/project-details.cjs:97` |
-| 산출물 관리 | `src/components/outputs/OutputsPanel.tsx:180` | `src/Workbench.tsx:119` / `electron/workbench.cjs:174` |
-| 비서와 동적 팀 | `src/server/secretary.ts:61` / `src/server/team.ts:855` | `electron/memory.cjs:242` / `electron/teams-directed.cjs:556` |
-| 기억 저장 | `src/server/memory.ts:185` | `electron/memory.cjs:153` |
-| 저장소 실행과 정리 | `src/components/ship/RepoShip.tsx:113` / `src/components/ship/RepoClean.tsx:92` | `src/RepositoryPanel.tsx` / `electron/repository-actions.cjs` |
-| Google와 기본 앱 | `src/server/google-mcp.ts:14` / `src/server/mac-mcp.ts:32` | `electron/integrations.cjs:8` / `electron/integrations.cjs:336` / `electron/integrations.cjs:381` |
-| 모바일 조작과 푸시 | `src/components/mobile/team/MobileTeamAssign.tsx:41` / `src/app/api/push/route.ts:4` | `electron/remote.cjs:6` |
-| 음성과 가사 | `src/components/secretary/listen.ts:3` / `src/app/api/music/lyrics/route.ts:38` | `electron/voice.cjs:78` / `src/VoiceTools.tsx:222` / `src/MusicPanel.tsx:405` |
-| 저장 공간 | `src/app/settings/storage.tsx:12` / `src/server/storage.ts:100` | 대응 화면과 API 없음 |
-
 ## 작업량 추정
+
 
 아래는 설계 / 구현 / 기능별 검증의 **추정 작업 공수**입니다. 기존 동작과 공통 기반을 재사용하는 전제이며 확정 납기는 아닙니다. 병렬 진행 시 실제 경과 시간은 달라집니다.
 
@@ -95,14 +69,8 @@ Windows는 실제 공개 구버전에서 설치형 업데이트와 기록 보존
 - Apple에서 확인한 개발자 표시와 공증된 Mac 자동 업데이트에는 사용자가 준비할 Developer ID와 공증 권한이 필요합니다. 해당 계정 준비 및 심사 대기는 위 개발 공수에 포함하지 않습니다.
 - 카카오와 이메일은 공급자 설정과 사용자 인증이 필요합니다. 로컬 음성은 모델 / 장치 조건을 확인해야 합니다.
 
-## 제외와 대체 구현
+## 적용 원칙
 
-Claude 로그인과 엔진 / Claude 전용 훅 및 원본 GPT에서 비활성인 슬래시 처리 / 별자리와 캐릭터 장식 자체 / Intel Mac 배포는 이번 잔여 집계에서 제외했습니다. 다만 원본이 Claude SDK로 처리했다는 이유로 대화 간 협업 / 비서 자동화 / 기억 저장 / 일정 같은 업무 기능까지 제외하지 않았습니다. 해당 동작은 Codex를 통해 다시 연결할 작업입니다.
+AI 실행은 ChatGPT 계정과 Codex를 사용합니다. 사용자가 선택한 업무만 실행하고 주기 감시와 자동 팀 운영은 직접 켠 경우에만 시작합니다. 별자리와 캐릭터 장식, Intel Mac 배포는 개발 범위에서 제외합니다.
 
-고정 최상위 작업 폴더 대신 프로젝트별 독립 폴더를 고르는 방식, 원본 소스 갱신 대신 설치형 릴리스로 갱신하는 방식은 Flowrium의 설계 변경입니다. 원본 웹 서버 재시작이나 탐색 지연 로그 구현 자체는 데스크톱 앱의 필수 잔여 항목으로 세지 않았습니다.
-
-## 기존 보고에서 바로잡는 내용
-
-`/api/chats/[id]/mail`은 이메일이 아니라 대화 지시 우편함입니다. `/api/push`는 Git 푸시가 아니라 휴대폰 웹 푸시입니다. 이전 기능표에서 이 의미와 개인 비서의 자동화 범위를 충분히 구분하지 못했습니다. [기존 기능표](FEATURES.md)는 대응 기능의 목록이며, 이 감사표가 잔여 기능 판단을 보완합니다.
-
-이번에는 앱 기능과 설치 파일을 변경하지 않았습니다.
+프로젝트마다 독립된 로컬 폴더를 선택하며, 설치형 릴리스로 앱을 갱신합니다. 실행 중인 작업과 사용자 자료는 업데이트와 정리 과정에서 보호합니다.

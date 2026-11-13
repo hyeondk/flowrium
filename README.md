@@ -2,7 +2,7 @@
 
 본인의 ChatGPT 계정으로 로그인해 프로젝트별로 원하는 대화를 직접 열고 이어가는 데스크톱 앱입니다. 리서치 / 브리핑 / 문서 작성 / 주간업무보고 / 업무 마감 / 자유 업무를 각각 운영할 수 있습니다. 예를 들어 리서치 대화에서 자료를 조사한 뒤 그 답변을 산출물로 저장하고, 담당자가 읽을 브리핑은 별도 대화에서 작성할 수 있습니다. 폴더를 다시 열면 각 업무의 요청과 체크리스트, 답변이 남아 있습니다.
 
-[다운로드](https://hyeondk.github.io/flowrium/) / [릴리스와 설치 파일](https://github.com/hyeondk/flowrium/releases) / [기능별 지원 범위](docs/FEATURES.md) / [원본 대비 잔여 기능 감사](docs/PARITY-AUDIT-0.3.0.md) / [0.3.0 검증 기록](docs/VALIDATION-0.3.0.md)
+[다운로드](https://hyeondk.github.io/flowrium/) / [릴리스와 설치 파일](https://github.com/hyeondk/flowrium/releases) / [기능별 지원 범위](docs/FEATURES.md) / [기능 확장 계획](docs/PARITY-AUDIT-0.3.0.md) / [0.3.0 검증 기록](docs/VALIDATION-0.3.0.md)
 
 ![예시 프로젝트로 촬영한 실제 대시보드. 왼쪽의 프로젝트 및 도구 메뉴, 세 프로젝트의 목표와 최근 업무가 표시됩니다.](docs/workspace.png)
 
@@ -146,7 +146,3 @@ open release
 | `APPLE_TEAM_ID` | 인증서를 발급한 Apple 개발 팀 식별자 |
 
 배포 작업은 앱과 디스크 이미지의 서명 / 공증, 설치 이미지와 업데이트 ZIP 안의 앱을 검사합니다. Developer ID 인증서가 없는 버전은 Apple 미공증 상태를 공개 릴리스에 명시합니다. 이 버전은 사용자가 설치 파일의 출처와 확인값을 확인한 뒤 수동으로 설치할 수 있습니다. Windows의 선택적 서명에는 `WIN_CSC_LINK`와 `WIN_CSC_KEY_PASSWORD`를 같은 위치에 등록합니다. [저장소 비밀 값 설정](https://github.com/hyeondk/flowrium/settings/secrets/actions)
-
-## 참고한 프로그램
-
-프로젝트 안에서 여러 업무 대화를 꺼내 쓰는 Maestro의 사용 흐름을 조사하고 Flowrium의 화면, 로컬 저장 구조, Codex 연결을 구현했습니다. 원본에서 조사한 동작과 Flowrium에서 지원하는 범위는 [기능 비교표](docs/FEATURES.md)에 정리했습니다. [Maestro 공개 페이지](https://lhk228.github.io/maestro-download/)
