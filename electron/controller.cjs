@@ -593,7 +593,14 @@ class Controller extends EventEmitter {
         turnId: run.turnId,
       });
   }
-  async finish(run, status, error) {
+  finish(run, status, error) {
+    if (run.finishPromise) return run.finishPromise;
+    const completion = Promise.withResolvers();
+    run.finishPromise = completion.promise;
+    this.finishRun(run, status, error).then(completion.resolve, completion.reject);
+    return run.finishPromise;
+  }
+  async finishRun(run, status, error) {
     if (run.finalized) return;
     run.finalized = true;
     if (run.saveTimer) clearTimeout(run.saveTimer);

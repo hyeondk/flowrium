@@ -203,7 +203,13 @@ function registerTeams(register, store, controller, { canRun = () => true, workt
     if (!session) throw new Error('역할 대화가 삭제됐거나 시작되지 않았습니다. 실행 기록에서 결과를 확인해 주세요.');
     return structuredClone(session);
   });
-  return { api, isBusy: () => pending.size > 0 || directed.isBusy() };
+  return { api, isBusy: () => pending.size > 0 || queues.size > 0 || directed.isBusy(),
+    async flush(){
+      directed.stopScheduling();
+      while(queues.size)await Promise.allSettled([...queues.values()]);
+      await store.queue;
+    },
+  };
 }
 async function listRunsForStorage(store, projectId, controller) {
   const project=store.project(id(projectId)),base=path.join(project.path,".flowrium","teams");

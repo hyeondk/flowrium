@@ -313,7 +313,7 @@ function registerDirected(
       path.dirname((await folders(store, projectId)).runs),
       "directed",
     );
-  let transitions = 0;
+  let transitions = 0, schedulingStopped = false;
   function serial(projectId, work) {
     transitions += 1;
     return queue(projectId, work).finally(() => {
@@ -352,6 +352,7 @@ function registerDirected(
   }
   function schedule(projectId, r) {
     clearAlarm(r.id);
+    if(schedulingStopped)return;
     if (
       !r.directed.minutes ||
       !r.directed.startedAt ||
@@ -1319,6 +1320,8 @@ function registerDirected(
     }
     return result;
   }
-  return { list, isBusy: () => active.size > 0 || transitions > 0 };
+  return { list, isBusy: () => active.size > 0 || transitions > 0,
+    stopScheduling(){schedulingStopped=true;for(const runId of [...alarms.keys()])clearAlarm(runId);},
+  };
 }
 module.exports = { registerDirected };

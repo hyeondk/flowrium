@@ -26,6 +26,7 @@ let updater;
 let terminals;
 let systemTools;
 let workflowRuntime;
+let teamRuntime;
 let externalTools;
 let projectTools;
 let webPush;
@@ -198,7 +199,7 @@ async function launch() {
   register("checkUpdate", () => updater.check());
   register("installUpdate", () => updater.install());
   require("./conversation-tools.cjs").registerConversationTools(register, controller);
-  const teamRuntime = require("./teams.cjs").registerTeams(register, store, controller, { canRun: () => !quitting && !security.locked && !security.loggingOut && !updater.isInstalling(),
+  teamRuntime = require("./teams.cjs").registerTeams(register, store, controller, { canRun: () => !quitting && !security.locked && !security.loggingOut && !updater.isInstalling(),
     worktreeState: (id, run) => apiHandlers.get('teamWorktrees')(id, run),
     worktreeAction: (id, run, input) => apiHandlers.get('teamWorktreeAction')(id, run, input) });
   register("readSystemActivity", require("./activity.cjs").readSystemActivity);
@@ -480,6 +481,7 @@ else {
     quitting = true;
     if (window && !window.isDestroyed()) window.setEnabled(false);
     Promise.allSettled([workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
+      .then(() => teamRuntime?.flush())
       .then(() => drafts.queue)
       .finally(() => app.quit());
   });
