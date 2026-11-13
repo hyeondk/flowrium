@@ -45,6 +45,7 @@ test("PM 반복 한도는 사용자 결정으로 끝내거나 연장하고 활�
 });
 test("선택한 자동 통합은 실제 역할 변경만 커밋하고 통합 담당자의 별도 작업 폴더에서 검증해 원래 브랜치를 보존한다",async t=>{
   const s=await setup(t,roles);await run("git",["init","--initial-branch=main"],{cwd:s.folder});await run("git",["config","user.name","검증 사용자"],{cwd:s.folder});await run("git",["config","user.email","fixture@example.invalid"],{cwd:s.folder});
+  await run('git',['config','core.autocrlf','false'],{cwd:s.folder});
   await fs.writeFile(path.join(s.folder,".gitignore"),".flowrium/\n");await fs.writeFile(path.join(s.folder,"원본.txt"),"원래 프로젝트\n");await run("git",["add","."],{cwd:s.folder});await run("git",["commit","-m","검증 기준"],{cwd:s.folder});
   const original=(await run("git",["rev-parse","HEAD"],{cwd:s.folder})).stdout.trim();
   const send=s.controller.send.bind(s.controller);s.controller.send=async(input,internal)=>{
