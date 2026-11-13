@@ -56,11 +56,31 @@ async function checkProject(page,fixture) {
   assert.deepEqual(session.messages,[fixture.message]);
 }
 async function writeOldDraft(page,fixture) {
+  const assert=require('node:assert/strict');
   await checkProject(page,fixture);
+  const accountDrafts=await page.evaluate(()=>{
+    const api=window.flowrium;
+    return typeof api?.readDrafts==='function'&&typeof api?.writeDrafts==='function'&&typeof api?.securityState==='function';
+  });
+  if(accountDrafts){
+    const saved=await page.evaluate(async f=>{
+      const api=window.flowrium,security=await api.securityState();
+      await api.writeDrafts(security.accountRevision,{['session:'+f.session]:f.draft});
+      return (await api.readDrafts(security.accountRevision))['session:'+f.session];
+    },fixture);
+    assert.deepEqual(saved,fixture.draft);
+    await page.reload();await page.waitForLoadState('domcontentloaded');
+    const reloaded=await page.evaluate(async id=>{
+      const api=window.flowrium,security=await api.securityState();
+      return (await api.readDrafts(security.accountRevision))['session:'+id];
+    },fixture.session);
+    assert.deepEqual(reloaded,fixture.draft);
+    return;
+  }
   await page.evaluate(f=>localStorage.setItem('flowrium.drafts',JSON.stringify({['session:'+f.session]:f.draft})),fixture);
   await page.reload();await page.waitForLoadState('domcontentloaded');
   const draft=await page.evaluate(id=>JSON.parse(localStorage.getItem('flowrium.drafts'))['session:'+id],fixture.session);
-  require('node:assert/strict').deepEqual(draft,fixture.draft);
+  assert.deepEqual(draft,fixture.draft);
 }
 async function checkNewProfile(binary,temporary,userData,fixture,version) {
   const {_electron}=require('playwright'),path=require('node:path'),assert=require('node:assert/strict');
@@ -77,6 +97,13 @@ async function checkNewProfile(binary,temporary,userData,fixture,version) {
     },fixture.session);
     assert.deepEqual(migrated,fixture.draft);
     assert.equal(await page.evaluate(()=>localStorage.getItem('flowrium.drafts')),null);
+    await page.locator('.workspace-side').getByRole('button',{name:'대시보드',exact:true}).click();
+    await page.locator('.pf-row').filter({hasText:'보존할 대화'}).first().click();
+    const composer=page.getByLabel('Codex에 보낼 작업 요청',{exact:true});
+    await composer.waitFor();
+    await page.waitForFunction(text=>document.querySelector('textarea[aria-label="Codex에 보낼 작업 요청"]')?.value===text,fixture.draft.text);
+    assert.equal(await composer.inputValue(),fixture.draft.text);
+    assert.equal(await page.getByLabel('작업 모드',{exact:true}).inputValue(),fixture.draft.mode);
     console.log('새 설치본 재기동 / 이전 프로젝트 주소와 평문 메시지 / 보내지 않은 입력의 이전 및 복원 확인');
   } finally {await app.close();}
 }

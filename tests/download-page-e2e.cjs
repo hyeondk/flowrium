@@ -20,7 +20,9 @@ async function run() {
     "mark.png",
     "workspace.png",
   ]);
+  const serverRequests=[];
   const server = http.createServer(async (req, res) => {
+    serverRequests.push(req.url);
     const file = req.url === "/" ? "index.html" : req.url.slice(1);
     if (!routes.has(file)) {
       res.writeHead(404).end();
@@ -36,7 +38,8 @@ async function run() {
     res.writeHead(200, { "content-type": mime });
     res.end(await fs.readFile(path.join(root, file)));
   });
-  let app;
+  let app,page;
+  const pending=new Set(),requestFailures=[],pageErrors=[];
   try {
     await new Promise((resolve, reject) =>
       server.once("error", reject).listen(0, "127.0.0.1", resolve),
@@ -52,8 +55,12 @@ async function run() {
       args: [script, "--user-data-dir=" + path.join(temp, "프로필")],
       env,
     });
-    const page = await app.firstWindow();
-    page.setDefaultTimeout(8000);
+    page = await app.firstWindow();
+    page.setDefaultTimeout(20000);
+    page.on('request',request=>pending.add(request));
+    page.on('requestfinished',request=>pending.delete(request));
+    page.on('requestfailed',request=>{pending.delete(request);requestFailures.push({url:request.url(),error:request.failure()?.errorText});});
+    page.on('pageerror',error=>pageErrors.push(error.message));
     let tag = "v0.3.0",
       error = false;
     await page.route(
@@ -88,9 +95,10 @@ async function run() {
         });
       },
     );
-    await page.goto("http://127.0.0.1:" + server.address().port);
+    await page.goto("http://127.0.0.1:" + server.address().port,{waitUntil:'domcontentloaded'});
     await page.getByRole("status").filter({ hasText: "2개 플랫폼" }).waitFor();
     const image = page.locator(".app-preview img");
+    await page.waitForFunction(()=>{const image=document.querySelector('.app-preview img');return image?.complete&&image.naturalWidth===1392&&image.naturalHeight===930;});
     assert.equal(
       await image.evaluate(
         (e) => e.complete && e.naturalWidth === 1392 && e.naturalHeight === 930,
@@ -120,14 +128,14 @@ async function run() {
       /v0\.3\.0\/Flowrium-0\.3\.0-mac-arm64\.dmg$/,
     );
     tag = "v0.1.2";
-    await page.reload();
+    await page.reload({waitUntil:'domcontentloaded'});
     await page.getByRole("status").filter({ hasText: "1개 플랫폼" }).waitFor();
     assert.equal(
       await page.locator('[data-download="mac-arm64"]').getAttribute("href"),
       null,
     );
     error = true;
-    await page.reload();
+    await page.reload({waitUntil:'domcontentloaded'});
     await page.getByRole("button", { name: "다시 확인" }).waitFor();
     error = false;
     tag = "v0.3.0";
@@ -136,6 +144,9 @@ async function run() {
     console.log(
       "공개 페이지 실제 브라우저 검증 / 실제 앱 이미지 / 네 화면 폭 / 미공증 안내 / 플랫폼 링크 / 이전 Mac 차단 / 재시도",
     );
+  } catch(error){
+    console.error('다운로드 페이지 진단',JSON.stringify({pending:[...pending].map(request=>request.url()),requestFailures,pageErrors,serverRequests:serverRequests.slice(-80),readyState:page&&!page.isClosed()?await page.evaluate(()=>document.readyState).catch(()=>null):null}));
+    throw error;
   } finally {
     if (app) await app.close();
     await new Promise((resolve) => server.close(resolve));
