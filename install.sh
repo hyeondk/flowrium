@@ -24,6 +24,7 @@ if [ -n "$package" ]; then [ -f "$package" ] && [ -n "$checksum_file" ] && [ -f 
 assert_stopped(){ if /usr/bin/pgrep -x Flowrium >/dev/null 2>&1 || /usr/bin/pgrep -f '/Flowrium[.]app/Contents/' >/dev/null 2>&1; then fail 'Flowrium이 실행 중입니다. 앱과 관련 작업을 종료한 뒤 다시 설치하세요.'; fi; }
 assert_stopped
 work=$(mktemp -d "${TMPDIR:-/tmp}/flowrium-install.XXXXXXXX")
+work=$(cd -P "$work" && pwd)
 staged='' backup='' installed=0
 cleanup(){ result=$?; if [ "$result" -ne 0 ] && [ -n "$backup" ] && [ -e "$backup" ] && [ ! -e "$install_dir/Flowrium.app" ]; then mv "$backup" "$install_dir/Flowrium.app" || true; fi; [ -z "$staged" ] || rm -rf "$staged"; rm -rf "$work"; exit "$result"; }
 trap cleanup EXIT

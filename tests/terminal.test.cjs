@@ -24,16 +24,29 @@ async function fixture(t, options) {
   async function text(s) { return stripVTControlCharacters((await api.terminalRead(project.id, s.id, 0)).data); }
   async function wait(s, phrase) {
     for (let n = 0; n < 180; n++) { const value = await text(s); if (value.includes(phrase)) return value; await delay(80); }
-    throw new Error('셸 응답이 도착하지 않았습니다: ' + phrase);
+    const snapshot=api.terminalRead(project.id,s.id,0);
+    throw new Error('셸 응답이 도착하지 않았습니다: ' + phrase+' / '+JSON.stringify({closed:snapshot.closed,exitCode:snapshot.exitCode,raw:snapshot.data.slice(-4000)}));
   }
-  return { api, project, other, text, wait, manager };
+  async function ready(s,label){
+    if(!windows)return;
+    const start=Date.now();
+    for(let n=0;n<375;n++){
+      const snapshot=api.terminalRead(project.id,s.id,0),value=stripVTControlCharacters(snapshot.data);
+      if(/PS [^\r\n>]*>\s*$/.test(value)){t.diagnostic(label+' PowerShell 준비 / '+JSON.stringify({elapsedMs:Date.now()-start,raw:snapshot.data.slice(-1600)}));return;}
+      if(snapshot.closed)throw Error(label+' 셸이 준비되기 전에 종료됐습니다. / '+JSON.stringify(snapshot));
+      await delay(80);
+    }
+    throw Error(label+' PowerShell 프롬프트가 준비되지 않았습니다. / '+JSON.stringify(api.terminalRead(project.id,s.id,0)));
+  }
+  return { api, project, other, text, wait, ready, manager };
 }
 test('운영체제 가상 터미널 두 개의 입출력, 독립 작업 폴더, 크기 변경과 종료', { skip: !supported }, async (t) => {
-  const { api, project, other, wait, text, manager } = await fixture(t);
+  const { api, project, other, wait, text, ready, manager } = await fixture(t);
   const first = await api.terminalOpen(project.id), second = await api.terminalOpen(project.id);
   assert.notEqual(first.id, second.id); assert.ok(manager.isBusy());
   assert.equal(api.terminalList(other.id).length, 0);
   assert.throws(() => api.terminalWrite(other.id, first.id, 'exit\r'), /이 프로젝트의 터미널/);
+  await ready(first,'첫째');await ready(second,'둘째');
   api.terminalResize(project.id, first.id, 112, 28);
   const tty = windows ? "if (-not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected) { " + print('FLOW_', 'TTY') + " }" :
     "if [[ -t 0 && -t 1 ]]; then " + print('FLOW_', 'TTY') + "; fi";
