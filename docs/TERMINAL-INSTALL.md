@@ -18,6 +18,8 @@ bash Flowrium-install.sh
 
 기본 설치 위치는 `~/Applications/Flowrium.app`입니다. 설치가 끝나면 Finder에서 이 앱을 실행하세요. `/Applications`의 이전 앱을 갱신하려면 해당 위치의 쓰기 권한이 있어야 하며 다음처럼 위치를 지정할 수 있습니다.
 
+첫 실행이나 앱 교체 뒤 `Flowrium Safe Storage` 키체인 확인이 나타나면 macOS 창에 맥 사용자 로그인 암호를 입력합니다. 키체인 암호를 따로 바꾼 경우에는 해당 암호를 사용합니다. 출처를 확인한 앱의 키 사용을 허용하려면 **항상 허용**을 선택할 수 있습니다. 앱의 서명이나 위치가 달라지면 다시 확인할 수 있으며 기존 키체인 항목은 삭제하지 않습니다.
+
 ```bash
 bash Flowrium-install.sh --install-dir /Applications
 ```
