@@ -61,7 +61,7 @@ async function main() {
     await page.mouse.move(400,100);await page.waitForTimeout(300);
     assert.equal(await rail.getAttribute('data-expanded'),'false');
     const before=await page.locator('.main-shell').boundingBox();
-    await rail.hover();await page.waitForTimeout(300);
+    await rail.hover();await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');await page.waitForTimeout(300);
     assert.equal(await rail.getAttribute('data-expanded'),'true');
     assert.equal((await page.locator('.sidebar-surface').boundingBox()).width,232);
     assert.deepEqual(await page.locator('.main-shell').boundingBox(),before,'메뉴를 올려도 본문 배치 유지');
@@ -245,6 +245,7 @@ async function main() {
       .getByRole("button", { name: "주간업무보고", exact: true })
       .click();
     await page.getByRole("checkbox", { name, exact: true }).check();
+    await page.getByText("제목과 보고 형식 설정",{exact:true}).click();
     await page.getByLabel("보고서 제목").fill("편집 주간보고");
     await button("ChatGPT로 보고서 작성").click();
     await page
@@ -252,10 +253,11 @@ async function main() {
       .waitFor();
     await nav.getByRole("button", { name: "업무 마감", exact: true }).click();
     await button("최근 12시간 작업 선택").click();
+    await page.getByText("제목과 인계 대상 설정",{exact:true}).click();
     await page.getByLabel("마감 기록 제목").fill("편집 업무 인계");
     await button("ChatGPT로 업무 마감 작성").click();
     await page
-      .locator("button.pf-row")
+      .locator("button.report-history-row")
       .filter({ hasText: "편집 업무 인계" })
       .click();
     await page.getByRole("heading", { name: "편집 업무 인계" }).waitFor();
@@ -264,7 +266,7 @@ async function main() {
       .click();
     await button("작성된 보고").click();
     await page
-      .locator("button.pf-row")
+      .locator("button.report-history-row")
       .filter({ hasText: "편집 주간보고" })
       .waitFor();
     console.log(

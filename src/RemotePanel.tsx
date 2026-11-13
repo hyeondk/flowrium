@@ -1,4 +1,4 @@
-import { AnimatedCheckbox } from './ui-motion';
+import { AnimatedSwitch } from './ui-motion';
 import { useEffect, useState } from "react";
 import { Smartphone, Copy, RefreshCw } from "lucide-react";
 import type { RemoteAccess, WebPushState, PushKind } from "../shared/remote";
@@ -100,7 +100,7 @@ export default function RemotePanel() {
         {!push?.devices.length&&<p>현재 연결에 등록된 기기가 없습니다.</p>}
         {push?.devices.map(device=><div key={device.id} className="settings-card">
           <strong>{device.label}</strong>
-          <div className="settings-buttons">{(Object.keys(pushLabels) as PushKind[]).map(kind=><label key={kind} style={{display:"flex",alignItems:"center",gap:6}}><AnimatedCheckbox style={{width:"auto"}} checked={(deviceKinds[device.id]||[]).includes(kind)} onChange={event=>setDeviceKinds(old=>({...old,[device.id]:event.target.checked?[...(old[device.id]||[]),kind]:(old[device.id]||[]).filter(k=>k!==kind)}))}/>{pushLabels[kind]}</label>)}</div>
+          <div className="settings-buttons">{(Object.keys(pushLabels) as PushKind[]).map(kind=><label key={kind} style={{display:"flex",alignItems:"center",gap:6}}><AnimatedSwitch style={{width:"auto"}} checked={(deviceKinds[device.id]||[]).includes(kind)} onChange={event=>setDeviceKinds(old=>({...old,[device.id]:event.target.checked?[...(old[device.id]||[]),kind]:(old[device.id]||[]).filter(k=>k!==kind)}))}/>{pushLabels[kind]}</label>)}</div>
           <div className="settings-buttons">
             <button className="button secondary" disabled={busy} onClick={()=>void pushAction(()=>api!.webPushAction({action:"preferences",id:device.id,kinds:deviceKinds[device.id]||[]}))}>알림 종류 저장</button>
             <button className="button secondary" disabled={busy} onClick={()=>void pushAction(async()=>{const result=await api!.webPushAction({action:"test",id:device.id});setMessage(result.sent?"알림 서버에 시험 알림을 보냈습니다.":"시험 알림 발송을 확인하지 못했습니다.");})}>기기에 시험 알림</button>

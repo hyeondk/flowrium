@@ -41,6 +41,10 @@ async function run() {
   async function unlock() {
     await page.getByLabel("잠금 번호", { exact: true }).fill("7904");
     await btn("잠금 해제").click();
+    const layer=page.locator('.security-lock-layer[data-phase=exit]');await layer.waitFor({state:'attached'});
+    const frames=await layer.evaluate(e=>({name:getComputedStyle(e).animationName,duration:getComputedStyle(e).animationDuration,frames:e.getAnimations()[0]?.effect.getKeyframes().map(k=>k.transform)}));
+    assert.equal(frames.name,'ui-unlock');assert.equal(frames.duration,'0.36s');assert.deepEqual(frames.frames,['translateY(0px)','translateY(-100%)']);
+    await layer.waitFor({state:'detached'});
     await page
       .locator(".pf-card")
       .filter({ hasText: "잠금 검증 프로젝트" })
@@ -111,6 +115,7 @@ async function run() {
     }
     await page.getByLabel("잠금 번호", { exact: true }).fill("0000");
     await btn("잠금 해제").click();
+    assert.equal(await page.locator('.security-lock-layer[data-phase=exit]').count(),0,'잘못된 번호로 잠금 해제 애니메이션을 시작하지 않음');
     await page
       .getByRole("alert")
       .filter({ hasText: "일치하지 않습니다" })

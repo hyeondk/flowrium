@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type CSSProperties, type ReactNode } from 'react';
+import {ThumbsUp} from 'lucide-react';
+import {createPortal} from 'react-dom';
 
 export type MotionPhase = 'enter' | 'idle' | 'exit';
 
@@ -32,8 +34,10 @@ export function MotionPresence({ open, durationMs = 240, children }: { open: boo
   return present ? children(phase) : null;
 }
 
-export function MotionOverlay({ open, onClose, children, label, className = '', kind = 'popup', durationMs = 240 }: {
-  open: boolean; onClose?: () => void; children: ReactNode; label: string; className?: string; kind?: 'popup' | 'sheet'; durationMs?: number;
+export function ModalPortal({children}:{children:ReactNode}){return createPortal(children,document.body);}
+
+export function MotionOverlay({ open, onClose, children, label, className = '', kind = 'popup', durationMs = 240, initialFocus }: {
+  open: boolean; onClose?: () => void; children: ReactNode; label: string; className?: string; kind?: 'popup' | 'sheet'; durationMs?: number; initialFocus?:string;
 }) {
   const { present, phase } = usePresence(open, durationMs);
   const surface = useRef<HTMLElement>(null);
@@ -43,7 +47,7 @@ export function MotionOverlay({ open, onClose, children, label, className = '', 
     const before = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const root = surface.current;
     const targets = () => [...(root?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]') || [])].filter(node => node.getClientRects().length > 0);
-    (targets()[0] || root)?.focus();
+    (initialFocus && root?.querySelector<HTMLElement>(initialFocus) || targets()[0] || root)?.focus();
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && callback.current) { event.preventDefault(); callback.current(); }
       if (event.key !== 'Tab') return;
@@ -54,11 +58,11 @@ export function MotionOverlay({ open, onClose, children, label, className = '', 
     };
     document.addEventListener('keydown', key);
     return () => { document.removeEventListener('keydown', key); if (before?.isConnected) before.focus(); };
-  }, [present, open]);
+  }, [present, open, initialFocus]);
   if (!present) return null;
-  return <div className={`motion-overlay ${className}`} data-phase={phase} data-kind={kind} style={{ '--motion-duration': `${Math.max(200, Math.min(400, durationMs))}ms` } as CSSProperties} onMouseDown={event => { if (open && event.target === event.currentTarget) onClose?.(); }}>
+  return <ModalPortal><div className={`motion-overlay ${className}`} data-phase={phase} data-kind={kind} style={{ '--motion-duration': `${Math.max(200, Math.min(400, durationMs))}ms` } as CSSProperties} onMouseDown={event => { if (open && event.target === event.currentTarget) onClose?.(); }}>
     <section className="motion-surface" data-motion={kind} data-phase={phase} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} ref={surface} inert={phase === 'exit'}>{children}</section>
-  </div>;
+  </div></ModalPortal>;
 }
 
 type NoticeProps = { message: string; onClose?: () => void; tone?: 'success' | 'error' | 'info'; action?: ReactNode; className?: string };
@@ -79,4 +83,13 @@ export function Snackbar(props: NoticeProps) { return <Notice {...props} kind="s
 
 export function AnimatedCheckbox({ className = '', ...props }: Omit<ComponentPropsWithRef<'input'>, 'type'>) {
   return <span className="ui-checkbox-control"><input {...props} type="checkbox" className={className}/><svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="1" y="1" width="18" height="18" rx="5"/><path d="M5 10.2 8.3 13.4 15 6.8" pathLength="1"/></svg></span>;
+}
+
+export function AnimatedSwitch({className='',...props}:Omit<ComponentPropsWithRef<'input'>,'type'|'role'>){
+  return <span className="ui-switch-control"><input {...props} className={className} type="checkbox" role="switch"/><span className="ui-switch-track" aria-hidden="true"><span className="ui-switch-thumb"/></span></span>;
+}
+
+export function LikeButton({active,onClick,disabled}:{active:boolean;onClick():void;disabled?:boolean}){
+  const [pulse,setPulse]=useState(0);
+  return <button type="button" className="ui-like-button" aria-label={active?'좋아요 취소':'좋아요'} aria-pressed={active} disabled={disabled} onClick={()=>{setPulse(value=>value+1);onClick()}}><span key={pulse} className="ui-spring-glyph" data-pulse={pulse?'true':'false'}><ThumbsUp size={14} fill={active?'currentColor':'none'}/></span><span>좋아요</span></button>;
 }

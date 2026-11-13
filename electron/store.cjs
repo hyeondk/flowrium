@@ -29,7 +29,7 @@ function settings(input, current = DEFAULT_SETTINGS) {
     if (!["codexPath", "model", "effort", "theme", "chatDefaults"].includes(key))
       throw new Error("지원하지 않는 설정입니다.");
     const value = input[key];
-    if (key === "effort" && !["low", "medium", "high"].includes(value))
+    if (key === "effort" && !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(value))
       throw new Error("추론 강도를 확인해 주세요.");
     if (key === "theme" && !["dark", "light"].includes(value))
       throw new Error("화면 테마를 확인해 주세요.");

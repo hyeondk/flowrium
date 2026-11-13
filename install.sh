@@ -2,7 +2,7 @@
 set -euo pipefail
 fail(){ printf '%s\n' "$*" >&2; exit 1; }
 usage(){ cat <<'TEXT'
-사용법: bash install.sh [--version 0.4.0] [--from-source] [--install-dir 폴더]
+사용법: bash install.sh [--version 0.6.0] [--from-source] [--install-dir 폴더]
        bash install.sh --package 로컬파일 --checksums SHA256SUMS.txt [--verify-only]
 Mac Apple Silicon 전용입니다. 기본 위치는 ~/Applications/Flowrium.app입니다.
 --from-source는 Node.js 24 이상 / npm / Apple 명령줄 도구가 필요합니다.

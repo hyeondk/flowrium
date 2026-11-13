@@ -4,6 +4,15 @@ const invoke = (method, ...args) =>
 contextBridge.exposeInMainWorld(
   "flowrium",
   Object.freeze({
+    migrationAction: input => invoke('migrationAction',input),
+    readProjectPorts: id => invoke('readProjectPorts',id),
+    projectPortsAction: (id,input) => invoke('projectPortsAction',id,input),
+    voiceServersState: () => invoke('voiceServersState'),
+    configureVoiceServer: input => invoke('configureVoiceServer',input),
+    previewVoiceServer: id => invoke('previewVoiceServer',id),
+    voiceServerAction: input => invoke('voiceServerAction',input),
+    chooseVoiceServerPath: kind => invoke('chooseVoiceServerPath',kind),
+    reactMessage: input => invoke('reactMessage',input),
     readDrafts: revision => invoke("readDrafts", revision),
     addChatAttachments: (project, files) => invoke("addChatAttachments", project, files),
     readChatAttachment: (project, id) => invoke("readChatAttachment", project, id),

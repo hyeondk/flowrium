@@ -10,7 +10,7 @@ function validateQueue(items=[]) {
       !['plan','build','review'].includes(q.mode)||!['queued','sending','sent','cancelled'].includes(q.status)||
       !Number.isFinite(Date.parse(q.createdAt))||typeof q.owner!=='string'||q.owner.length>200||
       (q.model!==undefined&&(typeof q.model!=='string'||q.model.length>300))||
-      (q.effort!==undefined&&!['low','medium','high'].includes(q.effort))) throw Error('저장된 대기 지시 형식이 올바르지 않습니다.');
+      (q.effort!==undefined&&!['none','minimal','low','medium','high','xhigh','max','ultra'].includes(q.effort))) throw Error('저장된 대기 지시 형식이 올바르지 않습니다.');
     checkedAttachments(q.attachments||[]);seen.add(q.id);
   }
 }

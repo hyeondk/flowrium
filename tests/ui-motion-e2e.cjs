@@ -16,18 +16,20 @@ async function run() {
     await fs.writeFile(path.join(temp, 'fixture.tsx'), `
       import React, {useState, useRef, useEffect} from 'react';
       import {createRoot} from 'react-dom/client';
-      import {MotionOverlay, Snackbar, Toast, AnimatedCheckbox} from '/src/ui-motion.tsx';
+      import {MotionOverlay, Snackbar, Toast, AnimatedCheckbox, AnimatedSwitch, LikeButton} from '/src/ui-motion.tsx';
       import CommandCenter from '/src/CommandCenter.tsx';
       import {AssistantShortcut} from '/src/ProjectMemory.tsx';
-      import '/src/styles.css'; import '/src/ui-motion.css';
+      import '/src/styles.css'; import '/src/ui-motion.css'; import '/src/shell.css'; import '/src/design-system.css';
       window.flowrium = {portfolioAction: async()=>({shortcuts:{search:'mod+k'}}),assistantHome:async()=>({connected:false})};
       function Fixture(){
-        const [popup,setPopup]=useState(false),[sheet,setSheet]=useState(false),[toast,setToast]=useState(''),[snack,setSnack]=useState(''),[checked,setChecked]=useState(false);
+        const [popup,setPopup]=useState(false),[sheet,setSheet]=useState(false),[toast,setToast]=useState(''),[snack,setSnack]=useState(''),[checked,setChecked]=useState(false),[enabled,setEnabled]=useState(false),[liked,setLiked]=useState(false);
         const check=useRef(null);
         useEffect(()=>{window.motion={setPopup,setSheet,setToast,setSnack,check:()=>check.current};},[]);
-        return <main style={{padding:24,width:'min(620px,100%)',display:'grid',gap:12}}>
+        return <main style={{padding:24,width:'min(620px,100%)',display:'grid',gap:12,transform:'translateZ(0)'}}>
           <div className="ui-title-stagger"><h1>제목 순차 등장</h1><p>설명은 한 줄씩 자연스럽게 표시합니다.</p></div>
           <div className="pf-goals"><label><span>완료 상태</span><AnimatedCheckbox ref={check} aria-label="완료 상태" checked={checked} onChange={e=>setChecked(e.target.checked)}/></label></div>
+          <label>자동 실행<AnimatedSwitch aria-label="자동 실행" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/></label>
+          <LikeButton active={liked} onClick={()=>setLiked(v=>!v)}/>
           <label>일반 입력<input aria-label="일반 입력" defaultValue="일정한 행 높이"/></label>
           <button className="button" onClick={()=>setPopup(true)}>팝업 열기</button>
           <button className="button" onClick={()=>setSheet(true)}>하단 시트 열기</button>
@@ -77,10 +79,16 @@ async function run() {
     const draw=await page.evaluate(()=>{const input=document.querySelector('.ui-checkbox-control input');input.click();const path=input.nextElementSibling.querySelector('path');const style=getComputedStyle(path);return {duration:style.transitionDuration,ease:style.transitionTimingFunction};});
     assert.equal(draw.duration,'0.24s'); assert.equal(draw.ease,'cubic-bezier(0.4, 0, 0.2, 1)');
     await page.waitForTimeout(70);const midway=await checkbox.evaluate(e=>parseFloat(getComputedStyle(e.nextElementSibling.querySelector('path')).strokeDashoffset));assert.ok(midway>0&&midway<1,'체크 선이 실제로 그려지는 중간 프레임');
+    const toggle=page.getByRole('switch',{name:'자동 실행'});await toggle.check();assert.equal(await toggle.isChecked(),true);await toggle.focus();await page.keyboard.press('Space');assert.equal(await toggle.isChecked(),false);
+    assert.equal(await toggle.evaluate(e=>getComputedStyle(e.nextElementSibling.querySelector('span')).transitionTimingFunction),'cubic-bezier(0.4, 0, 0.2, 1)');
+    await page.getByRole('button',{name:'좋아요',exact:true}).click();assert.equal(await page.getByRole('button',{name:'좋아요 취소',exact:true}).getAttribute('aria-pressed'),'true');
+    const spring=await page.locator('.ui-spring-glyph').evaluate(e=>({name:getComputedStyle(e).animationName,duration:getComputedStyle(e).animationDuration,frames:e.getAnimations()[0].effect.getKeyframes().map(k=>k.transform)}));assert.equal(spring.name,'ui-like-spring');assert.equal(spring.duration,'0.36s');assert.ok(spring.frames.includes('scale(1.24)'));
+    const palette=await page.evaluate(()=>({bg:getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(),accent:getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()}));assert.deepEqual(palette,{bg:'#f3f8fc',accent:'#255a92'});
     await page.getByRole('button',{name:'팝업 열기'}).click();
     const popup=page.locator('.motion-surface[aria-label="검증 팝업"]'); await popup.waitFor();
     const popupMotion=await popup.evaluate(e=>{const a=e.getAnimations()[0];return {name:getComputedStyle(e).animationName,duration:a.effect.getTiming().duration,ease:getComputedStyle(e).animationTimingFunction,frames:a.effect.getKeyframes().map(k=>k.transform)};});
     assert.equal(popupMotion.name,'ui-popup-in');assert.equal(popupMotion.duration,240);assert.equal(popupMotion.ease,'cubic-bezier(0.16, 1, 0.3, 1)');assert.deepEqual(popupMotion.frames,['scale(0.9)','scale(1)']);
+    await page.waitForTimeout(260);const centered=await popup.boundingBox();const viewport=await page.evaluate(()=>({width:innerWidth,height:innerHeight}));assert.ok(Math.abs(centered.x+centered.width/2-viewport.width/2)<2,'변형된 부모 안에서도 팝업 가로 중앙');assert.ok(Math.abs(centered.y+centered.height/2-viewport.height/2)<2,'팝업 세로 중앙');
     await page.getByRole('button',{name:'끝 버튼',exact:true}).focus();await page.keyboard.press('Tab');assert.equal(await page.getByRole('button',{name:'첫 버튼',exact:true}).evaluate(e=>e===document.activeElement),true);
     await page.keyboard.press('Escape');
     const exit=await page.locator('.motion-overlay').evaluate(e=>({phase:e.dataset.phase,ease:getComputedStyle(e).animationTimingFunction}));
@@ -98,7 +106,7 @@ async function run() {
     assert.equal(await sheet.evaluate(e=>getComputedStyle(e).animationName),'ui-sheet-in');
     assert.equal(await page.locator('.motion-overlay').evaluate(e=>getComputedStyle(e).animationName),'ui-fade-in');
     await page.getByRole('button',{name:'시트 닫기'}).click();assert.equal(await sheet.evaluate(e=>getComputedStyle(e).animationName),'ui-sheet-out');await sheet.waitFor({state:'detached'});
-    await page.setViewportSize({width:1000,height:950});await page.getByRole('button',{name:'프로젝트와 화면 찾기'}).click();const command=page.locator('.command-scrim [role=dialog]');await command.waitFor();await page.getByRole('textbox',{name:'전체 검색어'}).fill('검증');await page.keyboard.press('Escape');assert.equal(await page.locator('.command-scrim').getAttribute('data-phase'),'exit');await command.waitFor({state:'detached'});
+    await page.setViewportSize({width:1000,height:950});await page.getByRole('button',{name:'프로젝트와 화면 찾기'}).click();const command=page.locator('.command-scrim [role=dialog]');await command.waitFor();await page.waitForTimeout(260);const cb=await command.boundingBox();assert.ok(Math.abs(cb.y+cb.height/2-475)<2,'검색 팝업 세로 중앙');await page.getByRole('textbox',{name:'전체 검색어'}).fill('검증');await page.keyboard.press('Escape');assert.equal(await page.locator('.command-scrim').getAttribute('data-phase'),'exit');await command.waitFor({state:'detached'});
     await page.getByRole('button',{name:'개인 비서',exact:true}).click();const assistant=page.locator('dialog[aria-label="개인 비서 연결"]');await assistant.waitFor();assert.equal(await assistant.evaluate(e=>e.open),true);await page.keyboard.press('Escape');assert.equal(await assistant.getAttribute('data-phase'),'exit');assert.equal(await assistant.evaluate(e=>e.open),true,'기본 Escape 닫힘을 지연하여 종료 애니메이션 보장');await assistant.waitFor({state:'detached'});
     await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>window.motion.setPopup(true));await popup.waitFor();assert.equal(await popup.evaluate(e=>getComputedStyle(e).transform),'none');await page.evaluate(()=>window.motion.setPopup(false));await popup.waitFor({state:'detached'});
     assert.deepEqual(errors,[]);

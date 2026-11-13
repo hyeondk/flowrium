@@ -147,6 +147,9 @@ class Controller extends EventEmitter {
         id: model.model || model.id,
         displayName: model.displayName || model.id,
         description: model.description || undefined,
+        supportedReasoningEfforts:Array.isArray(model.supportedReasoningEfforts)?model.supportedReasoningEfforts.filter(row=>row&&['none','minimal','low','medium','high','xhigh','max','ultra'].includes(row.reasoningEffort)).map(row=>({reasoningEffort:row.reasoningEffort,description:row.description})):undefined,
+        defaultReasoningEffort:model.defaultReasoningEffort,
+        isDefault:model.isDefault===true,
       })),
       accountLabel,
     };
@@ -205,7 +208,7 @@ class Controller extends EventEmitter {
     const message = typeof input.text === "string" && !input.text.trim() && attachmentIds.length ? "첨부한 자료를 확인해 주세요." : text(input.text, "작업 내용");
     if (!Object.hasOwn(MODE_INSTRUCTIONS, input.mode))
       throw new Error("작업 방식을 선택해 주세요.");
-    if (input.effort && !["low", "medium", "high"].includes(input.effort))
+    if (input.effort && !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(input.effort))
       throw new Error("추론 강도를 확인해 주세요.");
     if (input.model) text(input.model, "모델", 300);
     const session = this.store.session(input.sessionId);

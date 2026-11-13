@@ -8,13 +8,15 @@ import ConversationDock from "./ConversationDock";
 import {ExecutionSummary} from "./ExecutionStatus";
 import {sessionExecution,visibleProposals,type ExecutionState} from "../shared/execution-state";
 import type {WorkflowProposal} from "../shared/workflow";
-import {usePresence,MotionOverlay,Toast,Snackbar,AnimatedCheckbox} from "./ui-motion";
+import {usePresence,MotionOverlay,ModalPortal,Toast,Snackbar,AnimatedCheckbox,LikeButton} from "./ui-motion";
 import { AssistantShortcut } from "./ProjectMemory";
 import PortfolioReports from "./PortfolioReports";
 import MusicPanel from "./MusicPanel";
 import IntegrationPanel from "./IntegrationPanel";
 import RemotePanel from "./RemotePanel";
 import { VoiceSettings, VoiceComposer, SpeakButton } from "./VoiceTools";
+import {effortOptions,effortLabels} from "../shared/model-options";
+import MigrationPanel from "./MigrationPanel";
 import { useSecurity, SecurityPanel, LockScreen } from "./SecurityPanel";
 import { ProjectPortfolio } from "./ProjectPortfolio";
 import { ProjectOverview } from "./ProjectOverview";
@@ -189,10 +191,13 @@ const upsert = (items: Session[], session: Session) =>
 
 export default function App() {
   const security = useSecurity();
+  const lockPresence=usePresence(security.state.loaded&&security.state.locked,360);
   if (!security.state.loaded && security.error) return <main className="loading-page"><p role="alert">{security.error}</p><button onClick={()=>void security.refresh().catch(()=>{})}>연결 다시 확인</button></main>;
   if (!security.state.loaded) return <main className="loading-page"><LoaderCircle className="spin"/>작업 공간을 준비하고 있습니다.</main>;
-  if (security.state.locked) return <LockScreen security={security}/>;
-  return <UnlockedWorkspace key={security.state.accountRevision} security={security}/>;
+  return <div className="security-stage">
+    {!security.state.locked&&<div className="unlocked-stage"><UnlockedWorkspace key={security.state.accountRevision} security={security}/></div>}
+    {lockPresence.present&&<div className="security-lock-layer" data-phase={lockPresence.phase} inert={!security.state.locked} aria-hidden={!security.state.locked}><LockScreen security={security} releasing={!security.state.locked}/></div>}
+  </div>;
 }
 function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>}) {
   const [logoutOpen,setLogoutOpen] = useState(false);
@@ -212,6 +217,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }, [data.projects]);
   const [sessionId, setSessionId] = useState<string>();
   const [view, setView] = useState<View>("dashboard");
+  const [reportDialog,setReportDialog]=useState<"weekly"|"pause">();
   const [dockOpen,setDockOpen]=useState(()=>window.innerWidth>=1050);
   const [chatActive,setChatActive]=useState(false);
   const [creatingConversation,setCreatingConversation]=useState(false);
@@ -267,6 +273,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [deciding, setDeciding] = useState<Record<string, boolean>>({});
   const [stopping, setStopping] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState("");
+  const [reacting,setReacting]=useState<Record<string,boolean>>({});
   const [snackbar,setSnackbar]=useState("");
   const composer = useRef<HTMLTextAreaElement>(null);
   const messages = useRef<HTMLDivElement>(null);
@@ -594,7 +601,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     if (!connection.authenticated) {
       throw new Error("ChatGPT 계정 연결 후 AI 업무를 시작하세요.");
     }
-    await api.send({ sessionId: value.id, text: request, mode, model: overrides?.model || value.preferences?.model || data.settings.model, effort: overrides?.effort || value.preferences?.effort || data.settings.effort });
+    const chosenModel=overrides?.model||value.preferences?.model||data.settings.model;
+    const metadata=models.find(row=>row.id===chosenModel);
+    const requested=overrides?.effort||value.preferences?.effort||data.settings.effort;
+    const supported=effortOptions(metadata);
+    const chosenEffort=supported.some(row=>row.reasoningEffort===requested)?requested:metadata?.defaultReasoningEffort||supported[0].reasoningEffort;
+    await api.send({ sessionId: value.id, text: request, mode, model:chosenModel, effort:chosenEffort });
     setDrafts(prev => prev[key]?.text === request ? { ...prev, [key]: { text: "", mode } } : prev);
   }
   async function connect() {
@@ -981,7 +993,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                 { hour: "2-digit", minute: "2-digit" },
                               )}
                             </time>
+                            <span className="message-meta-actions">
                             {message.role==="assistant" && <SpeakButton text={message.text}/>}
+                            {message.role==='assistant'&&<LikeButton active={message.reaction==='like'} disabled={reacting[message.id]||!api} onClick={()=>{
+                              setReacting(previous=>({...previous,[message.id]:true}));
+                              void api!.reactMessage({sessionId:session.id,messageId:message.id,liked:message.reaction!=='like'}).then(rememberSession).catch(fail).finally(()=>setReacting(previous=>({...previous,[message.id]:false})));
+                            }}/>}
                             {message.role !== "system" && (
                               <button
                                 className="icon-button copy-message"
@@ -998,6 +1015,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                 <Copy size={13} />
                               </button>
                             )}
+                            </span>
                           </div>
                           {message.attachments?.length&&project&&<ChatAttachmentList projectId={project.id} items={message.attachments}/>}
                           <div className="markdown">
@@ -1299,10 +1317,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <WorkspaceSidebar current={view} mobileOpen={sidebarOpen} projects={data.projects.filter(p=>!archived[p.id])}
+      <WorkspaceSidebar current={reportDialog||view} mobileOpen={sidebarOpen} projects={data.projects.filter(p=>!archived[p.id])}
         selected={["overview","home","workspace","terminal"].includes(view)?projectId:undefined}
         counts={projectCounts} account={connection.authenticated?(connection.accountLabel||"ChatGPT 연결됨"):undefined}
-        onGo={value=>{setView(value);setSidebarOpen(false);}} onProject={selectProject}
+        onGo={value=>{if(value==='weekly'||value==='pause')setReportDialog(value);else setView(value);setSidebarOpen(false);}} onProject={selectProject}
         onSettings={()=>{setSettingsOpen(true);setSidebarOpen(false);}}
         onLock={()=>{setSidebarOpen(false);if(!security.state.hasPin){setSettingsOpen(true);notify("설정에서 잠금 번호를 정하세요.");return;}void security.lock().catch(fail);}}
         onLogout={()=>{setSidebarOpen(false);setLogoutOpen(true);}}/>
@@ -1353,10 +1371,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             <LoaderCircle className="spin" />
             작업 공간을 불러오고 있습니다.
           </div>
-        ) : view === "music" ? null : view === "weekly" || view === "pause" ? (
-          <PortfolioReports key={view} kind={view} projects={data.projects.filter(p=>!archived[p.id])} sessions={projectOnlySessions} authenticated={connection.authenticated}
-            onStart={(record,request,options)=>sendWorkRequest(record,request,workKinds[record.workflow!.kind].mode,options)} onOpen={selectSession} onCreateProject={()=>setView("kickoff")}/>
-        ) : view === "workflow" ? (
+        ) : view === "music" ? null : view === "workflow" ? (
           <div className="page-scroll"><div className="page-inner"><WorkflowHub onOpen={openWork} onOpenInbox={()=>setView("inbox")}/></div></div>
         ) : view === "terminal" && !project ? (
           <div className="pf-page"><div className="pf-content"><h1>터미널</h1><section className="pf-welcome"><h2>터미널을 열 폴더를 연결하세요</h2><button onClick={()=>void chooseProjectFor("terminal")}>프로젝트 폴더 선택</button></section></div></div>
@@ -1558,6 +1573,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         <footer className="statusbar"><span><span className={`status-dot ${connection.authenticated?'online':''}`}/>{connection.authenticated?'ChatGPT 연결됨':'ChatGPT 연결 전'}</span><ExecutionSummary counts={activeCounts} onSelect={showExecution}/></footer>
       </main>
       <ConversationDock projectNavigation={projectNavigation} open={dockOpen} chatActive={chatActive} onClose={()=>setDockOpen(false)} onLeaveChat={()=>setChatActive(false)} projects={data.projects} sessions={data.sessions} projectId={projectId} sessionId={sessionId} activities={activities} requests={approvals} proposals={proposals} counts={activeCounts} filter={dockFilter} onFilter={setDockFilter} onOpen={selectSession} onProject={p=>setProjectId(p.id)} onCreate={(scope,id)=>void startDockConversation(scope,id)} onCreateProject={()=>setView('kickoff')} onDecisions={openDecisions} busy={creatingConversation}>{renderChat()}</ConversationDock>
+      <MotionOverlay open={Boolean(reportDialog)} onClose={()=>setReportDialog(undefined)} label={reportDialog==='pause'?'업무 마감':'주간업무보고'} className="report-overlay">
+        {reportDialog&&<PortfolioReports key={reportDialog} kind={reportDialog} projects={data.projects.filter(p=>!archived[p.id])} sessions={projectOnlySessions} authenticated={connection.authenticated}
+          onClose={()=>setReportDialog(undefined)} onStart={(record,request,options)=>sendWorkRequest(record,request,workKinds[record.workflow!.kind].mode,options)} onOpen={record=>{setReportDialog(undefined);selectSession(record);}} onCreateProject={()=>{setReportDialog(undefined);setView('kickoff');}}/>}
+      </MotionOverlay>
       <MotionOverlay open={logoutOpen} onClose={()=>setLogoutOpen(false)} label="계정 로그아웃" className="logout-overlay"><div className="pf-logout-content">
         <h2>로그아웃할까요?</h2><p>이 기기의 Codex에서 ChatGPT 계정을 로그아웃합니다. 같은 로그인 정보를 쓰는 Codex 앱과 명령줄에서도 다시 로그인해야 할 수 있습니다. 저장한 프로젝트와 대화는 보존됩니다.</p>
         <div className="pf-actions"><button autoFocus onClick={()=>setLogoutOpen(false)}>취소</button><button onClick={()=>{setLogoutOpen(false);void security.logout().catch(fail);}}>로그아웃 확인</button></div>
@@ -1565,7 +1584,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       <Toast message={toast} onClose={()=>setToast('')}/>
       <Snackbar message={snackbar} tone="error" onClose={()=>setSnackbar('')}/>
       {historyPresence.present && (
-        <div
+        <ModalPortal><div
           className="modal-backdrop motion-overlay" data-phase={historyPresence.phase}
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) closeCodexHistory();
@@ -1739,10 +1758,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               </div>
             </div>
           </section>
-        </div>
+        </div></ModalPortal>
       )}
       {settingsPresence.present && (
-        <div
+        <ModalPortal><div
           className="modal-backdrop motion-overlay" data-phase={settingsPresence.phase}
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setSettingsOpen(false);
@@ -1772,6 +1791,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             <div className="modal-content">
               <UpdatePanel settings state={update} fail={fail} />
               <SecurityPanel security={security}/>
+              <MigrationPanel/>
               <IntegrationPanel projectId={projectId}/>
               <RemotePanel/>
               <VoiceSettings/>
@@ -1889,9 +1909,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       saveSettings({ effort: e.target.value as Effort })
                     }
                   >
-                    <option value="low">가볍게 / 빠른 탐색</option>
-                    <option value="medium">균형 있게 / 일반 작업</option>
-                    <option value="high">깊이 있게 / 복잡한 문제</option>
+                    {effortOptions(models.find(row=>row.id===data.settings.model)).map(row=><option key={row.reasoningEffort} value={row.reasoningEffort}>{effortLabels[row.reasoningEffort]}</option>)}
                   </select>
                 </label>
               </div>
@@ -1945,10 +1963,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               </button>
             </div>
           </section>
-        </div>
+        </div></ModalPortal>
       )}
       {deletePresence.present && (
-        <div className="modal-backdrop motion-overlay" data-phase={deletePresence.phase}>
+        <ModalPortal><div className="modal-backdrop motion-overlay" data-phase={deletePresence.phase}>
           <section
             ref={deleteDialog}
             tabIndex={-1}
@@ -1975,7 +1993,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               </button>
             </div>
           </section>
-        </div>
+        </div></ModalPortal>
       )}
     </div>
   );

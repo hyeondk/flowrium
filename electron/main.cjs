@@ -32,6 +32,11 @@ let projectTools;
 let webPush;
 let linkDelivery;
 let voice;
+let projectPorts;
+let migration;
+let migrationTransition=false;
+let importRestartRequired=false;
+let activeOperations=0;
 const apiHandlers = new Map();
 let window;
 let controller;
@@ -61,12 +66,17 @@ function validateSender(event) {
   } else if (actual.href.split("#")[0] !== productionUrl)
     throw new Error("허용되지 않은 앱 화면입니다.");
 }
+async function invokeRegistered(name,handler,args){
+  if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
+  activeOperations++;
+  try{return await security.guard(name,()=>handler(...args));}finally{activeOperations--;}
+}
 function register(name, handler) {
-  apiHandlers.set(name, (...args) => security.guard(name, () => handler(...args)));
+  apiHandlers.set(name, (...args) => invokeRegistered(name,handler,args));
   ipcMain.handle(`flowrium:${name}`, async (event, ...args) => {
     try {
       validateSender(event);
-      return await security.guard(name, () => handler(...args));
+      return await invokeRegistered(name,handler,args);
     } catch (error) {
       throw new Error(publicMessage(error));
     }
@@ -85,7 +95,7 @@ function createWindow() {
     height: 940,
     minWidth: 780,
     minHeight: 600,
-    backgroundColor: "#0d1015",
+    backgroundColor: "#f3f8fc",
     title: "Flowrium",
     icon: path.join(__dirname, "..", "assets", "flowrium.png"),
     webPreferences: {
@@ -138,6 +148,8 @@ async function launch() {
   await security.load();
   const store = new Store(app.getPath("userData"));
   try {
+    const recovered=await require('./migration.cjs').recoverMigrations(app.getPath('userData'));
+    if(recovered.some(row=>row.status==='recovery-required'))throw Error('자료 이관 복구가 완료되지 않았습니다. 원본과 백업을 보존하고 복구 결과를 확인해 주세요. / '+path.join(app.getPath('userData'),'migration-records'));
     await store.load();
   } catch (error) {
     dialog.showErrorBox("Flowrium 작업 공간 확인", error.message);
@@ -146,8 +158,10 @@ async function launch() {
   }
   voice = require("./voice.cjs").registerVoice(register, {
     directory: app.getPath("userData"), secretStorage: require("electron").safeStorage,
-    canRun:()=>!quitting&&!security.locked&&!security.loggingOut&&!updater?.isInstalling(),
+    canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling(),
     accountRevision:()=>security.accountRevision,
+    accountOwner:()=>security.data.accountOwner || 'unverified:'+security.accountRevision,
+    chooseServerPath:async kind=>{const result=await dialog.showOpenDialog(window,{title:kind==='directory'?'음성 서버 작업 폴더 선택':'음성 서버 실행 파일 선택',properties:kind==='directory'?['openDirectory']:['openFile']});return result.canceled?null:result.filePaths[0]||null;},
     allowCapture: async ({isCurrent}) => {
       const permitted = process.platform === "darwin" ? await require("electron").systemPreferences.askForMediaAccess("microphone") : true;
       if (!isCurrent()) return false;
@@ -161,12 +175,12 @@ async function launch() {
   });
   app.on("will-quit", () => integrations.shutdown());
   const macPim = require('./mac-pim.cjs').registerMacPim(register, {directory:app.getPath('userData'),accountRevision:()=>security.accountRevision,
-    canRun:()=>!quitting&&!security.locked&&!security.loggingOut&&!updater?.isInstalling()});
+    canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling()});
   const music = require("./music.cjs").registerMusic(register, app.getPath("userData"));
   require("./lyrics.cjs").registerLyrics(register);
   app.on("will-quit", () => { void music.shutdown(); });
   controller = new Controller(store, {
-    canRun: () => !quitting && !security.locked && !security.loggingOut && !updater?.isInstalling(),
+    canRun: () => !quitting && !migrationTransition && !importRestartRequired && !security.locked && !security.loggingOut && !updater?.isInstalling(),
     queueOwner: () => security.accountRevision,
     applicationTools: async session => [...(await workflowRuntime?.toolsFor(session) || []), ...(externalTools?.definitions || []), ...(projectTools?.definitions || [])],
     callApplicationTool: async input => externalTools?.handles(input.name)
@@ -191,7 +205,7 @@ async function launch() {
   terminals = require("./terminal.cjs").registerTerminal(register, store, { canOpen: () => !updater.isInstalling() });
   updater = new DesktopUpdater({ app, isBusy: () => terminals.isBusy()
     ? "내장 터미널의 세션을 닫은 뒤 업데이트해 주세요."
-    : systemTools.isBusy() || teamGitBusy() || teamRuntime.isBusy() || workflowRuntime?.isBusy() || linkDelivery?.isBusy() || repositoryBusy() || controller.runs.size > 0 || controller.editingSessions.size > 0 || controller.analysisRuns?.size > 0 });
+    : migrationTransition || importRestartRequired || migration?.busy || voice?.isBusy?.() || projectPorts?.isBusy() || systemTools.isBusy() || teamGitBusy() || teamRuntime.isBusy() || workflowRuntime?.isBusy() || linkDelivery?.isBusy() || repositoryBusy() || controller.runs.size > 0 || controller.editingSessions.size > 0 || controller.analysisRuns?.size > 0 });
   updater.on("state", (state) => {
     if (!security.locked && window && !window.isDestroyed()) window.webContents.send("flowrium:update", state);
   });
@@ -199,14 +213,16 @@ async function launch() {
   register("checkUpdate", () => updater.check());
   register("installUpdate", () => updater.install());
   require("./conversation-tools.cjs").registerConversationTools(register, controller);
-  teamRuntime = require("./teams.cjs").registerTeams(register, store, controller, { canRun: () => !quitting && !security.locked && !security.loggingOut && !updater.isInstalling(),
+  require('./message-reactions.cjs').registerMessageReactions(register,store,{accountRevision:()=>security.accountRevision,canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater.isInstalling()});
+  teamRuntime = require("./teams.cjs").registerTeams(register, store, controller, { canRun: () => !quitting && !migrationTransition && !importRestartRequired && !security.locked && !security.loggingOut && !updater.isInstalling(),
     worktreeState: (id, run) => apiHandlers.get('teamWorktrees')(id, run),
     worktreeAction: (id, run, input) => apiHandlers.get('teamWorktreeAction')(id, run, input) });
   register("readSystemActivity", require("./activity.cjs").readSystemActivity);
   require("./project-details.cjs").registerProjectDetails(register, store);
+  projectPorts=require('./project-ports.cjs').registerProjectPorts(register,store,{accountRevision:()=>security.accountRevision,canWrite:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater.isInstalling()});
   const memory = require("./memory.cjs").registerMemory(register, store, { accountRevision: () => security.accountRevision });
   workflowRuntime = require("./workflow.cjs").registerWorkflow(register, store, controller, {
-    canRun: () => !quitting && !security.locked && !security.loggingOut && !updater?.isInstalling(),
+    canRun: () => !quitting && !migrationTransition && !importRestartRequired && !security.locked && !security.loggingOut && !updater?.isInstalling(),
     accountRevision: () => security.accountRevision,
     externalMethods: ['commitGoogleEvent','commitMacEvent','repositoryFlow'],
     repositoryAction: (id,input) => apiHandlers.get('repositoryAction')(id,input),
@@ -271,7 +287,7 @@ async function launch() {
   });
   linkDelivery = require('./link-delivery.cjs').registerLinkDelivery(register, {
     directory:app.getPath('userData'),secretStorage:require('electron').safeStorage,
-    accountRevision:()=>security.accountRevision,canRun:()=>!quitting&&!security.locked&&!security.loggingOut&&!updater?.isInstalling(),
+    accountRevision:()=>security.accountRevision,canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling(),
     issueLink:input=>remote.issueLink(input),getContext:()=>remote.pushContext(),
     ensureRemote:()=>apiHandlers.get('startRemoteAccess')(),openExternal:url=>shell.openExternal(url),
     mailProvider:provider=>provider==='mac'?{
@@ -281,6 +297,24 @@ async function launch() {
       search:({phrase})=>apiHandlers.get('readGoogle')({kind:'mail',query:'is:unread newer_than:1d subject:"'+phrase.replace(/["\\]/g,' ')+'"'}),
       send:input=>integrations.sendMail(input),
     },
+  });
+  const migrationBusy=()=>activeOperations>1||updater.isInstalling()||terminals.isBusy()||systemTools.isBusy()||teamGitBusy()||teamRuntime.isBusy()||workflowRuntime.isBusy()||linkDelivery.isBusy()||repositoryBusy()||voice.isBusy?.()||projectPorts.isBusy()||controller.runs.size>0||controller.editingSessions.size>0||controller.analysisRuns?.size>0;
+  migration=require('./migration.cjs').registerMigration(register,store,{
+    accountRevision:()=>security.accountRevision,
+    accountOwner:()=>security.data.accountOwner || 'unverified:'+security.accountRevision,
+    canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut,
+    isBusy:migrationBusy,
+    readDrafts:revision=>drafts.read(revision),
+    chooseDirectory:async kind=>{const labels={source:'이관 원본 폴더 선택',workspace:'원본 프로젝트 상위 폴더 선택',memory:'원본 기억 폴더 선택',target:'가져올 프로젝트 저장 위치 선택',export:'내보낼 자료 저장 위치 선택'};const result=await dialog.showOpenDialog(window,{title:labels[kind]||'이관 폴더 선택',properties:['openDirectory','createDirectory']});return result.canceled?null:result.filePaths[0]||null;},
+    beforeApply:async()=>{
+      if(migrationBusy())throw Error('실행 중인 작업을 마친 뒤 이관해 주세요.');
+      migrationTransition=true;
+      const results=await Promise.allSettled([workflowRuntime.shutdown(),linkDelivery.shutdown(),webPush.shutdown(),voice.shutdown(),projectPorts.shutdown(),remote.shutdown(),music.shutdown()]);
+      const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
+      await drafts.queue;await store.queue;
+    },
+    onImported:()=>{importRestartRequired=true;migrationTransition=false;},
+    onRestart:()=>{app.relaunch();setImmediate(()=>app.quit());return{restarting:true};},
   });
   let remoteAccountRevision = security.accountRevision;
   security.on("state", state => { if (state.accountRevision !== remoteAccountRevision) { remoteAccountRevision = state.accountRevision; integrations.invalidate(); macPim.invalidate(); linkDelivery.invalidate(); webPush.invalidate(); voice?.cancel?.(); void remote.stopAccess(); } });
@@ -488,7 +522,7 @@ else {
     event.preventDefault();
     quitting = true;
     if (window && !window.isDestroyed()) window.setEnabled(false);
-    Promise.allSettled([workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
+    Promise.allSettled([workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.(), projectPorts?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
       .then(() => teamRuntime?.flush())
       .then(() => drafts.queue)
       .finally(() => app.quit());

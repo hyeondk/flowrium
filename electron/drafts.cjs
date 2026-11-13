@@ -92,10 +92,10 @@ class Drafts {
       const source = await contents.executeJavaScript(
         'localStorage.getItem("flowrium.drafts")',
       );
-      await this.migrate(source);
-      if (source !== null)
+      const preserved = await this.migrate(source);
+      if (preserved && source !== null)
         await contents.executeJavaScript(
-          'localStorage.removeItem("flowrium.drafts")',
+          `if (localStorage.getItem("flowrium.drafts") === ${JSON.stringify(source)}) localStorage.removeItem("flowrium.drafts")`,
         );
     });
     this.migration.catch(() => {});
@@ -110,8 +110,12 @@ class Drafts {
         revision: this.security.accountRevision,
         source,
       });
+      return true;
     } catch (e) {
       if (e.code !== "EEXIST") throw e;
+      // 이미 보관한 원문과 다른 새 값은 덮어쓰거나 지우지 않습니다.
+      const prior = await readJSON(file);
+      return prior.version === 1 && prior.source === source;
     }
   }
   async prior(revision) {

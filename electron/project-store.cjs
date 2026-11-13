@@ -60,6 +60,7 @@ function validateSession(session, projectId) {
       );
     if(message.attachments!==undefined)require("./chat-attachments.cjs").checkedAttachments(message.attachments);
     if(message.turnId!==undefined&&(typeof message.turnId!=="string"||message.turnId.length>300||!message.turnId))throw Error("메시지의 실행 식별자를 확인해 주세요.");
+    if(message.reaction!==undefined&&message.reaction!=='like')throw Error('메시지 반응 형식을 확인해 주세요.');
     ids.add(message.id);
   }
 }

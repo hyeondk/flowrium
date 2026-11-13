@@ -1,4 +1,4 @@
-import { AnimatedCheckbox } from './ui-motion';
+import { AnimatedSwitch } from './ui-motion';
 import {useEffect,useState} from 'react';
 import type {LinkDeliveryState,LinkDeliveryInput} from '../shared/link-delivery';
 
@@ -25,14 +25,14 @@ export default function LinkDeliveryPanel(){
    <button className="button secondary" disabled={busy||!state?.configured||state.authorizing} onClick={()=>void act(()=>api!.connectKakao(),'브라우저에서 카카오 로그인을 마친 뒤 연결 확인을 눌러 주세요.')}>카카오 로그인</button>
    <button className="button secondary" disabled={busy} onClick={()=>void act(async()=>{},'연결 상태를 확인했습니다.')}>연결 확인</button>
    {state?.connected&&<><button className="button" disabled={busy} onClick={()=>void act(()=>api!.sendKakaoLink(),'나와의 채팅으로 일회용 주소를 보냈습니다.')}>나에게 연결 주소 보내기</button><button className="button secondary" disabled={busy} onClick={()=>void act(()=>api!.disconnectKakao())}>카카오 연결 해제</button></>}</div>
-   <label><AnimatedCheckbox checked={state?.autoKakao||false} disabled={busy||!state?.connected} onChange={e=>void act(()=>save({autoKakao:e.target.checked}))}/> 데스크톱 연결 주소가 바뀌면 나에게 자동 전송</label>
+   <label><AnimatedSwitch checked={state?.autoKakao||false} disabled={busy||!state?.connected} onChange={e=>void act(()=>save({autoKakao:e.target.checked}))}/> 데스크톱 연결 주소가 바뀌면 나에게 자동 전송</label>
   </details>
   <details><summary>메일로 연결 주소 요청</summary>
    <p>허용한 발신자가 지정한 문구를 제목에 넣어 새 메일을 보내면 일회용 주소로 답장합니다. 이 설정을 켜는 것은 해당 메일 요청에 자동으로 답장하도록 허용하는 것입니다. 이전 메일 / 다른 발신자 / 이미 처리한 요청에는 답장하지 않습니다.</p>
    <label>메일 계정<select value={provider} onChange={e=>setProvider(e.target.value as 'google'|'mac')}><option value="google">연결한 Google 메일</option>{state?.nativeAvailable&&<option value="mac">이 Mac의 메일 앱</option>}</select></label>
    <label>허용할 발신 주소 / 최대 5개<textarea rows={3} value={senders} placeholder="주소마다 줄을 바꿔 입력" onChange={e=>setSenders(e.target.value)}/></label>
    <label>요청 제목에 들어갈 문구<input value={phrase} maxLength={80} onChange={e=>setPhrase(e.target.value)}/></label>
-   <label><AnimatedCheckbox checked={enabled} onChange={e=>setEnabled(e.target.checked)}/> 허용한 메일 요청에 자동으로 연결 주소 답장</label>
+   <label><AnimatedSwitch checked={enabled} onChange={e=>setEnabled(e.target.checked)}/> 허용한 메일 요청에 자동으로 연결 주소 답장</label>
    <div className="button-row"><button className="button secondary" disabled={busy} onClick={()=>void act(()=>save({mail:{enabled,provider,senders:senders.split(/[\n,;]/).map(v=>v.trim()).filter(Boolean),phrase}}))}>메일 요청 설정 저장</button>
    <button className="button secondary" disabled={busy||!state?.mail.enabled} onClick={()=>void act(()=>api!.checkLinkMail(),'새 요청을 확인했습니다.')}>새 요청 확인</button></div>
    <label>허용한 주소로 시험 전송<select aria-label="허용한 주소로 시험 전송" value={to} onChange={e=>setTo(e.target.value)}><option value="">주소 선택</option>{state?.mail.senders.map(value=><option key={value}>{value}</option>)}</select></label>

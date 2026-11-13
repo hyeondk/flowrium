@@ -11,7 +11,7 @@ function preferences(input) {
   if (!input || typeof input !== "object") throw new Error("대화별 설정을 확인해 주세요.");
   const model = input.model || undefined, effort = input.effort || undefined;
   if (model && (typeof model !== "string" || model.length > 300 || !model.trim())) throw new Error("대화 모델을 확인해 주세요.");
-  if (effort && !["low","medium","high"].includes(effort)) throw new Error("대화 추론 강도를 확인해 주세요.");
+  if (effort && !["none","minimal","low","medium","high","xhigh","max","ultra"].includes(effort)) throw new Error("대화 추론 강도를 확인해 주세요.");
   const url = chatAddress(input.chatGptUrl);
   const result={ ...(model && {model}), ...(effort && {effort}), ...(url && {chatGptUrl:url}) };
   const enums={answerLength:["short","normal","detailed"],sandbox:["read-only","workspace-write","danger-full-access"],approval:["on-request","never"]};

@@ -91,3 +91,15 @@ test("로그아웃 / 외부 계정 교체 후 남은 이전 화면의 쓰기나 
     /식별자/,
   );
 });
+test('이관 중 바뀐 구버전 초안은 비교한 뒤 제거하며 다음 실행에서도 새 원문을 보존한다',async t=>{
+ const {EventEmitter}=require('node:events'),vm=require('node:vm');const f=await make(t),key='session:'+randomUUID(),original=JSON.stringify({[key]:{text:'처음 읽은 원문',mode:'plan'}}),updated=JSON.stringify({[key]:{text:'읽는 동안 새로 바꾼 원문',mode:'review'}});let local=original;
+ function contents(){const target=new EventEmitter();target.executeJavaScript=async script=>vm.runInNewContext(script,{localStorage:{getItem:()=>local,removeItem:()=>{local=null}}});return target;}
+ const migrate=f.service.migrate.bind(f.service);f.service.migrate=async source=>{local=updated;return migrate(source);};
+ const first=contents();f.service.beginMigration(first);first.emit('did-finish-load');await f.service.migration;assert.equal(local,updated);assert.equal((await f.api.readDrafts(0))[key].text,'처음 읽은 원문');
+ const next=await f.open(),second=contents();next.service.beginMigration(second);second.emit('did-finish-load');await next.service.migration;assert.equal(local,updated);assert.equal((await next.api.readDrafts(0))[key].text,'처음 읽은 원문');
+ const disk=JSON.parse(await fs.readFile(path.join(f.root,'composer-drafts','legacy.json'),'utf8'));assert.equal(disk.source,original);
+});
+test('원문이 그대로 보관된 경우에만 구버전 저장소의 중복 값을 제거한다',async t=>{
+ const {EventEmitter}=require('node:events'),vm=require('node:vm');const f=await make(t),key='session:'+randomUUID(),source=JSON.stringify({[key]:{text:'변경 없는 원문',mode:'build'}});let local=source;
+ const target=new EventEmitter();target.executeJavaScript=async script=>vm.runInNewContext(script,{localStorage:{getItem:()=>local,removeItem:()=>{local=null}}});f.service.beginMigration(target);target.emit('did-finish-load');await f.service.migration;assert.equal(local,null);assert.equal((await f.api.readDrafts(0))[key].text,'변경 없는 원문');
+});

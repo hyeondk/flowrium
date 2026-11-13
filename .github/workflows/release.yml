@@ -258,6 +258,14 @@ jobs:
         id: verify_19
         continue-on-error: true
         run: node tests/update-native-e2e.cjs ${{ runner.os == 'macOS' && steps.signing.outputs.ready != 'true' && '--expect-unsigned' || '' }}
+      - name: 전체 자료 이관 / 음성 서버 관리 / 자동 포트표 / 보고 팝업
+        id: verify_20
+        continue-on-error: true
+        run: |
+          node tests/migration-e2e.cjs
+          node tests/voice-servers-e2e.cjs
+          node tests/project-ports-e2e.cjs
+          node tests/portfolio-reports-popup-e2e.cjs
       - name: 모든 검증 결과 확인
         if: ${{ !cancelled() }}
         env:

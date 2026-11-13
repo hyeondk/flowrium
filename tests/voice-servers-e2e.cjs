@@ -1,0 +1,37 @@
+const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path'),net=require('node:net');
+const {_electron}=require('playwright');const {Store}=require('../electron/store.cjs');const {portOpen}=require('../electron/voice-servers.cjs');
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function free(){const server=net.createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
+(async()=>{
+ const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-voice-manager-ui-')),profile=path.join(temporary,'profile'),fixture=path.resolve(__dirname,'voice-server-fixture.cjs');let app,page,external;
+ const errors=[];let endpoint;
+ const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temporary,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
+ async function launch(){app=await _electron.launch({args:[path.resolve(__dirname,'..')],env,timeout:45000});page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(18000);page.on('pageerror',error=>errors.push(error.message));await page.getByRole('button',{name:'설정',exact:true}).click();await page.getByRole('region',{name:'로컬 음성 서버 관리',exact:true}).waitFor();}
+ const card=()=>page.getByRole('article',{name:'음성 인식 서버',exact:true});
+ const button=name=>card().getByRole('button',{name,exact:true});
+ async function until(check){const end=Date.now()+25000;while(Date.now()<end){const value=await page.evaluate(()=>window.flowrium.voiceServersState());if(check(value))return value;await wait(100);}throw Error('서버 상태 대기 시간 초과');}
+ async function phase(value){return until(state=>state.servers[0].run.phase===value);}
+ async function prepare(){await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).click();await page.getByRole('dialog',{name:'음성 서버 실행 확인',exact:true}).waitFor();}
+ async function confirm(){await page.getByRole('dialog',{name:'음성 서버 실행 확인',exact:true}).getByRole('button',{name:'서버 시작',exact:true}).click();await phase('running');await card().locator('.voice-server-phase[data-phase=running]').waitFor();}
+ try{
+  const store=new Store(profile);await store.load();await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});await launch();
+  const port=await free();endpoint='http://127.0.0.1:'+port;
+  await card().getByLabel('음성 인식 서버 실행 파일',{exact:true}).fill(process.execPath);await card().getByLabel('음성 인식 서버 작업 폴더',{exact:true}).fill(temporary);await card().getByLabel('음성 인식 서버 실행 인자',{exact:true}).fill([fixture,'--port',String(port)].join('\n'));await card().getByLabel('음성 인식 서버 주소',{exact:true}).fill(endpoint);await card().getByLabel('음성 인식 서버 준비 확인 경로',{exact:true}).fill('/health');
+  assert.equal(await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).isDisabled(),true);await button('서버 설정 저장').click();await card().getByText('서버 설정을 저장했습니다. 실행 스위치를 켜면 실행 내용을 확인합니다.',{exact:true}).waitFor();
+  await prepare();const popup=page.getByRole('dialog',{name:'음성 서버 실행 확인',exact:true});await page.waitForTimeout(300);const box=await popup.boundingBox(),size=page.viewportSize();assert(Math.abs(box.x+box.width/2-size.width/2)<2);assert(Math.abs(box.y+box.height/2-size.height/2)<2);assert((await popup.innerText()).includes(process.execPath));
+  await popup.getByRole('button',{name:'취소',exact:true}).click();await popup.waitFor({state:'hidden'});assert.equal(await portOpen(endpoint),false);
+  await prepare();await confirm();const first=await page.evaluate(async()=>(await window.flowrium.voiceServersState()).servers[0].run.pid);
+  assert.equal(await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).isChecked(),true);assert.equal(await card().getByLabel('음성 인식 서버 실행 파일',{exact:true}).isDisabled(),true);
+  await button('이 주소로 음성 연결').click();await page.waitForFunction(async endpoint=>{const value=await window.flowrium.voicePreferences();return value.provider==='local'&&value.localWhisper===endpoint;},endpoint);
+  await button('다시 시작').click();await page.getByRole('dialog',{name:'음성 서버 실행 확인',exact:true}).getByRole('button',{name:'종료 후 다시 시작',exact:true}).click();await until(state=>state.servers[0].run.phase==='running'&&state.servers[0].run.pid!==first);const second=await page.evaluate(async()=>(await window.flowrium.voiceServersState()).servers[0].run.pid);assert.notEqual(first,second);
+  await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).click();await phase('stopped');assert.equal(await portOpen(endpoint),false);
+  external=net.createServer();await new Promise(resolve=>external.listen(port,'127.0.0.1',resolve));await button('연결 확인').click();await phase('external');await card().locator('.voice-server-phase[data-phase=external]').waitFor();assert.equal(await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).isDisabled(),true);assert.equal(external.listening,true);await new Promise(resolve=>external.close(resolve));external=null;await button('연결 확인').click();await phase('stopped');await card().locator('.voice-server-phase[data-phase=stopped]').waitFor();
+  await card().getByLabel('음성 인식 서버 실행 인자',{exact:true}).fill([fixture,'--port',String(port),'--mode','failure'].join('\n'));await button('서버 설정 저장').click();await button('서버 설정 저장').waitFor({state:'visible'});await until(state=>state.servers[0].config.args.includes('failure'));await prepare();await popup.getByRole('button',{name:'서버 시작',exact:true}).click();await phase('failed');await card().getByText('실행 로그 /',{exact:false}).click();await card().getByLabel('음성 인식 서버 실행 로그',{exact:true}).filter({hasText:'시작 실패'}).waitFor();
+  await button('종료 다시 확인').click();await phase('stopped');await card().getByLabel('음성 인식 서버 실행 인자',{exact:true}).fill([fixture,'--port',String(port)].join('\n'));await button('서버 설정 저장').click();await until(state=>state.servers[0].config.args.length===3);
+  for(const width of [390,768,1440]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);const fields=card().getByLabel('음성 인식 서버 시작 대기 시간',{exact:true});const before=await fields.inputValue();await fields.hover();await page.mouse.wheel(0,500);assert.equal(await fields.inputValue(),before);}
+  await page.setViewportSize({width:1440,height:1000});await app.close();app=null;await launch();assert.equal(await card().getByLabel('음성 인식 서버 주소',{exact:true}).inputValue(),endpoint);assert.equal(await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).isChecked(),false);assert.equal(await portOpen(endpoint),false);
+  await prepare();await confirm();await app.close();app=null;for(let attempt=0;attempt<30&&await portOpen(endpoint);attempt++)await wait(100);assert.equal(await portOpen(endpoint),false);assert.deepEqual(errors,[]);
+  console.log('로컬 음성 서버 / 실제 실행·인자 저장·중앙 확인창·취소·준비·재시작·중지 / 연결 적용 / 기존 포트 보존 / 실패 로그 / 반응형·숫자 스크롤 보존 / 재실행 자동 시작 없음 / 앱 종료 정리 통과');
+ }catch(error){if(page&&!page.isClosed())console.error('음성 서버 화면 진단',await page.locator('body').innerText().catch(()=>''));throw error;}
+ finally{if(app)await app.close();if(external)await new Promise(resolve=>external.close(resolve));await fs.rm(temporary,{recursive:true,force:true,maxRetries:8,retryDelay:150});}
+})().catch(error=>{console.error(error);process.exitCode=1;});

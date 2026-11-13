@@ -61,6 +61,10 @@ async function run() {
   try {
     await launch();
     await button("개인 비서").waitFor();
+    // 빈 프로필의 시작 이관을 마친 뒤 구버전 저장소를 재현합니다.
+    await page.evaluate(async () => window.flowrium.readDrafts(
+      (await window.flowrium.securityState()).accountRevision,
+    ));
     await page.evaluate(
       (k) =>
         localStorage.setItem(

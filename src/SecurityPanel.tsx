@@ -1,4 +1,4 @@
-import { AnimatedCheckbox } from './ui-motion';
+import { AnimatedSwitch } from './ui-motion';
 import { useCallback, useEffect, useState } from "react";
 import { LockKeyhole, ShieldCheck } from "lucide-react";
 import type {
@@ -75,7 +75,7 @@ export function useSecurity() {
 }
 
 type Props = { security: ReturnType<typeof useSecurity> };
-export function LockScreen({ security }: Props) {
+export function LockScreen({ security,releasing=false }: Props&{releasing?:boolean}) {
   const { state } = security;
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
@@ -102,7 +102,7 @@ export function LockScreen({ security }: Props) {
         className="security-unlock"
         onSubmit={async (e) => {
           e.preventDefault();
-          if (waiting || remaining) return;
+          if (waiting || remaining || releasing) return;
           setWaiting(true);
           setError("");
           try {
@@ -134,7 +134,7 @@ export function LockScreen({ security }: Props) {
               maxLength={4}
               autoComplete="off"
               required
-              disabled={waiting || remaining > 0}
+              disabled={waiting || remaining > 0 || releasing}
               value={pin}
               onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ""))}
             />
@@ -150,12 +150,12 @@ export function LockScreen({ security }: Props) {
           <button
             className="button primary"
             disabled={
-              waiting ||
+              waiting || releasing ||
               remaining > 0 ||
               (state.loaded && state.hasPin && pin.length !== 4)
             }
           >
-            {state.loaded ? "잠금 해제" : "다시 시도"}
+            {releasing ? "잠금 해제 중" : state.loaded ? "잠금 해제" : "다시 시도"}
           </button>
         )}
       </form>
@@ -331,7 +331,7 @@ export function SecurityPanel({ security }: Props) {
       {switches.map(([key, label]) => (
         <label className="security-row" key={key}>
           <span>{label}</span>
-          <AnimatedCheckbox
+          <AnimatedSwitch
             checked={prefs[key]}
             disabled={busy}
             onChange={(e) => change({ [key]: e.target.checked })}

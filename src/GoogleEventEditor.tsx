@@ -1,4 +1,4 @@
-import { AnimatedCheckbox } from './ui-motion';
+import { AnimatedSwitch } from './ui-motion';
 import { useState } from 'react';
 import type { GoogleCalendar, GoogleEventInput, GoogleEventPreview, RemoteItem } from '../shared/integrations';
 const local = (value?: string) => { if (!value) return ''; if (value.length === 10) return value; const d = new Date(value); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
@@ -30,7 +30,7 @@ export default function GoogleEventEditor({ calendars, calendarId, item, onSaved
       <label>일정 작업<select aria-label="일정 작업" value={action} onChange={e => {setAction(e.target.value as GoogleEventInput['action']);dirty();}}><option value="create">새 일정 등록</option>{item && <><option value="update">선택한 일정 수정</option><option value="delete">선택한 일정 삭제</option></>}</select></label>
       {action !== 'delete' && <>
         <label>일정 제목<input value={title} maxLength={500} onChange={e => {setTitle(e.target.value);dirty();}}/></label>
-        <label><AnimatedCheckbox checked={!!allDay} onChange={e => {setAllDay(e.target.checked);setStart('');setEnd('');dirty();}}/>하루 종일</label>
+        <label><AnimatedSwitch checked={!!allDay} onChange={e => {setAllDay(e.target.checked);setStart('');setEnd('');dirty();}}/>하루 종일</label>
         <div className="integration-period"><label>시작<input type={allDay ? 'date' : 'datetime-local'} value={start} onChange={e => {setStart(e.target.value);dirty();}}/></label>
           <label>종료<input type={allDay ? 'date' : 'datetime-local'} value={end} onChange={e => {setEnd(e.target.value);dirty();}}/></label></div>
         {allDay && <p>종료일은 일정에 포함하지 않습니다. 하루 일정은 다음 날을 종료일로 정하세요.</p>}

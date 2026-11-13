@@ -1,4 +1,4 @@
-import { AnimatedCheckbox, usePresence } from './ui-motion';
+import { AnimatedCheckbox, AnimatedSwitch, usePresence } from './ui-motion';
 import { useEffect, useRef, useState } from "react";
 import { BookMarked, MessagesSquare, RotateCcw, X } from "lucide-react";
 import type { MemoryImportPlan, MemoryNote, MemoryScope } from "../shared/memory";
@@ -137,7 +137,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
         {notice&&<p role="status">{notice}</p>}
       </details>
       <label className="memory-check">
-        <AnimatedCheckbox
+        <AnimatedSwitch
           checked={showDeleted}
           onChange={(e) => setShowDeleted(e.target.checked)}
         />
@@ -266,7 +266,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
             />
           </label>
           <label className="memory-check">
-            <AnimatedCheckbox
+            <AnimatedSwitch
               checked={draft.linked}
               disabled={busy || selected?.deleted}
               onChange={(e) => change("linked", e.target.checked)}

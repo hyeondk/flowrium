@@ -1,3 +1,6 @@
+import type { MigrationAPI } from "./migration";
+import type { ProjectPortsAPI } from "./project-ports";
+import type { VoiceServerAPI } from "./voice-server";
 import type { WorkflowAPI } from "./workflow";
 import type { MemoryAPI } from "./memory";
 import type { VoiceAPI } from "./voice";
@@ -49,7 +52,7 @@ export interface UpdateState {
   progress?: number;
   message: string;
 }
-export type Effort = "low" | "medium" | "high";
+export type Effort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
 export type Mode = "plan" | "build" | "review";
 export type ConversationScope = "general" | "integrated";
 export interface Project {
@@ -62,6 +65,7 @@ export interface Project {
 export interface ChatAttachment {id:string;name:string;type:string;size:number;sha256:string}
 export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string;effort?:Effort;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;error?:string}
 export interface Message {
+  reaction?: 'like';
   attachments?: ChatAttachment[];
   turnId?: string;
   id: string;
@@ -109,6 +113,9 @@ export interface ConnectionStatus {
   error?: string;
 }
 export interface Model {
+  supportedReasoningEfforts?: {reasoningEffort:Effort;description?:string}[];
+  defaultReasoningEffort?:Effort;
+  isDefault?:boolean;
   id: string;
   displayName: string;
   description?: string;
@@ -140,6 +147,9 @@ export interface Bootstrap {
 }
 export interface FlowriumAPI
   extends
+    MigrationAPI,
+    ProjectPortsAPI,
+    VoiceServerAPI,
     WorkflowAPI,
     MemoryAPI,
     VoiceAPI,
@@ -156,6 +166,7 @@ export interface FlowriumAPI
     ProjectDetailsAPI,
     ActivityAPI,
     TerminalAPI {
+  reactMessage(input:{sessionId:string;messageId:string;liked:boolean}):Promise<Session>;
   createHubConversation(input:{scope:ConversationScope;title?:string}):Promise<Session>;
   listHubConversations():Promise<{projects:Project[];sessions:Session[]}>;
   addChatAttachments(projectId:string,files:{name:string;type:string;bytes:Uint8Array}[]):Promise<ChatAttachment[]>;

@@ -33,7 +33,9 @@ function validatePreferences(value) {
       !Number.isFinite(out.ttsSpeed) || out.ttsSpeed < .7 || out.ttsSpeed > 2) throw Error('음성 시간과 속도 범위를 확인해 주세요.');
   return out;
 }
-function registerVoice(register, {directory, secretStorage, allowCapture, fetchImpl = fetch, canRun = () => true, accountRevision = () => 0}) {
+function registerVoice(register, options) {
+  const {directory, secretStorage, allowCapture, fetchImpl = fetch, canRun = () => true, accountRevision = () => 0}=options;
+  const servers=require('./voice-servers.cjs').registerVoiceServers(register,options);
   let queue = Promise.resolve(), epoch = 0, stopped = false;
   const active = new Set(), requests = new Map();
   const owner = () => String(accountRevision());
@@ -150,6 +152,6 @@ function registerVoice(register, {directory, secretStorage, allowCapture, fetchI
     if(buffer.length<44||buffer.toString('ascii',0,4)!=='RIFF'||buffer.toString('ascii',8,12)!=='WAVE')throw Error('로컬 서버가 WAV 음성을 반환하지 않았습니다.');
     return {base64:buffer.toString('base64'),mime:'audio/wav'};
   }));
-  return { cancel, shutdown(){stopped=true;cancel();} };
+  return { cancel(){cancel();return servers.invalidate();}, isBusy:()=>servers.isBusy(), async shutdown(){stopped=true;cancel();await servers.shutdown();} };
 }
 module.exports={registerVoice,DEFAULT_VOICE,validatePreferences,localEndpoint};
