@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const {_electron}=require('playwright');const{randomUUID}=require('node:crypto');const {Store}=require('../electron/store.cjs');const{nativeSnapshot}=require('../electron/migration.cjs');const F=require('../electron/migration-files.cjs');
 (async()=>{
- const root=path.resolve(__dirname,'..'),temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-migration-ui-')),profile=path.join(temp,'검증 프로필'),source=path.join(temp,'이관 원본 프로젝트'),target=path.join(temp,'새 작업 위치'),exports=path.join(temp,'내보내기');let app,page;const errors=[];
+ const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-migration-ui-'))),profile=path.join(temp,'검증 프로필'),source=path.join(temp,'이관 원본 프로젝트'),target=path.join(temp,'새 작업 위치'),exports=path.join(temp,'내보내기');let app,page;const errors=[];
  try{
   for(const p of [source,target,exports])await fs.mkdir(p);const old=new Store(path.join(temp,'원본 설정'));await old.load();const project=await old.addProject(source);await old.createSession(project.id,{title:'첨부와 도구 보존 대화',messages:[{id:randomUUID(),role:'user',text:'이관 확인 질문',createdAt:new Date().toISOString()},{id:randomUUID(),role:'system',text:'도구 입력 / 실행 결과 보존',createdAt:new Date().toISOString()},{id:randomUUID(),role:'assistant',text:'이관 확인 답변',createdAt:new Date().toISOString()}]});await fs.writeFile(path.join(source,'프로젝트 문서.md'),'합성 작업 파일');const before=await F.walk(source),bundle=await F.writeBundle(await nativeSnapshot(old,{includeFiles:true}),exports);
   const store=new Store(profile);await store.load();await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});

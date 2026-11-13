@@ -8,7 +8,7 @@ const { Store } = require('../electron/store.cjs');
 const { formula, probePort } = require('../electron/project-ports.cjs');
 
 async function run() {
-  const root = path.resolve(__dirname, '..'), temp = await fs.mkdtemp(path.join(os.tmpdir(), 'flowrium-ports-ui-'));
+  const root = path.resolve(__dirname, '..'), temp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'flowrium-ports-ui-')));
   let app, page, server; let received = 0; const errors = [];
   try {
     const profile = path.join(temp, '검증 프로필'), folder = path.join(temp, '포트표 검증 프로젝트'), otherFolder = path.join(temp, '기존 배정 프로젝트');

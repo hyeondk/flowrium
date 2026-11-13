@@ -6,7 +6,7 @@ const { _electron } = require('playwright');
 const { Store } = require('../electron/store.cjs');
 
 async function run() {
-  const root = path.resolve(__dirname, '..'), temp = await fs.mkdtemp(path.join(os.tmpdir(), 'flowrium-report-popup-'));
+  const root = path.resolve(__dirname, '..'), temp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'flowrium-report-popup-')));
   let app, page; const errors = [];
   try {
     const profile = path.join(temp, '검증 프로필'), log = path.join(temp, '모델 요청.jsonl'), fake = path.join(temp, '검증 모델.cjs');

@@ -13,7 +13,7 @@ on:
       test_scope:
         description: 전체 배포 검증 또는 Codex 접근 범위만 빠르게 점검
         type: choice
-        options: [all, scopes]
+        options: [all, scopes, features]
         default: all
       stage_release:
         description: 선택한 운영체제 검증 후 현재 커밋의 비공개 릴리스 준비
@@ -41,8 +41,36 @@ jobs:
           package-manager-cache: false
       - run: npm ci
       - run: node tests/conversation-scopes-native-e2e.cjs
+  features:
+    if: inputs.test_scope == 'features'
+    name: Windows 신규 기능 점검
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run prepare:runtime
+      - run: npm run build
+      - name: 신규 기능별 실제 앱 검사
+        run: |
+          result=0
+          for feature in migration voice-servers project-ports portfolio-reports-popup
+          do
+            if ! node "tests/${feature}-e2e.cjs"
+            then
+              result=1
+            fi
+          done
+          exit "$result"
   build:
-    if: inputs.test_scope != 'scopes'
+    if: inputs.test_scope != 'scopes' && inputs.test_scope != 'features'
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.runner }}
     defaults:
@@ -262,10 +290,15 @@ jobs:
         id: verify_20
         continue-on-error: true
         run: |
-          node tests/migration-e2e.cjs
-          node tests/voice-servers-e2e.cjs
-          node tests/project-ports-e2e.cjs
-          node tests/portfolio-reports-popup-e2e.cjs
+          result=0
+          for feature in migration voice-servers project-ports portfolio-reports-popup
+          do
+            if ! node "tests/${feature}-e2e.cjs"
+            then
+              result=1
+            fi
+          done
+          exit "$result"
       - name: 모든 검증 결과 확인
         if: ${{ !cancelled() }}
         env:

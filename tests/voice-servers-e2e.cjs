@@ -3,7 +3,7 @@ const {_electron}=require('playwright');const {Store}=require('../electron/store
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function free(){const server=net.createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
 (async()=>{
- const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-voice-manager-ui-')),profile=path.join(temporary,'profile'),fixture=path.resolve(__dirname,'voice-server-fixture.cjs');let app,page,external;
+ const temporary=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-voice-manager-ui-'))),profile=path.join(temporary,'profile'),fixture=await fs.realpath(path.resolve(__dirname,'voice-server-fixture.cjs')),executable=await fs.realpath(process.execPath);let app,page,external;
  const errors=[];let endpoint;
  const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temporary,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
  async function launch(){app=await _electron.launch({args:[path.resolve(__dirname,'..')],env,timeout:45000});page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(18000);page.on('pageerror',error=>errors.push(error.message));await page.getByRole('button',{name:'설정',exact:true}).click();await page.getByRole('region',{name:'로컬 음성 서버 관리',exact:true}).waitFor();}
@@ -16,9 +16,9 @@ async function free(){const server=net.createServer();await new Promise(resolve=
  try{
   const store=new Store(profile);await store.load();await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});await launch();
   const port=await free();endpoint='http://127.0.0.1:'+port;
-  await card().getByLabel('음성 인식 서버 실행 파일',{exact:true}).fill(process.execPath);await card().getByLabel('음성 인식 서버 작업 폴더',{exact:true}).fill(temporary);await card().getByLabel('음성 인식 서버 실행 인자',{exact:true}).fill([fixture,'--port',String(port)].join('\n'));await card().getByLabel('음성 인식 서버 주소',{exact:true}).fill(endpoint);await card().getByLabel('음성 인식 서버 준비 확인 경로',{exact:true}).fill('/health');
+  await card().getByLabel('음성 인식 서버 실행 파일',{exact:true}).fill(executable);await card().getByLabel('음성 인식 서버 작업 폴더',{exact:true}).fill(temporary);await card().getByLabel('음성 인식 서버 실행 인자',{exact:true}).fill([fixture,'--port',String(port)].join('\n'));await card().getByLabel('음성 인식 서버 주소',{exact:true}).fill(endpoint);await card().getByLabel('음성 인식 서버 준비 확인 경로',{exact:true}).fill('/health');
   assert.equal(await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).isDisabled(),true);await button('서버 설정 저장').click();await card().getByText('서버 설정을 저장했습니다. 실행 스위치를 켜면 실행 내용을 확인합니다.',{exact:true}).waitFor();
-  await prepare();const popup=page.getByRole('dialog',{name:'음성 서버 실행 확인',exact:true});await page.waitForTimeout(300);const box=await popup.boundingBox(),size=page.viewportSize();assert(Math.abs(box.x+box.width/2-size.width/2)<2);assert(Math.abs(box.y+box.height/2-size.height/2)<2);assert((await popup.innerText()).includes(process.execPath));
+  await prepare();const popup=page.getByRole('dialog',{name:'음성 서버 실행 확인',exact:true});await page.waitForTimeout(300);const box=await popup.boundingBox(),size=page.viewportSize();assert(Math.abs(box.x+box.width/2-size.width/2)<2);assert(Math.abs(box.y+box.height/2-size.height/2)<2);assert((await popup.innerText()).includes(executable));
   await popup.getByRole('button',{name:'취소',exact:true}).click();await popup.waitFor({state:'hidden'});assert.equal(await portOpen(endpoint),false);
   await prepare();await confirm();const first=await page.evaluate(async()=>(await window.flowrium.voiceServersState()).servers[0].run.pid);
   assert.equal(await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).isChecked(),true);assert.equal(await card().getByLabel('음성 인식 서버 실행 파일',{exact:true}).isDisabled(),true);
