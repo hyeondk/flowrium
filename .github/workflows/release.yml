@@ -10,6 +10,11 @@ on:
         type: choice
         options: [all, windows]
         default: all
+      test_scope:
+        description: 전체 배포 검증 또는 Codex 접근 범위만 빠르게 점검
+        type: choice
+        options: [all, scopes]
+        default: all
       stage_release:
         description: 선택한 운영체제 검증 후 현재 커밋의 비공개 릴리스 준비
         type: boolean
@@ -23,7 +28,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  scopes:
+    if: inputs.test_scope == 'scopes'
+    name: Windows 대화 접근 범위 점검
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci
+      - run: node tests/conversation-scopes-native-e2e.cjs
   build:
+    if: inputs.test_scope != 'scopes'
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.runner }}
     defaults:
@@ -243,8 +262,9 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           FLOWRIUM_CHECK_OUTCOMES: ${{ join(steps.*.outcome, ',') }}
+          FLOWRIUM_JOB_STATUS: ${{ job.status }}
         run: |
-          node -e "const values=process.env.FLOWRIUM_CHECK_OUTCOMES.split(',');if(values.includes('failure')){console.error('실패한 검증이 있어 배포 파일 보관을 중단합니다.');process.exit(1)}console.log('모든 필수 검증 통과')"
+          node -e "const values=process.env.FLOWRIUM_CHECK_OUTCOMES.split(',');if(values.includes('failure')||process.env.FLOWRIUM_JOB_STATUS==='failure'){console.error('실패한 검증이 있어 배포 파일 보관을 중단합니다.');process.exit(1)}console.log('모든 필수 검증 통과')"
       - name: 설치 파일 보관
         uses: actions/upload-artifact@v6
         with:

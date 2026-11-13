@@ -18,6 +18,12 @@ function loadPty() {
     modulePath = modulePath.replace(path.sep + 'app.asar' + path.sep, path.sep + 'app.asar.unpacked' + path.sep);
   return require(modulePath);
 }
+function terminalShell(env=process.env,platform=process.platform){
+  if(platform!=='win32')return env.SHELL&&path.isAbsolute(env.SHELL)?env.SHELL:'/bin/zsh';
+  const root=env.SystemRoot||Object.entries(env).find(([name])=>name.toLowerCase()==='systemroot')?.[1];
+  if(typeof root!=='string'||!path.win32.isAbsolute(root))throw Error('Windows 시스템 폴더 환경변수를 확인해 주세요.');
+  return path.win32.join(root,'System32','WindowsPowerShell','v1.0','powershell.exe');
+}
 function sessionInfo(s) {
   return { id: s.id, projectId: s.projectId, title: s.title, startDir: s.startDir, closed: s.closed, exitCode: s.exitCode };
 }
@@ -61,8 +67,7 @@ function registerTerminal(register, store, { canOpen = () => true, env = process
     if (stopping || !canOpen()) throw new Error('앱 업데이트 중에는 터미널을 열 수 없습니다.');
     if (sessions.size >= MAX_SESSIONS) throw new Error('열지 않는 터미널을 닫은 뒤 새 터미널을 추가해 주세요.');
     const windows = process.platform === 'win32';
-    let shell = windows ? path.join(env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe') :
-      (env.SHELL && path.isAbsolute(env.SHELL) ? env.SHELL : '/bin/zsh');
+    let shell = terminalShell(env);
     let args = windows ? ['-NoLogo'] : ['-l'];
     const runtime = require('./runtime.cjs');
     if (purpose === 'github-login') {
@@ -130,7 +135,7 @@ function registerTerminal(register, store, { canOpen = () => true, env = process
     },
   };
 }
-module.exports = { registerTerminal, prepareTerminal };
+module.exports = { registerTerminal, prepareTerminal,terminalShell };
 if (require.main === module && process.argv[2] === '--prepare') {
   prepareTerminal().catch((error) => { console.error(error); process.exitCode = 1; });
 }

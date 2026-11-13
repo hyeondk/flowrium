@@ -6,7 +6,7 @@ const os = require('node:os');
 const { stripVTControlCharacters } = require('node:util');
 const { setTimeout: delay } = require('node:timers/promises');
 const { randomUUID } = require('node:crypto');
-const { registerTerminal } = require('../electron/terminal.cjs');
+const { registerTerminal,terminalShell } = require('../electron/terminal.cjs');
 
 const windows = process.platform === 'win32';
 const supported = windows || process.platform === 'darwin';
@@ -77,4 +77,11 @@ test('업데이트 중 셸 시작과 비정상 크기 입력을 차단한다', {
   assert.throws(() => api.terminalResize(project.id, s.id, 0, 1000), /크기/);
   assert.throws(() => api.terminalRead(project.id, s.id, -1), /위치/);
   assert.throws(() => api.terminalWrite(project.id, s.id, 'a'.repeat(65537)), /입력/);
+});
+
+test('복제한 Windows 환경변수의 대소문자 차이에도 같은 시스템 셸을 선택한다',()=>{
+ const expected='C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+ for(const name of ['SystemRoot','SYSTEMROOT','systemroot','sYsTeMrOoT'])assert.equal(terminalShell({[name]:'C:\\Windows'},'win32'),expected);
+ assert.throws(()=>terminalShell({},'win32'),/시스템 폴더/);
+ assert.equal(terminalShell({SHELL:'/bin/zsh'},'darwin'),'/bin/zsh');
 });
