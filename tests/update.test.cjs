@@ -124,3 +124,16 @@ test('기동 티켓은 해당 설치 경로·버전·프로세스의 시작 및 
   assert.equal(await acknowledgeUpdateLaunch(app, 'ready', argv), true);
   assert.equal(await fs.readFile(base + '.ready', 'utf8'), String(process.pid));
 });
+test('동시에 화면 준비를 알릴 때 한 번만 쓰고 도우미가 정리한 티켓을 늦은 호출이 재생성하지 않는다',async t=>{
+  const {acknowledgeUpdateLaunch}=require('../electron/updater.cjs'),{randomUUID}=require('node:crypto');
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-ack-shared-')),token=randomUUID(),base=path.join(dir,'.flowrium-launch-'+token),argv=['--flowrium-update-token='+token];
+  const app={isPackaged:true,getVersion:()=> '0.4.0',getPath:key=>key==='exe'?process.execPath:dir};
+  const originalWrite=fs.writeFile;let opened,release,writes=0;
+  const entered=new Promise(resolve=>opened=resolve),gate=new Promise(resolve=>release=resolve);
+  t.after(async()=>{release();fs.writeFile=originalWrite;await fs.rm(dir,{recursive:true,force:true,maxRetries:6,retryDelay:100});});
+  await fs.writeFile(base+'.json',JSON.stringify({version:'0.4.0',executable:process.execPath}));assert.equal(await acknowledgeUpdateLaunch(app,'starting',argv),true);
+  fs.writeFile=async function(file,...args){if(file===base+'.ready'){writes++;opened();await gate;}return originalWrite.call(fs,file,...args);};
+  const first=acknowledgeUpdateLaunch(app,'ready',argv);await entered;const second=acknowledgeUpdateLaunch(app,'ready',argv);release();assert.deepEqual(await Promise.all([first,second]),[true,true]);assert.equal(writes,1);
+  await Promise.all(['.json','.starting','.ready','.helper'].map(ext=>fs.rm(base+ext,{force:true})));
+  assert.equal(await acknowledgeUpdateLaunch(app,'ready',argv),true);assert.equal(writes,1);assert.deepEqual(await fs.readdir(dir),[]);
+});

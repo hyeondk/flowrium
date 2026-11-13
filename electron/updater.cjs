@@ -143,6 +143,7 @@ async function prepareMac(file, stage, version, target, signal) {
 }
 const launchFlag = '--flowrium-update-token=';
 const launchToken = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+const launchAcknowledgements = new Map();
 function receiptBase(userData, token) {
   return path.join(userData, '.flowrium-launch-' + token);
 }
@@ -152,18 +153,25 @@ async function acknowledgeUpdateLaunch(app, phase, argv = process.argv) {
   const token = argv.find((arg) => typeof arg === 'string' && arg.startsWith(launchFlag))?.slice(launchFlag.length);
   if (!token || !launchToken.test(token)) return false;
   const base = receiptBase(app.getPath('userData'), token);
-  try {
+  const version=app.getVersion(),executable=app.getPath('exe');
+  const key=JSON.stringify([base,phase,version,executable]);
+  if(launchAcknowledgements.has(key))return launchAcknowledgements.get(key);
+  const pending=(async()=>{try {
     const ticket = JSON.parse(await fs.readFile(base + '.json', 'utf8'));
-    if (ticket.version !== app.getVersion() || typeof ticket.executable !== 'string') return false;
-    const [expected, actual] = await Promise.all([ticket.executable, app.getPath('exe')].map(exe => fs.stat(exe, { bigint: true })));
+    if (ticket.version !== version || typeof ticket.executable !== 'string') return false;
+    const [expected, actual] = await Promise.all([ticket.executable, executable].map(exe => fs.stat(exe, { bigint: true })));
     if (!expected.isFile() || !actual.isFile() || expected.dev !== actual.dev || expected.ino !== actual.ino) return false;
-    if (actual.ino === 0n && path.relative(await fs.realpath(ticket.executable), await fs.realpath(app.getPath('exe'))) !== '') return false;
+    if (actual.ino === 0n && path.relative(await fs.realpath(ticket.executable), await fs.realpath(executable)) !== '') return false;
     const pid = String(process.pid);
     if (phase === 'ready' && (await fs.readFile(base + '.starting', 'utf8')).trim() !== pid) return false;
     try { await fs.writeFile(base + '.' + phase, pid, { flag: 'wx', mode: 0o600 }); }
     catch (error) { if (error.code !== 'EEXIST') throw error; }
     return true;
-  } catch { return false; }
+  } catch { return false; }})();
+  launchAcknowledgements.set(key,pending);
+  const acknowledged=await pending;
+  if(!acknowledged&&launchAcknowledgements.get(key)===pending)launchAcknowledgements.delete(key);
+  return acknowledged;
 }
 async function cleanReceipt(base) {
   await Promise.all(['.json', '.starting', '.ready'].map((ext) => fs.rm(base + ext, { force: true }).catch(() => {})));

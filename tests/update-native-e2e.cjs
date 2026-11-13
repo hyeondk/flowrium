@@ -339,6 +339,7 @@ async function main() {
       const records = await updateTrace(userData).catch(() => []);
       console.error('업데이트 전체 기록', JSON.stringify(records));
       console.error('도우미 시작 기록', (await fs.readFile(path.join(userData,'last-update-result.txt.startup.txt'),'utf8').catch(()=> '')).slice(-3000));
+      console.error('남은 기동 티켓', (await fs.readdir(userData).catch(()=>[])).filter(name=>name.startsWith('.flowrium-launch-')));
       // 실패한 일회용 러너에서 시험 도우미/복구 창이 정리 작업을 가로막지 않게 한다.
       const helper = records.find(r => r.step === 'helper-start')?.helperPid;
       if (helper) await run('taskkill.exe', ['/PID', String(helper), '/T', '/F']).catch(() => {});
