@@ -34,12 +34,14 @@ async function fixture(t, options) {
   return { store, controller, api, project, root };
 }
 async function finished(api, projectId, id) {
-  for (let n = 0; n < 100; n++) {
-    const run = (await api.readTeams(projectId)).runs.find((r) => r.id === id);
+  const deadline=Date.now()+30000;
+  let run;
+  while(Date.now()<deadline) {
+    run = (await api.readTeams(projectId)).runs.find((r) => r.id === id);
     if (run && run.roles.every((role) => ['completed', 'failed'].includes(role.status))) return run;
     await delay(30);
   }
-  throw new Error('팀 실행 종료 결과를 확인할 수 없습니다.');
+  throw new Error('팀 실행 종료 결과를 확인할 수 없습니다. / '+JSON.stringify(run?.roles.map(role=>({status:role.status,error:role.error}))));
 }
 test('역할 3개를 독립 Codex 세션에서 실행하고 다른 컴퓨터에서 팀과 최초 결과를 다시 연다', async (t) => {
   const { store, api, project, root, controller } = await fixture(t);
