@@ -26,6 +26,9 @@ jobs:
   build:
     name: ${{ matrix.label }}
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
     outputs:
       mac_ready: ${{ steps.signing.outputs.ready }}
     strategy:
@@ -134,55 +137,87 @@ jobs:
       - name: 패키지 내장 터미널 검증
         run: node tests/terminal-packaged-e2e.cjs
       - name: 실제 앱에서 업무 대화 검증
+        id: verify_1
+        continue-on-error: true
         run: node tests/desktop-e2e.cjs
       - name: 탐색 레일·대화함·동작·실행 상태
+        id: verify_2
+        continue-on-error: true
         run: |
           node tests/ui-motion-e2e.cjs
           node tests/workspace-shell-e2e.cjs
           node tests/conversation-scopes-native-e2e.cjs
       - name: 대시보드와 프로젝트·보관·업무 도구
+        id: verify_3
+        continue-on-error: true
         run: node tests/portfolio-e2e.cjs
       - name: 첨부·실행 큐·네이티브 분기와 되감기
+        id: verify_4
+        continue-on-error: true
         run: |
           node tests/chat-core-e2e.cjs
           node tests/chat-core-native-e2e.cjs
       - name: 목표·그래프·산출물·복원과 실제 모델 도구
+        id: verify_5
+        continue-on-error: true
         run: |
           node tests/portfolio-extensions-e2e.cjs
           node tests/project-ai-native-e2e.cjs
           node tests/html-export-electron.cjs
       - name: 대화 위임·비서 보고·기억·동적 팀
+        id: verify_6
+        continue-on-error: true
         run: |
           node tests/workflow-e2e.cjs
           node tests/teams-automation-e2e.cjs
       - name: 외부 자료·일정 검토·연결 주소 전달
+        id: verify_7
+        continue-on-error: true
         run: |
           node tests/external-integrations-e2e.cjs
           node tests/link-delivery-e2e.cjs
       - name: 팀 배정·결정·완료 보고
+        id: verify_8
+        continue-on-error: true
         run: node tests/teams-directed-e2e.cjs
       - name: 독립 Git 작업 환경과 통합
+        id: verify_9
+        continue-on-error: true
         run: node tests/team-worktrees-ui.cjs
       - name: Codex 질문의 보기·직접 답변과 비밀 입력
+        id: verify_10
+        continue-on-error: true
         run: |
           node tests/input-request-e2e.cjs
           node tests/input-native-e2e.cjs
       - name: 잠금·로그아웃·초안 복원
+        id: verify_11
+        continue-on-error: true
         run: node tests/security-e2e.cjs
       - name: 미전송 초안의 이전·계정별 복원
+        id: verify_12
+        continue-on-error: true
         run: node tests/drafts-e2e.cjs
       - name: 개인 메모와 프로젝트 지시·비서
+        id: verify_13
+        continue-on-error: true
         run: node tests/memory-e2e.cjs
       - name: 음악·음성 입력의 실제 화면
+        id: verify_14
+        continue-on-error: true
         run: |
           node tests/desktop-tools-e2e.cjs
           node tests/voice-e2e.cjs
           node tests/voice-continuous-e2e.cjs
       - name: 휴대폰 화면과 인증
+        id: verify_15
+        continue-on-error: true
         run: |
           node tests/mobile-e2e.cjs
           node tests/mobile-extensions-e2e.cjs
       - name: 터미널 설치 파일의 검증과 백업
+        id: verify_16
+        continue-on-error: true
         shell: bash
         run: |
           node scripts/create-checksums.mjs release
@@ -192,12 +227,24 @@ jobs:
             node tests/installer-mac-e2e.cjs
           fi
       - name: 문서 내보내기 검증
+        id: verify_17
+        continue-on-error: true
         run: node tests/workbench-document-e2e.cjs
       - name: Mac 앱의 실제 업데이트·수동 설치 버튼
+        id: verify_18
+        continue-on-error: true
         if: runner.os == 'macOS'
         run: node tests/update-mac-click-e2e.cjs
       - name: 운영체제별 업데이트 검증
+        id: verify_19
+        continue-on-error: true
         run: node tests/update-native-e2e.cjs ${{ runner.os == 'macOS' && steps.signing.outputs.ready != 'true' && '--expect-unsigned' || '' }}
+      - name: 모든 검증 결과 확인
+        if: ${{ !cancelled() }}
+        env:
+          FLOWRIUM_CHECK_OUTCOMES: ${{ join(steps.*.outcome, ',') }}
+        run: |
+          node -e "const values=process.env.FLOWRIUM_CHECK_OUTCOMES.split(',');if(values.includes('failure')){console.error('실패한 검증이 있어 배포 파일 보관을 중단합니다.');process.exit(1)}console.log('모든 필수 검증 통과')"
       - name: 설치 파일 보관
         uses: actions/upload-artifact@v6
         with:
