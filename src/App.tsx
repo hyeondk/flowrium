@@ -1,3 +1,6 @@
+import WorkflowHub from "./WorkflowHub";
+import CommandCenter from "./CommandCenter";
+import {AttachmentComposer,ChatAttachmentList,ChatQueuePanel} from "./ChatAttachments";
 import InputRequestPanel from "./InputRequestPanel";
 import { useWorkspaceDrafts } from "./useWorkspaceDrafts";
 import WorkspaceSidebar from "./WorkspaceSidebar";
@@ -67,9 +70,10 @@ import type {
   Model,
   Project,
   Session,
+  ChatAttachment,
 } from "../shared/types";
 
-type View = PortfolioView | "weekly" | "pause" | "music" | "overview" | "terminal" | "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
+type View = "workflow" | PortfolioView | "weekly" | "pause" | "music" | "overview" | "terminal" | "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
 type Activity = { text: string; status: string; error?: string };
 type CodexHistoryItem = {
   id: string;
@@ -207,18 +211,25 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const draftKey = sessionId
     ? `session:${sessionId}`
     : `project:${projectId || "unassigned"}`;
+  const voiceContinuity=useRef({draftKey,generation:0,preserve:""});
+  if(voiceContinuity.current.draftKey!==draftKey){
+    if(voiceContinuity.current.preserve!==draftKey)voiceContinuity.current.generation++;
+    voiceContinuity.current.draftKey=draftKey;voiceContinuity.current.preserve="";
+  }
   const input = drafts[draftKey]?.text || "";
+  const attachments=drafts[draftKey]?.attachments||[];
+  const setAttachments=(items:ChatAttachment[])=>setDrafts(prev=>({...prev,[draftKey]:{text:prev[draftKey]?.text||"",mode:prev[draftKey]?.mode||mode,attachments:items}}));
   const workflow = data.sessions.find(s => s.id === sessionId)?.workflow;
   const mode = drafts[draftKey]?.mode || workflow?.teamSlot?.mode || (workflow ? workKinds[workflow.kind].mode : "plan");
   const setInput = (text: string) =>
     setDrafts((prev) => ({
       ...prev,
-      [draftKey]: { text, mode: prev[draftKey]?.mode || mode },
+      [draftKey]: { ...prev[draftKey],text, mode: prev[draftKey]?.mode || mode },
     }));
   const setMode = (nextMode: Mode) =>
     setDrafts((prev) => ({
       ...prev,
-      [draftKey]: { text: prev[draftKey]?.text || "", mode: nextMode },
+      [draftKey]: { ...prev[draftKey],text: prev[draftKey]?.text || "", mode: nextMode },
     }));
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -554,17 +565,16 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     if (!request) return;
     try { await sendWorkRequest(value,request,nextMode); } catch(error) { fail(error); }
   }
-  async function sendWorkRequest(value:Session,request:string,nextMode?:Mode) {
+  async function sendWorkRequest(value:Session,request:string,nextMode?:Mode,overrides?:{model?:string;effort?:Effort}) {
     rememberSession(value);
     if (!api) return;
     const mode = nextMode || "plan";
     const key = `session:${value.id}`;
     setDrafts(prev => ({ ...prev, [key]: { text: request, mode } }));
     if (!connection.authenticated) {
-      notify("업무 대화를 만들었습니다. 설정에서 계정을 연결한 뒤 요청을 보내세요.");
-      return;
+      throw new Error("ChatGPT 계정 연결 후 AI 업무를 시작하세요.");
     }
-    await api.send({ sessionId: value.id, text: request, mode, model: data.settings.model, effort: data.settings.effort });
+    await api.send({ sessionId: value.id, text: request, mode, model: overrides?.model || value.preferences?.model || data.settings.model, effort: overrides?.effort || value.preferences?.effort || data.settings.effort });
     setDrafts(prev => prev[key]?.text === request ? { ...prev, [key]: { text: "", mode } } : prev);
   }
   async function connect() {
@@ -623,8 +633,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     setSessionId(undefined);
     setTimeout(() => composer.current?.focus(), 0);
   }
-  async function send() {
-    if (!input.trim() || submittingRef.current || running) return;
+  async function send(textOverride?:string) {
+    const requestText=textOverride??input;
+    if ((!requestText.trim() && !attachments.length) || submittingRef.current) return;
     if (!api)
       return notify("데스크톱 앱에서 작업 폴더와 Codex를 연결해 주세요.");
     if (!project) return notify("먼저 왼쪽에서 작업 폴더를 연결해 주세요.");
@@ -633,8 +644,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     let activeId = sessionId;
     let restoreKey = draftKey;
     const originKey = draftKey;
-    const originalInput = input;
-    const text = input.trim();
+    const originalInput = requestText;
+    const originalAttachments=attachments;
+    const wasRunning=running;
+    const text = requestText.trim();
     setDrafts((prev) => ({ ...prev, [originKey]: { text: "", mode } }));
     try {
       if (!activeId) {
@@ -647,6 +660,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         if (currentDraftKey.current === originKey) {
           restoreKey = `session:${created.id}`;
           const targetKey = restoreKey;
+          voiceContinuity.current.preserve=targetKey;
           setDrafts((prev) => ({
             ...prev,
             [targetKey]: prev[originKey] || { text: "", mode },
@@ -655,20 +669,22 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           setSessionId(created.id);
         }
       }
-      setActivities((prev) => ({
+      if(!wasRunning)setActivities((prev) => ({
         ...prev,
         [activeId!]: { text: "", status: "Codex에 연결하고 있습니다" },
       }));
       stickToBottom.current = true;
-      await api.send({
+      const sent=await api.send({
         sessionId: activeId,
         text,
+        attachments:originalAttachments.map(a=>a.id),
         mode,
         model: data.settings.model || undefined,
         effort: data.settings.effort,
       });
+      if(sent.queued)notify("추가 지시를 보관했습니다. 현재 작업이 끝나면 차례로 전달합니다.");
     } catch (error) {
-      if (activeId)
+      if (activeId&&!wasRunning)
         setActivities((prev) => {
           const next = { ...prev };
           delete next[activeId!];
@@ -681,6 +697,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             ? `${originalInput}\n\n${prev[restoreKey].text}`
             : originalInput,
           mode: prev[restoreKey]?.mode || mode,
+          attachments:[...originalAttachments,...(prev[restoreKey]?.attachments||[]).filter(a=>!originalAttachments.some(b=>b.id===a.id))],
         },
       }));
       fail(error);
@@ -889,11 +906,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             <span>내 작업 공간</span>
             <ChevronRight size={13} />
             <strong>
-              {({dashboard:"대시보드",kickoff:"새 프로젝트",archive:"완료",outputs:"산출물",timeline:"날짜별 기록",weekly:"주간업무보고",pause:"업무 마감",music:"뮤직",history:"작업 기록",library:"프롬프트 보관함",activity:"작업 현황",inbox:"승인함",terminal:"터미널"} as Partial<Record<View,string>>)[view] || project?.name || "시작하기"}
+              {({dashboard:"대시보드",kickoff:"새 프로젝트",archive:"완료",outputs:"산출물",timeline:"날짜별 기록",workflow:"업무 연결 / 비서",weekly:"주간업무보고",pause:"업무 마감",music:"뮤직",history:"작업 기록",library:"프롬프트 보관함",activity:"작업 현황",inbox:"승인함",terminal:"터미널"} as Partial<Record<View,string>>)[view] || project?.name || "시작하기"}
             </strong>
             {!api && <span className="preview-badge">화면 미리보기</span>}
           </div>
           <div className="topbar-actions">
+            <CommandCenter projects={data.projects} sessions={data.sessions} onProject={selectProject} onSession={selectSession} onView={value=>{if(value==="settings")setSettingsOpen(true);else setView(value as View);}} onNew={()=>{void newSession();}}/>
             <AssistantShortcut projects={data.projects.filter(p=>!archived[p.id])} onOpen={openWork} onCreateProject={()=>setView("kickoff")}/>
             <button className="button subtle chatgpt-button" onClick={handoff}>
               <MessageSquare size={15} />
@@ -921,7 +939,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           </div>
         ) : view === "music" ? null : view === "weekly" || view === "pause" ? (
           <PortfolioReports key={view} kind={view} projects={data.projects.filter(p=>!archived[p.id])} sessions={data.sessions} authenticated={connection.authenticated}
-            onStart={(record,request)=>sendWorkRequest(record,request,workKinds[record.workflow!.kind].mode)} onOpen={selectSession} onCreateProject={()=>setView("kickoff")}/>
+            onStart={(record,request,options)=>sendWorkRequest(record,request,workKinds[record.workflow!.kind].mode,options)} onOpen={selectSession} onCreateProject={()=>setView("kickoff")}/>
+        ) : view === "workflow" ? (
+          <div className="page-scroll"><div className="page-inner"><WorkflowHub onOpen={openWork} onOpenInbox={()=>setView("inbox")}/></div></div>
         ) : view === "terminal" && !project ? (
           <div className="pf-page"><div className="pf-content"><h1>터미널</h1><section className="pf-welcome"><h2>터미널을 열 폴더를 연결하세요</h2><button onClick={()=>void chooseProjectFor("terminal")}>프로젝트 폴더 선택</button></section></div></div>
         ) : view === "details" && project ? (
@@ -1130,7 +1150,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       <h2>{session.title}</h2>
                     </div>
                     <div className="session-actions">
-                      <ConversationTools key={session.id} session={session} models={models} running={running} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} />
+                      <ConversationTools key={session.id} session={session} models={models} running={running} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} defaults={data.settings.chatDefaults} onDefaults={chatDefaults=>setData(old=>({...old,settings:{...old.settings,chatDefaults}}))} onRewind={draft=>setDrafts(prev=>({...prev,[draftKey]:{text:draft.text,mode,attachments:draft.attachments}}))} />
                       <button
                         className="icon-button"
                         aria-label="대화 내보내기"
@@ -1154,6 +1174,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       </button>
                     </div>
                   </div>
+                  {session.context&&<div className="chat-context">문맥 {session.context.percent}% / {session.context.used.toLocaleString("ko-KR")} / {session.context.max.toLocaleString("ko-KR")} 토큰 <progress max={100} value={session.context.percent}/>{session.compacting&&<span>문맥 압축 중</span>}</div>}
+                  <ChatQueuePanel session={session} onCancel={id=>{void api!.cancelQueuedMessage(session.id,id).catch(fail);}} onResume={()=>{void api!.resumeQueuedMessages(session.id).catch(fail);}}/>
                   {session.workflow && <WorkSessionControls key={session.id} session={session} onSessionChange={rememberSession} running={running} />}
                   <div
                     className="messages"
@@ -1212,6 +1234,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                               </button>
                             )}
                           </div>
+                          {message.attachments?.length&&project&&<ChatAttachmentList projectId={project.id} items={message.attachments}/>}
                           <div className="markdown">
                             <ReactMarkdown>{message.text}</ReactMarkdown>
                           </div>
@@ -1352,6 +1375,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </div>
                 ))}
                 {draftError && <p role="alert" className="composer-draft-error">{draftError} <button onClick={retryDrafts}>초안 다시 불러오기</button></p>}
+                <AttachmentComposer key={voiceContinuity.current.generation} projectId={project?.id} items={attachments} onChange={setAttachments} disabled={security.state.locked} report={notify}>
                 <div className={`composer ${running ? "working" : ""}`}>
                   <div className="composer-topline">
                     <span>
@@ -1397,9 +1421,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   />
                   <div className="composer-toolbar">
                     <div className="composer-options">
-                      <VoiceComposer key={draftKey} disabled={running||security.state.locked} onText={text=>setDrafts(prev=>{
-                        const draft=prev[draftKey];return {...prev,[draftKey]:{mode:draft?.mode||mode,text:[draft?.text,text].filter(Boolean).join("\n")}};
-                      })}/>
+                      <VoiceComposer key={voiceContinuity.current.generation} suspend={settingsOpen} disabled={running||security.state.locked} onText={text=>setDrafts(prev=>{
+                        const draft=prev[draftKey];return {...prev,[draftKey]:{mode:draft?.mode||mode,text:[draft?.text,text].filter(Boolean).join("\n"),attachments:draft?.attachments}};
+                      })} onSubmit={text=>void send([input,text].filter(Boolean).join("\n"))}/>
                       <label className="mode-select">
                         <currentMode.icon size={14} />
                         <select
@@ -1428,6 +1452,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         <ChevronDown size={12} />
                       </button>
                     </div>
+                    <div className="chat-run-controls">
+                    {running&&<button className="button secondary" aria-label="추가 지시 대기열에 넣기" onClick={()=>void send()} disabled={(!input.trim()&&!attachments.length)||submitting}>추가 지시 보내기</button>}
                     {running ? (
                       <button
                         className="send-button stop-button"
@@ -1441,8 +1467,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       <button
                         className="send-button"
                         aria-label="작업 보내기"
-                        onClick={send}
-                        disabled={!input.trim() || submitting || !project}
+                        onClick={()=>void send()}
+                        disabled={(!input.trim()&&!attachments.length) || submitting || !project}
                       >
                         {submitting ? (
                           <LoaderCircle size={17} className="spin" />
@@ -1450,9 +1476,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                           <ArrowUp size={19} />
                         )}
                       </button>
-                    )}
+                    )}</div>
                   </div>
                 </div>
+                </AttachmentComposer>
                 <div className="composer-footnote">
                   <span>
                     <ShieldCheck size={12} />
@@ -1605,7 +1632,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         <footer className="statusbar">
           <span>
             <span className="status-dot online" />
-            Flowrium <span className="muted">/</span> 개인 작업 공간
+            Flowrium
           </span>
           <span>
             {project ? project.name : "연결된 프로젝트 없음"}
@@ -2004,7 +2031,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               </button>
             </div>
             <div className="modal-footer">
-              <span>Flowrium / v{data.version}</span>
+              <span>Flowrium</span><span>v{data.version}</span>
               <button
                 className="button secondary"
                 onClick={() => setSettingsOpen(false)}

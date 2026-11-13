@@ -135,6 +135,13 @@ const planSchema = {
     options: { type: "array", items: { type: "string" } },
   },
 };
+const coordinationSchema={...planSchema,required:[...planSchema.required,"complete"],properties:{...planSchema.properties,complete:{type:"boolean"}}};
+function coordinationPrompt(r){
+  return ["[팀 추가 배정] 완료한 담당자의 실제 결과를 검토하고 공동 목표에 남은 일이 있는지 판단하세요.",
+    "더 진행할 일이 없으면 complete=true와 빈 assignments를 답하세요. 필요할 때만 완료된 역할이나 아직 배정하지 않은 역할에 추가 과업을 배정하세요.",
+    "실행 중인 역할을 바꾸지 마세요. 없는 역할은 만들지 마세요. 추가 배정의 완료 기준과 검증 단계를 적으세요. 사용자 결정이 필요한 변경은 question/why/options에 남기세요.",
+    planPrompt(r),...r.directed.nodes.map(n=>`${n.index} / ${n.title} / ${n.status}\n${n.summary}`)].join("\n\n");
+}
 function planPrompt(r) {
   return [
     "[팀 배정안] 사용자가 등록한 팀원 중 필요한 담당자만 선택해 서로 다른 세부 업무를 배정하세요.",
@@ -228,6 +235,8 @@ async function readRecord(dir, runId) {
     !Array.isArray(r.directed.nodes)
   )
     throw stale();
+  for(const key of ["autoDispatch","autoPM","autoQA","autoIntegrate"])if(r.directed[key]!==undefined&&typeof r.directed[key]!=="boolean")throw stale();
+  for(const key of ["maxQaRounds","maxPMRounds"])if(r.directed[key]!==undefined&&(!Number.isInteger(r.directed[key])||r.directed[key]<1||r.directed[key]>10))throw stale();
   assignments(r.directed.nodes, r.roles, true);
   return r;
 }
@@ -293,6 +302,8 @@ function registerDirected(
     folders,
     readDefinitions,
     definition,
+    worktreeState,
+    worktreeAction,
   },
 ) {
   const active = new Map(),
@@ -404,11 +415,13 @@ function registerDirected(
         .map((s) => controller.interrupt(s)),
     );
   }
-  async function session(projectId, r, n) {
-    if (n.sessionId) {
-      const saved = store.session(n.sessionId);
+  async function session(projectId, r, n, purpose) {
+    const integration=purpose==="integrate";
+    const savedId=integration?n.integrationSessionId:n.roleSessionId||n.sessionId;
+    if (savedId) {
+      const saved = store.session(savedId);
       if (saved.projectId !== projectId) throw stale();
-      return saved;
+      if(!!saved.workflow?.teamSlot?.integration===integration){n.sessionId=saved.id;return saved;}
     }
     const lead = n.index === -1,
       role = r.roles[n.index];
@@ -421,28 +434,30 @@ function registerDirected(
         brief: lead
           ? "팀의 요청을 분석하고 담당자에게 배정하며 결과를 검토하고 보고합니다."
           : [role.instruction, role.persona].filter(Boolean).join("\n"),
-        title: (r.name + " / " + (lead ? "팀장" : role.name)).slice(0, 160),
+        title: (r.name + " / " + (lead ? "팀장" : role.name)+(integration?" / 통합":"")).slice(0, 160),
       },
       lead
         ? undefined
         : {
             runId: r.id,
             index: n.index,
-            mode: role.mode,
+            mode: integration?"build":role.mode,
             ...(r.directed.isolate && { isolated: true }),
+            ...(integration&&{integration:true}),
           },
     );
     n.sessionId = s.id;
+    if(integration)n.integrationSessionId=s.id;else n.roleSessionId=s.id;
     return s;
   }
   async function launchNode(projectId, dir, r, n, purpose, prompt) {
     requireReady();
-    const s = await session(projectId, r, n);
+    const s = await session(projectId, r, n, purpose);
     if (controller.runs.has(s.id))
       throw new Error("해당 역할 대화가 이미 응답 중입니다.");
     const model =
       n.index === -1 ? r.directed.leadModel : r.roles[n.index].model;
-    const mode = n.index === -1 ? "plan" : r.roles[n.index].mode;
+    const mode = purpose==="integrate"?"build":n.index === -1 ? "plan" : r.roles[n.index].mode;
     if (n.queue?.length) {
       prompt +=
         "\n대기 중에 받은 추가 지시와 팀 메시지:\n" +
@@ -478,7 +493,7 @@ function registerDirected(
     try {
       await controller.send(
         { sessionId: s.id, text: prompt, mode, ...(model && { model }) },
-        purpose === "plan" ? { outputSchema: planSchema } : {},
+        purpose === "plan" ? { outputSchema: planSchema } : purpose==="coordinate"?{outputSchema:coordinationSchema}:{},
       );
     } catch (error) {
       active.delete(s.id);
@@ -515,6 +530,20 @@ function registerDirected(
       await write(dir, r);
       return;
     }
+    if(d.autoPM&&!d.pmComplete&&d.nodes.length&&d.nodes.every(n=>n.status==="done")){
+      if((d.pmRounds||0)>=(d.maxPMRounds||2)){
+        if(!d.decisions.some(q=>q.node===-3&&!q.answer))decision(r,-3,{question:"팀장의 추가 배정 횟수에 도달했습니다. 결과를 확인한 뒤 계속할지 정해 주세요.",why:"무한 반복을 막기 위한 한도입니다.",options:["추가 배정 한도 늘리기","현재 결과로 마무리"]});
+        d.phase="decisions";await write(dir,r);return;
+      }
+      d.pmRounds=(d.pmRounds||0)+1;d.phase="planning";
+      await launchNode(projectId,dir,r,d.lead,"coordinate",coordinationPrompt(r));schedule(projectId,r);return;
+    }
+    if(d.autoIntegrate&&d.isolate&&!d.integrationDone&&d.nodes.length&&d.nodes.every(n=>n.status==="done")){
+      try{await integrate(projectId,dir,r);}catch(error){
+        d.phase="decisions";decision(r,-4,{question:"통합 작업을 확인해 주세요.",why:publicMessage(error),options:["통합 담당자에게 맡기기","변경 검토에서 직접 해결"]});await write(dir,r);
+      }
+      return;
+    }
     d.phase = "review";
     await write(dir, r);
     clearAlarm(r.id);
@@ -524,6 +553,29 @@ function registerDirected(
       d.nodes.every((n) => n.status === "done")
     )
       await report(projectId, dir, r);
+  }
+  async function integrate(projectId,dir,r){
+    requireReady();if(!worktreeState||!worktreeAction)throw new Error("통합 작업 연결을 확인해 주세요.");
+    const d=r.directed;note(r,"시스템","통합","통합 시작","선택한 자동 통합 설정에 따라 역할 변경을 커밋하고 통합합니다.");await write(dir,r);
+    let board=await worktreeState(projectId,r.id);
+    for(const n of d.nodes){
+      if(r.roles[n.index].mode!=="build")continue;
+      let role=board.roles[n.index];if(!role||role.owner!==n.index)continue;
+      if(role.conflicts.length||role.mergeHead)throw new Error("역할 작업 폴더에 해결할 충돌이 있습니다.");
+      if(role.files.length){
+        await worktreeAction(projectId,r.id,{action:"commit",index:n.index,head:role.head,files:role.files.map(f=>f.file),message:(r.name+" / "+r.roles[n.index].name+" 작업").slice(0,240)});
+        board=await worktreeState(projectId,r.id);role=board.roles[n.index];
+      }
+      await worktreeAction(projectId,r.id,{action:"integrate",index:n.index,head:role.head,integrationHead:board.integration.head||board.base});
+      board=await worktreeState(projectId,r.id);
+      if(board.integration.conflicts.length||board.integration.mergeHead)throw new Error("통합 폴더의 충돌을 보존했습니다. 파일을 검토해 해결해 주세요.");
+    }
+    if(d.integrationRoleIndex!==null&&d.integrationRoleIndex!==undefined){
+      const n=nodeOf(r,d.integrationRoleIndex);d.phase="running";
+      await launchNode(projectId,dir,r,n,"integrate",`[통합 담당 위임] 역할별 결과를 통합한 실제 Git 폴더에서 변경과 검증을 확인하고 필요한 보완을 수행하세요.\n공동 목표 / ${r.prompt}\n통합 폴더 / ${board.integration.directory}\n${d.nodes.map(v=>`${r.roles[v.index].name}\n${v.summary}`).join("\n\n")}\n외부 푸시나 배포는 사용자 결정 없이 수행하지 마세요.`);schedule(projectId,r);
+    }else{
+      d.integrationDone=true;d.phase="running";note(r,"시스템","사용자","통합 완료","역할의 검증한 커밋을 통합 브랜치에 모았습니다. 외부 푸시는 실행하지 않았습니다.");await write(dir,r);await startEligible(projectId,dir,r);
+    }
   }
   async function report(projectId, dir, r) {
     if (
@@ -573,6 +625,36 @@ function registerDirected(
         "역할별 배정안을 작성했습니다. 실행할 담당자와 내용을 확인해 주세요.";
       note(r, "팀장", "사용자", "배정안", n.summary);
       clearAlarm(r.id);
+      if(d.autoDispatch&&!parsed.question){await write(dir,r);await command(projectId,dir,r,{action:"dispatch",assignments:proposed});return;}
+    } else if(n.purpose==="coordinate"){
+      const parsed=JSON.parse(body.replace(/^\s*```(?:json)?\s*|\s*```\s*$/g,""));
+      if(typeof parsed.complete!=="boolean")throw empty();
+      if(parsed.question){decision(r,-1,parsed);n.status="question";d.phase="decisions";}
+      else if(parsed.complete){d.pmComplete=true;d.phase="running";note(r,"팀장","사용자","추가 배정 검토","공동 목표의 담당 결과를 검토해 추가 과업이 없다고 판단했습니다.");}
+      else{
+        if(!Array.isArray(parsed.assignments)||!parsed.assignments.length)throw new Error("추가 업무 또는 완료 여부를 확인할 수 없습니다.");
+        const combined=[...d.nodes.filter(old=>!parsed.assignments.some(a=>a.index===old.index)),...parsed.assignments];
+        const normalized=assignments(combined,r.roles);
+        for(const patch of parsed.assignments){
+          const old=d.nodes.find(n=>n.index===patch.index);if(old&&old.status!=="done")throw new Error("완료되지 않은 담당자에게 새 업무를 덮어쓰지 않았습니다.");
+          const next=normalized.find(n=>n.index===patch.index);
+          if(d.isolate&&next.targetIndex!==(d.worktreeRoles?.[patch.index]?.targetIndex??undefined))throw new Error("격리된 검수 대상은 최초 배정을 유지해 주세요.");
+          if(old)note(r,r.roles[old.index].name,"팀장","이전 과업 보존",old.summary);
+          const node={...newNode(next),...(old?.sessionId&&{sessionId:old.sessionId,roleSessionId:old.roleSessionId||old.sessionId})};
+          d.nodes=d.nodes.filter(n=>n.index!==next.index);d.nodes.push(node);note(r,"팀장",r.roles[next.index].name,"추가 배정",next.task);
+        }
+        if(d.isolate)await require("./team-worktrees.cjs").prepareTeamWorktrees(store,projectId,r.id,d.worktreeRoles,{indices:parsed.assignments.map(a=>a.index)});
+        d.phase="running";
+      }
+    } else if(n.purpose==="integrate"){
+      const board=await worktreeState(projectId,r.id);
+      if(board.integration.conflicts.length){
+        n.status="question";d.phase="decisions";decision(r,-4,{question:"통합 폴더의 충돌이 남아 있습니다.",why:board.integration.conflicts.join(" / "),options:["통합 담당자에게 맡기기","변경 검토에서 직접 해결"]});
+      }else{
+        if(board.integration.mergeHead)await worktreeAction(projectId,r.id,{action:"finish",index:-1,head:board.integration.head});
+        else if(board.integration.files.length)await worktreeAction(projectId,r.id,{action:"commit",index:-1,head:board.integration.head,files:board.integration.files.map(f=>f.file),message:(r.name+" / 통합 보완").slice(0,240)});
+        d.integrationDone=true;d.phase="running";note(r,r.roles[n.index].name,"사용자","통합 담당 보고",n.summary);
+      }
     } else if (n.purpose === "report") {
       const artifact = await saveArtifact(store, n.sessionId, message.id, "md");
       d.artifactPath = artifact.path;
@@ -593,7 +675,8 @@ function registerDirected(
         n.summary = q.question;
       } else if (verdict?.passed === false && n.targetIndex != null) {
         const target = nodeOf(r, n.targetIndex);
-        target.status = "interrupted";
+        const automate=d.autoQA&&(n.qaRounds||0)<(d.maxQaRounds||3);
+        target.status = automate?"waiting":"interrupted";
         target.summary = written(verdict.feedback, 2000);
         n.status = "waiting";
         n.summary = "구현 담당자가 보완한 뒤 다시 검수합니다.";
@@ -604,11 +687,11 @@ function registerDirected(
           "검수 반려",
           target.summary,
         );
-        decision(r, target.index, {
-          question: "검수에서 발견된 사항을 보완할까요?",
-          why: target.summary,
-          options: ["보완 후 재검수", "범위 조정"],
-        });
+        if(automate){
+          n.qaRounds=(n.qaRounds||0)+1;target.queue||=[];target.queue.push({from:r.roles[n.index].name,text:"검수 보완 요청 / "+target.summary});
+          note(r,"시스템",r.roles[target.index].name,"자동 보완",`${n.qaRounds} / ${d.maxQaRounds||3}회 / ${target.summary}`);d.phase="running";
+        }else decision(r, target.index, {question:"검수에서 발견된 사항을 보완할까요?",why:target.summary,
+          options:["보완 후 재검수","범위 조정"]});
       } else {
         n.stepsDone = n.steps.length;
         note(
@@ -775,6 +858,9 @@ function registerDirected(
         notes: [],
         isolate: o.isolate === true,
         autoReport: o.autoReport === true,
+        autoDispatch:o.autoDispatch===true,autoPM:o.autoPM===true,autoQA:o.autoQA===true,autoIntegrate:o.autoIntegrate===true,
+        maxQaRounds:integer(o.maxQaRounds??3,10),maxPMRounds:integer(o.maxPMRounds??2,10),
+        integrationRoleIndex:o.integrationRoleIndex==null?null:integer(o.integrationRoleIndex,team.roles.length-1),
         budget: integer(o.budget || 0, 100000000),
         minutes: integer(o.minutes || 0, 10080),
         tokens: 0,
@@ -792,6 +878,8 @@ function registerDirected(
         prompt,
         directed: d,
       };
+      if(d.maxQaRounds<1||d.maxPMRounds<1)throw empty();
+      if(d.integrationRoleIndex!==null&&(!d.isolate||r.roles[d.integrationRoleIndex].mode!=="build"))throw new Error("통합 담당자는 격리 작업을 사용하는 구현 역할에서 골라 주세요.");
       note(r, "사용자", "팀", "업무 등록", prompt);
       if (o.strategy === "plan") d.startedAt = date;
       await write(dir, r);
@@ -830,6 +918,15 @@ function registerDirected(
     )
       throw new Error("팀 업무를 재개한 뒤 변경해 주세요.");
     switch (c.action) {
+      case "automation":{
+        for(const key of ["autoDispatch","autoPM","autoQA","autoIntegrate"]){if(c[key]!==undefined){if(typeof c[key]!=="boolean")throw empty();d[key]=c[key];}}
+        for(const key of ["maxQaRounds","maxPMRounds"]){if(c[key]!==undefined){const count=integer(c[key],10);if(count<1)throw empty();d[key]=count;}}
+        if(c.integrationRoleIndex!==undefined){
+          const index=c.integrationRoleIndex===null?null:integer(c.integrationRoleIndex,r.roles.length-1);
+          if(index!==null&&(!d.isolate||r.roles[index].mode!=="build"))throw empty();d.integrationRoleIndex=index;
+        }
+        note(r,"사용자","팀","자동 운영 설정","사용자가 선택한 자동 운영 범위를 갱신했습니다.");await write(dir,r);return;
+      }
       case "dispatch": {
         if (d.phase !== "draft")
           throw new Error("배정안 검토 단계에서 실행해 주세요.");
@@ -840,6 +937,7 @@ function registerDirected(
             ...role,
             targetIndex: picked.find((n) => n.index === index)?.targetIndex,
           }));
+          d.worktreeRoles=bound;
           await require("./team-worktrees.cjs").prepareTeamWorktrees(
             store,
             projectId,
@@ -935,6 +1033,19 @@ function registerDirected(
         if (!q || q.answer)
           throw new Error("응답할 결정 항목을 찾지 못했습니다.");
         const answer = written(c.text, 5000);
+        if(q.node===-3){
+          if(!["추가 배정 한도 늘리기","현재 결과로 마무리"].includes(answer))throw empty();q.answer=answer;
+          if(answer==="현재 결과로 마무리")d.pmComplete=true;else{d.maxPMRounds=Math.min(10,(d.maxPMRounds||2)+1);if(d.pmRounds>=10)throw new Error("추가 배정은 최대 10회까지 자동 진행합니다.");}
+          d.phase="running";await write(dir,r);await startEligible(projectId,dir,r);return;
+        }
+        if(q.node===-4){
+          if(!["통합 담당자에게 맡기기","변경 검토에서 직접 해결"].includes(answer))throw empty();q.answer=answer;
+          if(answer==="통합 담당자에게 맡기기"){
+            if(d.integrationRoleIndex==null)throw new Error("팀 실행 설정에서 통합 담당자를 먼저 골라 주세요.");
+            const board=await worktreeState(projectId,r.id),n=nodeOf(r,d.integrationRoleIndex);d.phase="running";
+            await launchNode(projectId,dir,r,n,"integrate",`[통합 담당 위임] 다음 통합 폴더의 충돌을 분석하고 사용자가 승인한 변경을 보존하며 해결하세요.\n${board.integration.directory}\n${board.integration.conflicts.join("\n")}\n${q.why}\n충돌을 해결하고 검증한 뒤 결과와 남은 사항을 보고하세요.`);schedule(projectId,r);
+          }else{d.phase="review";d.autoIntegrate=false;await write(dir,r);}return;
+        }
         if (q.node === -2) {
           if (answer === "한도 50% 늘리기")
             return command(projectId, dir, r, { action: "raiseLimit" });
@@ -966,13 +1077,14 @@ function registerDirected(
           answer,
         );
         d.phase = q.node === -1 ? "planning" : "running";
-        const previous = q.node === -1 ? planPrompt(r) : nodePrompt(r, n);
+        const coordinating=q.node===-1&&n.purpose==="coordinate";
+        const previous = q.node === -1 ? coordinating?coordinationPrompt(r):planPrompt(r) : nodePrompt(r, n);
         await launchNode(
           projectId,
           dir,
           r,
           n,
-          q.node === -1 ? "plan" : "work",
+          q.node === -1 ? coordinating?"coordinate":"plan" : "work",
           previous + "\n사용자의 결정 / " + q.question + "\n" + answer,
         );
         schedule(projectId, r);

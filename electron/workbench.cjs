@@ -1,6 +1,6 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
-const { randomUUID } = require("node:crypto");
+const { randomUUID, createHash } = require("node:crypto");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const definitions = require("./work-kinds.json");
@@ -28,11 +28,14 @@ function validateWorkflow(w) {
       !Array.isArray(w.checklist) || w.checklist.length > 128 ||
       !w.checklist.every((i) => i && uuid.test(i.id) && bounded(i.text, 400) && typeof i.done === "boolean") ||
       new Set(w.checklist.map((i) => i.id)).size !== w.checklist.length) throw invalid();
-  if (w.reportProjects !== undefined && (w.kind !== "weekly" || !Array.isArray(w.reportProjects) ||
+  if (w.reportProjects !== undefined && (!["weekly","briefing"].includes(w.kind) || !Array.isArray(w.reportProjects) ||
       !w.reportProjects.length || w.reportProjects.length > 64 || w.reportProjects.some(id => !uuid.test(id)) ||
       new Set(w.reportProjects).size !== w.reportProjects.length)) throw invalid();
   if (w.searchMode !== undefined && (w.kind !== "research" || !["live", "cached", "disabled"].includes(w.searchMode))) throw invalid();
-  if (w.teamSlot && ((w.teamSlot.isolated !== undefined && typeof w.teamSlot.isolated !== 'boolean') || !uuid.test(w.teamSlot.runId) || !Number.isInteger(w.teamSlot.index) || w.teamSlot.index < 0 || w.teamSlot.index > 7 || (w.teamSlot.mode !== undefined && !["plan", "build", "review"].includes(w.teamSlot.mode)))) throw invalid();
+  if(w.researchDepth!==undefined&&(w.kind!=='research'||!['quick','standard','deep'].includes(w.researchDepth)))throw invalid();
+  if(w.documentKind!==undefined&&(w.kind!=='document'||!['report','slides'].includes(w.documentKind)))throw invalid();
+  if(w.slideCount!==undefined&&(w.kind!=='document'||!Number.isSafeInteger(w.slideCount)||w.slideCount<1||w.slideCount>60))throw invalid();
+  if (w.teamSlot && ((w.teamSlot.integration !== undefined && typeof w.teamSlot.integration !== 'boolean') || (w.teamSlot.isolated !== undefined && typeof w.teamSlot.isolated !== 'boolean') || !uuid.test(w.teamSlot.runId) || !Number.isInteger(w.teamSlot.index) || w.teamSlot.index < 0 || w.teamSlot.index > 7 || (w.teamSlot.mode !== undefined && !["plan", "build", "review"].includes(w.teamSlot.mode)))) throw invalid();
   if (w.source && (!uuid.test(w.source.sessionId) || !bounded(w.source.title, 300) || !bounded(w.source.summary, 12000))) throw invalid();
   if (w.completion && (!validTime(w.completion.at) || !bounded(w.completion.summary, 1000) || !Array.isArray(w.completion.commits) ||
       w.completion.commits.length > 30 || !w.completion.commits.every((c) => c && /^[0-9a-f]{4,64}$/i.test(c.hash) && validTime(c.at) && bounded(c.subject, 400)))) throw invalid();
@@ -189,7 +192,8 @@ async function saveArtifact(store, id, messageId, format = "md") {
     if (["pdf", "pptx"].includes(format) && current.stat.size > 0)
       return { ...artifactInfo(relative, current.stat), existing: true };
   } catch (error) { if (error.code !== "ENOENT") throw error; }
-  const body = await renderDocument(format, s.title, answer.text);
+  const rawHTML = /^\s*```html\s*\n([\s\S]*?)\n```\s*$/i.exec(answer.text);
+  const body = format === 'html' && rawHTML ? Buffer.from(require('./html-export.cjs').isolatedHTML(rawHTML[1])) : await renderDocument(format, s.title, answer.text);
   let handle;
   try {
     handle = await fs.open(target, "wx", 0o600);
@@ -214,6 +218,7 @@ async function workContext(store, id) {
   if (!s.workflow) return "";
   const w = validateWorkflow(s.workflow);
   const lines = [
+    "이 업무는 AI가 직접 자료를 읽어 결과를 작성하는 작업입니다. 사용자가 보고서 본문을 작성하도록 요구하지 마세요. 확인하지 못한 사실은 미확인으로 적고 추정 실적을 만들지 마세요.",
     "이 대화의 업무 유형: " + definitions[w.kind].label,
     "담당 역할: " + w.role, "업무명: " + s.title, definitions[w.kind].instruction,
     w.searchMode === "disabled" && "외부 검색을 사용하지 말고 프로젝트에서 확인한 자료의 경로를 인용하세요.",
@@ -223,6 +228,13 @@ async function workContext(store, id) {
     w.source && "인계받은 대화 기록 (참고 자료): " + w.source.title + "\n" + w.source.summary,
     w.checklist.length && "업무 체크리스트:\n" + w.checklist.map((i) => (i.done ? "[x] " : "[ ] ") + i.text).join("\n"),
   ];
+  if(w.kind==='weekly')lines.push('주간업무보고 형식: 제목 아래 보고 본문을 하나의 text 코드 블록으로 제공합니다. 프로젝트별 상위 항목 / 세부 업무 두 단계로 정리하고 각각 3칸 / 4칸 들여씁니다. 코드 블록 아래 근거를 따로 적습니다. 기간 안에 실제 끝낸 일만 포함하고 추정과 계획은 실적으로 쓰지 마세요.');
+  if(w.kind==='pause')lines.push('업무 마감은 업무 완료 처리가 아닙니다. 파일이나 서비스 상태를 바꾸지 말고, 하다 만 일 / 손대고 올리지 않은 변경 / 결정과 확인 사항 / 복귀하면 시작할 순서 3~5개 / 오늘 끝낸 일을 구분해 작성하세요.');
+  if(w.kind==='briefing')lines.push('브리핑 구성: 한 줄 요약 / 현재 상태 / 이번 기간에 한 일 / 다음 할 일 / 결정과 위험. 진행 문서와 커밋, 변경 요청 및 최근 AI 대화의 실제 근거를 함께 확인하세요. 완성한 결과는 flowrium_project_artifact_create 도구로 새 마크다운 산출물에 저장하세요. 이 업무에서는 프로젝트 원본과 Git 및 서비스 상태를 변경하지 마세요.');
+  if(w.kind==='document')lines.push('문서 작성: 프로젝트 근거를 확인한 뒤 완성된 보고서 또는 발표자료를 생성하세요. 앱의 flowrium_project_artifact_create 도구로 HTML 원문을 저장하면 PDF와 발표자료 변환을 앱이 수행합니다. 보고서는 A4 문서 HTML로, 발표자료는 1280x720 크기의 section.slide 요소들로 구성하세요. 외부 스크립트는 포함하지 마세요.');
+  if(w.kind==='document'&&w.documentKind==='slides')lines.push('선택한 결과 형식: 발표자료 / 슬라이드 '+(w.slideCount||12)+'장. 각 section.slide를 고정 크기로 만들고 내용에 맞는 도표와 편집 가능한 글자를 구성하세요. aside.notes에 발표자 메모를 넣으세요.');
+  if(w.kind==='document'&&w.documentKind==='report')lines.push('선택한 결과 형식: 보고서 / A4 HTML 문서와 PDF. 표지 / 요약 / 본문 / 근거를 용도에 맞게 구성하고 인쇄 시 문단과 표가 잘리지 않도록 하세요.');
+  if(w.kind==='research')lines.push('선택한 조사 깊이: '+({quick:'빠른 조사 / 핵심 질문과 주요 출처를 확인해 간단히 답하세요.',standard:'일반 조사 / 주요 주장을 교차 확인하고 비교와 실행 제안을 정리하세요.',deep:'심층 조사 / 하위 질문을 나누고 반대 근거와 제약까지 검토해 출처를 비교하세요.'}[w.researchDepth||'standard']));
   if (["briefing", "weekly", "pause"].includes(w.kind)) {
     const ids = w.reportProjects || [s.projectId];
     const perProject = Math.floor((47000 - lines.filter(Boolean).join("\n").length) / ids.length);
@@ -231,7 +243,8 @@ async function workContext(store, id) {
       if (!project) { lines.push("연결이 해제된 보고 대상 프로젝트가 있습니다."); continue; }
       if (w.reportProjects) lines.push("\n프로젝트 / " + project.name);
       const others = store.state.sessions.filter((item) => item.projectId === project.id && item.id !== s.id);
-      const completed = others.filter((item) => item.workflow?.completion && inPeriod(item.workflow.completion.at, w))
+      const recentEnough=value=>w.kind!=='pause'||Date.parse(value)>=Date.now()-12*60*60*1000;
+      const completed = others.filter((item) => item.workflow?.completion && inPeriod(item.workflow.completion.at, w)&&recentEnough(item.workflow.completion.at))
         .sort((a, b) => b.workflow.completion.at.localeCompare(a.workflow.completion.at));
       const active = others.filter((item) => item.workflow?.status !== "done")
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -242,19 +255,36 @@ async function workContext(store, id) {
       if (w.kind !== "weekly") lines.push("진행 중인 업무:\n" +
         (active.slice(0, 30).map((item) => item.title + " / " + dayHere(item.updatedAt) +
           (item.workflow?.checklist?.length ? " / 남은 항목: " + item.workflow.checklist.filter((i) => !i.done).map((i) => i.text).join(", ").slice(0, 300) : "")).join("\n") || "없음"));
-      let gitData;
-      try { gitData = await gitOverview(await projectRoot(project), w.from, w.to); }
-      catch (error) {
-        if (!w.reportProjects) throw error;
-        lines.push("프로젝트 폴더 연결을 확인할 수 없어 커밋을 집계하지 못했습니다.");
-        continue;
+      const recentActivity=others.flatMap(item=>item.messages.filter(m=>inPeriod(m.createdAt,w)&&recentEnough(m.createdAt)).slice(-4).map(m=>m.createdAt+' / '+item.title+' / '+(m.role==='user'?'지시':'응답')+' / '+compact(m.text,450))).sort().slice(-40);
+      if(recentActivity.length)lines.push('실제 최근 AI 업무 활동:\n'+recentActivity.join('\n').slice(0,Math.max(1000,Math.floor(perProject/4))));
+      let repositories;
+      try { repositories=await require('./project-repositories.cjs').repositoriesFor(store,project); }
+      catch { lines.push('연결한 저장소 폴더를 확인하지 못했습니다.');continue; }
+      for(const repo of repositories){
+        let gitData;
+        try{gitData=await gitOverview(repo.cwd,w.from,w.to);}catch{lines.push(repo.name+' / Git 조회 실패');continue;}
+        lines.push('저장소 / '+repo.name+' / '+repo.path);
+        if(gitData.available){
+          const commitEvidence=gitData.commits.filter(c=>recentEnough(c.at)).map(c=>c.at+' '+c.hash+' '+c.subject).join('\n')||'해당 기간 커밋 없음';
+          lines.push('프로젝트 Git 기록 (사실 확인용):\n'+commitEvidence.slice(0,Math.max(200,Math.floor(evidenceLimit/repositories.length))));
+          if(w.kind!=='weekly'){
+            lines.push('미커밋 파일:\n'+(gitData.changes.map(c=>c.code+' '+c.path).join('\n')||'없음'));
+            const unpushed=await git(repo.cwd,['log','--format=%h %aI %s','@{upstream}..HEAD']).catch(()=>null);
+            lines.push('미푸시 커밋:\n'+(unpushed===null?'원격 추적 브랜치가 없어 미확인':unpushed.trim()||'없음'));
+            const stash=await git(repo.cwd,['stash','list','--format=%gd %s']).catch(()=>null);lines.push('임시 보관 변경:\n'+(stash===null?'미확인':stash.trim()||'없음'));
+          }
+          try{
+            const env=await require('./repository-auth.cjs').accountEnvironment(repo.account,{...require('./runtime.cjs').runtimeEnvironment(),GH_PROMPT_DISABLED:'true'},repo.cwd);
+            const {stdout}=await gitExec('gh',['pr','list','--state','open','--limit','30','--json','number,title,updatedAt,headRefName'],{cwd:repo.cwd,env,timeout:7000,windowsHide:true,maxBuffer:512*1024});
+            const pulls=JSON.parse(stdout);lines.push('열린 GitHub 변경 요청 (조회 시점):\n'+(pulls.map(p=>'#'+p.number+' / '+p.title+' / '+p.updatedAt+' / '+p.headRefName).join('\n')||'없음'));
+          }catch{lines.push('GitHub 변경 요청은 계정이나 원격 연결을 확인하지 못해 미확인입니다.');}
+          if(gitData.limited||gitData.reason)lines.push('표시 범위가 제한된 Git 기록입니다.');
+        }else lines.push(gitData.reason);
       }
-      if (gitData.available) {
-        const commitEvidence = gitData.commits.map((c) => c.at + " " + c.hash + " " + c.subject).join("\n") || "해당 기간 커밋 없음";
-        lines.push("프로젝트 Git 기록 (사실 확인용):\n" + commitEvidence.slice(0, evidenceLimit));
-        if (w.kind !== "weekly") lines.push("미커밋 파일:\n" + (gitData.changes.map((c) => c.code + " " + c.path).join("\n") || "없음"));
-        if (gitData.limited || gitData.reason) lines.push("표시 범위가 제한된 Git 기록입니다.");
-      } else lines.push(gitData.reason);
+      try{
+        const notes=(await listArtifacts(await projectRoot(project))).artifacts.filter(a=>/\.(md|txt)$/i.test(a.path)&&/(workflow|progress|진행|회의록|plan|계획)/i.test(a.path)).slice(0,6);
+        for(const note of notes){const {file,stat}=await artifactFile(await projectRoot(project),note.path);if(stat.size<=128*1024)lines.push('프로젝트 진행 문서 '+note.path+' (원문 참고):\n'+(await fs.readFile(file,'utf8')).slice(0,Math.max(500,Math.floor(perProject/8))));}
+      }catch{lines.push('일부 진행 문서는 확인하지 못했습니다.');}
     }
   }
   return "\n" + lines.filter(Boolean).join("\n").slice(0, 48000) + "\n";
@@ -264,14 +294,14 @@ async function startWork(store, input, teamSlot) {
   store.project(input.projectId);
   const title = required(input.title, 160);
   const workflow = newWorkflow(input.kind);
-  for (const name of ["brief", "role", "audience", "from", "to", "searchMode"])
+  for (const name of ["brief", "role", "audience", "from", "to", "searchMode", "researchDepth", "documentKind", "slideCount"])
     if (input[name] !== undefined) workflow[name] = input[name];
   if (input.reportProjects !== undefined) {
     workflow.reportProjects = input.reportProjects;
     validateWorkflow(workflow);
     for (const id of workflow.reportProjects) store.project(id);
   }
-  if (teamSlot) workflow.teamSlot = { runId: teamSlot.runId, index: teamSlot.index, ...(teamSlot.mode && { mode: teamSlot.mode }), ...(teamSlot.isolated === true && { isolated: true }) };
+  if (teamSlot) workflow.teamSlot = { runId: teamSlot.runId, index: teamSlot.index, ...(teamSlot.mode && { mode: teamSlot.mode }), ...(teamSlot.isolated === true && { isolated: true }), ...(teamSlot.integration === true && {integration:true}) };
   if (!workflow.role) workflow.role = definitions[input.kind].role;
   if (input.sourceSessionId) {
     const source = store.session(input.sourceSessionId);
@@ -282,7 +312,24 @@ async function startWork(store, input, teamSlot) {
         .map((m) => (m.role === "user" ? "사용자" : "답변") + " / " + m.text.slice(-2600)).join("\n\n").slice(-12000),
     };
   }
-  return store.createSession(input.projectId, { title, workflow: validateWorkflow(workflow) });
+  const preferences = input.model || input.effort ? require("./chat-preferences.cjs").preferences({...(input.model?{model:input.model}:{}),...(input.effort?{effort:input.effort}:{})}) : undefined;
+  return store.createSession(input.projectId, { title, workflow: validateWorkflow(workflow), ...(preferences && {preferences}) });
+}
+async function autoSaveWorkArtifact(store,id) {
+  const session=store.session(id);
+  if(!session.workflow || !lastAnswer(session))return null;
+  const root=await projectRoot(store.project(session.projectId)),lastUser=session.messages.findLast(m=>m.role==='user');
+  const existing=(await listArtifacts(root)).artifacts.filter(a=>a.sessionId===id&&Date.parse(a.modifiedAt)>=Date.parse(lastUser?.createdAt||session.createdAt));
+  if(existing.length)return existing[0];
+  const artifact=await saveArtifact(store,id,lastAnswer(session).id,session.workflow.kind === 'document' ? 'html' : 'md');
+  if(session.workflow.kind==='document'){
+    const html=await fs.readFile(path.join(root,...artifact.path.split('/')),'utf8');
+    for(const format of ['pdf',...(/<section[^>]+class=["'][^"']*\bslide\b/i.test(html)?['pptx']:[])]){
+      const output=await require('./html-export.cjs').exportHTML(format,session.title,html),target=path.join(root,...artifact.path.replace(/\.html$/,'.'+format).split('/'));
+      try{await fs.writeFile(target,output,{flag:'wx',mode:0o600});}catch(e){if(e.code!=='EEXIST')throw e;}
+    }
+  }
+  return artifact;
 }
 function registerWorkbench(register, store, { reveal, isRunning = () => false }) {
   const pending = new Map();
@@ -292,6 +339,61 @@ function registerWorkbench(register, store, { reveal, isRunning = () => false })
     pending.set(key, next);
     return next.finally(() => { if (pending.get(key) === next) pending.delete(key); });
   }
+  register("artifactAction", (projectId,input) => serialize(projectId,async()=>{
+    const root=await projectRoot(store.project(projectId)),backupRoot=path.join(root,'.flowrium','artifact-trash');
+    if(input?.action==='restore'){
+      if(!uuid.test(input.id||''))throw invalid();
+      const dir=await checkedDirectory(root,['.flowrium','artifact-trash',input.id]);
+      const meta=JSON.parse(await fs.readFile(path.join(dir,'manifest.json'),'utf8'));
+      if(meta.projectId!==projectId)throw invalid();
+      const parts=artifactParts(meta.path),name=parts.pop(),target=path.join(await checkedDirectory(root,parts,true),name);
+      try{await fs.lstat(target);throw Error('같은 위치에 파일이 있어 복원하지 않았습니다.');}catch(e){if(e.code!=='ENOENT')throw e;}
+      const bytes=await fs.readFile(path.join(dir,'document'));
+      if(createHash('sha256').update(bytes).digest('hex')!==meta.revision)throw Error('보관한 원본 확인값이 다릅니다.');
+      await fs.writeFile(target,bytes,{flag:'wx',mode:0o600});
+      return artifactInfo(meta.path,await fs.stat(target));
+    }
+    if(input?.action==='create'){
+      const session=store.session(input.sessionId);if(session.projectId!==projectId||!['md','html'].includes(input.format)||typeof input.body!=='string'||!input.body.trim()||Buffer.byteLength(input.body)>2*1024*1024)throw invalid();
+      const title=required(input.title,160),parts=['산출물',definitions[session.workflow?.kind||'task'].label,safeTitle(session.title)+'--'+session.id],dir=await checkedDirectory(root,parts,true);
+      const name=safeTitle(title)+'--'+randomUUID()+'.'+input.format,relative=[...parts,name].join('/'),body=input.format==='html'?require('./html-export.cjs').isolatedHTML(input.body):input.body;
+      await fs.writeFile(path.join(dir,name),body,{flag:'wx',mode:0o600});const artifact=artifactInfo(relative,await fs.stat(path.join(dir,name))),exports=[];
+      if(input.format==='html')for(const format of ['pdf',...(/<section[^>]+class=["'][^"']*\bslide\b/i.test(input.body)?['pptx']:[])]){
+        const output=await require('./html-export.cjs').exportHTML(format,title,body),filename=name.replace(/\.html$/,'.'+format);await fs.writeFile(path.join(dir,filename),output,{flag:'wx',mode:0o600});exports.push(artifactInfo([...parts,filename].join('/'),await fs.stat(path.join(dir,filename))));
+      }
+      return {artifact,exports};
+    }
+    const {file,stat}=await artifactFile(root,input?.path);
+    if(stat.size>32*1024*1024)throw Error('처리 가능한 문서 크기는 32MB까지입니다.');
+    const bytes=await fs.readFile(file),revision=createHash('sha256').update(bytes).digest('hex');
+    if(input.action==='info')return {revision};
+    if(input.action==='preview'){
+      if(!/\.html?$/i.test(file))throw Error('HTML 문서를 선택해 주세요.');
+      if(bytes.length>3*1024*1024)throw Error('HTML 미리보기는 3MB까지 가능합니다.');
+      return {html:require('./html-export.cjs').isolatedHTML(bytes.toString('utf8')),source:bytes.toString('utf8'),revision};
+    }
+    if(input.revision!==revision)throw Error('문서가 변경됐습니다. 다시 열어 확인해 주세요.');
+    if(input.action==='delete'||input.action==='edit'){
+      if(input.action==='edit'&&(!/\.html?$/i.test(file)||typeof input.body!=='string'||Buffer.byteLength(input.body)>3*1024*1024))throw Error('수정할 HTML을 3MB 이내로 입력해 주세요.');
+      const id=randomUUID(),dir=await checkedDirectory(root,['.flowrium','artifact-trash',id],true);
+      await fs.writeFile(path.join(dir,'document'),bytes,{flag:'wx',mode:0o600});
+      await fs.writeFile(path.join(dir,'manifest.json'),JSON.stringify({projectId,path:input.path,revision,at:new Date().toISOString(),kind:input.action}),{flag:'wx',mode:0o600});
+      if(createHash('sha256').update(await fs.readFile(file)).digest('hex')!==revision)throw Error('문서가 동시에 변경돼 기존 파일을 보존했습니다.');
+      if(input.action==='delete'){await fs.unlink(file);return {id,path:input.path};}
+      const temporary=file+'.'+randomUUID()+'.tmp';
+      try{await fs.writeFile(temporary,input.body,{flag:'wx',mode:0o600});await fs.rename(temporary,file);}finally{await fs.rm(temporary,{force:true});}
+      return {id,path:input.path,revision:createHash('sha256').update(input.body).digest('hex')};
+    }
+    if(input.action==='reexport'){
+      if(!/\.html?$/i.test(file)||!['pdf','pptx'].includes(input.format))throw Error('HTML 문서를 PDF 또는 PPTX로 변환하세요.');
+      const relative=input.path.replace(/\.html?$/i,'')+'--'+revision.slice(0,12)+'.'+input.format;
+      const parts=artifactParts(relative),name=parts.pop(),target=path.join(await checkedDirectory(root,parts,true),name);
+      const output=await require('./html-export.cjs').exportHTML(input.format,path.basename(file),bytes.toString('utf8'));
+      try{await fs.writeFile(target,output,{flag:'wx',mode:0o600});}catch(e){if(e.code!=='EEXIST')throw e;throw Error('같은 변환 파일이 있습니다. 기존 파일을 보존했습니다.');}
+      return artifactInfo(relative,await fs.stat(target));
+    }
+    throw invalid();
+  }));
   register("readWorkbench", async (projectId) => {
     const root = await projectRoot(store.project(projectId));
     const [files, gitData] = await Promise.all([listArtifacts(root), gitOverview(root)]);
@@ -390,4 +492,4 @@ function registerWorkbench(register, store, { reveal, isRunning = () => false })
     await reveal(file);
   });
 }
-module.exports = { registerWorkbench, startWork, workContext, validateWorkflow, saveArtifact };
+module.exports = { registerWorkbench, startWork, workContext, validateWorkflow, saveArtifact, autoSaveWorkArtifact };

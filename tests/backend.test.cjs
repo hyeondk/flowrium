@@ -129,7 +129,7 @@ test("읽기 전용 계획 작업은 스트리밍 후 최종 응답과 대화 �
   );
 });
 
-test("동시 대화 실행을 구분하고 같은 대화의 중복 전송과 삭제를 차단한다", async (t) => {
+test("동시 대화 실행을 구분하고 실행 중 추가 지시는 대기시키며 삭제는 차단한다", async (t) => {
   const { store, controller, project, session } = await fixture(t);
   const second = await store.createSession(project.id);
   const firstDone = eventOnce(
@@ -145,10 +145,10 @@ test("동시 대화 실행을 구분하고 같은 대화의 중복 전송과 삭
     text: "대기검증",
     mode: "plan",
   });
-  await assert.rejects(
-    controller.send({ sessionId: session.id, text: "중복", mode: "plan" }),
-    /이미 실행 중/,
-  );
+  const queued=await controller.send({sessionId:session.id,text:"추가 지시",mode:"plan"});
+  assert.equal(queued.queued,true);
+  assert.equal(controller.messageQueue.list(session.id)[0].text,"추가 지시");
+  await controller.messageQueue.cancel(session.id,queued.queueId);
   await assert.rejects(
     controller.deleteSession(session.id),
     /삭제할 수 없습니다/,
@@ -320,7 +320,7 @@ test("ChatGPT 로그인 없이 API 키 또는 인증 불필요 응답으로 작�
   }
 });
 
-test("토큰 스트리밍은 파일을 만들지 않고 전송과 작업 완료 시에만 프로젝트 개정을 저장한다", async (t) => {
+test("토큰 스트리밍은 파일을 만들지 않고 요청과 서버 턴 식별자 및 완료만 저장한다", async (t) => {
   const { store, controller, project, session } = await fixture(t);
   const history = path.join(project.path, ".flowrium", "sessions");
   const before = (await fs.readdir(history)).length;
@@ -331,5 +331,5 @@ test("토큰 스트리밍은 파일을 만들지 않고 전송과 작업 완료 
     mode: "plan",
   });
   await done;
-  assert.equal((await fs.readdir(history)).length, before + 2);
+  assert.equal((await fs.readdir(history)).length, before + 3);
 });

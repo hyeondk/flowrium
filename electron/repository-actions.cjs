@@ -5,21 +5,30 @@ const {promisify} = require("node:util");
 const exec = promisify(execFile);
 const {text} = require("./store.cjs");
 
-function registerRepository(register, store, isUpdating) {
+function registerRepository(register, store, isUpdating, options = {}) {
   const busy = new Set();
   const readers = new Map();
-  register("repositoryAction", async (id, input) => {
-    const cwd = await fs.realpath(store.project(text(id,"프로젝트 식별자",100)).path);
+  const handler = async (id, input) => {
+    const project = store.project(text(id,"프로젝트 식별자",100));
+    if(input?.action === "repositories") return require("./project-repositories.cjs").repositoriesFor(store,project,{includeHidden:true}).then(rows=>rows.map(({cwd,...row})=>row));
+    const repository = await require("./project-repositories.cjs").repositoryFor(store,project,input?.repositoryId);
+    const cwd = repository.cwd;
     if (!input || typeof input !== "object") throw new Error("저장소 작업을 확인해 주세요.");
     if (isUpdating() || busy.has(cwd)) throw new Error("실행 중인 작업이 끝난 뒤 다시 시도해 주세요.");
-    const readOnly = ["changes","diff","prs","repoLocal","repoActivity","repoPull","repoIssue","repoOpen"].includes(input.action);
+    const readOnly = ["changes","diff","prs","repoLocal","repoActivity","repoPull","repoIssue","repoOpen","accounts","identity"].includes(input.action);
     if (!readOnly && readers.has(cwd)) throw new Error("저장소 조회가 끝난 뒤 다시 시도해 주세요.");
     if (readOnly) readers.set(cwd,(readers.get(cwd)||0)+1);
     else busy.add(cwd);
+    let selectedAccount=repository.account;
+    let accountEnv;
     const run = async (command, args) => {
       try {
-        const env = { ...require("./runtime.cjs").runtimeEnvironment(), GIT_TERMINAL_PROMPT:"0", GH_PROMPT_DISABLED:"true", ...(readOnly && {GIT_OPTIONAL_LOCKS:"0"}) };
+        let env = { ...require("./runtime.cjs").runtimeEnvironment(), GIT_TERMINAL_PROMPT:"0", GH_PROMPT_DISABLED:"true", ...(readOnly && {GIT_OPTIONAL_LOCKS:"0"}) };
         if (process.platform === "darwin") env.PATH += ":/opt/homebrew/bin:/usr/local/bin";
+        if(selectedAccount && (command === "gh" || command === "git" && args[0] === "push")) {
+          accountEnv ||= await require("./repository-auth.cjs").accountEnvironment(selectedAccount,env,cwd);
+          env = {...env,...accountEnv};
+        }
         const result = await exec(command,args,{cwd,env,encoding:"utf8",windowsHide:true,timeout:90000,maxBuffer:2*1024*1024});
         return result.stdout;
       } catch(error) {
@@ -28,6 +37,15 @@ function registerRepository(register, store, isUpdating) {
       }
     };
     try {
+      if(input.action === "accounts")return require("./repository-auth.cjs").accounts(require("./runtime.cjs").runtimeEnvironment(),cwd);
+      if(input.action === "identity") {
+        const identity={name:(await run("git",["config","user.name"]).catch(()=>"" )).trim(),email:(await run("git",["config","user.email"]).catch(()=>"" )).trim(),account:repository.account||"",warnings:[]};
+        const origin=(await run("git",["remote","get-url","origin"]).catch(()=>"" )).trim();
+        if(repository.account && /^(git@|ssh:)/.test(origin))identity.warnings.push("SSH 원격은 별도의 SSH 키 계정을 사용합니다. 선택한 GitHub 계정과 일치하는지 확인하세요.");
+        if(!identity.name||!identity.email)identity.warnings.push("Git 커밋 작성자 이름과 이메일을 먼저 설정하세요.");
+        if(repository.account && identity.email && !identity.email.toLowerCase().includes(repository.account.toLowerCase()))identity.warnings.push("커밋 이메일과 선택한 GitHub 계정 이름이 다릅니다. 작성자 설정을 확인하세요.");
+        return identity;
+      }
       if (input.action === "terminal") {
         if (process.platform === "darwin") await run("/usr/bin/open", ["-a","Terminal",cwd]);
         else if (process.platform === "win32") {
@@ -78,7 +96,9 @@ function registerRepository(register, store, isUpdating) {
       else if (readers.get(cwd)===1) readers.delete(cwd);
       else readers.set(cwd,readers.get(cwd)-1);
     }
-  });
-  return () => busy.size > 0 || readers.size > 0;
+  };
+  register("repositoryAction", handler);
+  const flowBusy = typeof store.file === "string" ? require("./repository-flow.cjs").registerRepositoryFlow(register,store,handler,{...options,isUpdating}) : () => false;
+  return () => busy.size > 0 || readers.size > 0 || flowBusy();
 }
 module.exports = {registerRepository};

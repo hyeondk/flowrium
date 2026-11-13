@@ -1,0 +1,22 @@
+.workflow-hub{display:grid;gap:16px;min-width:0;word-break:keep-all;overflow-wrap:break-word}
+.workflow-hub header,.workflow-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between}
+.workflow-hub nav{display:flex;gap:8px;flex-wrap:wrap}
+.workflow-hub button{padding:8px 12px;border:1px solid var(--border,#cad0d8);border-radius:8px;background:var(--panel,#f5f7f9);color:inherit;cursor:pointer;font:inherit}
+.workflow-hub button:disabled{opacity:.55;cursor:default}
+.workflow-hub button[aria-pressed=true]{background:#d9e1e9;color:#253143;border-color:#9baab9}
+.workflow-hub .workflow-card{border:1px solid var(--border,#c7cfd9);padding:16px;border-radius:12px;background:var(--panel,#eef1f5);min-width:0;display:grid;gap:10px}
+.workflow-hub p,.workflow-hub h2,.workflow-hub h3,.workflow-hub h4{margin:0;word-break:keep-all;overflow-wrap:break-word}
+.workflow-hub pre{white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;max-height:360px;overflow:auto;font-family:inherit;font-size:13px;line-height:1.7;margin:0}
+.workflow-hub time,.workflow-hub .workflow-card>span{font-size:12px;opacity:.75}
+.workflow-form{display:grid;gap:12px;border:1px solid var(--border,#cbd2db);border-radius:12px;padding:18px;min-width:0}
+.workflow-form label{display:grid;gap:6px;min-width:0}
+.workflow-form label:has(input[type=checkbox]){display:flex;align-items:center;gap:8px}
+.workflow-form input:not([type=checkbox]),.workflow-form select,.workflow-form textarea{width:100%;min-width:0;box-sizing:border-box;font:inherit;color:inherit;background:var(--panel,#f5f7f9);border:1px solid var(--border,#bdc8d2);border-radius:7px;padding:9px}
+.workflow-form textarea{resize:vertical;word-break:keep-all;overflow-wrap:break-word}
+.workflow-actions{justify-content:flex-start}
+.workflow-hub .workflow-card header label{display:flex;align-items:center;gap:8px;min-width:0}
+.workflow-hub .workflow-card header strong{overflow-wrap:break-word}
+.workflow-hub input[type=checkbox]{flex:none}
+.memory-transfer{padding:12px;border:1px solid var(--border,#c5ced8);border-radius:10px;word-break:keep-all}
+.memory-transfer>summary{cursor:pointer}.memory-transfer>p{margin:10px 0}.memory-transfer input[type=file]{max-width:100%}
+@media(max-width:640px){.workflow-form{padding:12px}.workflow-hub .workflow-card{padding:12px}.workflow-hub header{align-items:flex-start}.workflow-hub nav button{flex:1 1 auto}}

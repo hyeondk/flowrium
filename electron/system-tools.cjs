@@ -73,23 +73,30 @@ async function processList() {
   previousWindowsCpu = next;
   return rows;
 }
-function registerSystemTools(register, store, { canRun = () => true } = {}) {
+async function processIdentity(pid) {
+  if(process.platform === 'darwin')return (await exec('/bin/ps',['-p',String(pid),'-o','lstart=,comm='],{timeout:8000,env:{...process.env,LC_ALL:'C'}})).stdout.trim();
+  const bin=path.join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe');
+  const script='$p=Get-Process -Id '+pid+' -ErrorAction Stop; [string]$p.StartTime.ToUniversalTime().Ticks + " " + $p.Path';
+  return (await exec(bin,['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{timeout:10000,windowsHide:true})).stdout.trim();
+}
+function registerSystemTools(register, store, options = {}) {
+  const { canRun = () => true } = options;
+  const storage = typeof store.file === "string" ? require("./storage-tools.cjs").registerStorageTools(register,store,options) : {isBusy:()=>false};
   const services = new Map();
   let stopping = false;
   async function scripts(id) {
-    const project = store.project(id),
-      file = path.join(await fs.realpath(project.path), "package.json");
-    try {
-      if ((await fs.stat(file)).size > 1024 * 1024)
-        throw Error("package.json 파일이 너무 큽니다.");
-      const value = JSON.parse(await fs.readFile(file, "utf8"));
-      return Object.keys(value.scripts || {}).filter(
-        (v) => v && v.length < 150,
-      );
-    } catch (e) {
-      if (e.code === "ENOENT") return [];
-      throw e;
+    const repos=await require("./project-repositories.cjs").repositoriesFor(store,store.project(id));
+    const all=[];
+    for(const repo of repos){
+      const file=path.join(repo.cwd,"package.json");
+      try { if((await fs.stat(file)).size>1024*1024)throw Error("package.json 파일이 너무 큽니다.");
+        const value=JSON.parse(await fs.readFile(file,"utf8"));
+        for(const script of Object.keys(value.scripts||{}).filter(v=>v&&v.length<150))all.push(repos.length===1&&repo.path==='.'?script:repo.id+'::'+script);
+      }catch(e){if(e.code!=='ENOENT')throw e;}
     }
+    const project=store.project(id);
+    if(project.id && typeof store.file === "string")for(const service of (await require("./project-details.cjs").readDetails(store,id)).services||[])all.push("service::"+service.id);
+    return all;
   }
   const snapshot = (s) => ({
     id: s.id,
@@ -130,7 +137,7 @@ function registerSystemTools(register, store, { canRun = () => true } = {}) {
     const rows = await processList();
     return rows.sort((a, b) => b.memoryBytes - a.memoryBytes).slice(0, 80);
   });
-  register("stopSystemProcess", async (pid) => {
+  const stopSystemProcess = async (pid) => {
     if (
       !Number.isSafeInteger(pid) ||
       pid <= 1 ||
@@ -155,6 +162,36 @@ function registerSystemTools(register, store, { canRun = () => true } = {}) {
         "프로세스를 종료하지 못했습니다. 접근 권한이나 실행 상태를 확인해 주세요.",
       );
     }
+  };
+  register("stopSystemProcess",stopSystemProcess);
+  const processPlans = new Map();
+  register('analyzeSystemProcesses',async()=>{
+    if(stopping||!canRun())throw Error('실행 상태를 확인한 뒤 다시 분석하세요.');
+    if(typeof options.analyzeProcesses !== 'function')throw Error('Codex 프로세스 분석 연결을 준비하지 못했습니다. 계정 연결 상태를 확인해 주세요.');
+    const rows=(await processList()).filter(p=>p.pid!==process.pid&&p.pid!==process.ppid);
+    const result=await options.analyzeProcesses(rows.map(({pid,name,cpu,memoryBytes})=>({pid,name,cpu,memoryBytes})));
+    if(stopping||!canRun())throw Error('실행 상태가 변경돼 분석 결과를 적용하지 않았습니다.');
+    if(!result||!Array.isArray(result.candidates)||result.candidates.length>20)throw Error('AI 분석 결과 형식을 확인하지 못했습니다.');
+    const candidates=[],identities={};
+    for(const c of result.candidates){
+      const row=rows.find(p=>p.pid===c.pid);
+      if(!row||!/^(node|python[\d.]*|java|ruby|php|dotnet|deno|bun|vite|npm)(\.exe)?$/i.test(row.name)||typeof c.reason!=='string'||!c.reason.trim())continue;
+      let identity;try{identity=await processIdentity(c.pid);}catch{continue;}
+      if(/(?:Flowrium|ChatGPT|Codex)[\\/].*Contents|(?:Flowrium|ChatGPT|Codex)\.app/i.test(identity))continue;
+      if(candidates.some(v=>v.pid===c.pid))continue;
+      candidates.push({...row,reason:c.reason.slice(0,1000)});identities[c.pid]=identity;
+    }
+    const token=randomUUID();processPlans.clear();processPlans.set(token,{at:Date.now(),identities});
+    return {token,candidates,summary:typeof result.summary==='string'?result.summary.slice(0,3000):''};
+  });
+  register('stopSystemProcesses',async input=>{
+    if(stopping||!canRun())throw Error('실행 상태를 확인한 뒤 다시 종료하세요.');
+    const plan=processPlans.get(input?.token);
+    if(!plan||Date.now()-plan.at>5*60*1000||!Array.isArray(input.pids)||!input.pids.length||new Set(input.pids).size!==input.pids.length)throw Error('분석 결과를 다시 확인하고 종료할 항목을 선택하세요.');
+    for(const pid of input.pids)if(!plan.identities[pid]||await processIdentity(pid)!==plan.identities[pid])throw Error('프로세스가 종료됐거나 다시 실행됐습니다. 분석을 다시 하세요.');
+    const stopped=[];
+    for(const pid of input.pids){if(stopping||!canRun()||await processIdentity(pid)!==plan.identities[pid])throw Error('프로세스 실행 상태가 변경돼 중단했습니다.');await stopSystemProcess(pid);stopped.push(pid);}
+    processPlans.delete(input.token);return {stopped};
   });
   register("dockerContainers", async () => {
     try {
@@ -222,23 +259,30 @@ function registerSystemTools(register, store, { canRun = () => true } = {}) {
       )
     )
       throw Error("같은 명령이 이미 실행 중입니다.");
-    const cwd = await fs.realpath(store.project(projectId).path),
+    const [repositoryId,scriptName] = script.includes("::") ? script.split("::") : [undefined,script];
+    const custom=repositoryId === 'service' ? (await require('./project-details.cjs').readDetails(store,projectId)).services?.find(s=>s.id===scriptName) : null;
+    if(repositoryId === 'service' && !custom)throw Error('서비스 설정을 다시 확인하세요.');
+    const cwd = custom ? await require('./project-repositories.cjs').inside(await fs.realpath(store.project(projectId).path),custom.cwd) : (await require("./project-repositories.cjs").repositoryFor(store,projectId,repositoryId)).cwd,
       env = commandEnv(),
       id = randomUUID();
     // npm의 CLI 스크립트를 node로 직접 실행해 Windows 명령 문자열 인용을 피한다.
     let command = process.platform === "win32" ? "npm.cmd" : "npm",
-      args = ["run", script];
+      args = ["run", scriptName];
     try {
       const runtime = require("./runtime.cjs").runtimePaths();
       if (runtime.npmCli) {
         command = runtime.node;
-        args = [runtime.npmCli, "run", script];
+        args = [runtime.npmCli, "run", scriptName];
       }
     } catch {}
     if (process.platform === "win32" && command === "npm.cmd")
       throw Error(
         "내장 Node.js 런타임을 찾지 못했습니다. 앱을 다시 설치해 주세요.",
       );
+    if(custom){
+      command=process.platform === 'win32' ? path.join(process.env.SystemRoot,'System32','cmd.exe') : '/bin/sh';
+      args=process.platform === 'win32' ? ['/d','/s','/c',custom.command] : ['-lc',custom.command];
+    }
     const child = spawn(command, args, {
       cwd,
       env,
@@ -280,7 +324,7 @@ function registerSystemTools(register, store, { canRun = () => true } = {}) {
   });
   register("stopService", stopService);
   return {
-    isBusy: () => [...services.values()].some((s) => s.state === "running"),
+    isBusy: () => storage.isBusy() || [...services.values()].some((s) => s.state === "running"),
     shutdown: async () => {
       stopping = true;
       await Promise.allSettled([...services.keys()].map(stopService));

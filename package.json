@@ -1,6 +1,6 @@
 {
   "name": "flowrium",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "프로젝트마다 독립된 AI 업무 대화를 운영하는 데스크톱 앱",
   "author": "hyeondk",
@@ -26,7 +26,9 @@
     "@xterm/xterm": "6.0.0",
     "markdown-it": "15.0.3",
     "node-pty": "1.1.0",
-    "pptxgenjs": "4.0.1"
+    "pdfjs-dist": "6.5.438",
+    "pptxgenjs": "4.0.1",
+    "web-push": "4.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
@@ -35,7 +37,6 @@
     "electron": "45.3.1",
     "electron-builder": "26.18.0",
     "lucide-react": "1.72.0",
-    "pdfjs-dist": "6.5.438",
     "playwright": "^1.58.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -46,7 +47,7 @@
   "build": {
     "appId": "io.github.hyeondk.flowrium",
     "productName": "Flowrium",
-    "beforePack": "./scripts/build-win-updater.cjs",
+    "beforePack": "./scripts/build-native.cjs",
     "artifactName": "Flowrium-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release",
@@ -60,11 +61,14 @@
       "!node_modules/node-pty/{third_party,src,build}/**/*",
       "!node_modules/node-pty/**/*.pdb",
       "!node_modules/node-pty/prebuilds/{win32-arm64,darwin-x64}/**/*",
-      "!node_modules/node-pty/prebuilds/!(*-${arch})/**/*"
+      "!node_modules/node-pty/prebuilds/!(*-${arch})/**/*",
+      "!electron/native/*.swift",
+      "!electron/native/*.plist"
     ],
     "asarUnpack": [
       "node_modules/@openai/**/*",
-      "node_modules/node-pty/**/*"
+      "node_modules/node-pty/**/*",
+      "electron/native/flowrium-pim"
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
@@ -86,7 +90,10 @@
       "hardenedRuntime": true,
       "extendInfo": {
         "NSHumanReadableCopyright": "Flowrium",
-        "NSMicrophoneUsageDescription": "음성으로 작업 요청을 입력할 때 마이크를 사용합니다."
+        "NSMicrophoneUsageDescription": "음성으로 작업 요청을 입력할 때 마이크를 사용합니다.",
+        "NSAppleEventsUsageDescription": "사용자가 연결한 메일 앱의 자료를 읽고 승인한 연결 주소를 보냅니다.",
+        "NSCalendarsFullAccessUsageDescription": "연결한 캘린더를 읽고 검토한 일정 변경을 적용합니다.",
+        "NSCalendarsUsageDescription": "연결한 캘린더를 읽고 검토한 일정 변경을 적용합니다."
       }
     },
     "win": {
@@ -125,5 +132,8 @@
         ]
       }
     ]
+  },
+  "overrides": {
+    "image-size": "2.0.4"
   }
 }

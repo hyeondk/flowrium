@@ -30,6 +30,10 @@ function kickoffFields(input) {
   }
   return values;
 }
+function day(value) { return value === '' || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value); }
+function relative(value) {
+  return typeof value === 'string' && value.length < 1200 && !path.isAbsolute(value) && !value.includes('\\') && !/[:\x00-\x1f]/.test(value) && !value.split('/').some(p => ['..','.git','.flowrium'].includes(p));
+}
 function validate(data) {
   if (!UUID.test(data.projectId) || !UUID.test(data.revision)) throw invalid();
   field(data.owner, 150); field(data.goal, 4000);
@@ -45,6 +49,20 @@ function validate(data) {
       !(g.period==="month"?/^\d{4}-(0[1-9]|1[0-2])$/.test(g.key):g.period==="week" && /^\d{4}-\d{2}-\d{2}$/.test(g.key) &&
       Number.isFinite(Date.parse(g.key)) && new Date(g.key).toISOString().slice(0,10)===g.key))) throw invalid();
   }
+  const goals = data.periodGoals || [];
+  if (new Set(goals.map(g => g.id)).size !== goals.length || goals.some(g =>
+    (g.parent !== undefined && !goals.some(p => p.id === g.parent && p.period === 'month' && g.period === 'week')) ||
+    (g.target !== undefined && (!Number.isFinite(g.target) || g.target <= 0)) ||
+    (g.current !== undefined && (!Number.isFinite(g.current) || g.current < 0 || g.target === undefined)) ||
+    (g.due !== undefined && !day(g.due)) || (g.carriedTo !== undefined && !UUID.test(g.carriedTo)))) throw invalid();
+  if (data.schedule !== undefined && (!Array.isArray(data.schedule) || data.schedule.length > 100 || data.schedule.some(e =>
+    !e || !UUID.test(e.id) || !Number.isInteger(e.day) || e.day < 0 || e.day > 6 || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(e.time) || !field(e.text, 500)))) throw invalid();
+  if (data.repositories !== undefined && (!Array.isArray(data.repositories) || data.repositories.length > 32 || new Set(data.repositories.map(r => r.id)).size !== data.repositories.length ||
+    new Set(data.repositories.map(r => r.path)).size !== data.repositories.length || data.repositories.some(r => !r || !UUID.test(r.id) || !field(r.name, 100) || !relative(r.path) ||
+      (r.github && !/^[a-zA-Z0-9-]+\/[a-zA-Z0-9_.-]+$/.test(r.github)) || (r.account && !/^[a-zA-Z0-9-]{1,39}$/.test(r.account)) ||
+      (r.base && (typeof r.base !== 'string' || r.base.length > 200 || /[\x00-\x20~^:?*\[\\]/.test(r.base))) || (r.hidden !== undefined && typeof r.hidden !== 'boolean')))) throw invalid();
+  if (data.chatCwd !== undefined && !relative(data.chatCwd)) throw invalid();
+  if (data.services !== undefined && (!Array.isArray(data.services) || data.services.length>32 || new Set(data.services.map(s=>s.id)).size!==data.services.length || data.services.some(s=>!s||!UUID.test(s.id)||!field(s.name,100)||!relative(s.cwd)||!field(s.command,2000)))) throw invalid();
   if (data.kickoff !== undefined) kickoffFields(data.kickoff);
   return data;
 }
@@ -81,6 +99,12 @@ async function latest(folder, projectId) {
 }
 function apply(data, change) {
   switch (change?.action) {
+    case 'import': {
+      const allowed=['kickoff','periodGoals','owner','goal','dueDate','archivedAt','checklist','repositories','chatCwd','schedule','services'];
+      if(!change.data || typeof change.data!=='object')throw invalid();
+      for(const key of allowed) if(Object.hasOwn(change.data,key))data[key]=structuredClone(change.data[key]);
+      break;
+    }
     case 'kickoff': {
       const values = kickoffFields(change.input);
       data.kickoff = values;
@@ -96,17 +120,50 @@ function apply(data, change) {
       break;
     case 'goal-add': {
       data.periodGoals ||= [];
-      data.periodGoals.push({id:randomUUID(),period:change.period,key:change.key,text:field(change.text,500),done:false});
+      data.periodGoals.push({id:randomUUID(),period:change.period,key:change.key,text:field(change.text,500),done:false,
+        ...(change.parent ? {parent:change.parent} : {}), ...(change.target !== undefined ? {target:change.target,current:0} : {}), ...(change.due ? {due:change.due} : {})});
       break;
     }
     case 'goal-check':
     case 'goal-remove': {
       const index=(data.periodGoals||[]).findIndex(g=>g.id===change.id);
       if(index<0)throw invalid();
-      if(change.action==='goal-remove') data.periodGoals.splice(index,1);
+      if(change.action==='goal-remove') {
+        const [removed] = data.periodGoals.splice(index,1);
+        for (const child of data.periodGoals) if(child.parent === removed.id) delete child.parent;
+      }
       else { if(typeof change.done!=='boolean')throw invalid(); data.periodGoals[index].done=change.done; }
       break;
     }
+    case 'goal-progress': {
+      const goal = data.periodGoals?.find(g => g.id === change.id);
+      if (!goal || goal.target === undefined || !Number.isFinite(change.current) || change.current < 0) throw invalid();
+      goal.current = change.current; break;
+    }
+    case 'goal-carry': {
+      const goal = data.periodGoals?.find(g => g.id === change.id);
+      if (!goal || goal.period !== 'week' || goal.carriedTo || !day(change.key) || change.key <= goal.key) throw invalid();
+      const next = {...goal,id:randomUUID(),key:change.key,done:false,carriedFrom:goal.id};
+      delete next.carriedTo; goal.carriedTo=next.id; data.periodGoals.push(next); break;
+    }
+    case 'schedule':
+      data.schedule = (change.entries || []).map(e => ({id:e.id || randomUUID(),day:e.day,time:e.time,text:field(e.text,500)})); break;
+    case 'repositories':
+      data.repositories = structuredClone(change.repositories);
+      data.chatCwd = change.chatCwd || '.';
+      if(change.services !== undefined)data.services=structuredClone(change.services);
+      break;
+    case 'repository-hide': {
+      const repo = data.repositories?.find(r => r.id === change.id);
+      if(!repo || typeof change.hidden !== 'boolean') throw invalid();
+      repo.hidden = change.hidden; break;
+    }
+    case 'phase':
+      data.kickoff ||= kickoffFields({name:change.name || '프로젝트'});
+      if(!['킥오프','진행','유지보수','중단','완료'].includes(change.phase)) throw invalid();
+      data.kickoff.phase = change.phase;
+      if(change.phase === '완료') data.archivedAt ||= new Date().toISOString(); else data.archivedAt=null;
+      break;
     case 'archive': data.archivedAt ||= new Date().toISOString(); break;
     case 'resume': data.archivedAt = null; break;
     case 'add': {
@@ -137,7 +194,14 @@ async function updateDetails(store, projectId, previous, change) {
   const folder = await folderFor(store, projectId);
   const current = await latest(folder, projectId);
   if (current.revision !== previous) throw conflict();
-  const data = apply({ ...current, revision: randomUUID() }, change);
+  const data = apply({ ...structuredClone(current), revision: randomUUID() }, change);
+  if ((change?.action === 'repositories' || change?.action === 'import') && data.repositories) {
+    const { inside } = require('./project-repositories.cjs');
+    const root = await fs.realpath(store.project(projectId).path);
+    for (const repo of data.repositories) await inside(root,repo.path);
+    await inside(root,data.chatCwd || '.');
+    for(const service of data.services || [])await inside(root,service.cwd);
+  }
   try {
     await createJSON(path.join(folder, (previous || 'first') + '.json'), { version: 1, previous, data });
   } catch (error) { if (error.code === 'EEXIST') throw conflict(); throw error; }
@@ -147,4 +211,4 @@ function registerProjectDetails(register, store) {
   register('readProjectDetails', (projectId) => readDetails(store, projectId));
   register('updateProjectDetails', (projectId, previous, change) => updateDetails(store, projectId, previous, change));
 }
-module.exports = { registerProjectDetails, readDetails, updateDetails, kickoffFields };
+module.exports = { registerProjectDetails, readDetails, updateDetails, kickoffFields, validateDetails:validate };

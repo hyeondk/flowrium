@@ -35,3 +35,6 @@ export interface SystemToolsAPI {
   runService(projectId: string, script: string): Promise<ServiceInfo>;
   stopService(id: string): Promise<void>;
 }
+
+export interface StorageReport { projects:{projectId:string;name:string;sessions:number;teams:number;attachments:number;driveCache:number;other:number;total:number}[];total:number;sessionCount:number;backupBytes:number;warnings:string[] }
+export interface SystemToolsAPI { storageAction(input:any):Promise<any>; analyzeSystemProcesses():Promise<any>; stopSystemProcesses(input:any):Promise<any> }

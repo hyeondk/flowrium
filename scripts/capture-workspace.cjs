@@ -28,6 +28,7 @@ async function capture() {
       reveal: () => {},
     });
     registerWorkbench(register, store, { reveal: () => {} });
+    require('../electron/project-details.cjs').registerProjectDetails(register,store);
     const examples = [
       {
         name: "도시 산책 안내서",
@@ -57,6 +58,14 @@ async function capture() {
           createFolder: true,
         }),
       );
+    const day=date=>[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
+    const today=day(new Date());
+    for(const [index,p] of projects.entries()){
+      let details=await api.readProjectDetails(p.id);
+      details=await api.updateProjectDetails(p.id,details.revision,{action:'goal-add',period:'week',key:today,text:['산책 코스 현장 자료 10건 확인','인터뷰 질문 최종 검토','설치 안내 초안 완성'][index],target:10,due:today});
+      await api.updateProjectDetails(p.id,details.revision,{action:'goal-progress',id:details.periodGoals.at(-1).id,current:[7,4,8][index]});
+    }
+    let sequence=0;
     for (const [index, kind, title, status] of [
       [2, "document", "설치와 첫 실행 안내", "done"],
       [0, "briefing", "답사 기록을 바탕으로 코스 선정", "done"],
@@ -73,6 +82,8 @@ async function capture() {
       });
       if (status !== "active")
         await api.updateWork(s.id, { action: "status", status });
+      const record=store.session(s.id),date=new Date(Date.now()-(sequence++%5)*86400000).toISOString();
+      record.createdAt=date;if(record.workflow?.completion)record.workflow.completion.at=date;await store.save();
     }
     const env = {
       ...process.env,
@@ -86,6 +97,8 @@ async function capture() {
     await page.setViewportSize({ width: 1392, height: 930 });
     await page.locator(".pf-card").nth(2).waitFor();
     await page.locator(".side-account i[data-connected=true]").waitFor();
+    await page.getByRole('heading',{name:'오늘의 할 일',exact:true}).waitFor();
+    assert.equal(await page.title(),'Flowrium');
     await page.evaluate(() => document.fonts.ready);
     await page.mouse.move(1380, 920);
     await page.screenshot({
@@ -150,6 +163,8 @@ async function capture() {
         ".pf-card .pf-status",
         ".pf-dashboard-tools button",
         ".pf-heading .pf-primary",
+        ".di-card p",
+        ".di-metrics article>span",
       ]) {
         const ratio = await contrast(selector);
         assert.ok(

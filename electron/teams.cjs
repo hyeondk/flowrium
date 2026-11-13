@@ -107,7 +107,9 @@ async function execution(store, controller, pending, projectId, runs, data) {
   }));
   return { ...data, roles };
 }
-function registerTeams(register, store, controller, { canRun = () => true } = {}) {
+function registerTeams(register, store, controller, { canRun = () => true, worktreeState, worktreeAction } = {}) {
+  const api = {};
+  const expose = (name,fn) => { api[name]=fn;register(name,fn); };
   const queues = new Map(), pending = new Set();
   function serial(project, fn) {
     const next = (queues.get(project) || Promise.resolve()).catch(() => {}).then(fn);
@@ -131,10 +133,10 @@ function registerTeams(register, store, controller, { canRun = () => true } = {}
     }).catch((error) => controller.emitEvent({ type: 'error', sessionId: session.id,
       text: publicMessage(error, '팀 실행 결과를 보존하지 못했습니다. 역할 대화에서 확인해 주세요.') }));
   });
-  const directed = require('./teams-directed.cjs').registerDirected(register, {
-    store, controller, canRun, serial, folders, readDefinitions, definition, teamDefinition,
+  const directed = require('./teams-directed.cjs').registerDirected(expose, {
+    store, controller, canRun, serial, folders, readDefinitions, definition, teamDefinition, worktreeState, worktreeAction,
   });
-  register('readTeams', (projectId) => serial(projectId, async () => {
+  expose('readTeams', (projectId) => serial(projectId, async () => {
     const { teams, runs } = await folders(store, projectId);
     const heads = await readDefinitions(teams);
     const history = [];
@@ -155,14 +157,14 @@ function registerTeams(register, store, controller, { canRun = () => true } = {}
     await createJSON(path.join(teams, change.revision + '.json'), change);
     return definition(change);
   }
-  register('saveTeam', (projectId, input) => serial(projectId, () => {
+  expose('saveTeam', (projectId, input) => serial(projectId, () => {
     const team = teamDefinition(input);
     return modify(projectId, input.id ? id(input.id) : randomUUID(), input.id ? id(input.revision) : null, team);
   }));
-  register('removeTeam', (projectId, teamId, revision) => serial(projectId, async () => {
+  expose('removeTeam', (projectId, teamId, revision) => serial(projectId, async () => {
     await modify(projectId, id(teamId), id(revision), null);
   }));
-  register('runTeam', (projectId, teamId, input, requestId) => serial(projectId, async () => {
+  expose('runTeam', (projectId, teamId, input, requestId) => serial(projectId, async () => {
     const prompt = text(input, 12000), runId = id(requestId);
     const { teams, runs } = await folders(store, projectId);
     let existing;
@@ -193,7 +195,7 @@ function registerTeams(register, store, controller, { canRun = () => true } = {}
     } finally { pending.delete(runId); }
     return execution(store, controller, pending, projectId, runs, data);
   }));
-  register('openTeamRole', async (projectId, runId, index) => {
+  expose('openTeamRole', async (projectId, runId, index) => {
     const { runs } = await folders(store, projectId);
     const run = await readRun(runs, runId);
     if (!Number.isInteger(index) || index < 0 || index >= run.roles.length) throw invalid();
@@ -201,6 +203,45 @@ function registerTeams(register, store, controller, { canRun = () => true } = {}
     if (!session) throw new Error('역할 대화가 삭제됐거나 시작되지 않았습니다. 실행 기록에서 결과를 확인해 주세요.');
     return structuredClone(session);
   });
-  return { isBusy: () => pending.size > 0 || directed.isBusy() };
+  return { api, isBusy: () => pending.size > 0 || directed.isBusy() };
 }
-module.exports = { registerTeams };
+async function listRunsForStorage(store, projectId, controller) {
+  const project=store.project(id(projectId)),base=path.join(project.path,".flowrium","teams");
+  const metadata=await readJSON(path.join(project.path,".flowrium","project.json"));
+  if(metadata.id!==projectId)throw conflict();
+  try{await directory(base,false);}catch(error){if(error.code==="ENOENT")return[];throw error;}
+  const rows=[];
+  async function entries(folder){
+    try{const stat=await fs.lstat(folder);if(stat.isSymbolicLink()||!stat.isDirectory())throw conflict();return fs.readdir(folder,{withFileTypes:true});}
+    catch(error){if(error.code==="ENOENT")return[];throw error;}
+  }
+  const normal=path.join(base,"runs"),normalFiles=await entries(normal);
+  for(const entry of normalFiles){
+    if(!entry.isFile()||!/^[-0-9a-f]{36}\.json$/i.test(entry.name))continue;
+    const runId=entry.name.slice(0,-5);id(runId);const data=await readJSON(path.join(normal,entry.name));
+    if(data.id!==runId||data.version!==1)throw conflict();
+    const sessions=store.state.sessions.filter(s=>s.projectId===projectId&&s.workflow?.teamSlot?.runId===runId);
+    const files=normalFiles.filter(e=>e.isFile()&&(e.name===entry.name||e.name.startsWith(runId+"-")&&e.name.endsWith(".result.json")));
+    const results=await Promise.all(files.filter(e=>e.name!==entry.name).map(e=>readJSON(path.join(normal,e.name))));
+    const stats=await Promise.all(files.map(e=>fs.lstat(path.join(normal,e.name))));
+    if(stats.some(s=>s.isSymbolicLink()||!s.isFile()))throw conflict();
+    rows.push({id:runId,updatedAt:new Date(Math.max(Date.parse(data.createdAt),...stats.map(s=>s.mtimeMs))).toISOString(),
+      active:results.length<(data.roles?.length||0)||sessions.some(s=>controller?.runs.has(s.id)),sessionIds:sessions.map(s=>s.id),
+      files:files.map(e=>path.relative(project.path,path.join(normal,e.name)).split(path.sep).join("/"))});
+  }
+  const directed=path.join(base,"directed");
+  for(const entry of await entries(directed)){
+    if(!entry.isDirectory()||!UUID.test(entry.name))continue;
+    const folder=path.join(directed,entry.name),files=(await entries(folder)).filter(e=>e.isFile()&&/^\d{8}\.json$/.test(e.name)).sort((a,b)=>a.name.localeCompare(b.name));
+    if(!files.length)continue;
+    const data=await readJSON(path.join(folder,files.at(-1).name));if(data.id!==entry.name||data.version!==2)throw conflict();
+    const ids=[data.directed?.lead?.sessionId,...(data.directed?.nodes||[]).map(n=>n.sessionId)].filter(Boolean);
+    const stats=await Promise.all(files.map(e=>fs.lstat(path.join(folder,e.name))));
+    if(stats.some(s=>s.isSymbolicLink()||!s.isFile()))throw conflict();
+    rows.push({id:data.id,updatedAt:new Date(Math.max(Date.parse(data.createdAt),...stats.map(s=>s.mtimeMs))).toISOString(),
+      active:!["done","stopped"].includes(data.directed.phase)||ids.some(id=>controller?.runs.has(id)),sessionIds:ids,
+      files:files.map(e=>path.relative(project.path,path.join(folder,e.name)).split(path.sep).join("/"))});
+  }
+  return rows;
+}
+module.exports = { registerTeams, listRunsForStorage };

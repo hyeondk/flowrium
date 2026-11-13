@@ -46,6 +46,7 @@ async function main() {
         "프로젝트 추가",
         "산출물",
         "완료",
+        "업무 연결 / 비서",
         "주간업무보고",
         "업무 마감",
         "터미널",
@@ -106,7 +107,7 @@ async function main() {
     await page
       .getByRole("checkbox", { name: /이번 주 인터뷰 자료 정리/ })
       .click();
-    await page.locator(".pf-goals input:checked").waitFor();
+    await page.locator(".advanced-goals input:checked").waitFor();
     await page.getByLabel("목표 기간").selectOption("month");
     assert.equal(
       await page
@@ -244,14 +245,14 @@ async function main() {
       .click();
     await page.getByRole("checkbox", { name, exact: true }).check();
     await page.getByLabel("보고서 제목").fill("편집 주간보고");
-    await button("보고서 작성").click();
+    await button("ChatGPT로 보고서 작성").click();
     await page
       .getByRole("heading", { name: "편집 주간보고", exact: true })
       .waitFor();
     await nav.getByRole("button", { name: "업무 마감", exact: true }).click();
     await button("최근 12시간 작업 선택").click();
     await page.getByLabel("마감 기록 제목").fill("편집 업무 인계");
-    await button("마감 기록 만들기").click();
+    await button("ChatGPT로 업무 마감 작성").click();
     await page
       .locator("button.pf-row")
       .filter({ hasText: "편집 업무 인계" })

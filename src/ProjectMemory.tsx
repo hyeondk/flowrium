@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { BookMarked, MessagesSquare, RotateCcw, X } from "lucide-react";
-import type { MemoryNote, MemoryScope } from "../shared/memory";
+import type { MemoryImportPlan, MemoryNote, MemoryScope } from "../shared/memory";
 import type { Project, Session } from "../shared/types";
 import "./memory.css";
 
@@ -30,6 +30,10 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [reload, setReload] = useState(0);
+  const [importPlan,setImportPlan]=useState<MemoryImportPlan>();
+  const [importScope,setImportScope]=useState<MemoryScope>("project");
+  const [picked,setPicked]=useState<string[]>([]);
+  const [notice,setNotice]=useState("");
   const api = window.flowrium;
   useEffect(() => {
     if (!api) return;
@@ -37,6 +41,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
     setEditing(null);
     setHistory([]);
     setError("");
+    setImportPlan(undefined);setPicked([]);
     api
       .listMemory(projectId)
       .then((rows) => {
@@ -96,6 +101,40 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
           메모 추가
         </button>
       </header>
+      <details className="memory-transfer">
+        <summary>메모 백업과 가져오기</summary>
+        <p>기억 묶음에는 본문과 이전 개정이 포함됩니다. 같은 제목을 덮어쓸 때도 기존 개정은 보존합니다.</p>
+        <div className="pf-actions">
+          <button disabled={busy} onClick={()=>void run(async()=>{
+            const bundle=await api.exportMemory(projectId);
+            const url=URL.createObjectURL(new Blob([JSON.stringify(bundle,null,2)],{type:"application/json"}));
+            const link=document.createElement("a");link.href=url;link.download=`flowrium-memory-${new Date().toISOString().slice(0,10)}.json`;
+            link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);setNotice("메모 백업 파일을 저장했습니다.");
+          })}>기억 묶음 내보내기</button>
+          <label>가져올 범위<select aria-label="가져올 범위" value={importScope} disabled={busy} onChange={e=>{setImportScope(e.target.value as MemoryScope);setImportPlan(undefined);}}>
+            <option value="project">이 프로젝트</option><option value="personal">이 기기 전체</option>
+          </select></label>
+          <label>기억 묶음 선택<input type="file" accept=".json,application/json" disabled={busy} onChange={e=>{
+            const file=e.target.files?.[0];e.target.value="";if(!file)return;
+            void run(async()=>{
+              if(file.size>8_000_000)throw new Error("8MB 이하의 기억 묶음을 선택해 주세요.");
+              const plan=await api.previewMemoryImport(projectId,JSON.parse(await file.text()),importScope);
+              setImportPlan(plan);setPicked(plan.entries.map(n=>n.key));setNotice("");
+            });
+          }}/></label>
+        </div>
+        {importPlan&&<section aria-label="기억 가져오기 미리보기"><h3>적용할 메모 선택</h3>
+          {importPlan.entries.map(note=><label className="memory-check" key={note.key}>
+            <input type="checkbox" checked={picked.includes(note.key)} onChange={e=>setPicked(prev=>e.target.checked?[...prev,note.key]:prev.filter(k=>k!==note.key))}/>
+            {note.title} / {note.action==="update"?"기존 메모 갱신 / 이전 개정 보존":"새 메모"}
+          </label>)}
+          <button disabled={busy||!picked.length} onClick={()=>void run(async()=>{
+            const result=await api.applyMemoryImport(projectId,importPlan.id,picked);setImportPlan(undefined);setReload(n=>n+1);
+            setNotice(`메모 ${result.notes.length}개를 적용했습니다. 이전 개정 ${result.backups}개를 보존했습니다.`);
+          })}>선택한 메모 가져오기</button>
+        </section>}
+        {notice&&<p role="status">{notice}</p>}
+      </details>
       <label className="memory-check">
         <input
           type="checkbox"
@@ -167,6 +206,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
           <label>
             보관 범위
             <select
+              aria-label="보관 범위"
               disabled={!!selected || busy}
               value={draft.scope}
               onChange={(e) => change("scope", e.target.value as MemoryScope)}
@@ -182,6 +222,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
           <label>
             메모 제목
             <input
+              aria-label="메모 제목"
               required
               maxLength={120}
               value={draft.title}
@@ -192,6 +233,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
           <label>
             지시와 메모
             <textarea
+              aria-label="지시와 메모"
               required
               maxLength={16000}
               rows={5}
@@ -203,6 +245,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
           <label>
             적용할 담당 역할
             <input
+              aria-label="적용할 담당 역할"
               placeholder="비워 두면 모든 대화에 적용"
               maxLength={120}
               value={draft.role}
@@ -213,6 +256,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
           <label>
             참고 주소
             <input
+              aria-label="참고 주소"
               type="url"
               placeholder="https://"
               maxLength={2000}
@@ -232,6 +276,10 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
           </label>
           <div className="pf-actions">
             {!selected?.deleted && <button disabled={busy}>메모 저장</button>}
+            {selected&&!selected.deleted&&<button type="button" disabled={busy} onClick={()=>void run(async()=>{
+              const result=await api.moveMemory(projectId,{id:selected.id,scope:selected.scope,revision:selected.rev,to:selected.scope==="project"?"personal":"project"});
+              setNotice(result.notice||"메모 범위를 옮겼습니다. 원본 개정은 보존됩니다.");setReload(n=>n+1);
+            })}>{selected.scope==="project"?"기기 전체로 옮기기":"프로젝트로 옮기기"}</button>}
             {selected && (
               <>
                 <button

@@ -2,7 +2,7 @@ const fs = require("node:fs/promises"),
   path = require("node:path"),
   http = require("node:http"),
   { spawn } = require("node:child_process"),
-  { randomBytes, timingSafeEqual } = require("node:crypto");
+  { randomBytes, timingSafeEqual, createHash } = require("node:crypto");
 const allowed = new Set([
   "startWork",
   "send",
@@ -14,6 +14,9 @@ const allowed = new Set([
   "answerInput",
   "readWorkbench",
   "readWorkArtifact",
+  "saveTeam", "directTeam", "changeTeamRun", "workflowAction", "mobileWorkflowState",
+  "mobileSettings", "saveMobileSettings", "readAccountUsage", "readChatAttachment",
+  "listQueuedMessages", "cancelQueuedMessage", "resumeQueuedMessages", "webPushState", "webPushAction",
 ]);
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 function mobileSummary(s) {
@@ -79,6 +82,7 @@ function mobileMessages(s, params) {
         role: m.role,
         text: m.text,
         index: start,
+        attachments: m.attachments,
       });
       bytes += size;
     }
@@ -135,10 +139,71 @@ function registerRemote(
     version,
     guard = (_name, action) => action(),
     tunnelFactory = spawn,
+    accountRevision = () => 0,
+    onContextChanged = () => {},
+    now = Date.now,
   },
 ) {
   const answeredInputs = new Set();
+  const handoffs = new Map();
+  const scopeId = () => key ? createHash("sha256").update(key).digest("hex") : "";
+  const checkScope = (scope, owner) => {
+    if (!server?.listening || scope !== scopeId() || owner !== connectionOwner || owner !== String(accountRevision()) || isLocked())
+      throw Error("휴대폰 연결을 다시 확인해 주세요.");
+  };
+  const originAllowed = (req, local) => req.headers.origin === publicOrigin || req.headers.origin === "http://" + local;
+  async function readBody(req, max = 2 * 1024 * 1024) {
+    const chunks = []; let size = 0;
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > max) throw Error("요청 크기가 너무 큽니다.");
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
+  }
+  function workflowView(value) {
+    const {version,revision,preferences,notifications,reminders,deliveries,reports,projects,sessions}=value;
+    return {version,revision,preferences,notifications,reminders,deliveries,reports,projects,sessions,
+      proposals:(value.proposals||[]).map(p=>{const {id,revision,kind,title,body,sourceId,targetId,projectId,status,createdAt,hidden,snoozedUntil,result,preview}=p;return {id,revision,kind,title,body,sourceId,targetId,projectId,status,createdAt,hidden,snoozedUntil,result,preview};}),
+      pending:(value.pending || []).map(e => e.type === "input" ? mobileInput(e) : e).filter(e => e.type === "input" || e.type === "approval")};
+  }
+  async function mobileCall(method, args) {
+    if (method === "mobileSettings") {
+      const connection = await handlers.get("connect")?.();
+      return {model:store.state.settings.model,effort:store.state.settings.effort,chatDefaults:store.state.settings.chatDefaults,
+        models:(connection?.models || []).map(({id,displayName,supportedReasoningEfforts,defaultReasoningEffort}) => ({id,displayName,supportedReasoningEfforts,defaultReasoningEffort}))};
+    }
+    if (method === "saveMobileSettings") {
+      const input = args[0];
+      if (args.length !== 1 || !input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["model","effort","chatDefaults"].includes(k)))
+        throw Error("모바일에서 바꿀 수 없는 설정입니다.");
+      if (input.chatDefaults && (typeof input.chatDefaults !== "object" || Array.isArray(input.chatDefaults) || Object.keys(input.chatDefaults).some(k => !["answerLength","testing","askNext","autoCompact","compactAt"].includes(k))))
+        throw Error("실행 권한은 데스크톱에서 바꿔 주세요.");
+      const result = await handlers.get("saveSettings")(input);
+      return {model:result.model,effort:result.effort,chatDefaults:result.chatDefaults};
+    }
+    if (method === "mobileWorkflowState") return workflowView(await handlers.get("workflowState")());
+    if (method === "workflowAction") {
+      const input = args[0];
+      if (args.length !== 1 || !input || !["preferences","send","request","propose","approve","reject","hide","restore","snooze","bulk","read","readSession","clearNotifications","reportNow","collect","recommend","reminderAdd","reminderCancel","retryDelivery"].includes(input.action))
+        throw Error("지원하지 않는 비서 작업입니다.");
+      if (input.action === "preferences" && Object.keys(input.value || {}).some(k => !["enabled","aiReports","intervalMinutes","startHour","endHour","weekdays","timezone","projectId"].includes(k)))
+        throw Error("연결 서비스 설정은 데스크톱에서 바꿔 주세요.");
+    }
+    if (method === "changeTeamRun" && !["automation","dispatch","pause","resume","stop","reopen","report","raiseLimit","finishStopped","answer","instruct","ask","explain","reassign","message","stopNode","completeNode","retry"].includes(args[2]?.action))
+      throw Error("지원하지 않는 팀 작업입니다.");
+    if (method === "directTeam") {
+      const input = args[4];
+      if (!input || typeof input !== "object" || Object.keys(input).some(k => !["strategy","assignments","isolate","autoReport","budget","minutes","leadModel","autoDispatch","autoPM","autoQA","autoIntegrate","maxQaRounds","maxPMRounds","integrationRoleIndex"].includes(k)))
+        throw Error("팀 실행 옵션을 확인해 주세요.");
+    }
+    const handler = handlers.get(method);
+    if (!handler) throw Error("이 앱 버전에서 사용할 수 없는 작업입니다.");
+    const result = await handler(...args);
+    return method === "workflowAction" && result?.pending ? workflowView(result) : result;
+  }
   let sequence = 0;
+  let connectionOwner = "";
   let server,
     tunnel,
     key,
@@ -178,7 +243,7 @@ function registerRemote(
     return events;
   }
   function authorized(req) {
-    if (!key || !server?.listening) return false;
+    if (!key || !server?.listening || connectionOwner !== String(accountRevision())) return false;
     const actual = req.headers.authorization || "",
       expected = "Bearer " + key;
     const a = Buffer.from(actual),
@@ -205,6 +270,19 @@ function registerRemote(
       return;
     }
     const u = new URL(req.url, "http://" + local);
+    if (u.pathname === "/api/mobile/handoff" && req.method === "POST") {
+      try {
+        if (!originAllowed(req,local) || req.headers["content-type"]?.split(";")[0] !== "application/json") throw Error("허용되지 않은 연결 요청입니다.");
+        const input = JSON.parse((await readBody(req,4096)).toString("utf8"));
+        if (typeof input.handoff !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(input.handoff)) throw Error("연결 주소를 확인해 주세요.");
+        const id = createHash("sha256").update(input.handoff).digest("hex"), record = handoffs.get(id);
+        handoffs.delete(id);
+        if (!record || record.expiresAt <= now()) throw Error("만료됐거나 이미 사용한 연결 주소입니다.");
+        checkScope(record.scopeId,record.owner);
+        json(res,200,{key});
+      } catch (e) {json(res,400,{error:require("./errors.cjs").publicMessage(e)});}
+      return;
+    }
     if (u.pathname.startsWith("/api/")) {
       if (!authorized(req)) {
         json(res, 401, { error: "데스크톱에서 새 연결 주소를 받아 주세요." });
@@ -215,6 +293,18 @@ function registerRemote(
           error: "데스크톱 Flowrium이 잠겨 있습니다.",
           locked: true,
         });
+        return;
+      }
+      const requestScope = scopeId(), requestOwner = String(accountRevision());
+      if (u.pathname === "/api/mobile/attachments" && req.method === "POST") {
+        try {
+          if (!originAllowed(req,local) || req.headers["content-type"]?.split(";")[0] !== "application/octet-stream") throw Error("첨부 요청 형식을 확인해 주세요.");
+          const projectId=u.searchParams.get("projectId"), name=u.searchParams.get("name"), type=u.searchParams.get("type");
+          const bytes=await readBody(req,20*1024*1024);checkScope(requestScope,requestOwner);
+          const handler=handlers.get("addChatAttachments");if(!handler)throw Error("첨부를 사용할 수 없는 앱 버전입니다.");
+          const result=await guard("addChatAttachments",()=>handler(projectId,[{name,type,bytes}]));
+          checkScope(requestScope,requestOwner);json(res,200,{result});
+        } catch(e) {json(res,400,{error:require("./errors.cjs").publicMessage(e)});}
         return;
       }
       if (u.pathname === "/api/mobile/state" && req.method === "GET") {
@@ -235,6 +325,7 @@ function registerRemote(
                 effort: snapshot.settings.effort,
               },
               version,
+              pushAvailable: !!handlers.get("webPushAction"),
               connection: {
                 available: connection.available,
                 authenticated: connection.authenticated,
@@ -257,6 +348,7 @@ function registerRemote(
             });
             return;
           }
+          checkScope(requestScope,requestOwner);
           json(res, 200, value);
         } catch {
           json(res, 403, {
@@ -286,6 +378,7 @@ function registerRemote(
             });
             return;
           }
+          checkScope(requestScope,requestOwner);
           json(res, result.code, result.value);
         } catch {
           json(res, 403, {
@@ -306,25 +399,16 @@ function registerRemote(
           return;
         }
         try {
-          const chunks = [];
-          let total = 0;
-          for await (const chunk of req) {
-            total += chunk.length;
-            if (total > 2 * 1024 * 1024)
-              throw Error("요청 크기가 너무 큽니다.");
-            chunks.push(chunk);
-          }
-          const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          const input = JSON.parse((await readBody(req)).toString("utf8"));
+          checkScope(requestScope,requestOwner);
           if (
             !allowed.has(input.method) ||
             !Array.isArray(input.args) ||
-            input.args.length > 4
+            input.args.length > 5
           )
             throw Error("지원하지 않는 모바일 작업입니다.");
           if (isLocked()) throw Error("데스크톱 Flowrium이 잠겨 있습니다.");
           const handler = handlers.get(input.method);
-          if (!handler)
-            throw Error("이 앱 버전에서 사용할 수 없는 작업입니다.");
           if (input.method === "approval" || input.method === "answerInput") {
             const id = input.args[0]?.requestId,
               isAnswer = input.method === "answerInput";
@@ -364,10 +448,8 @@ function registerRemote(
             }
             return;
           }
-          const result = await guard(input.method, () =>
-            handler(...input.args),
-          );
-          if (isLocked()) throw Error("데스크톱 Flowrium이 잠겨 있습니다.");
+          const result = await guard(input.method, () => mobileCall(input.method,input.args));
+          checkScope(requestScope,requestOwner);
           json(res, 200, { result });
         } catch (e) {
           json(res, 400, { error: require("./errors.cjs").publicMessage(e) });
@@ -385,6 +467,9 @@ function registerRemote(
       "/": "index.html",
       "/app.js": "app.js",
       "/style.css": "style.css",
+      "/sw.js": "sw.js",
+      "/manifest.webmanifest": "manifest.webmanifest",
+      "/icon.png": "../../assets/flowrium.png",
     };
     const name = files[u.pathname];
     if (!name) {
@@ -398,12 +483,12 @@ function registerRemote(
           ? "text/html; charset=utf-8"
           : name.endsWith(".js")
             ? "text/javascript; charset=utf-8"
-            : "text/css; charset=utf-8",
+            : name.endsWith(".png") ? "image/png" : name.endsWith(".webmanifest") ? "application/manifest+json" : "text/css; charset=utf-8",
         "Cache-Control": "no-store",
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy":
-          "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+          "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
       });
       res.end(content);
     } catch {
@@ -417,11 +502,14 @@ function registerRemote(
     tunnel = null;
     server = null;
     key = null;
+    connectionOwner = "";
     publicOrigin = undefined;
+    onContextChanged();
     status = "";
     running.clear();
     approvals.clear();
     answeredInputs.clear();
+    handoffs.clear();
     const closed = active
       ? new Promise((resolve) => {
           active.closeAllConnections();
@@ -444,11 +532,14 @@ function registerRemote(
   register("remoteAccess", () => state());
   register("stopRemoteAccess", stop);
   register("startRemoteAccess", async () => {
+    if (server && connectionOwner !== String(accountRevision())) await stop();
     if (server) return state();
     if (!controller.status.authenticated)
       throw Error("먼저 이 컴퓨터에서 ChatGPT 계정을 연결해 주세요.");
     const attempt = ++sequence;
+    connectionOwner = String(accountRevision());
     key = randomBytes(32).toString("base64url");
+    onContextChanged();
     server = http.createServer((req, res) =>
       handle(req, res).catch(() => {
         if (!res.headersSent)
@@ -532,6 +623,7 @@ function registerRemote(
           clearTimeout(timer);
           if (tunnel === spawned) {
             publicOrigin = undefined;
+            onContextChanged();
             status =
               "휴대폰 연결이 끊겼습니다. 연결을 종료한 뒤 다시 켜 주세요.";
           }
@@ -541,6 +633,7 @@ function registerRemote(
       await ready;
       if (attempt !== sequence || server !== ownServer)
         throw Error("휴대폰 연결이 취소됐습니다.");
+      checkScope(scopeId(),connectionOwner);
       ownServer.unref();
       return state();
     } catch (e) {
@@ -552,6 +645,19 @@ function registerRemote(
   controller.on("event", update);
   return {
     stopAccess: stop,
+    state,
+    getLink: state,
+    pushContext: () => ({enabled:!!server?.listening && !!publicOrigin && !isLocked() && connectionOwner === String(accountRevision()),origin:publicOrigin,scopeId:scopeId()}),
+    issueLink: ({ttlMinutes=15}={}) => {
+      const scope=scopeId(),owner=String(accountRevision());checkScope(scope,owner);
+      if(!publicOrigin)throw Error("휴대폰 HTTPS 연결을 먼저 켜 주세요.");
+      if(![5,15,60].includes(ttlMinutes))throw Error("연결 유효 시간은 5분 / 15분 / 60분 중에서 고르세요.");
+      for(const [id,record]of handoffs)if(record.expiresAt<=now())handoffs.delete(id);
+      if(handoffs.size>=100)throw Error("사용하지 않은 연결 주소가 많습니다. 잠시 후 다시 시도하세요.");
+      const nonce=randomBytes(32).toString("base64url"),expiresAt=now()+ttlMinutes*60000;
+      handoffs.set(createHash("sha256").update(nonce).digest("hex"),{scopeId:scope,owner,expiresAt});
+      return {url:publicOrigin+"/#handoff="+nonce,expiresAt,scopeId:scope};
+    },
     shutdown: async () => {
       controller.off("event", update);
       await stop();

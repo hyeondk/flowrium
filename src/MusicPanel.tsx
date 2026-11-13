@@ -12,7 +12,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import type { MusicState } from "../shared/music";
+import type { MusicState, MusicLyrics } from "../shared/music";
 import "./music.css";
 const initial: MusicState = {
   lists: [],
@@ -56,6 +56,24 @@ export default function MusicPanel({
   latest.current = state;
   const entry = state.lists.find((v) => v.id === state.selected),
     api = window.flowrium;
+  const [lyrics, setLyrics] = useState<MusicLyrics | null>(), [lyricsNotice, setLyricsNotice] = useState(''), [lyricsBusy,setLyricsBusy] = useState(false);
+  const lyricEpoch = useRef(0);
+  useEffect(()=>{lyricEpoch.current++;setLyrics(undefined);setLyricsNotice('');},[track.title,track.author,state.selected,locked]);
+  async function lookupLyrics() {
+    if (!api || !track.title || locked || lyricsBusy) return;
+    const epoch=++lyricEpoch.current;setLyricsBusy(true);setLyricsNotice('');
+    try {const value=await api.findMusicLyrics({title:track.title,author:track.author,duration:track.duration});if(epoch===lyricEpoch.current){setLyrics(value);if(!value)setLyricsNotice('일치하는 가사를 찾지 못했습니다.');}}
+    catch(e){if(epoch===lyricEpoch.current)setLyricsNotice(e instanceof Error?e.message:String(e));}
+    finally{setLyricsBusy(false);}
+  }
+  const lyricIndex = lyrics?.lines.reduce((last,line,i)=>line.time<=track.time?i:last,-1) ?? -1;
+  const lyricContainer=useRef<HTMLElement>(null);
+  useEffect(()=>{ const container=lyricContainer.current, line=container?.querySelector<HTMLElement>('[aria-current=true]');
+    if(!visible || tab!=='lyrics' || !container || !line)return;
+    const box=container.getBoundingClientRect(), item=line.getBoundingClientRect();
+    if(item.top<box.top || item.bottom>box.bottom)container.scrollTop+=item.top-box.top-container.clientHeight/2+item.height/2;
+  },[lyricIndex,visible,tab]);
+  useEffect(()=>()=>{lyricEpoch.current++;},[]);
   function command(action: string, value?: unknown) {
     if (url)
       frame.current?.contentWindow?.postMessage(
@@ -402,6 +420,11 @@ export default function MusicPanel({
               ))}
             </ol>
           ) : entry ? (
+            <section className="music-lyrics-panel">
+            <button disabled={!track.title || lyricsBusy || locked} onClick={()=>void lookupLyrics()}>{lyricsBusy?'가사 검색 중':'현재 곡 가사 자동 검색'}</button>
+            {lyrics && <section ref={lyricContainer} className="synced-lyrics" aria-label="자동 검색 가사"><p>{lyrics.artist} / {lyrics.track} / {lyrics.source}</p>
+              {lyrics.instrumental?<p>연주곡입니다.</p>:lyrics.lines.length?<ol>{lyrics.lines.map((line,i)=><li key={line.time+':'+i} aria-current={i===lyricIndex?'true':undefined}><button onClick={()=>command('seek',line.time)}>{line.text||'♪'}</button></li>)}</ol>:<pre>{lyrics.plain}</pre>}</section>}
+            {lyricsNotice&&<p role="status">{lyricsNotice}</p>}
             <label className="music-lyrics">
               직접 보관할 가사나 메모
               <textarea
@@ -418,6 +441,7 @@ export default function MusicPanel({
                 onBlur={() => void save(latest.current)}
               />
             </label>
+            </section>
           ) : (
             <p>재생목록을 먼저 선택하세요.</p>
           )}

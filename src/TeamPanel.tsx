@@ -111,7 +111,7 @@ export default function TeamPanel({ projectId, onOpen }: { projectId: string; on
           await api!.removeTeam(projectId, team.id, team.revision); if (alive.current) setConfirmDelete(false);
         })}>삭제</button></div>}
       <p className="team-members">{team.roles.map((role) => role.name + " (" + modes[role.mode] + ")").join(" / ")}</p>
-      <TeamRunOptions strategy={strategy} setStrategy={setStrategy} options={options} setOptions={setOptions}/>
+      <TeamRunOptions strategy={strategy} setStrategy={setStrategy} options={options} setOptions={setOptions} roles={team.roles}/>
       <label>공동 요청<textarea value={prompt} rows={3} maxLength={12000} placeholder="팀에 맡길 업무와 완료 기준을 입력하세요." onChange={(e) => setPrompt(e.target.value)}/></label>
       <div className="team-actions"><button className="team-primary" type="submit" disabled={busy || !prompt.trim()}><Play size={13}/>{strategy==="manual"?"배정안 만들기":strategy==="plan"?"팀장에게 배정안 요청":"팀 실행"}</button></div>
     </form> : <p className="team-empty">팀의 담당 역할을 만들고, 업무마다 실행할 사람과 과업을 선택하세요.</p>}

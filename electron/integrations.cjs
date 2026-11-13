@@ -6,8 +6,10 @@ const scopes = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/drive.readonly",
   "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.send",
 ];
 function registerIntegrations(
   register,
@@ -16,6 +18,7 @@ function registerIntegrations(
 ) {
   const file = path.join(directory, "google.enc");
   let generation = 0;
+  let googleTools;
   function current(expected) {
     if (expected !== generation)
       throw Error("Google 연결 설정이 바뀌었습니다. 다시 조회해 주세요.");
@@ -70,6 +73,8 @@ function registerIntegrations(
       connected: !!v.refreshToken,
       account: v.email,
       authorizing: !!auth,
+      ...(v.refreshToken && { calendarWrite: Array.isArray(v.scopes) && v.scopes.includes("https://www.googleapis.com/auth/calendar.events") }),
+      ...(v.refreshToken && { mailSend: Array.isArray(v.scopes) && v.scopes.includes("https://www.googleapis.com/auth/gmail.send") }),
     };
   };
   async function request(url, options = {}) {
@@ -158,6 +163,7 @@ function registerIntegrations(
     if (auth)
       throw Error("진행 중인 로그인 창을 마친 뒤 설정을 변경해 주세요.");
     generation++;
+    googleTools?.clear();
     await persist({
       clientId: input.clientId.trim(),
       clientSecret: input.clientSecret.trim(),
@@ -224,6 +230,7 @@ function registerIntegrations(
               accessToken: t.access_token,
               expiresAt: Date.now() + t.expires_in * 1000,
               email: identity.email,
+              scopes: typeof t.scope === "string" ? t.scope.split(/\s+/) : [...scopes],
             },
             expected,
           );
@@ -291,6 +298,7 @@ function registerIntegrations(
   });
   register("disconnectGoogle", async () => {
     generation++;
+    googleTools?.clear();
     if (auth) {
       clearTimeout(auth.timer);
       auth.server?.close();
@@ -333,7 +341,7 @@ function registerIntegrations(
         q: query,
       });
       const value = await get(
-        "https://www.googleapis.com/calendar/v3/calendars/primary/events?" + q,
+        "https://www.googleapis.com/calendar/v3/calendars/" + encodeURIComponent(input.calendarId || "primary") + "/events?" + q,
       );
       return (value.items || []).map((e) => ({
         id: e.id,
@@ -344,6 +352,11 @@ function registerIntegrations(
           .slice(0, 2500),
         url: e.htmlLink,
         at: e.start?.dateTime || e.start?.date,
+        end: e.end?.dateTime || e.end?.date,
+        etag: e.etag,
+        calendarId: input.calendarId || "primary",
+        description: e.description || "",
+        location: e.location || "",
       }));
     }
     if (input.kind === "drive") {
@@ -388,6 +401,7 @@ function registerIntegrations(
           id: e.id,
           title: header("Subject") || "제목 없음",
           detail: [header("From"), v.snippet].filter(Boolean).join(" / "),
+          from: header("From"),
           at: new Date(Number(v.internalDate)).toISOString(),
           url: "https://mail.google.com/mail/u/0/#inbox/" + e.id,
         };
@@ -450,8 +464,22 @@ function registerIntegrations(
     });
     return { path: path.relative(root, target) };
   });
+  googleTools = require("./google-tools.cjs").installGoogleTools(register, { get, request, token, current, generation: () => generation, store,
+    canWrite: async () => (await load()).scopes?.includes("https://www.googleapis.com/auth/calendar.events") === true });
   return {
+    async sendMail({to,subject,body}) {
+      if(typeof to!=='string'||!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(to)||/[\r\n]/.test(to)||typeof subject!=='string'||subject.length>300||/[\r\n]/.test(subject)||typeof body!=='string'||body.length>20000)throw Error('연결 메일 내용을 확인해 주세요.');
+      const expected=generation,value=await load();current(expected);
+      if(!value.scopes?.includes('https://www.googleapis.com/auth/gmail.send'))throw Error('Google 메일 보내기 권한으로 계정을 다시 연결해 주세요.');
+      const access=await token();current(expected);
+      const raw=['To: '+to,'Subject: =?UTF-8?B?'+Buffer.from(subject).toString('base64')+'?=','MIME-Version: 1.0','Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',Buffer.from(body).toString('base64').match(/.{1,76}/g)?.join('\r\n')||''].join('\r\n');
+      const response=await request('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{method:'POST',headers:{Authorization:'Bearer '+access,'Content-Type':'application/json'},body:JSON.stringify({raw:Buffer.from(raw).toString('base64url')})});current(expected);
+      const sent=await response.json();return{id:sent.id};
+    },
+    invalidate() { generation++; googleTools.clear(); },
     shutdown() {
+      generation++;
+      googleTools.clear();
       if (auth) {
         clearTimeout(auth.timer);
         auth.server?.close();

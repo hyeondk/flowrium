@@ -74,3 +74,14 @@ export interface PortfolioAPI {
     path: string,
   ): Promise<void>;
 }
+
+export interface PortfolioPreferences { revision: string | null; columns: string[]; order: string[]; shortcuts: Record<string,string> }
+export interface PortfolioInsights { at:string; commits7:number; dirtyRepositories:number; openPulls:number; projects: { projectId:string; name:string; days:{day:string;count:number}[]; repositories:{id:string;name:string;dirty:number;pulls:number|null}[]; errors:string[] }[] }
+export interface PortfolioAPI {
+  portfolioAction(input: {action:"read"}): Promise<PortfolioPreferences>;
+  portfolioAction(input: {action:"save"; revision:string|null; columns?:string[]; order?:string[]; shortcuts?:Record<string,string>}): Promise<PortfolioPreferences>;
+  portfolioAction(input: {action:"export"}): Promise<unknown>;
+  portfolioAction(input: {action:"previewImport"; text:string}): Promise<{token:string; cards:{index:number;name:string;existingId:string|null;willReplace:boolean}[]}>;
+  portfolioAction(input: {action:"applyImport"; token:string; selected:number[]; overwrite:boolean}): Promise<{applied:string[];skipped:string[];projects:Project[]}>;
+  portfolioAction(input: {action:"insights"}): Promise<PortfolioInsights>;
+}

@@ -8,19 +8,19 @@ const korean:Record<string,string>={OPEN:'열림',MERGED:'병합됨',CLOSED:'닫
   pending:'대기',IN_PROGRESS:'진행 중',in_progress:'진행 중',queued:'대기',CANCELLED:'취소됨',cancelled:'취소됨',inactive:'비활성'};
 function stateLabel(v:string){return korean[v]||v;}
 
-export default function RepositoryInspection({id}:{id:string}) {
+export default function RepositoryInspection({id,repositoryId}:{id:string;repositoryId?:string}) {
   const api=window.flowrium;
   const [local,setLocal]=useState<LocalRepository>();
   const [activity,setActivity]=useState<RepositoryActivity>();
   const [detail,setDetail]=useState<{kind:'pull'|'issue';item:RepositoryItem}>();
   const [address,setAddress]=useState(''),[edit,setEdit]=useState(false),[confirm,setConfirm]=useState(false);
   const [busy,setBusy]=useState(false),[status,setStatus]=useState('');
-  async function readLocal(){ setLocal(await api!.repositoryAction(id,{action:'repoLocal'})); }
+  async function readLocal(){ setLocal(await api!.repositoryAction(id,{repositoryId,action:'repoLocal'})); }
   useEffect(()=>{
     let active=true;
-    api?.repositoryAction(id,{action:'repoLocal'}).then(v=>{if(active)setLocal(v);}).catch(e=>{if(active)setStatus(e.message);});
+    api?.repositoryAction(id,{repositoryId,action:'repoLocal'}).then(v=>{if(active)setLocal(v);}).catch(e=>{if(active)setStatus(e.message);});
     return ()=>{active=false;};
-  },[id,api]);
+  },[id,api,repositoryId]);
   async function run(fn:()=>Promise<void>){
     if (busy||!api) return;
     setBusy(true);setStatus('');
@@ -28,12 +28,12 @@ export default function RepositoryInspection({id}:{id:string}) {
     finally{setBusy(false);}
   }
   function open(kind:RepositoryKind,number?:number) {
-    void run(async()=>{await api!.repositoryAction(id,{action:'repoOpen',kind,number});});
+    void run(async()=>{await api!.repositoryAction(id,{repositoryId,action:'repoOpen',kind,number});});
   }
   function connect(){
     if(!local)return;
     void run(async()=>{
-      setStatus(await api!.repositoryAction(id,{action:'repoConnect',repository:address.trim(),connectionKey:local.connectionKey}));
+      setStatus(await api!.repositoryAction(id,{repositoryId,action:'repoConnect',repository:address.trim(),connectionKey:local.connectionKey}));
       setConfirm(false); setEdit(false); setActivity(undefined); setDetail(undefined); await readLocal();
     });
   }
@@ -48,7 +48,7 @@ export default function RepositoryInspection({id}:{id:string}) {
         <button disabled={busy} onClick={()=>{setAddress(local.repository);setConfirm(false);setEdit(!edit);}}>
           {local.hasOrigin?'원격 연결 편집':'GitHub 저장소 연결'}</button>
         {local.repository&&<button disabled={busy} onClick={()=>void run(async()=>{
-          setActivity(await api!.repositoryAction(id,{action:'repoActivity'}));setDetail(undefined);
+          setActivity(await api!.repositoryAction(id,{repositoryId,action:'repoActivity'}));setDetail(undefined);
         })}>GitHub 현황 조회</button>}</div>
       {edit&&<div><label>GitHub 소유자/저장소<input maxLength={140} value={address} onChange={e=>{setAddress(e.target.value);setConfirm(false);}}/></label>
         {confirm?<div><p>{local.hasOrigin?'기존 원격 연결을 변경합니다.':'원격 저장소를 연결합니다.'} / {address}</p>
@@ -62,7 +62,7 @@ export default function RepositoryInspection({id}:{id:string}) {
           <span>{row.title}</span><small>{stateLabel(row.state)}{row.isDraft?' / 초안':''}{row.reviewDecision?' / '+stateLabel(row.reviewDecision):''}{row.branch?' / '+row.branch:''}</small>
           {['pulls','merged','issues'].includes(section)&&<button disabled={busy} aria-label={'#'+row.number+' 상세 보기'} onClick={()=>void run(async()=>{
             const kind=section==='issues'?'issue':'pull';
-            setDetail({kind,item:await api!.repositoryAction(id,{action:kind==='issue'?'repoIssue':'repoPull',number:row.number})});
+            setDetail({kind,item:await api!.repositoryAction(id,{repositoryId,action:kind==='issue'?'repoIssue':'repoPull',number:row.number})});
           })}>상세 보기</button>}
           {section==='runs'&&<button disabled={busy} onClick={()=>open('run',row.number)}>실행 내역 열기</button>}</li>)}</ul>}
       </details>;

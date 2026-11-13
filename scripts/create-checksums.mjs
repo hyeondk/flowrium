@@ -6,7 +6,7 @@ import { resolve, join } from "node:path";
 const directory = resolve(process.argv[2] || "release");
 const names = (await readdir(directory))
   .filter((name) =>
-    /^Flowrium-[0-9A-Za-z.-]+-(?:mac-arm64\.(?:dmg|zip)|win-x64\.exe)$/.test(
+    ['install.sh','install.ps1','flowrium-install-support.cjs','SOURCE-COMMIT.txt'].includes(name) || /^Flowrium-[0-9A-Za-z.-]+-(?:mac-arm64\.(?:dmg|zip)|win-x64\.exe|source\.tar\.gz)$/.test(
       name,
     ),
   )

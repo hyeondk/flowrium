@@ -172,3 +172,4 @@
     padding: 20px;
   }
 }
+.music-lyrics-panel{display:grid;gap:12px;min-width:0}.synced-lyrics{max-height:340px;overflow:auto;word-break:keep-all;overflow-wrap:break-word}.synced-lyrics pre{white-space:pre-wrap;font:inherit}.synced-lyrics ol{list-style:none;padding:0}.synced-lyrics li{padding:4px}.synced-lyrics li[aria-current=true]{background:#788fa530;border-radius:7px;font-weight:700}.synced-lyrics button{white-space:normal;word-break:keep-all;text-align:left}

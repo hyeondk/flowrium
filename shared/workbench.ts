@@ -1,5 +1,5 @@
 import definitions from "../electron/work-kinds.json";
-import type { Mode, Session } from "./types";
+import type { Mode, Session, Effort } from "./types";
 
 export type WorkKind = keyof typeof definitions;
 export const workKinds = definitions as Record<
@@ -20,7 +20,12 @@ export const statusLabels: Record<WorkStatus, string> = {
 };
 export type ResearchSearch = "live" | "cached" | "disabled";
 export interface WorkInput {
+  model?:string;
+  effort?:Effort;
   searchMode?: ResearchSearch;
+  researchDepth?: "quick" | "standard" | "deep";
+  documentKind?: "report" | "slides";
+  slideCount?: number;
   reportProjects?: string[];
   projectId: string;
   kind: WorkKind;
@@ -39,6 +44,9 @@ export interface WorkCommit {
 }
 export interface Workflow {
   searchMode?: ResearchSearch;
+  researchDepth?: "quick" | "standard" | "deep";
+  documentKind?: "report" | "slides";
+  slideCount?: number;
   reportProjects?: string[];
   kind: WorkKind;
   role: string;
@@ -48,7 +56,7 @@ export interface Workflow {
   to: string;
   status: WorkStatus;
   checklist: { id: string; text: string; done: boolean }[];
-  teamSlot?: { runId: string; index: number; mode?: Mode; isolated?: boolean };
+  teamSlot?: { runId: string; index: number; mode?: Mode; isolated?: boolean; integration?: boolean };
   source?: { sessionId: string; title: string; summary: string };
   completion?: { at: string; summary: string; commits: WorkCommit[] };
 }
@@ -98,3 +106,5 @@ export interface WorkbenchAPI {
   readWorkArtifact(projectId: string, path: string): Promise<string>;
   revealWorkArtifact(projectId: string, path: string): Promise<void>;
 }
+
+export interface WorkbenchAPI { artifactAction(projectId:string,input:any):Promise<any> }

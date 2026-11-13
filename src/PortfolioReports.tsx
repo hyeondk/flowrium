@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   BookOpen,
@@ -6,7 +6,7 @@ import {
   ClipboardList,
   Coffee,
 } from "lucide-react";
-import type { Project, Session } from "../shared/types";
+import type { Project, Session, Model, Effort } from "../shared/types";
 import { workKinds, type WorkInput } from "../shared/workbench";
 import { errorText, localDay } from "./ProjectPortfolio";
 
@@ -15,7 +15,7 @@ type Props = {
   projects: Project[];
   sessions: Session[];
   onOpen(session: Session): void;
-  onStart(session: Session, request: string): Promise<void>;
+  onStart(session: Session, request: string, options?:{model?:string;effort?:Effort}): Promise<void>;
   onCreateProject(): void;
   authenticated: boolean;
 };
@@ -32,12 +32,13 @@ export default function PortfolioReports({
     title = workKinds[kind].label,
     today = new Date(),
     week = new Date(today);
-  week.setDate(today.getDate() - 6);
+  week.setDate(today.getDate() - ((today.getDay()+6)%7));
   const [tab, setTab] = useState<"create" | "history">("create");
   const [picked, setPicked] = useState<string[]>([]),
     [destination, setDestination] = useState("");
+  const friday=new Date(week);friday.setDate(week.getDate()+4);
   const [from, setFrom] = useState(localDay(week.toISOString())),
-    [to, setTo] = useState(localDay(today.toISOString()));
+    [to, setTo] = useState(localDay(friday.toISOString()));
   const [name, setName] = useState(
       title + " / " + localDay(today.toISOString()),
     ),
@@ -48,6 +49,9 @@ export default function PortfolioReports({
     [error, setError] = useState(""),
     [created, setCreated] = useState<Session[]>([]);
   const [success, setSuccess] = useState(false);
+  const [models,setModels]=useState<Model[]>([]),[model,setModel]=useState(''),[modelError,setModelError]=useState(''),[period,setPeriod]=useState('this');
+  useEffect(()=>{let active=true;window.flowrium?.connect().then(result=>{if(active){setModels(result.models);setModelError(result.status.authenticated?'':'ChatGPT 계정을 연결한 뒤 AI 작성을 시작하세요.');}}).catch(e=>{if(active)setModelError(e.message);});return()=>{active=false;};},[]);
+  function choosePeriod(value:string){setPeriod(value);if(value==='custom')return;const start=new Date();start.setDate(start.getDate()-((start.getDay()+6)%7)-(value==='last'?7:0));const end=new Date(start);end.setDate(start.getDate()+4);setFrom(localDay(start.toISOString()));setTo(localDay(end.toISOString()));}
   const recent = new Set(
     sessions
       .filter(
@@ -63,6 +67,7 @@ export default function PortfolioReports({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!window.flowrium || busy || !output || !targets.length) return;
+    if(!authenticated){setError("ChatGPT 계정을 연결한 뒤 AI 작성을 시작하세요.");return;}
     setBusy(true);
     setError("");
     const finished = new Set(created.map((s) => s.projectId)),
@@ -79,11 +84,11 @@ export default function PortfolioReports({
         audience,
         from: weekly ? from : "",
         to: weekly ? to : "",
+        ...(model && {model}),
         ...(weekly && { reportProjects: targets.map((item) => item.id) }),
       };
       try {
         const record = await window.flowrium.startWork(seed);
-        newEntries.push(record);
         await onStart(
           record,
           [
@@ -95,7 +100,9 @@ export default function PortfolioReports({
           ]
             .filter(Boolean)
             .join("\n\n"),
+          {model:model || undefined},
         );
+        newEntries.push(record);
       } catch (e) {
         issues.push(p.name + " / " + errorText(e));
       }
@@ -117,8 +124,8 @@ export default function PortfolioReports({
             <h1>{title}</h1>
             <p>
               {weekly
-                ? "선택한 프로젝트의 완료 업무와 커밋을 모아 보고서를 작성하세요."
-                : "자리를 비우기 전에 진행 내용과 다음에 할 일을 프로젝트별로 기록하세요."}
+                ? "ChatGPT가 선택한 프로젝트의 완료 업무 / 커밋 / 변경 요청을 확인해 보고서를 생성합니다."
+                : "ChatGPT가 최근 업무와 저장소 상태를 확인해 중단 지점과 복귀 순서를 프로젝트별로 작성합니다."}
             </p>
           </div>
         </header>
@@ -127,7 +134,7 @@ export default function PortfolioReports({
             aria-current={tab === "create" ? "page" : undefined}
             onClick={() => setTab("create")}
           >
-            {weekly ? "새 보고서" : "마감 기록 작성"}
+            {weekly ? "새로 쓰기" : "AI 마감 기록"}
           </button>
           <button
             aria-current={tab === "history" ? "page" : undefined}
@@ -164,7 +171,7 @@ export default function PortfolioReports({
         ) : (
           <form className="pf-form" onSubmit={submit}>
             <fieldset disabled={busy || success}>
-              <legend>{weekly ? "보고할 프로젝트" : "마감할 프로젝트"}</legend>
+              <legend>{weekly ? "보고할 프로젝트" : "마감할 프로젝트"} / 선택 {targets.length}개</legend>
               <div className="pf-actions">
                 <button
                   type="button"
@@ -238,7 +245,10 @@ export default function PortfolioReports({
                   </select>
                 </label>
               )}
-              {weekly && (
+              <label>사용할 ChatGPT 모델<select aria-label="보고서 AI 모델" value={model} onChange={e=>setModel(e.target.value)}><option value="">계정 기본 모델</option>{models.map(m=><option key={m.id} value={m.id}>{m.displayName||m.id}</option>)}</select></label>
+              {modelError&&<p role="status">{modelError}</p>}
+              {weekly&&<label>보고 기간<select aria-label="보고 기간 선택" value={period} onChange={e=>choosePeriod(e.target.value)}><option value="this">이번 주</option><option value="last">지난 주</option><option value="custom">직접 정하기</option></select></label>}
+              {weekly && period === "custom" && (
                 <div className="pf-grid2">
                   <label>
                     조회 시작일
@@ -247,7 +257,7 @@ export default function PortfolioReports({
                       required
                       value={from}
                       max={to}
-                      onChange={(e) => setFrom(e.target.value)}
+                      onChange={(e) => {setFrom(e.target.value);setPeriod("custom");}}
                     />
                   </label>
                   <label>
@@ -257,7 +267,7 @@ export default function PortfolioReports({
                       required
                       value={to}
                       min={from}
-                      onChange={(e) => setTo(e.target.value)}
+                      onChange={(e) => {setTo(e.target.value);setPeriod("custom");}}
                     />
                   </label>
                 </div>
@@ -285,7 +295,7 @@ export default function PortfolioReports({
                 </label>
               )}
               <label>
-                {weekly ? "강조할 사항" : "복귀할 때 참고할 메모"}
+                {weekly ? "덧붙일 말 선택 사항" : "복귀할 때 참고할 메모 선택 사항"}
                 <textarea
                   maxLength={11500}
                   rows={3}
@@ -303,21 +313,20 @@ export default function PortfolioReports({
               </label>
               {!authenticated && (
                 <p className="pf-muted">
-                  대화를 만든 뒤 설정에서 계정을 연결하면 요청을 보낼 수
-                  있습니다.
+                  ChatGPT 계정을 연결하면 선택한 모델이 보고서와 마감 기록을 작성합니다.
                 </p>
               )}
               <div className="pf-actions">
                 <button
                   className="pf-primary"
-                  disabled={busy || success || !targets.length || !name.trim()}
+                  disabled={busy || success || !authenticated || !targets.length || !name.trim()}
                 >
                   {weekly ? <ClipboardList size={16} /> : <Coffee size={16} />}{" "}
                   {busy
                     ? "처리 중…"
                     : weekly
-                      ? "보고서 작성"
-                      : "마감 기록 만들기"}
+                      ? "ChatGPT로 보고서 작성"
+                      : "ChatGPT로 업무 마감 작성"}
                 </button>
               </div>
             </fieldset>

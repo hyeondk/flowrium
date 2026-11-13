@@ -119,6 +119,7 @@ class CodexClient extends EventEmitter {
     this.pending = new Map();
     this.approvals = new Map();
     this.inputs = new Map();
+    this.tools = new Map();
     this.counter = 0;
     this.starting = null;
     this.ready = false;
@@ -151,7 +152,7 @@ class CodexClient extends EventEmitter {
     delete env.OPENAI_BASE_URL;
     const proc = (this.options.spawn || spawn)(
       descriptor.command,
-      [...descriptor.prefix, "app-server", "-c", 'model_provider="openai"', "-c", "features.default_mode_request_user_input=true"],
+      [...descriptor.prefix, "app-server", "-c", 'model_provider="openai"', "-c", "features.default_mode_request_user_input=true",...Object.entries(this.options.configOverrides||{}).flatMap(([key,value])=>["-c",key+"="+JSON.stringify(value)])],
       { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, shell: false, env },
     );
     this.proc = proc;
@@ -199,6 +200,7 @@ class CodexClient extends EventEmitter {
     try {
       await this.request("initialize", {
         clientInfo: { name: "flowrium", title: "Flowrium", version: require("../package.json").version },
+        capabilities: {experimentalApi:true},
       });
       this.notify("initialized");
       this.ready = true;
@@ -216,6 +218,7 @@ class CodexClient extends EventEmitter {
     this.pending.clear();
     this.approvals.clear();
     this.inputs.clear();
+    this.tools.clear();
     this.emit("disconnect", error);
   }
   _write(message) {
@@ -263,6 +266,10 @@ class CodexClient extends EventEmitter {
       return;
     }
     if (message.method && "id" in message) {
+      if(message.method === "item/tool/call") {
+        const requestId=randomUUID(); this.tools.set(requestId,message);
+        this.emit("tool",{requestId,params:message.params||{}});return;
+      }
       if (message.method === "item/tool/requestUserInput") {
         let params;
         try { params = require("./input-request.cjs").questionParams(message.params); }
@@ -300,6 +307,11 @@ class CodexClient extends EventEmitter {
       return;
     }
     if (message.method) this.emit("notification", message);
+  }
+  answerTool(requestId,result) {
+    const request=this.tools.get(requestId);if(!request)return;
+    this.tools.delete(requestId);
+    if(this.ready)this._write({id:request.id,result});
   }
   resolveInput(requestId, cancelled = false) {
     const request = this.inputs.get(requestId);

@@ -41,7 +41,7 @@ function checked(input, deletion = false) {
       throw new Error(
         "이 기기에 보관한 초안이 12MB를 넘었습니다. 이전 초안을 정리해 주세요.",
       );
-    result[k] = { text: v.text, mode: v.mode };
+    result[k] = { text: v.text, mode: v.mode, ...(v.attachments?.length ? {attachments:require("./chat-attachments.cjs").checkedAttachments(v.attachments)} : {}) };
   }
   return result;
 }

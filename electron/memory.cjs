@@ -176,8 +176,10 @@ async function memoryContext(store, session) {
     "\n"
   );
 }
-function registerMemory(register, store) {
-  register("listMemory", (projectId) => listMemory(store, projectId));
+function registerMemory(register, store, options = {}) {
+  const api = {};
+  const expose = (name, fn) => { api[name] = fn; register(name, fn); };
+  expose("listMemory", (projectId) => listMemory(store, projectId));
   async function versions(projectId, scope, id) {
     const root = await rootFor(store, projectId, scope, false);
     if (!root) throw conflict();
@@ -185,10 +187,10 @@ function registerMemory(register, store) {
     if (!dir) throw conflict();
     return revisions(dir, id, scope === "personal" ? null : projectId);
   }
-  register("memoryVersions", async (projectId, scope, id) =>
+  expose("memoryVersions", async (projectId, scope, id) =>
     (await versions(projectId, scope, id)).reverse().map((r) => view(r, scope)),
   );
-  register("changeMemory", async (projectId, input) => {
+  expose("changeMemory", async (projectId, input) => {
     if (!input || !["save", "delete", "restore"].includes(input.action))
       throw invalid();
     const savedFields = input.action === "save" ? fields(input) : null;
@@ -262,8 +264,8 @@ function registerMemory(register, store) {
     };
   }
   let queue = Promise.resolve();
-  register("assistantHome", assistantHome);
-  register("openAssistant", (selected) => {
+  expose("assistantHome", assistantHome);
+  expose("openAssistant", (selected) => {
     const work = queue.then(async () => {
       const home = await assistantHome();
       if (home.sessionId) {
@@ -303,5 +305,66 @@ function registerMemory(register, store) {
     queue = work.catch(() => {});
     return work;
   });
+  const plans = new Map();
+  const account = () => options.accountRevision?.() ?? 0;
+  const fingerprint = rows => JSON.stringify(rows.map(n => [n.scope,n.id,n.rev]).sort((a,b)=>a.join().localeCompare(b.join())));
+  expose("exportMemory", async (projectId) => {
+    const rows = await listMemory(store, projectId);
+    const notes = await Promise.all(rows.map(async note => ({ ...note,
+      history: await api.memoryVersions(projectId,note.scope,note.id) })));
+    return { format:"flowrium-memory",version:1,createdAt:new Date().toISOString(),notes };
+  });
+  expose("previewMemoryImport", async (projectId, bundle, scope = "project") => {
+    if (!["project","personal"].includes(scope) || bundle?.format!=="flowrium-memory" || bundle.version!==1 ||
+      !Array.isArray(bundle.notes) || bundle.notes.length>1000 || JSON.stringify(bundle).length>8_000_000) throw invalid();
+    const notes = bundle.notes.filter(n=>!n.deleted).map(note=>({ ...fields(note), key:randomUUID() }));
+    const duplicates = new Set();
+    for (const n of notes) { if (duplicates.has(n.title)) throw new Error("가져올 메모에 같은 제목이 있습니다. 제목을 구분해 주세요."); duplicates.add(n.title); }
+    const current = await listMemory(store,projectId);
+    const entries = notes.map(note=>{
+      const matches=current.filter(n=>n.scope===scope&&!n.deleted&&n.title===note.title);
+      if(matches.length>1) throw new Error("대상 범위에 같은 제목의 메모가 여러 개 있습니다. 먼저 제목을 구분해 주세요.");
+      return { ...note, existing:matches[0]||null };
+    });
+    const id=randomUUID();
+    plans.set(id,{projectId,scope,entries,fingerprint:fingerprint(current),account:account(),expires:Date.now()+600000,applied:new Map()});
+    for(const [key,plan] of plans) if(plan.expires<Date.now()) plans.delete(key);
+    return { id, entries:entries.map(n=>({key:n.key,title:n.title,scope,action:n.existing?"update":"create",body:n.body,
+      previous:n.existing?.body||""})) };
+  });
+  expose("applyMemoryImport", async (projectId, planId, keys) => {
+    const plan=plans.get(planId);
+    if(!plan||plan.projectId!==projectId||plan.account!==account()||plan.expires<Date.now()||!Array.isArray(keys)||
+      keys.length>1000||new Set(keys).size!==keys.length||keys.some(k=>!plan.entries.some(n=>n.key===k))) throw conflict();
+    if(fingerprint(await listMemory(store,projectId))!==plan.fingerprint) throw conflict();
+    const result=[];
+    const backups=keys.filter(key=>plan.entries.find(n=>n.key===key)?.existing).length;
+    for(const key of keys) {
+      const n=plan.entries.find(v=>v.key===key);
+      if(plan.applied.has(key)) { result.push(plan.applied.get(key));continue; }
+      const input={action:"save",scope:plan.scope,revision:n.existing?.rev||null,...fields(n),
+        ...(n.existing&&{id:n.existing.id})};
+      const saved=await api.changeMemory(projectId,input);
+      result.push(saved);
+      plan.applied.set(key,saved);
+      plan.fingerprint=fingerprint(await listMemory(store,projectId));
+      n.existing=saved;
+    }
+    plans.delete(planId);
+    return {notes:result,backups};
+  });
+  expose("moveMemory", async (projectId,input) => {
+    if(!input||!["personal","project"].includes(input.scope)||!["personal","project"].includes(input.to)||input.scope===input.to) throw invalid();
+    const notes=await listMemory(store,projectId),source=notes.find(n=>n.scope===input.scope&&n.id===input.id);
+    if(!source||source.deleted||source.rev!==input.revision) throw conflict();
+    const copy=await api.changeMemory(projectId,{action:"save",scope:input.to,revision:null,...fields(source)});
+    try {
+      await api.changeMemory(projectId,{action:"delete",scope:input.scope,id:source.id,revision:source.rev});
+      return {note:copy,sourceRetained:false};
+    } catch(error) {
+      return {note:copy,sourceRetained:true,notice:"대상 범위에 복사했지만 원본 변경이 감지돼 원본도 보존했습니다."};
+    }
+  });
+  return api;
 }
 module.exports = { registerMemory, listMemory, memoryContext };

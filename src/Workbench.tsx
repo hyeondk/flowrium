@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import ArtifactViewer from "./ArtifactViewer";
 import { ArrowLeft, ArrowRight, BookOpen, Check, CheckCheck, ChevronRight, ClipboardList, FileText, FolderOpen, GitBranch, GitCommitHorizontal, Hand, ListChecks, LoaderCircle, MessageSquare, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
-import type { Mode, Project, Session } from "../shared/types";
+import type { Mode, Project, Session, Model } from "../shared/types";
 import { statusLabels, workKinds, type Artifact, type WorkInput, type WorkFormat, type WorkKind, type WorkOverview, type WorkStatus, type WorkUpdate } from "../shared/workbench";
 import "./workbench.css";
 
@@ -25,11 +26,13 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
   const now = new Date();
   const week = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
   const [form, setForm] = useState<WorkInput>({
-    projectId: project.id, kind, ...(kind === "research" && { searchMode: "live" }), title: ["briefing", "weekly", "pause"].includes(kind) ? spec.label + " / " + day(now) : "",
+    projectId: project.id, kind, ...(kind === "research" && { searchMode: "live",researchDepth:"standard" }), ...(kind==='document'&&{documentKind:'report',slideCount:12}), title: ["briefing", "weekly", "pause"].includes(kind) ? spec.label + " / " + day(now) : "",
     brief: "", role: spec.role, audience: "", from: ranged ? day(week) : "", to: ranged ? day(now) : "",
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [models,setModels]=useState<Model[]>([]),[authenticated,setAuthenticated]=useState(false);
+  useEffect(()=>{let alive=true;window.flowrium?.connect().then(v=>{if(alive){setModels(v.models);setAuthenticated(v.status.authenticated);}}).catch(e=>{if(alive)setError(messageOf(e));});return()=>{alive=false;};},[]);
   const fields = {
     research: ["조사 주제", "알고 싶은 점 / 참고할 출처", "보고서 독자 / 조사 깊이"],
     briefing: ["브리핑 제목", "특히 확인할 사항", "보고 대상 / 형식"],
@@ -42,6 +45,7 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
+    if(!authenticated){setError("ChatGPT 계정을 연결한 뒤 AI 업무를 시작하세요.");return;}
     setBusy(true);
     setError("");
     try {
@@ -55,14 +59,18 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
   }
   return <section className="wb-form" aria-label={spec.label + " 업무 설정"}>
     <header className="wb-section-head"><button className="wb-back" onClick={onClose}><ArrowLeft size={15}/> 업무 목록</button><span>{project.name}</span></header>
-    <h1>{spec.label}</h1><p>{spec.description}</p>
+    <h1>{spec.label}</h1><p>{spec.description} ChatGPT가 요청과 프로젝트 근거를 확인해 결과를 작성합니다.</p>
     <form onSubmit={submit}>
+      <label>사용할 ChatGPT 모델<select aria-label="업무 AI 모델" value={form.model||""} onChange={e=>set("model",e.target.value)}><option value="">계정 기본 모델</option>{models.map(m=><option key={m.id} value={m.id}>{m.displayName||m.id}</option>)}</select></label>
+      {!authenticated&&<p>ChatGPT 계정을 연결하면 AI가 이 업무를 수행합니다.</p>}
       <label>{fields[0]}<input autoFocus required maxLength={160} value={form.title} onChange={(e) => set("title", e.target.value)}/></label>
       <label>{fields[1]}<textarea rows={4} maxLength={12000} value={form.brief} onChange={(e) => set("brief", e.target.value)}/></label>
       <div className="wb-field-pair"><label>담당 역할<input required maxLength={120} value={form.role} onChange={(e) => set("role", e.target.value)}/></label>
         <label>{fields[2]}<input maxLength={500} value={form.audience} onChange={(e) => set("audience", e.target.value)}/></label></div>
       {kind === "research" && <label>조사 자료<select value={form.searchMode} onChange={(e) => set("searchMode", e.target.value)}>
         <option value="live">실시간 웹 검색 / 프로젝트 자료</option><option value="cached">저장된 검색 결과 / 프로젝트 자료</option><option value="disabled">프로젝트 자료만</option></select></label>}
+      {kind==='research'&&<label>조사 깊이<select aria-label="조사 깊이" value={form.researchDepth} onChange={e=>set('researchDepth',e.target.value)}><option value="quick">빠른 조사</option><option value="standard">일반 조사</option><option value="deep">심층 조사</option></select></label>}
+      {kind==='document'&&<div className="wb-field-pair"><label>결과 형식<select aria-label="문서 결과 형식" value={form.documentKind} onChange={e=>set('documentKind',e.target.value)}><option value="report">보고서 / HTML과 PDF</option><option value="slides">발표자료 / HTML과 PDF와 PPTX</option></select></label>{form.documentKind==='slides'&&<label>슬라이드 수<input aria-label="슬라이드 수" inputMode="numeric" value={String(form.slideCount??'')} onChange={e=>setForm(v=>({...v,slideCount:e.target.value?Number(e.target.value):undefined}))} pattern="[0-9]+" required/></label>}</div>}
       {ranged && <div className="wb-field-pair"><label>조회 시작일<input type="date" required max={form.to} value={form.from} onChange={(e) => set("from", e.target.value)}/></label>
         <label>조회 종료일<input type="date" required min={form.from} value={form.to} onChange={(e) => set("to", e.target.value)}/></label></div>}
       {sessions.length > 0 && <label>인계받을 대화<select value={form.sourceSessionId || ""} onChange={(e) => set("sourceSessionId", e.target.value)}>
@@ -70,7 +78,7 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
         {form.sourceSessionId && <small>선택한 대화의 최근 메시지를 이 업무의 시작 시점에 복사합니다.</small>}</label>}
       {error && <p className="wb-error" role="alert">{error}</p>}
       <div className="wb-form-footer"><button type="button" className="wb-secondary" onClick={onClose}>취소</button>
-        <button className="wb-primary" disabled={busy || !form.title.trim()}>{busy ? <LoaderCircle size={16}/> : <ArrowRight size={16}/>} 업무 시작</button></div>
+        <button className="wb-primary" disabled={busy || !authenticated || !form.title.trim()}>{busy ? <LoaderCircle size={16}/> : <ArrowRight size={16}/>} 업무 시작</button></div>
     </form>
   </section>;
 }
@@ -116,7 +124,8 @@ export function ArtifactPanel({ overview, project, sessions, onOpen, refresh }: 
       <div className="wb-tools"><button className="wb-secondary" onClick={() => reveal(selected)}><FolderOpen size={15}/> 파일 위치 열기</button>
         {source && <button className="wb-secondary" onClick={() => onOpen(source)}><MessageSquare size={15}/> 원본 대화</button>}</div>
       {error && <p className="wb-error" role="alert">{error}</p>}
-      {selected.preview ? (loading ? <p>불러오는 중…</p> : !error && <pre className="wb-preview">{body}</pre>) : <p>파일 위치를 열어 원본 문서를 확인하세요.</p>}
+      <ArtifactViewer project={project} artifact={selected} onChange={refresh}/>
+      {!/\.html?$/i.test(selected.path) && selected.preview ? (loading ? <p>불러오는 중…</p> : !error && <pre className="wb-preview">{body}</pre>) : <p>파일 위치를 열어 원본 문서를 확인하세요.</p>}
     </section>;
   }
   const items = (overview?.artifacts || []).filter((a) => !filter || a.path.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));

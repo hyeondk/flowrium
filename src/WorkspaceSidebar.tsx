@@ -9,6 +9,7 @@ import {
   LockKeyhole,
   LogOut,
   Music2,
+  MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -27,7 +28,8 @@ export type SideDestination =
   | "weekly"
   | "pause"
   | "terminal"
-  | "music";
+  | "music"
+  | "workflow";
 type Props = {
   current: string;
   mobileOpen: boolean;
@@ -190,6 +192,7 @@ export default function WorkspaceSidebar({
           {row("archive", "완료", Archive)}
         </MenuGroup>
         <MenuGroup label="도구">
+          {row("workflow", "업무 연결 / 비서", MessagesSquare)}
           {row("weekly", "주간업무보고", ClipboardList)}
           {row("pause", "업무 마감", Coffee)}
           {row("terminal", "터미널", SquareTerminal)}

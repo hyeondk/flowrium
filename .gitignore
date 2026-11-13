@@ -10,3 +10,4 @@ release/
 .flowrium/
 
 electron/update-helpers/Flowrium.Update.exe
+electron/native/flowrium-pim

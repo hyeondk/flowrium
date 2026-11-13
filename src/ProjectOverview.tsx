@@ -24,6 +24,9 @@ import {
   localDay,
 } from "./ProjectPortfolio";
 import "./portfolio.css";
+import AdvancedGoals from "./AdvancedGoals";
+import ProjectRepositories from "./ProjectRepositories";
+import ProjectAIActions from "./ProjectAIActions";
 
 const api = window.flowrium;
 export const projectTabs: [ProjectTab, string][] = [
@@ -48,7 +51,7 @@ interface Props {
   onBack(): void;
   onDetailsChange?(details: Details): void;
 }
-function ProjectNotes({ project, kind }: { project: Project; kind: NoteKind }) {
+function ProjectNotes({ project, kind, onOpen }: { project: Project; kind: NoteKind;onOpen(s:Session):void }) {
   const [notes, setNotes] = useState<ProjectNote[]>([]),
     [query, setQuery] = useState(""),
     [selected, select] = useState<ProjectNote>();
@@ -120,6 +123,7 @@ function ProjectNotes({ project, kind }: { project: Project; kind: NoteKind }) {
     );
   return (
     <section className="pf-panel">
+      <ProjectAIActions project={project} purpose={kind} onOpen={onOpen}/>
       <div className="pf-section-header">
         <h2>{label}</h2>
         {!adding && (
@@ -558,7 +562,8 @@ export function ProjectOverview({
                 )}
               </section>
             </div>
-            {data && <Goals data={data} onChange={change} />}
+            {data && <AdvancedGoals data={data} onChange={change} />}
+            <ProjectAIActions project={project} purpose="goals" onOpen={onOpenSession}/>
             <div className="pf-columns">
               <section className="pf-panel">
                 <div className="pf-section-header">
@@ -603,8 +608,9 @@ export function ProjectOverview({
         )}
         {tab === "rules" && <ProjectMemory projectId={project.id} />}
         {(tab === "rules" || tab === "design" || tab === "meetings") && (
-          <ProjectNotes key={project.id + tab} project={project} kind={tab} />
+          <ProjectNotes key={project.id + tab} project={project} kind={tab} onOpen={onOpenSession}/>
         )}
+        {tab === "docs" && <ProjectAIActions project={project} purpose="docs" onOpen={onOpenSession}/>}
         {tab === "docs" && (
           <ArtifactPanel
             overview={overview}
@@ -614,6 +620,7 @@ export function ProjectOverview({
             refresh={() => reload((r) => r + 1)}
           />
         )}
+        {tab === "settings" && data && <ProjectRepositories project={project} data={data} onChange={change}/>}
         {tab === "settings" && (
           <>
             <div className="pf-section-header">

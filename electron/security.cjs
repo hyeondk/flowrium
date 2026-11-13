@@ -17,6 +17,12 @@ const publicWhileLocked = new Set(["securityState", "unlockSecurity"]);
 const accountCommands = new Set([
   "readDrafts",
   "writeDrafts",
+  "addChatAttachments", "readChatAttachment", "listQueuedMessages", "cancelQueuedMessage", "resumeQueuedMessages",
+  "workflowAction", "exportMemory", "previewMemoryImport", "applyMemoryImport", "moveMemory",
+  "portfolioAction", "repositoryFlow", "artifactAction", "storageAction", "analyzeSystemProcesses", "stopSystemProcesses",
+  "configureMacPim", "prepareMacEvent", "commitMacEvent", "prepareGoogleEvent", "commitGoogleEvent", "importGoogleFile",
+  "configureLinkDelivery", "connectKakao", "disconnectKakao", "sendKakaoLink", "sendLinkMail", "checkLinkMail", "webPushAction",
+  "configureVoicePreferences", "configureVoice", "allowVoiceCapture", "transcribeVoice", "cancelVoiceCapture", "speakVoice",
   "connect",
   "login",
   "send",
@@ -359,6 +365,7 @@ function registerSecurity(
   const approvals = new Map();
   let accountRevision = security.accountRevision;
   function onSecurityState(state) {
+    if (state.locked || state.accountRevision !== accountRevision) controller.cancelStructuredAnalyses?.();
     if (state.accountRevision !== accountRevision) {
       accountRevision = state.accountRevision;
       for (const id of controller.client.inputs?.keys() || []) {

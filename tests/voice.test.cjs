@@ -36,7 +36,7 @@ test("음성 인증은 기기에 암호화 보관하고 직접 보낸 오디오�
   });
   assert.equal(result, "검증한 음성 문장");
   assert.equal(request.url, "https://api.openai.com/v1/audio/transcriptions");
-  assert.equal(request.options.body.get("model"), "gpt-transcribe");
+  assert.equal(request.options.body.get("model"), "gpt-4o-mini-transcribe");
   assert.equal(request.options.body.get("file").size, 3);
   await assert.rejects(
     api.transcribeVoice({ base64: "YWJj", mime: "text/plain" }),

@@ -41,6 +41,8 @@ function validateSession(session, projectId) {
   if (session.personalAssistant !== undefined && session.personalAssistant !== true) throw new Error("개인 비서 대화 형식이 올바르지 않습니다.");
   if (session.preferences !== undefined) require("./chat-preferences.cjs").preferences(session.preferences);
   if (session.workflow !== undefined) require("./workbench.cjs").validateWorkflow(session.workflow);
+  if(session.queuedMessages!==undefined)require("./chat-queue.cjs").validateQueue(session.queuedMessages);
+  if(session.context!==undefined && (!session.context || !Number.isFinite(session.context.used)||!Number.isFinite(session.context.total)||!Number.isFinite(session.context.max)||!Number.isFinite(session.context.percent)))throw Error("문맥 사용량 정보를 확인해 주세요.");
   const ids = new Set();
   for (const message of session.messages) {
     if (
@@ -55,6 +57,8 @@ function validateSession(session, projectId) {
       throw new Error(
         "저장된 메시지 형식이 올바르지 않습니다. 원본은 보존됩니다.",
       );
+    if(message.attachments!==undefined)require("./chat-attachments.cjs").checkedAttachments(message.attachments);
+    if(message.turnId!==undefined&&(typeof message.turnId!=="string"||message.turnId.length>300||!message.turnId))throw Error("메시지의 실행 식별자를 확인해 주세요.");
     ids.add(message.id);
   }
 }

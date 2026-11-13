@@ -105,6 +105,13 @@ export interface TeamNote {
   text: string;
 }
 export interface DirectOptions {
+  autoDispatch?:boolean;
+  autoPM?:boolean;
+  autoQA?:boolean;
+  autoIntegrate?:boolean;
+  maxQaRounds?:number;
+  maxPMRounds?:number;
+  integrationRoleIndex?:number|null;
   strategy: "manual" | "plan";
   assignments?: TeamAssignment[];
   isolate?: boolean;
@@ -116,6 +123,15 @@ export interface DirectOptions {
   decideOn?: string[];
 }
 export interface Directed {
+  autoDispatch?:boolean;
+  autoPM?:boolean;
+  autoQA?:boolean;
+  autoIntegrate?:boolean;
+  maxQaRounds?:number;
+  maxPMRounds?:number;
+  integrationRoleIndex?:number|null;
+  pmRounds?:number;
+  integrationDone?:boolean;
   revision: number;
   strategy: "manual" | "plan";
   phase: RunPhase;
@@ -133,6 +149,7 @@ export interface Directed {
   artifactPath?: string;
 }
 export type TeamChange =
+  |({action:"automation"}&Pick<DirectOptions,"autoDispatch"|"autoPM"|"autoQA"|"autoIntegrate"|"maxQaRounds"|"maxPMRounds"|"integrationRoleIndex">)
   | { action: "dispatch"; assignments: TeamAssignment[] }
   | {
       action:

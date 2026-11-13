@@ -60,7 +60,8 @@ export function useWorkspaceDrafts(revision: number) {
       ])) {
         if (
           before[key]?.text !== next[key]?.text ||
-          before[key]?.mode !== next[key]?.mode
+          before[key]?.mode !== next[key]?.mode ||
+          JSON.stringify(before[key]?.attachments||[]) !== JSON.stringify(next[key]?.attachments||[])
         )
           patch[key] = next[key] || null;
       }

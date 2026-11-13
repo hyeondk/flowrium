@@ -284,3 +284,15 @@ h1 {
 .mobile-question .hint {
   margin-top: 5px;
 }
+
+fieldset { min-width:0; border:1px solid var(--line); border-radius:6px; margin:12px 0; }
+legend {font-weight:650;padding:0 5px;}
+label:has(input[type="checkbox"]) {display:flex;align-items:center;gap:8px;color:var(--text);}
+input[type="checkbox"] {width:18px;height:18px;flex:none;}
+.attachment {display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px;border:1px solid var(--line);border-radius:6px;margin:7px 0;}
+.attachment img {max-width:100%;max-height:180px;object-fit:contain;border-radius:5px;}
+.attachment span {flex:1;min-width:100px;}
+.queue-line {border-bottom:1px solid var(--line);padding:9px 0;}
+progress {width:100%;accent-color:var(--focus);}
+#nav {gap:1px;}
+#nav button {min-width:0;flex:1;max-width:120px;padding:7px 4px;font-size:13px;}

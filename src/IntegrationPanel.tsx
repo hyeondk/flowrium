@@ -7,7 +7,11 @@ import {
   ExternalLink,
   Download,
 } from "lucide-react";
-import type { GoogleStatus, RemoteItem } from "../shared/integrations";
+import type { GoogleStatus, RemoteItem, GoogleCalendar } from "../shared/integrations";
+import GoogleEventEditor from './GoogleEventEditor';
+import NativePimPanel from './NativePimPanel';
+import LinkDeliveryPanel from './LinkDeliveryPanel';
+import './integrations.css';
 export default function IntegrationPanel({
   projectId,
 }: {
@@ -23,6 +27,8 @@ export default function IntegrationPanel({
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const api = window.flowrium;
+  const [calendars,setCalendars] = useState<GoogleCalendar[]>([]), [calendarId,setCalendarId] = useState('primary');
+  const [selectedEvent,setSelectedEvent] = useState<RemoteItem>(), [body,setBody] = useState<{title:string;body:string}>();
   async function perform(action: () => Promise<unknown>) {
     if (busy) return;
     setBusy(true);
@@ -48,14 +54,16 @@ export default function IntegrationPanel({
       active = false;
     };
   }, []);
-  async function read(next = kind) {
+  async function read(next = kind, calendar = calendarId) {
     if (api) {
       setKind(next);
-      setItems(await api.readGoogle({ kind: next, query }));
+      setBody(undefined);setSelectedEvent(undefined);
+      if(next === 'calendar') setCalendars(await api.googleCalendars());
+      setItems(await api.readGoogle({ kind: next, query, calendarId: calendar }));
     }
   }
   return (
-    <section className="integration-panel settings-section">
+    <><section className="integration-panel settings-section">
       <h3>메일 / 일정 / 드라이브</h3>
       <p>본인의 Google 계정을 연결해 자료를 확인하고 프로젝트로 가져옵니다.</p>
       <div className="connection-state">
@@ -111,6 +119,7 @@ export default function IntegrationPanel({
         </details>
       )}
       <div className="settings-buttons">
+        {status?.connected && (!status.calendarWrite || !status.mailSend) && <button disabled={busy || status.authorizing} onClick={()=>void perform(()=>api!.connectGoogle())}>일정 / 메일 권한 다시 연결</button>}
         {!status?.connected && (
           <button
             className="button secondary"
@@ -145,6 +154,7 @@ export default function IntegrationPanel({
       </div>
       {status?.connected && (
         <>
+          {kind === 'calendar' && <label>캘린더<select aria-label="조회할 캘린더" value={calendarId} disabled={busy} onChange={e=>{const id=e.target.value;setCalendarId(id);void perform(()=>read('calendar',id));}}><option value="primary">기본 캘린더</option>{calendars.map(c=><option value={c.id} key={c.id}>{c.title}{c.writable?'':' / 읽기 전용'}</option>)}</select></label>}
           <nav className="integration-tabs">
             {(
               [
@@ -215,12 +225,17 @@ export default function IntegrationPanel({
                     원본
                   </a>
                 )}
+                {kind === 'calendar' && <button disabled={busy} onClick={()=>setSelectedEvent(item)}>일정 상세와 수정</button>}
+                {(kind === 'mail' || kind === 'drive') && <button disabled={busy} onClick={()=>void perform(async()=>{
+                  const value=kind==='mail'?await api!.googleMail(item.id):await api!.googleDocument(item.id);
+                  setBody({title:kind==='mail'?item.title:('name' in value?value.name:item.title),body:value.body});
+                })}>본문 읽기</button>}
                 {kind === "drive" && projectId && (
                   <button
                     disabled={busy}
                     onClick={() =>
                       void perform(async () => {
-                        const result = await api!.importGoogleDocument(
+                        const result = await api!.importGoogleFile(
                           projectId,
                           item.id,
                         );
@@ -235,6 +250,8 @@ export default function IntegrationPanel({
               </div>
             </article>
           ))}
+          {body && <section className="integration-body" aria-label="연동 자료 본문"><h4>{body.title}</h4><pre>{body.body || '이 파일은 본문 미리보기를 지원하지 않습니다. 프로젝트로 가져와 파일을 여세요.'}</pre></section>}
+          {kind==='calendar' && status.calendarWrite && <GoogleEventEditor key={calendarId+':'+(selectedEvent?.id||'new')} calendars={calendars} calendarId={calendarId} item={selectedEvent} onSaved={message=>{setNotice(message);void perform(()=>read());}}/>}
         </>
       )}
       {notice && <p role="status">{notice}</p>}
@@ -243,6 +260,6 @@ export default function IntegrationPanel({
           {error}
         </p>
       )}
-    </section>
+    </section><NativePimPanel/><LinkDeliveryPanel/></>
   );
 }

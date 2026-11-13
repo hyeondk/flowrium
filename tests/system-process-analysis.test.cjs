@@ -1,0 +1,9 @@
+const test=require('node:test'),assert=require('node:assert/strict'),{spawn}=require('node:child_process');
+const {registerSystemTools}=require('../electron/system-tools.cjs');
+test('프로세스 분석에는 자원 수치만 보내고 선택한 검증 프로세스만 신원 재확인 후 종료한다',async t=>{
+ const children=[spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'}),spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'})];
+ await Promise.all(children.map(c=>new Promise((resolve,reject)=>{c.once('spawn',resolve);c.once('error',reject);})));t.after(()=>children.forEach(c=>{if(c.exitCode===null&&!c.killed)c.kill();}));
+ const api={};let allowed=true,seen=false;const manager=registerSystemTools((n,f)=>api[n]=f,{project:()=>({path:process.cwd()})},{canRun:()=>allowed,analyzeProcesses:async rows=>{seen=true;assert(rows.every(r=>Object.keys(r).sort().join(',')==='cpu,memoryBytes,name,pid'));assert(!rows.some(r=>r.pid===process.pid));return {summary:'검증 자원 분석',candidates:[{pid:children[0].pid,reason:'검증용 대기 프로세스'},{pid:process.pid,reason:'자기 프로세스 제외'}]};}});t.after(()=>manager.shutdown());
+ const plan=await api.analyzeSystemProcesses();assert(seen);assert.deepEqual(plan.candidates.map(p=>p.pid),[children[0].pid]);await assert.rejects(api.stopSystemProcesses({token:plan.token,pids:[children[1].pid]}),/다시/);allowed=false;await assert.rejects(api.stopSystemProcesses({token:plan.token,pids:[children[0].pid]}),/상태/);allowed=true;
+ const exited=new Promise(resolve=>children[0].once('exit',resolve));const result=await api.stopSystemProcesses({token:plan.token,pids:[children[0].pid]});assert.deepEqual(result.stopped,[children[0].pid]);await exited;assert.equal(children[1].exitCode,null);assert.equal(children[1].killed,false);await assert.rejects(api.stopSystemProcesses({token:plan.token,pids:[children[0].pid]}),/다시/);
+});

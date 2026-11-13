@@ -154,8 +154,9 @@ async function verifyFreshAccount(binary, profile) {
     const content = asar
       .extractFile(archive, path.normalize(file.replace(/^\/+/, "")))
       .toString("utf8");
-    // Gmail's documented user alias is an API path, not a local account directory.
-    const localPaths = content.replaceAll("https://gmail.googleapis.com/gmail/v1/users/me/", "");
+    // Google 문서의 users/me 별칭은 로컬 계정 폴더가 아닌 API 경로입니다.
+    const localPaths = content.replaceAll("https://gmail.googleapis.com/gmail/v1/users/me/", "")
+      .replaceAll('https://www.googleapis.com/calendar/v3/users/me/', '');
     if (/\/Users\/[^/\s"']+\/|[A-Z]:\\\\?Users\\\\?[^\\\s"']+\\/i.test(localPaths))
       throw new Error("앱 소스 안에 특정 사용자의 절대 경로가 있습니다. / " + file);
   }

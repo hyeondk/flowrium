@@ -1,3 +1,4 @@
+import type { WorkflowAPI } from "./workflow";
 import type { MemoryAPI } from "./memory";
 import type { VoiceAPI } from "./voice";
 import type { RemoteAPI } from "./remote";
@@ -17,6 +18,14 @@ export interface ChatPreferences {
   model?: string;
   effort?: Effort;
   chatGptUrl?: string;
+  answerLength?: "short" | "normal" | "detailed";
+  testing?: boolean;
+  askNext?: boolean;
+  autoCompact?: boolean;
+  compactAt?: number;
+  sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+  approval?: "on-request" | "never";
+  networkAccess?: boolean;
 }
 export type ConversationEdit =
   | { action: "preferences"; preferences: ChatPreferences }
@@ -48,13 +57,18 @@ export interface Project {
   path: string;
   createdAt: string;
 }
+export interface ChatAttachment {id:string;name:string;type:string;size:number;sha256:string}
+export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string;effort?:Effort;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;error?:string}
 export interface Message {
+  attachments?: ChatAttachment[];
+  turnId?: string;
   id: string;
   role: "user" | "assistant" | "system";
   text: string;
   createdAt: string;
 }
 export interface Session {
+  restoredDraft?:{text:string;attachments:ChatAttachment[]};
   personalAssistant?: true;
   id: string;
   projectId: string;
@@ -64,6 +78,10 @@ export interface Session {
   workflow?: Workflow;
   preferences?: ChatPreferences;
   messages: Message[];
+  queuedMessages?: QueuedMessage[];
+  context?: {used:number;total:number;max:number;percent:number;updatedAt:string};
+  compacting?: boolean;
+  applicationTools?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,6 +92,7 @@ export interface CodexHistoryEntry {
   imported: boolean;
 }
 export interface Settings {
+  chatDefaults?: ChatPreferences;
   codexPath?: string;
   model?: string;
   effort: Effort;
@@ -117,6 +136,7 @@ export interface Bootstrap {
 }
 export interface FlowriumAPI
   extends
+    WorkflowAPI,
     MemoryAPI,
     VoiceAPI,
     RemoteAPI,
@@ -132,6 +152,11 @@ export interface FlowriumAPI
     ProjectDetailsAPI,
     ActivityAPI,
     TerminalAPI {
+  addChatAttachments(projectId:string,files:{name:string;type:string;bytes:Uint8Array}[]):Promise<ChatAttachment[]>;
+  readChatAttachment(projectId:string,id:string):Promise<{attachment:ChatAttachment;dataUrl?:string}>;
+  listQueuedMessages(sessionId:string):Promise<QueuedMessage[]>;
+  cancelQueuedMessage(sessionId:string,id:string):Promise<void>;
+  resumeQueuedMessages(sessionId:string):Promise<void>;
   openSessionChatGPT(id: string): Promise<void>;
   editConversation(id: string, input: ConversationEdit): Promise<Session>;
   updateState(): Promise<UpdateState>;
@@ -153,10 +178,11 @@ export interface FlowriumAPI
   send(input: {
     sessionId: string;
     text: string;
+    attachments?: string[];
     mode: Mode;
     model?: string;
     effort?: Effort;
-  }): Promise<{ accepted: boolean }>;
+  }): Promise<{ accepted: boolean; queued?: boolean; queueId?:string }>;
   interrupt(sessionId: string): Promise<void>;
   answerInput(input: { requestId: string; answers: InputAnswers }): Promise<void>;
   approval(input: {

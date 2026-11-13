@@ -5,6 +5,7 @@ let acknowledged = false;
 let nextThread = 0;
 let nextTurn = 0;
 const turns = new Map();
+const threads = new Map();
 const approvalTurns = new Map();
 const inputTurns = new Map();
 const write = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
@@ -36,6 +37,8 @@ function complete(threadId, turnId, message, policy) {
     threadId,
     turn: { id: turnId, status: "completed" },
   });
+  const saved=threads.get(threadId)?.find(t=>t.id===turnId);
+  if(saved){saved.status='completed';saved.items.push({id:turnId+'-answer',type:'agentMessage',text:message||`확인한 결과입니다. / ${policy}`});}
   turns.delete(turnId);
 }
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
@@ -118,9 +121,24 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     return;
   }
   if (method === "thread/start") {
-    write({ id, result: { thread: { id: `thread-${++nextThread}` } } });
+    const threadId=`thread-${++nextThread}`;threads.set(threadId,[]);
+    write({ id, result: { thread: { id: threadId } } });
     return;
   }
+  if(method === 'thread/turns/list') {write({id,result:{data:threads.get(params.threadId)||[],nextCursor:null}});return;}
+  if(method === 'thread/read') {write({id,result:{thread:{id:params.threadId,turns:threads.get(params.threadId)||[]}}});return;}
+  if(method === 'thread/fork') {
+    const source=threads.get(params.threadId)||[],index=params.lastTurnId?source.findIndex(t=>t.id===params.lastTurnId):source.length-1;
+    if(params.lastTurnId&&index<0){write({id,error:{message:'시험 턴이 없습니다.'}});return;}
+    const threadId=`thread-${++nextThread}`,copy=structuredClone(source.slice(0,index+1));copy.forEach(t=>{t.id=`turn-${++nextTurn}`;});threads.set(threadId,copy);
+    write({id,result:{thread:{id:threadId,turns:copy}}});return;
+  }
+  if(method === 'thread/revert') {
+    const source=threads.get(params.threadId)||[],index=source.findIndex(t=>t.id===params.beforeTurnId);
+    if(index<0){write({id,error:{message:'되감을 시험 턴이 없습니다.'}});return;}
+    threads.set(params.threadId,source.slice(0,index));write({id,result:{thread:{id:params.threadId,turns:[]}}});return;
+  }
+  if(method === 'thread/compact/start') {write({id,result:{}});setTimeout(()=>{notify('thread/tokenUsage/updated',{threadId:params.threadId,turnId:'compaction',tokenUsage:{last:{inputTokens:200,outputTokens:0,totalTokens:200},total:{totalTokens:200},modelContextWindow:1000}});notify('thread/compacted',{threadId:params.threadId});},25);return;}
   if (method === "thread/resume") {
     write({ id, result: { thread: { id: params.threadId } } });
     return;
@@ -129,9 +147,12 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     const turnId = `turn-${++nextTurn}`;
     const threadId = params.threadId;
     turns.set(turnId, { threadId });
+    if(!threads.has(threadId))threads.set(threadId,[]);
+    threads.get(threadId).push({id:turnId,status:'inProgress',items:[{id:params.clientUserMessageId||turnId+'-user',type:'userMessage',content:params.input}]});
     write({ id, result: { turn: { id: turnId, status: "inProgress" } } });
     notify("turn/started", { threadId, turn: { id: turnId } });
     const prompt = params.input[0].text;
+    if(prompt.includes("문맥검증"))notify("thread/tokenUsage/updated",{threadId,turnId,tokenUsage:{last:{inputTokens:900,outputTokens:0,totalTokens:900},total:{totalTokens:1900},modelContextWindow:1000}});
     if (prompt.includes("강제종료")) {
       setTimeout(() => process.exit(9), 20);
       return;
@@ -171,6 +192,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   if (method === "turn/interrupt") {
     write({ id, result: {} });
     turns.delete(params.turnId);
+    const saved=threads.get(params.threadId)?.find(t=>t.id===params.turnId);if(saved)saved.status="interrupted";
     notify("turn/completed", {
       threadId: params.threadId,
       turn: { id: params.turnId, status: "interrupted" },

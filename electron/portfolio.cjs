@@ -158,6 +158,7 @@ async function notes(root, spec) {
   );
 }
 function registerPortfolio(register, store, { chooseFolder, reveal }) {
+  require("./portfolio-operations.cjs").registerPortfolioOperations(register,store,{chooseFolder});
   register("readPortfolio", async () =>
     Promise.all(
       store.state.projects.map(async (project) => {

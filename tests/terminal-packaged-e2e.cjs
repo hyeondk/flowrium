@@ -26,6 +26,21 @@ async function main() {
     assert.equal(path.relative(profile, selectedProfile), '', '개인 계정의 앱 프로필과 격리돼야 합니다.');
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, project);
     const page = await app.firstWindow(); page.setDefaultTimeout(20000);
+    assert.equal(await page.title(),'Flowrium');
+    const document=await app.evaluate(async({app})=>{
+      const req=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json');
+      const {exportHTML}=req('./electron/html-export.cjs'),{extract}=req('./electron/google-tools.cjs');
+      const source='<section class="slide"><h1>번들 문서 검증</h1><p>실제 패키지 본문 읽기</p></section>';
+      const pdf=await exportHTML('pdf','번들 검증',source),pptx=await exportHTML('pptx','번들 검증',source);
+      const result={pdf:await extract(pdf,'application/pdf'),pptx:await extract(pptx,'application/vnd.openxmlformats-officedocument.presentationml.presentation')};
+      if(process.platform==='darwin'){
+        const helper=req('node:path').join(app.getAppPath().replace(/app\.asar$/,'app.asar.unpacked'),'electron/native/flowrium-pim');
+        result.native=JSON.parse(req('node:child_process').execFileSync(helper,['--self-test'],{encoding:'utf8'})).value.ready;
+      }
+      return result;
+    });
+    assert.match(document.pdf.replace(/\s/g,''),/실제패키지본문읽기/);assert.match(document.pptx,/번들 문서 검증/);
+    if(!win)assert.equal(document.native,true);
     const click = (name) => page.getByRole('button', { name, exact: true }).click();
     await click('프로젝트 폴더 선택'); await click('터미널'); await click('터미널 추가');
     const textbox = page.locator('.xterm-helper-textarea');
@@ -58,7 +73,7 @@ async function main() {
     await click('터미널 종료'); await waitOutput('SECOND_PTY');
     await send('exit 7'); await page.getByText('종료 코드 7', { exact: true }).waitFor();
     await click('탭 닫기'); await page.getByText('프로젝트 폴더에서 터미널을 열어 명령을 실행하세요.').waitFor();
-    console.log('패키지 터미널 검증 통과 / 플랫폼별 N-API / 가상 터미널 키 입력과 출력 / 독립 탭 / 작업 폴더 복원 / 셸 종료');
+    console.log('패키지 문서 생성·PDF/PPTX 본문 읽기·기본 앱 도우미 / 터미널 N-API·키 입력·독립 탭·작업 폴더 복원·셸 종료 통과');
   } finally {
     if (app) await app.close();
     await fs.rm(temporary, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 });

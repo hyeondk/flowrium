@@ -23,6 +23,9 @@ import type {
 import type { Artifact } from "../shared/workbench";
 import { workKinds } from "../shared/workbench";
 import "./portfolio.css";
+import PortfolioBoard from "./PortfolioBoard";
+import ArtifactViewer from "./ArtifactViewer";
+import DashboardInsights from "./DashboardInsights";
 
 const api = window.flowrium;
 export const errorText = (error: unknown) =>
@@ -365,7 +368,8 @@ function OutputIndex({
             {error}
           </p>
         )}
-        {selected.preview && <pre className="pf-preview">{body}</pre>}
+        <ArtifactViewer project={selected.project} artifact={selected} onChange={()=>reload(r=>r+1)}/>
+        {selected.preview && !/\.html?$/i.test(selected.path) && <pre className="pf-preview">{body}</pre>}
       </section>
     );
   }
@@ -669,7 +673,9 @@ export function ProjectPortfolio({
                 <strong>{complete.length}</strong>
               </button>
             </div>
+            <DashboardInsights cards={cards} sessions={records} onOpen={onOpenSession} onProject={id=>{const p=projects.find(p=>p.id===id);if(p)onProject(p,"home");}}/>
             {tools}
+            <PortfolioBoard cards={cards} onOpen={p=>onProject(p,"home")} onImported={onCreated} onChange={(id,archived)=>{if(id)onArchived?.(id,!!archived);reload(r=>r+1);}}/>
             <div className="pf-section-header">
               <h2>프로젝트</h2>
               <div className="pf-filter">

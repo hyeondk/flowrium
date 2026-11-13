@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import StoragePanel from "./StoragePanel";
 import type { Project } from "../shared/types";
 import type {
   ContainerInfo,
@@ -15,11 +16,19 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
     [containers, setContainers] = useState<ContainerInfo[]>([]),
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
+    [analysis,setAnalysis]=useState<any>(),[analysisPids,setAnalysisPids]=useState<number[]>([]),
     [confirmation, setConfirmation] = useState<{
       label: string;
       run: () => Promise<unknown>;
     }>();
   const api = window.flowrium;
+  const [scriptLabels,setScriptLabels]=useState<Record<string,string>>({});
+  useEffect(()=>{let active=true;void (async()=>{
+    try{const labels:Record<string,string>={},repos=await api!.repositoryAction(projectId,{action:'repositories'}),details=await api!.readProjectDetails(projectId);
+    for(const repo of repos)for(const name of scripts.filter(s=>s.startsWith(repo.id+'::')))labels[name]=repo.name+' / '+name.split('::')[1];
+    for(const service of details.services||[])labels['service::'+service.id]=service.name+' / '+service.command;
+    if(active)setScriptLabels(labels);}catch{}
+  })();return()=>{active=false;};},[projectId,scripts]);
   async function perform(action: () => Promise<unknown>) {
     if (busy) return;
     setBusy(true);
@@ -86,12 +95,14 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
           ["services", "프로젝트 서비스"],
           ["processes", "프로세스"],
           ["docker", "Docker"],
+          ["storage", "저장 공간"],
         ].map(([id, label]) => (
           <button key={id} aria-pressed={tab === id} onClick={() => setTab(id)}>
             {label}
           </button>
         ))}
       </nav>
+      {tab === "storage" && <StoragePanel/>}
       {tab === "services" && (
         <>
           <form
@@ -99,7 +110,7 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
             onSubmit={(e) => {
               e.preventDefault();
               setConfirmation({
-                label: "선택한 프로젝트 명령을 실행합니다 / " + script,
+                label: "선택한 프로젝트 명령을 실행합니다 / " + (scriptLabels[script]||script),
                 run: async () => {
                   await api!.runService(projectId, script);
                   await refresh();
@@ -125,7 +136,7 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
             >
               {scripts.map((s) => (
                 <option key={s} value={s}>
-                  {s}
+                  {scriptLabels[s]||s}
                 </option>
               ))}
             </select>
@@ -164,6 +175,8 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
       )}
       {tab === "processes" && (
         <>
+          <button disabled={busy} onClick={()=>void perform(async()=>{setAnalysis(await api!.analyzeSystemProcesses());setAnalysisPids([]);})}>Codex로 종료 후보 분석</button>
+          {analysis&&<section aria-label="AI 프로세스 분석"><h3>종료 후보와 근거</h3><p>{analysis.summary}</p>{analysis.candidates.map((p:any)=><label key={p.pid} style={{display:'block',margin:'10px 0'}}><input type="checkbox" checked={analysisPids.includes(p.pid)} onChange={e=>setAnalysisPids(v=>e.target.checked?[...v,p.pid]:v.filter(id=>id!==p.pid))}/>{p.name} / {p.pid} / {p.reason}</label>)}<button disabled={busy||!analysisPids.length} onClick={()=>setConfirmation({label:'선택한 프로세스 '+analysisPids.length+'개를 종료합니다.',run:async()=>{await api!.stopSystemProcesses({token:analysis.token,pids:analysisPids});setAnalysis(undefined);await refresh();}})}>선택한 후보 종료 검토</button></section>}
           <p>
             메모리 사용량 순서로 표시합니다. 개발 프로세스는 종료 버튼에서
             내용을 확인하고 중단할 수 있습니다.

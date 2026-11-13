@@ -36,10 +36,24 @@ export interface MemoryAPI {
     id: string,
   ): Promise<MemoryNote[]>;
   changeMemory(projectId: string, input: MemoryChange): Promise<MemoryNote>;
+  exportMemory(projectId: string): Promise<MemoryBundle>;
+  previewMemoryImport(projectId: string, bundle: unknown, scope: MemoryScope): Promise<MemoryImportPlan>;
+  applyMemoryImport(projectId: string, planId: string, keys: string[]): Promise<{notes: MemoryNote[];backups:number}>;
+  moveMemory(projectId: string, input:{id:string;scope:MemoryScope;revision:string;to:MemoryScope}): Promise<{note:MemoryNote;sourceRetained:boolean;notice?:string}>;
   assistantHome(): Promise<{
     projectId: string | null;
     connected: boolean;
     sessionId: string | null;
   }>;
   openAssistant(selected?: string): Promise<Session>;
+}
+export interface MemoryBundle {
+  format:"flowrium-memory";
+  version:1;
+  createdAt:string;
+  notes:(MemoryNote&{history:MemoryNote[]})[];
+}
+export interface MemoryImportPlan {
+  id:string;
+  entries:{key:string;title:string;scope:MemoryScope;action:"create"|"update";body:string;previous:string}[];
 }

@@ -26,7 +26,7 @@ function settings(input, current = DEFAULT_SETTINGS) {
     throw new Error("설정 형식이 올바르지 않습니다.");
   const next = { ...current };
   for (const key of Object.keys(input)) {
-    if (!["codexPath", "model", "effort", "theme"].includes(key))
+    if (!["codexPath", "model", "effort", "theme", "chatDefaults"].includes(key))
       throw new Error("지원하지 않는 설정입니다.");
     const value = input[key];
     if (key === "effort" && !["low", "medium", "high"].includes(value))
@@ -42,7 +42,7 @@ function settings(input, current = DEFAULT_SETTINGS) {
       if (key === "codexPath" && !path.isAbsolute(value))
         throw new Error("실행 파일의 절대 경로를 입력해 주세요.");
     }
-    next[key] = value;
+    next[key] = key === "chatDefaults" ? require("./chat-preferences.cjs").preferences(value) : value;
   }
   return next;
 }
@@ -166,6 +166,7 @@ class Store {
         next.projects.push(portableProject);
         for (const saved of repository.saved.values()) {
           const session = structuredClone(saved);
+          session.compacting=false;
           const binding = raw.localThreads?.[session.id];
           const legacySession = legacy
             ? raw.sessions.find(
@@ -346,6 +347,10 @@ class Store {
       title: extra.title || "새로운 작업",
       ...(extra.personalAssistant === true && { personalAssistant: true }),
       ...(extra.workflow && { workflow: extra.workflow }),
+      ...(extra.threadId && {threadId:extra.threadId}),
+      ...(extra.preferences && {preferences:structuredClone(extra.preferences)}),
+      ...(extra.context && {context:structuredClone(extra.context)}),
+      ...(extra.applicationTools && {applicationTools:true}),
       messages: extra.messages || [],
       createdAt: now,
       updatedAt: now,

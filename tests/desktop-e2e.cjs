@@ -83,7 +83,7 @@ async function run() {
       assert(session.messages.some(m=>m.role==="assistant"),session.title+" 응답 저장");
     }
     await page.getByRole("navigation",{name:"작업실 화면"}).getByRole("button",{name:"산출물",exact:true}).click();
-    await page.locator(".wb-file-row, .wb-line-item").first().click();
+    await page.locator(".wb-file-row, .wb-line-item").filter({hasText:"화면 검증 research"}).first().click();
     await btn("원본 대화").click();
     await btn("대화 관리").click();
     await page.getByLabel("이 대화의 모델").selectOption("test-model");
@@ -154,6 +154,9 @@ async function run() {
     await require("./activity-ui.cjs").verifyActivityUI(page);
     await require("./update-ui.cjs").verifyUpdateUI(app,page);
     console.log("실제 앱 검증 통과 / 프로젝트 선택 / 로그인 연결 모의 응답 / 여섯 업무의 독립 요청과 답변 / 체크리스트 / 검토·완료·재개 / 산출물 및 원본 / 분기·이름·되감기 / 앱 재실행 복원 / 프로젝트 보관·재개 / 팀 역할 병렬 실행 / 승인함 / 업데이트 버튼");
+  } catch(error) {
+    if(app) console.error("화면 검증 진단:",await (await app.firstWindow()).locator("body").innerText().then(t=>t.slice(-1800)).catch(()=>"화면 닫힘"));
+    throw error;
   } finally {
     if (app) await app.close();
     await fs.rm(temp, { recursive:true, force:true, maxRetries:6, retryDelay:220 });

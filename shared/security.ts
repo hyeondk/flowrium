@@ -1,4 +1,4 @@
-import type { FlowriumEvent, Mode } from "./types";
+import type { FlowriumEvent, Mode, ChatAttachment } from "./types";
 
 export interface SecurityPreferences {
   idleMinutes: number;
@@ -32,7 +32,7 @@ export interface UsageSnapshot {
     }[];
   }[];
 }
-export type ComposerDraft = { text: string; mode: Mode };
+export type ComposerDraft = { text: string; mode: Mode; attachments?:ChatAttachment[] };
 export interface SecurityAPI {
   readDrafts(revision: number): Promise<Record<string, ComposerDraft>>;
   writeDrafts(
