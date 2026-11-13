@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useMemo, useState } from "react";
 import {
   Archive,
@@ -217,8 +218,7 @@ export function KickoffForm({
               기존 프로젝트 폴더 사용
             </label>
             <label>
-              <input
-                type="checkbox"
+              <AnimatedCheckbox
                 checked={!!values.scaffold}
                 onChange={(e) =>
                   setValues((v) => ({ ...v, scaffold: e.target.checked }))
@@ -228,8 +228,7 @@ export function KickoffForm({
             </label>
             {values.repository && (
               <label>
-                <input
-                  type="checkbox"
+                <AnimatedCheckbox
                   checked={!!values.clone}
                   onChange={(e) =>
                     setValues((v) => ({ ...v, clone: e.target.checked }))

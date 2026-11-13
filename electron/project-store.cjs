@@ -39,6 +39,7 @@ function validateSession(session, projectId) {
   )
     throw new Error("가져온 대화의 원본 식별자가 올바르지 않습니다.");
   if (session.personalAssistant !== undefined && session.personalAssistant !== true) throw new Error("개인 비서 대화 형식이 올바르지 않습니다.");
+  if(session.scope!==undefined&&!['general','integrated'].includes(session.scope))throw Error('대화 종류를 확인해 주세요.');
   if (session.preferences !== undefined) require("./chat-preferences.cjs").preferences(session.preferences);
   if (session.workflow !== undefined) require("./workbench.cjs").validateWorkflow(session.workflow);
   if(session.queuedMessages!==undefined)require("./chat-queue.cjs").validateQueue(session.queuedMessages);
@@ -242,12 +243,12 @@ class ProjectStore {
     );
     return [...this.saved.values()].map(copy);
   }
-  async commit(sessions) {
+  async commit(sessions, options = {}) {
     const target = new Map(
       sessions.map((session) => {
         validateSession(session, this.id);
         const portable = copy(session);
-        delete portable.threadId;
+        if (!options.local) delete portable.threadId;
         return [session.id, portable];
       }),
     );

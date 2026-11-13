@@ -38,7 +38,7 @@ class Controller extends EventEmitter {
     });
     this.client.on("input", ({ requestId, params }) => {
       const run = this.findRun(params.threadId);
-      if (!run || run.cancelled || run.finalized || (run.turnId && run.turnId !== params.turnId)) {
+      if (!run || (run.client&&run.client!==this.client) || run.cancelled || run.finalized || (run.turnId && run.turnId !== params.turnId)) {
         this.client.resolveInput(requestId,true);
         return;
       }
@@ -52,8 +52,9 @@ class Controller extends EventEmitter {
     this.client.on("tool", async ({requestId,params}) => {
       const run=this.findRun(params.threadId,params.turnId);
       try {
-        if(!run || run.cancelled || run.finalized || (run.turnId&&run.turnId!==params.turnId) || this.options.canRun?.()===false) throw Error("이 작업의 도구 요청은 종료됐습니다.");
+        if(!run || (run.client&&run.client!==this.client) || run.cancelled || run.finalized || (run.turnId&&run.turnId!==params.turnId) || this.options.canRun?.()===false) throw Error("이 작업의 도구 요청은 종료됐습니다.");
         const session=this.store.session(run.sessionId);
+        if(session.scope)throw Error('일반 대화와 통합 채팅은 프로젝트 실행 도구를 사용할 수 없습니다.');
         const tools=await this.options.applicationTools?.(session)||[];
         if(!tools.some(t=>t.name===params.tool)) throw Error("허용되지 않은 앱 도구입니다.");
         const result=await this.options.callApplicationTool?.({sessionId:run.sessionId,name:params.tool,arguments:params.arguments,callId:params.callId});
@@ -81,8 +82,11 @@ class Controller extends EventEmitter {
     });
   }
   emitEvent(event) {
+    if(event.sessionId&&this.store.isCurrentConversation?.(event.sessionId)===false)return;
     this.emit("event", event);
   }
+  conversationClient(session){return session.scope?require('./conversation-scopes.cjs').scopeClient(this,session):Promise.resolve(this.client);}
+  conversationThreadParams(session){return session.scope?require('./conversation-scopes.cjs').scopeThreadParams(this,session):Promise.resolve({});}
   cancelStructuredAnalyses(){for(const analysis of this.analysisRuns?.values()||[])analysis.cancel?.();}
   runStructuredAnalysis(input){return require("./structured-analysis.cjs").runStructuredAnalysis(this,input);}
   listQueuedMessages(id){return this.messageQueue.list(id);}
@@ -178,6 +182,8 @@ class Controller extends EventEmitter {
     const next = await this.store.saveSettings(input);
     if (changedPath) {
       this.client.close();
+      for(const entry of this.scopeClients?.values()||[])entry.client?.close();
+      this.scopeClients?.clear();
       this.loadedThreads.clear();
       this.status = { available: false, authenticated: false };
     }
@@ -272,15 +278,16 @@ class Controller extends EventEmitter {
     });
     this.startRun(run, input, message, project)
       .catch(async (error) => {
-        if (error.code === "RPC_TIMEOUT" && !run.finalized) this.client.close();
-        else if (run.turnId && this.client.ready && !run.finalized)
-          await this.client
+        const client=run.client||this.client;
+        if (error.code === "RPC_TIMEOUT" && !run.finalized) client.close();
+        else if (run.turnId && client.ready && !run.finalized)
+          await client
             .request(
               "turn/interrupt",
               { threadId: run.threadId, turnId: run.turnId },
               2500,
             )
-            .catch(() => this.client.close());
+            .catch(() => client.close());
         await this.finish(
           run,
           run.cancelled ? "interrupted" : "failed",
@@ -291,6 +298,8 @@ class Controller extends EventEmitter {
     return { accepted: true };
   }
   async startRun(run, input, message, project) {
+    if(this.store.session(run.sessionId).scope)return require('./conversation-scopes.cjs').startScopedRun(this,run,input,message,project);
+    run.client=this.client;
     await this.client.start(this.store.state.settings.codexPath);
     if (run.cancelled || run.finalized) return this.finish(run, "interrupted");
     const account = await this.client.request("account/read", {
@@ -414,7 +423,7 @@ class Controller extends EventEmitter {
         text: "",
         createdAt: new Date().toISOString(),
       };
-      this.store.session(run.sessionId).messages.push(run.assistant);
+      this.store.peekSession(run.sessionId).messages.push(run.assistant);
     }
     return run.assistant;
   }
@@ -440,12 +449,12 @@ class Controller extends EventEmitter {
       this.emitEvent({
         type: "session",
         sessionId: run.sessionId,
-        session: structuredClone(this.store.session(run.sessionId)),
+        session: structuredClone(this.store.peekSession(run.sessionId)),
       });
     // Stream in memory and persist at the end of a turn (including interruption
     // and process failure). Token deltas never create project revision files.
   }
-  async notification({ method, params = {} }) {
+  async notification({ method, params = {} }, client=this.client) {
     if (method === "account/login/completed") {
       this.loginId = null;
       if (params.success) {
@@ -463,15 +472,15 @@ class Controller extends EventEmitter {
       return;
     }
     if (method === "serverRequest/resolved") {
-      for (const [key,request] of this.client.inputs || [])
-        if (request.id === params.requestId || String(request.id) === String(params.requestId)) this.client.resolveInput(key);
-      for (const [key, request] of this.client.approvals)
+      for (const [key,request] of client.inputs || [])
+        if (request.id === params.requestId || String(request.id) === String(params.requestId)) client.resolveInput(key);
+      for (const [key, request] of client.approvals)
         if (String(request.id) === String(params.requestId))
-          this.client.approvals.delete(key);
+          client.approvals.delete(key);
       return;
     }
     if(method === "thread/tokenUsage/updated") {
-      const s=this.store.state.sessions.find(s=>s.threadId===params.threadId),u=params.tokenUsage;
+      const s=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.threadId===params.threadId),u=params.tokenUsage;
       if(s&&u?.last&&Number.isFinite(u.modelContextWindow)&&u.modelContextWindow>0){
         const used=(u.last.inputTokens||0)+(u.last.outputTokens||0);
         s.context={used,total:u.total?.totalTokens||used,max:u.modelContextWindow,percent:Math.round(used/u.modelContextWindow*100),updatedAt:new Date().toISOString()};
@@ -480,11 +489,18 @@ class Controller extends EventEmitter {
       return;
     }
     if(method === "thread/compacted") {
-      const s=this.store.state.sessions.find(s=>s.threadId===params.threadId);
+      const s=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.threadId===params.threadId);
       if(s){s.compacting=false;this.emitEvent({type:"session",sessionId:s.id,session:structuredClone(s)});void this.messageQueue.flush(s.id);}
     }
     const run = this.findRun(params.threadId, params.turnId || params.turn?.id);
     if (!run || run.finalized) return;
+    if(run.client&&run.client!==client)return;
+    if(run.scope&&(run.ownerRevision!==(this.options.queueOwner?.()??'local')||this.options.canRun?.()===false)){
+      run.cancelled=true;await client.request('turn/interrupt',{threadId:run.threadId,turnId:run.turnId},2500).catch(()=>{});return this.finish(run,'interrupted');
+    }
+    if(run.scope&&method==='item/started'&&['commandExecution','fileChange','webSearch','mcpToolCall','collabAgentToolCall'].includes(params.item?.type)){
+      run.cancelled=true;await client.request('turn/interrupt',{threadId:run.threadId,turnId:run.turnId},2500).catch(()=>{});return this.finish(run,'failed','일반 대화와 통합 채팅의 허용 범위를 벗어난 실행을 차단했습니다.');
+    }
     if (method === "turn/started") {
       run.turnId = params.turn?.id;
       this.emitEvent({
@@ -540,7 +556,7 @@ class Controller extends EventEmitter {
   }
   forwardApproval({ requestId, method, params }) {
     const run = this.findRun(params.threadId);
-    if (!run || run.finalized || (run.approvalsAllowed === false || (run.approvalsAllowed === undefined && run.mode !== "build"))) {
+    if (!run || (run.client&&run.client!==this.client) || run.finalized || (run.approvalsAllowed === false || (run.approvalsAllowed === undefined && run.mode !== "build"))) {
       this.client.decide(requestId, "decline");
       return;
     }
@@ -588,7 +604,7 @@ class Controller extends EventEmitter {
       text: "작업 중지를 요청했습니다.",
     });
     if (run.threadId && run.turnId && !run.finalized)
-      await this.client.request("turn/interrupt", {
+      await (run.client||this.client).request("turn/interrupt", {
         threadId: run.threadId,
         turnId: run.turnId,
       });
@@ -604,12 +620,13 @@ class Controller extends EventEmitter {
     if (run.finalized) return;
     run.finalized = true;
     if (run.saveTimer) clearTimeout(run.saveTimer);
-    for (const [id, request] of this.client.inputs || [])
-      if (request.params.threadId === run.threadId) this.client.resolveInput(id);
-    for (const [id, request] of this.client.approvals)
+    const client=run.client||this.client;
+    for (const [id, request] of client.inputs || [])
+      if (request.params.threadId === run.threadId) client.resolveInput(id);
+    for (const [id, request] of client.approvals)
       if (request.params?.threadId === run.threadId)
-        this.client.approvals.delete(id);
-    const session = this.store.session(run.sessionId);
+        client.approvals.delete(id);
+    const session = this.store.peekSession(run.sessionId);
     if (status === "failed" || error)
       session.messages.push({
         id: randomUUID(),
@@ -667,10 +684,11 @@ class Controller extends EventEmitter {
             : "작업을 완료하지 못했습니다.",
     });
     if(!saveError && !this.shuttingDown) setImmediate(async()=>{
+      if(this.store.isCurrentConversation?.(session.id)===false)return;
       const prefs=require("./chat-preferences.cjs").resolved(this.store.state.settings.chatDefaults,session.preferences);
       if(status==="completed"&&prefs.autoCompact&&session.context?.percent>=prefs.compactAt&&!session.compacting&&!this.messageQueue.pending(session.id)&&this.options.canRun?.()!==false){
         session.compacting=true;this.emitEvent({type:"session",sessionId:session.id,session:structuredClone(session)});
-        try{await this.client.request("thread/compact/start",{threadId:session.threadId});}catch(e){session.compacting=false;this.emitEvent({type:"error",sessionId:session.id,text:publicMessage(e)});}
+        try{await client.request("thread/compact/start",{threadId:session.threadId});}catch(e){session.compacting=false;this.emitEvent({type:"error",sessionId:session.id,text:publicMessage(e)});}
       }
       void this.messageQueue.flush(session.id);
     });
@@ -682,9 +700,10 @@ class Controller extends EventEmitter {
     await Promise.all(analyses.map(a=>a.finished));
     await Promise.all(
       [...this.runs.values()].map(async (run) => {
+        const client=run.client||this.client;
         run.cancelled = true;
-        if (run.turnId && this.client.ready)
-          await this.client
+        if (run.turnId && client.ready)
+          await client
             .request(
               "turn/interrupt",
               { threadId: run.threadId, turnId: run.turnId },
@@ -697,6 +716,8 @@ class Controller extends EventEmitter {
     await this.messageQueue.tail;
     await Promise.all([...this.messageQueue.flights]);
     this.client.close();
+    for(const entry of this.scopeClients?.values()||[])entry.client?.close();
+    this.scopeClients?.clear();
     await this.store.queue;
   }
 }

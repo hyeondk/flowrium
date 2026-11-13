@@ -94,6 +94,7 @@ class HistoryImporter {
   }
   async list(projectId) {
     const project = this.store.project(projectId);
+    if(project.conversationScope)throw Error('Codex 기록 가져오기는 프로젝트 대화에서 사용해 주세요.');
     await this.start();
     const result = new Map();
     for (const archived of [false, true]) {
@@ -244,6 +245,7 @@ class HistoryImporter {
   }
   async _import(projectId, ids) {
     const project = this.store.project(projectId);
+    if(project.conversationScope)throw Error('Codex 기록 가져오기는 프로젝트 대화에서 사용해 주세요.');
     const unique = [...new Set(ids)];
     const listed = new Map(
       (await this.list(projectId)).map((entry) => [entry.id, entry]),

@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useState, type ReactNode } from "react";
 import { ProjectMemory } from "./ProjectMemory";
 import {
@@ -329,8 +330,7 @@ function Goals({
       <div className="pf-goals">
         {shown.map((g) => (
           <label key={g.id}>
-            <input
-              type="checkbox"
+            <AnimatedCheckbox
               checked={g.done}
               disabled={busy}
               onChange={(e) =>

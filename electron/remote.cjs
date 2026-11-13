@@ -467,6 +467,12 @@ function registerRemote(
       "/": "index.html",
       "/app.js": "app.js",
       "/style.css": "style.css",
+      "/fonts/NanumSquareRoundL.woff2": "fonts/NanumSquareRoundL.woff2",
+      "/fonts/NanumSquareRoundR.woff2": "fonts/NanumSquareRoundR.woff2",
+      "/fonts/NanumSquareRoundB.woff2": "fonts/NanumSquareRoundB.woff2",
+      "/fonts/NanumSquareRoundEB.woff2": "fonts/NanumSquareRoundEB.woff2",
+      "/fonts/OFL.txt": "fonts/OFL.txt",
+
       "/sw.js": "sw.js",
       "/manifest.webmanifest": "manifest.webmanifest",
       "/icon.png": "../../assets/flowrium.png",
@@ -483,12 +489,12 @@ function registerRemote(
           ? "text/html; charset=utf-8"
           : name.endsWith(".js")
             ? "text/javascript; charset=utf-8"
-            : name.endsWith(".png") ? "image/png" : name.endsWith(".webmanifest") ? "application/manifest+json" : "text/css; charset=utf-8",
+            : name.endsWith(".woff2") ? "font/woff2" : name.endsWith(".txt") ? "text/plain; charset=utf-8" : name.endsWith(".png") ? "image/png" : name.endsWith(".webmanifest") ? "application/manifest+json" : "text/css; charset=utf-8",
         "Cache-Control": "no-store",
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy":
-          "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+          "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
       });
       res.end(content);
     } catch {

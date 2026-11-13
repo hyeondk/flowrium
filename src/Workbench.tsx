@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import ArtifactViewer from "./ArtifactViewer";
 import { ArrowLeft, ArrowRight, BookOpen, Check, CheckCheck, ChevronRight, ClipboardList, FileText, FolderOpen, GitBranch, GitCommitHorizontal, Hand, ListChecks, LoaderCircle, MessageSquare, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
@@ -258,7 +259,7 @@ function SessionTools({ session, onSessionChange, running }: { session: Session;
       {!!answers.length && <label className="wb-answer-select">저장할 답변<select value={picked?.id || ""} onChange={(e) => setMessageId(e.target.value)}>{answers.map((m, i) =>
         <option value={m.id} key={m.id}>{i + 1}번째 답변 / {m.text.replace(/\s+/g, " ").slice(0, 38)}</option>)}</select></label>}
       <h3>체크리스트</h3>
-      {w?.checklist.map((item) => <div key={item.id} className="wb-check"><label><input type="checkbox" checked={item.done} disabled={busy || status === "done"} onChange={() => update({ action: "toggle", id: item.id })}/><span>{item.text}</span></label>
+      {w?.checklist.map((item) => <div key={item.id} className="wb-check"><label><AnimatedCheckbox checked={item.done} disabled={busy || status === "done"} onChange={() => update({ action: "toggle", id: item.id })}/><span>{item.text}</span></label>
         {status !== "done" && <button disabled={busy} aria-label={item.text + " 제외"} onClick={() => update({ action: "remove", id: item.id })}><Trash2 size={13}/></button>}</div>)}
       {status !== "done" && <form className="wb-check-form" onSubmit={(e) => { e.preventDefault(); if (task.trim()) void update({ action: "add", text: task }); }}>
         <input aria-label="새 체크리스트 항목" maxLength={400} placeholder="확인할 일 추가" value={task} onChange={(e) => setTask(e.target.value)}/>

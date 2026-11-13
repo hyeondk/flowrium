@@ -1,5 +1,6 @@
 const assert=require("node:assert/strict"),fs=require("node:fs/promises"),os=require("node:os"),path=require("node:path");
 const {_electron:electron}=require("playwright");
+const {newProjectConversation,leaveConversation}=require("./shell-test-helpers.cjs");
 const {Store}=require("../electron/store.cjs");
 (async()=>{
  const temp=await fs.mkdtemp(path.join(os.tmpdir(),"flowrium-voice-lifecycle-"));let app;
@@ -8,7 +9,7 @@ const {Store}=require("../electron/store.cjs");
   await store.saveSettings({codexPath:path.join(__dirname,"backend-fake-codex.cjs")});
   const env={...process.env,FLOWRIUM_USER_DATA:temp+"/profile",CODEX_HOME:temp+"/codex"};delete env.ELECTRON_RUN_AS_NODE;
   app=await electron.launch({args:[path.resolve(__dirname,"..")],env});const page=await app.firstWindow();page.setDefaultTimeout(15000);
-  await page.getByRole("button",{name:"새 자유 대화",exact:true}).click();
+  await newProjectConversation(page,project.id);
   await page.getByLabel("Codex에 보낼 작업 요청").waitFor();
   await app.evaluate(({ipcMain})=>{
    ipcMain.removeHandler("flowrium:voiceStatus");ipcMain.handle("flowrium:voiceStatus",()=>({configured:true}));
@@ -21,7 +22,7 @@ const {Store}=require("../electron/store.cjs");
   });
   await page.getByRole("button",{name:"음성으로 입력",exact:true}).click();
   await page.waitForFunction(()=>window.voiceTest.requested);
-  await page.getByRole("button",{name:"대시보드",exact:true}).click();
+  await leaveConversation(page);
   await page.getByRole("heading",{name:"프로젝트 대시보드",exact:true}).waitFor();
   await page.evaluate(()=>window.voiceTest.resolve());
   await page.waitForFunction(()=>window.voiceTest.stopped===1);

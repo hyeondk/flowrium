@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useState } from "react";
 import StoragePanel from "./StoragePanel";
 import type { Project } from "../shared/types";
@@ -176,7 +177,7 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
       {tab === "processes" && (
         <>
           <button disabled={busy} onClick={()=>void perform(async()=>{setAnalysis(await api!.analyzeSystemProcesses());setAnalysisPids([]);})}>Codex로 종료 후보 분석</button>
-          {analysis&&<section aria-label="AI 프로세스 분석"><h3>종료 후보와 근거</h3><p>{analysis.summary}</p>{analysis.candidates.map((p:any)=><label key={p.pid} style={{display:'block',margin:'10px 0'}}><input type="checkbox" checked={analysisPids.includes(p.pid)} onChange={e=>setAnalysisPids(v=>e.target.checked?[...v,p.pid]:v.filter(id=>id!==p.pid))}/>{p.name} / {p.pid} / {p.reason}</label>)}<button disabled={busy||!analysisPids.length} onClick={()=>setConfirmation({label:'선택한 프로세스 '+analysisPids.length+'개를 종료합니다.',run:async()=>{await api!.stopSystemProcesses({token:analysis.token,pids:analysisPids});setAnalysis(undefined);await refresh();}})}>선택한 후보 종료 검토</button></section>}
+          {analysis&&<section aria-label="AI 프로세스 분석"><h3>종료 후보와 근거</h3><p>{analysis.summary}</p>{analysis.candidates.map((p:any)=><label key={p.pid} style={{display:'block',margin:'10px 0'}}><AnimatedCheckbox checked={analysisPids.includes(p.pid)} onChange={e=>setAnalysisPids(v=>e.target.checked?[...v,p.pid]:v.filter(id=>id!==p.pid))}/>{p.name} / {p.pid} / {p.reason}</label>)}<button disabled={busy||!analysisPids.length} onClick={()=>setConfirmation({label:'선택한 프로세스 '+analysisPids.length+'개를 종료합니다.',run:async()=>{await api!.stopSystemProcesses({token:analysis.token,pids:analysisPids});setAnalysis(undefined);await refresh();}})}>선택한 후보 종료 검토</button></section>}
           <p>
             메모리 사용량 순서로 표시합니다. 개발 프로세스는 종료 버튼에서
             내용을 확인하고 중단할 수 있습니다.

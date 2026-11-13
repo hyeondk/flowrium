@@ -1,3 +1,4 @@
+import { AnimatedCheckbox, usePresence } from './ui-motion';
 import { useEffect, useRef, useState } from "react";
 import { BookMarked, MessagesSquare, RotateCcw, X } from "lucide-react";
 import type { MemoryImportPlan, MemoryNote, MemoryScope } from "../shared/memory";
@@ -125,7 +126,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
         </div>
         {importPlan&&<section aria-label="기억 가져오기 미리보기"><h3>적용할 메모 선택</h3>
           {importPlan.entries.map(note=><label className="memory-check" key={note.key}>
-            <input type="checkbox" checked={picked.includes(note.key)} onChange={e=>setPicked(prev=>e.target.checked?[...prev,note.key]:prev.filter(k=>k!==note.key))}/>
+            <AnimatedCheckbox checked={picked.includes(note.key)} onChange={e=>setPicked(prev=>e.target.checked?[...prev,note.key]:prev.filter(k=>k!==note.key))}/>
             {note.title} / {note.action==="update"?"기존 메모 갱신 / 이전 개정 보존":"새 메모"}
           </label>)}
           <button disabled={busy||!picked.length} onClick={()=>void run(async()=>{
@@ -136,8 +137,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
         {notice&&<p role="status">{notice}</p>}
       </details>
       <label className="memory-check">
-        <input
-          type="checkbox"
+        <AnimatedCheckbox
           checked={showDeleted}
           onChange={(e) => setShowDeleted(e.target.checked)}
         />
@@ -266,8 +266,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
             />
           </label>
           <label className="memory-check">
-            <input
-              type="checkbox"
+            <AnimatedCheckbox
               checked={draft.linked}
               disabled={busy || selected?.deleted}
               onChange={(e) => change("linked", e.target.checked)}
@@ -387,10 +386,11 @@ export function AssistantShortcut({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
+  const { present, phase } = usePresence(open);
   const api = window.flowrium;
   useEffect(() => {
-    if (open && !dialog.current?.open) dialog.current?.showModal();
-  }, [open]);
+    if (open && present && !dialog.current?.open) dialog.current?.showModal();
+  }, [open, present]);
   if (!api) return null;
   async function enter(id?: string) {
     const record = await api!.openAssistant(id);
@@ -426,11 +426,13 @@ export function AssistantShortcut({
         <MessagesSquare size={16} />
         <span>개인 비서</span>
       </button>
-      {open && (
+      {present && (
         <dialog
           ref={dialog}
           className="assistant-dialog"
-          onCancel={() => setOpen(false)}
+          data-phase={phase}
+          inert={phase === "exit"}
+          onCancel={(event) => { event.preventDefault(); setOpen(false); }}
           aria-label="개인 비서 연결"
         >
           <h2>개인 비서</h2>

@@ -27,6 +27,7 @@ async function attachmentRoot(store, projectId) {
   return directory;
 }
 async function addAttachments(store, projectId, files) {
+  const project=store.project(projectId);
   if (!Array.isArray(files) || !files.length || files.length > MAX_FILES) throw Error('첨부 파일을 1개에서 10개까지 선택해 주세요.');
   let total = 0;
   const prepared = files.map(file => {
@@ -49,6 +50,7 @@ async function addAttachments(store, projectId, files) {
       const {data,...record}=file;
       await createJSON(path.join(dir,'attachment.json'),record);
     }
+    if(store.project(projectId)!==project)throw Error('첨부 중 계정이나 프로젝트가 바뀌었습니다. 다시 첨부해 주세요.');
     return prepared.map(({data,...a})=>a);
   } catch(error) {
     for (const dir of created) await fs.rm(dir,{recursive:true,force:true}).catch(()=>{});
@@ -56,6 +58,7 @@ async function addAttachments(store, projectId, files) {
   }
 }
 async function resolveAttachments(store,projectId,ids=[]) {
+  const project=store.project(projectId);
   if (!Array.isArray(ids) || ids.length > MAX_FILES || ids.some(id=>typeof id!=='string'||!UUID.test(id)) || new Set(ids).size!==ids.length) throw Error('첨부 파일 식별자를 확인해 주세요.');
   if (!ids.length) return [];
   const root = await attachmentRoot(store,projectId), result=[];
@@ -72,6 +75,7 @@ async function resolveAttachments(store,projectId,ids=[]) {
     if(createHash('sha256').update(data).digest('hex')!==record.sha256) throw Error('첨부 파일 내용이 변경됐습니다. 다시 첨부해 주세요.');
     result.push({...record,path:file,image:Boolean(imageType(data)),...(imageType(data)&&data.length<=2*1024*1024?{dataUrl:`data:${imageType(data)};base64,${data.toString('base64')}`}:{})});
   }
+  if(store.project(projectId)!==project)throw Error('첨부를 읽는 중 계정이나 프로젝트가 바뀌었습니다. 다시 확인해 주세요.');
   return result;
 }
 function registerChatAttachments(register,store) {

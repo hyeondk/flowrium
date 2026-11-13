@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import { useCallback, useEffect, useState } from "react";
 import { LockKeyhole, ShieldCheck } from "lucide-react";
 import type {
@@ -330,8 +331,7 @@ export function SecurityPanel({ security }: Props) {
       {switches.map(([key, label]) => (
         <label className="security-row" key={key}>
           <span>{label}</span>
-          <input
-            type="checkbox"
+          <AnimatedCheckbox
             checked={prefs[key]}
             disabled={busy}
             onChange={(e) => change({ [key]: e.target.checked })}

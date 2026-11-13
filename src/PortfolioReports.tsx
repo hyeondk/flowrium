@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useState } from "react";
 import {
   ArrowRight,
@@ -211,8 +212,7 @@ export default function PortfolioReports({
               <div className="pf-report-targets">
                 {projects.map((p) => (
                   <label key={p.id}>
-                    <input
-                      type="checkbox"
+                    <AnimatedCheckbox
                       disabled={
                         created.length > 0 ||
                         (!picked.includes(p.id) && picked.length >= 64)

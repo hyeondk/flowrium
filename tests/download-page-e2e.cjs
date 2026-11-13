@@ -19,6 +19,10 @@ async function run() {
     "release-config.mjs",
     "mark.png",
     "workspace.png",
+    "fonts/NanumSquareRoundR.woff2",
+    "fonts/NanumSquareRoundB.woff2",
+    "fonts/NanumSquareRoundEB.woff2",
+    "fonts/OFL.txt",
   ]);
   const serverRequests=[];
   const server = http.createServer(async (req, res) => {
@@ -28,13 +32,17 @@ async function run() {
       res.writeHead(404).end();
       return;
     }
-    const mime = file.endsWith(".png")
-      ? "image/png"
-      : file.endsWith(".html")
-        ? "text/html"
-        : file.endsWith(".css")
-          ? "text/css"
-          : "text/javascript";
+    const mime = file.endsWith(".woff2")
+      ? "font/woff2"
+      : file.endsWith(".txt")
+        ? "text/plain; charset=utf-8"
+        : file.endsWith(".png")
+          ? "image/png"
+          : file.endsWith(".html")
+            ? "text/html"
+            : file.endsWith(".css")
+              ? "text/css"
+              : "text/javascript";
     res.writeHead(200, { "content-type": mime });
     res.end(await fs.readFile(path.join(root, file)));
   });
@@ -97,6 +105,14 @@ async function run() {
     );
     await page.goto("http://127.0.0.1:" + server.address().port,{waitUntil:'domcontentloaded'});
     await page.getByRole("status").filter({ hasText: "2개 플랫폼" }).waitFor();
+    const fonts=await page.evaluate(async()=>{
+      const loaded=await Promise.all([400,700,800].map(weight=>document.fonts.load(weight+' 16px NanumSquareRound','Flowrium 프로젝트')));
+      return{counts:loaded.map(rows=>rows.length),family:getComputedStyle(document.body).fontFamily};
+    });
+    assert.deepEqual(fonts.counts,[1,1,1]);assert.match(fonts.family,/NanumSquareRound/);
+    for(const name of ['NanumSquareRoundR.woff2','NanumSquareRoundB.woff2','NanumSquareRoundEB.woff2'])assert.ok(serverRequests.includes('/fonts/'+name),'공식 로컬 글꼴 '+name);
+    assert.match(await page.locator('.hero p').innerText(),/통합 채팅 \/ 프로젝트 대화 \/ 일반 대화/);
+    assert.match(await page.locator('.app-preview figcaption').innerText(),/마우스를 올리면 펼쳐집니다/);
     const image = page.locator(".app-preview img");
     await page.waitForFunction(()=>{const image=document.querySelector('.app-preview img');return image?.complete&&image.naturalWidth===1392&&image.naturalHeight===930;});
     assert.equal(
@@ -141,8 +157,9 @@ async function run() {
     tag = "v0.3.0";
     await page.getByRole("button", { name: "다시 확인" }).click();
     await page.getByRole("status").filter({ hasText: "2개 플랫폼" }).waitFor();
+    assert.deepEqual(pageErrors,[]);
     console.log(
-      "공개 페이지 실제 브라우저 검증 / 실제 앱 이미지 / 네 화면 폭 / 미공증 안내 / 플랫폼 링크 / 이전 Mac 차단 / 재시도",
+      "공개 페이지 실제 브라우저 검증 / 공식 로컬 글꼴 3종 / 대화함과 자동 메뉴 소개 / 실제 앱 이미지 / 네 화면 폭 / 미공증 안내 / 플랫폼 링크 / 이전 Mac 차단 / 재시도",
     );
   } catch(error){
     console.error('다운로드 페이지 진단',JSON.stringify({pending:[...pending].map(request=>request.url()),requestFailures,pageErrors,serverRequests:serverRequests.slice(-80),readyState:page&&!page.isClosed()?await page.evaluate(()=>document.readyState).catch(()=>null):null}));

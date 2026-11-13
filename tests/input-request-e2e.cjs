@@ -35,7 +35,7 @@ async function run() {
     const page = await app.firstWindow();
     page.setDefaultTimeout(16000);
     const button = (name) => page.getByRole("button", { name, exact: true });
-    const form = page.getByRole("form", { name: "Codex 질문" });
+    let form = page.locator(".main-shell").getByRole("form", { name: "Codex 질문" });
     async function launchQuestion() {
       await page.evaluate(
         (id) =>
@@ -59,6 +59,7 @@ async function run() {
       throw Error("질문 수신 시간 초과");
     }
     async function openInbox() {
+      form=page.locator(".main-shell").getByRole("form", {name:"Codex 질문"});
       await page.getByRole("button", { name: /^승인함/ }).click();
       await form.waitFor();
     }
@@ -94,6 +95,7 @@ async function run() {
     await openInbox();
     assert.equal(await form.getByLabel("비밀 답변").inputValue(), "");
     await form.getByRole("button", { name: "대화 열기" }).click();
+    form=page.locator(".conversation-dock").getByRole("form",{name:"Codex 질문"});
     await form.waitFor();
     await answer("첫 번째 참고 자료", "절대 저장하지 않을 테스트 값");
     await page

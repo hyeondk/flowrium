@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import { useState } from 'react';
 import type { ProjectChange, ProjectDetails, ProjectSchedule } from '../shared/project-details';
 import './portfolio-tools.css';
@@ -9,7 +10,7 @@ export default function AdvancedGoals({data,onChange}:{data:ProjectDetails;onCha
   const key=periodKey(date,period),shown=(data.periodGoals||[]).filter(g=>g.period===period&&g.key===key);
   async function update(change:ProjectChange){if(busy)return;setBusy(true);setError('');try{const next=await window.flowrium!.updateProjectDetails(data.projectId,data.revision,change);onChange(next);if(change.action==='goal-add'){setText('');setTarget('');setDue('');}}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   return <section className="pf-panel advanced-goals" aria-label="기간 목표와 반복 일정"><header className="pf-section-header"><h2>기간별 목표</h2><div className="pf-actions"><select aria-label="목표 기간" value={period} onChange={e=>setPeriod(e.target.value as 'week'|'month')}><option value="week">주간</option><option value="month">월간</option></select><input type="date" aria-label="목표 기준일" value={date} onChange={e=>{if(e.target.value)setDate(e.target.value);}}/></div></header>
-    {shown.map(g=><div className="ag-row" key={g.id}><label><input type="checkbox" checked={g.done} disabled={busy} onChange={e=>void update({action:'goal-check',id:g.id,done:e.target.checked})}/><span>{g.text}{g.parent&&<small> / 월간 목표 {data.periodGoals?.find(p=>p.id===g.parent)?.text}</small>}{g.due&&<small> / 기한 {g.due}</small>}{g.carriedTo&&<small> / 다음 주로 이월함</small>}</span></label>
+    {shown.map(g=><div className="ag-row" key={g.id}><label><AnimatedCheckbox checked={g.done} disabled={busy} onChange={e=>void update({action:'goal-check',id:g.id,done:e.target.checked})}/><span>{g.text}{g.parent&&<small> / 월간 목표 {data.periodGoals?.find(p=>p.id===g.parent)?.text}</small>}{g.due&&<small> / 기한 {g.due}</small>}{g.carriedTo&&<small> / 다음 주로 이월함</small>}</span></label>
       {g.target!==undefined&&<label>진척<input aria-label={g.text+' 진척'} inputMode="decimal" defaultValue={String(g.current||0)} disabled={busy} onBlur={e=>{const value=Number(e.target.value);if(Number.isFinite(value)&&value>=0&&value!==g.current)void update({action:'goal-progress',id:g.id,current:value});}}/><span>/ {g.target}</span></label>}
       {period==='week'&&!g.carriedTo&&<button disabled={busy} onClick={()=>{const next=new Date(g.key+'T12:00:00');next.setDate(next.getDate()+7);void update({action:'goal-carry',id:g.id,key:day(next)});}}>다음 주로 이월</button>}
       <button disabled={busy} onClick={()=>void update({action:'goal-remove',id:g.id})}>삭제</button>

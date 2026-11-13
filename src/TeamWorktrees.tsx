@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TeamWorktree, TeamWorktreeBoard, TeamWorktreeChange, WorktreeRemote } from '../shared/team-worktrees';
 import './team-worktrees.css';
@@ -57,7 +58,7 @@ function RunWorktrees({ projectId, runId }: Props) {
         {tree.owner!==tree.index&&<p>읽기 전용 검토 역할입니다. 변경 작업은 담당 역할 탭에서 진행하세요.</p>}
         <button type="button" disabled={busy} onClick={()=>run({action:'diff',index})}>기준과 커밋 차이 보기</button>
         {tree.files.length>0&&<div className="tree-files">{tree.files.map(f=><div key={f.file}>
-          <label><input type="checkbox" disabled={busy||!!tree.mergeHead||tree.owner!==index} checked={chosen.includes(f.file)} onChange={e=>setChosen(old=>e.target.checked?[...old,f.file]:old.filter(p=>p!==f.file))}/>{f.code} / {f.file}</label>
+          <label><AnimatedCheckbox disabled={busy||!!tree.mergeHead||tree.owner!==index} checked={chosen.includes(f.file)} onChange={e=>setChosen(old=>e.target.checked?[...old,f.file]:old.filter(p=>p!==f.file))}/>{f.code} / {f.file}</label>
           <button type="button" disabled={busy} onClick={()=>run({action:'diff',index,file:f.file})}>차이</button></div>)}</div>}
         {tree.owner===index&&!tree.mergeHead&&tree.files.length>0&&<div className="tree-actions"><label>커밋 제목<input value={message} maxLength={240} onChange={e=>setMessage(e.target.value)}/></label>
           <button type="button" disabled={busy||!chosen.length||!message.trim()} onClick={()=>run({action:'commit',index,head:tree.head,files:chosen,message})}>선택 파일 커밋</button></div>}

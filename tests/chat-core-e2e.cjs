@@ -1,4 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+const {openConversation}=require('./shell-test-helpers.cjs');
 const {_electron}=require('playwright'),{Store}=require('../electron/store.cjs'),{png}=require('./chat-fixtures.cjs');
 async function main(){
  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-chat-screen-')),profile=path.join(temp,'profile');let app,page;
@@ -10,7 +11,7 @@ async function main(){
  async function launch(){app=await _electron.launch({args:[path.resolve(__dirname,'..')],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(16000);await button('개인 비서').waitFor();}
  async function snapshot(){return page.evaluate(()=>window.flowrium.bootstrap());}
  async function until(fn){for(let i=0;i<250;i++){if(await fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('채팅 화면 상태 대기 시간 초과');}
- async function open(title){await page.locator('.workspace-side').getByRole('button',{name:'대시보드',exact:true}).click();await page.locator('.pf-row').filter({hasText:title}).first().click();await input().waitFor();}
+ async function open(title){await openConversation(page,title);}
  try{
   await launch();await open('첨부 검증 대화');
   await page.getByLabel('채팅에 첨부할 파일').setInputFiles({name:'원본.md',mimeType:'text/markdown',buffer:Buffer.from('실제 첨부 원문')});

@@ -139,6 +139,8 @@ contextBridge.exposeInMainWorld(
     musicPlayer: () => invoke("musicPlayer"),
     bootstrap: () => invoke("bootstrap"),
     chooseProject: () => invoke("chooseProject"),
+    createHubConversation: input => invoke("createHubConversation",input),
+    listHubConversations: () => invoke("listHubConversations"),
     createSession: (projectId) => invoke("createSession", projectId),
     deleteSession: (id) => invoke("deleteSession", id),
     saveSettings: (input) => invoke("saveSettings", input),

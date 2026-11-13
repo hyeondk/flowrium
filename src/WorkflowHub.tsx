@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 import InputRequestPanel from "./InputRequestPanel";
 import type {FlowriumAPI,Session} from "../shared/types";
@@ -92,8 +93,8 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
     {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
     {!data&&<p>업무 연결 기록을 불러오고 있습니다.</p>}
     {data&&tab==="decisions"&&<>
-      <div className="workflow-actions"><label><input type="checkbox" checked={showHidden} onChange={e=>setShowHidden(e.target.checked)}/>숨긴 항목과 미룬 항목</label>
-        <label><input type="checkbox" checked={showHistory} onChange={e=>setShowHistory(e.target.checked)}/>처리한 기록</label>
+      <div className="workflow-actions"><label><AnimatedCheckbox checked={showHidden} onChange={e=>setShowHidden(e.target.checked)}/>숨긴 항목과 미룬 항목</label>
+        <label><AnimatedCheckbox checked={showHistory} onChange={e=>setShowHistory(e.target.checked)}/>처리한 기록</label>
         <button disabled={busy||!data.proposals.some(p=>p.status==="pending")} onClick={()=>void act({action:"recommend"},"결정 묶음을 검토하는 대화를 시작했습니다. 승인 전에는 업무를 실행하지 않습니다.")}>AI로 결정 묶음 추천</button>
         {onOpenInbox&&<button onClick={onOpenInbox}>실행 승인함 열기</button>}</div>
       {data.pending.map(event=>event.questions?<InputRequestPanel key={event.requestId} event={event} title={data.sessions.find(s=>s.id===event.sessionId)?.title} onOpen={()=>void open(event.sessionId||null)}/>:
@@ -108,7 +109,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
       </div>}
       {!pending.length&&!data.pending.length&&<p>확인할 결정이 없습니다.</p>}
       {pending.map(p=><article className="workflow-card" key={p.id}>
-        <header><label><input type="checkbox" checked={selected.includes(p.id)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,p.id]:ids.filter(id=>id!==p.id))}/><strong>{p.title}</strong></label><span>{proposalState[p.status]}</span></header>
+        <header><label><AnimatedCheckbox checked={selected.includes(p.id)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,p.id]:ids.filter(id=>id!==p.id))}/><strong>{p.title}</strong></label><span>{proposalState[p.status]}</span></header>
         <p>{new Date(p.createdAt).toLocaleString("ko-KR")}</p><EventPreview proposal={p}/>{!(p.kind==="external"&&p.preview)&&<pre>{p.body}</pre>}{p.result&&<details><summary>처리 결과</summary><pre>{p.result}</pre></details>}
         <div className="workflow-actions">{p.status==="pending"&&<><button disabled={busy} onClick={()=>proposalAction(p,"approve")}>내용 확인하고 승인</button><button disabled={busy} onClick={()=>proposalAction(p,"reject")}>거절</button>
           <button disabled={busy} onClick={()=>void act({action:"snooze",id:p.id,revision:p.revision,minutes:60})}>한 시간 미루기</button></>}
@@ -121,7 +122,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
         {r.body&&<pre>{r.body}</pre>}{r.artifactPath&&<p>저장한 산출물 / {r.artifactPath}</p>}{r.error&&<p>{r.error}</p>}{r.sessionId&&<button onClick={()=>void open(r.sessionId||null)}>보고 대화 열기</button>}</article>)}</details>}
     </>}
     {data&&tab==="notifications"&&<>
-      <div className="workflow-actions"><label><input type="checkbox" checked={unreadOnly} onChange={e=>setUnreadOnly(e.target.checked)}/>미확인 알림만</label>
+      <div className="workflow-actions"><label><AnimatedCheckbox checked={unreadOnly} onChange={e=>setUnreadOnly(e.target.checked)}/>미확인 알림만</label>
         <button disabled={busy||!unread} onClick={()=>void act({action:"read",ids:data.notifications.filter(n=>!n.readAt).map(n=>n.id)})}>모두 읽음</button>
         <button disabled={busy} onClick={()=>void act({action:"clearNotifications",readOnly:true})}>읽은 알림 정리</button></div>
       {[...new Set(data.notifications.map(n=>n.group))].map(group=><section key={group}><h3>{data.sessions.find(s=>s.id===group)?.title||(/^[a-f0-9-]{36}$/i.test(group)?"팀 업무 보고":group)}</h3>
@@ -148,16 +149,16 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
     {data&&prefs&&tab==="assistant"&&<>
       <form className="workflow-form" onSubmit={event=>{event.preventDefault();void act({action:"preferences",value:prefs},"비서 운영 설정을 저장했습니다.").then(()=>{prefDirty.current=false;});}}>
         <h3>개인 비서 운영 설정</h3><p>켜기 전에는 주기 감시와 AI 보고를 실행하지 않습니다. AI 보고를 켜면 연결한 ChatGPT 계정의 사용량을 씁니다.</p>
-        <label><input type="checkbox" checked={prefs.enabled} onChange={e=>preference("enabled",e.target.checked)}/>정한 시간에 프로젝트 감시와 반복 목표 알림 켜기</label>
-        <label><input type="checkbox" checked={prefs.aiReports} onChange={e=>preference("aiReports",e.target.checked)}/>수집한 근거를 개인 비서 AI에게 보내 보고받기</label>
+        <label><AnimatedCheckbox checked={prefs.enabled} onChange={e=>preference("enabled",e.target.checked)}/>정한 시간에 프로젝트 감시와 반복 목표 알림 켜기</label>
+        <label><AnimatedCheckbox checked={prefs.aiReports} onChange={e=>preference("aiReports",e.target.checked)}/>수집한 근거를 개인 비서 AI에게 보내 보고받기</label>
         <label>보고를 보관할 프로젝트<select aria-label="보고를 보관할 프로젝트" value={prefs.projectId||""} onChange={e=>preference("projectId",e.target.value||null)}><option value="">선택하세요</option>{data.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
         <label>감시 주기<select aria-label="감시 주기" value={prefs.intervalMinutes} onChange={e=>preference("intervalMinutes",Number(e.target.value))}>{[5,15,30,60,120,240,1440].map(n=><option key={n} value={n}>{n}분</option>)}</select></label>
         <div className="workflow-actions"><label>시작 시각<select aria-label="시작 시각" value={prefs.startHour} onChange={e=>preference("startHour",Number(e.target.value))}>{Array.from({length:24},(_,n)=><option key={n} value={n}>{n}시</option>)}</select></label>
           <label>마침 시각<select aria-label="마침 시각" value={prefs.endHour} onChange={e=>preference("endHour",Number(e.target.value))}>{Array.from({length:24},(_,n)=><option key={n} value={n}>{n}시</option>)}</select></label></div>
-        <fieldset><legend>운영 요일</legend><div className="workflow-actions">{dayNames.map((day,index)=><label key={day}><input type="checkbox" checked={prefs.weekdays.includes(index)} onChange={e=>preference("weekdays",e.target.checked?[...prefs.weekdays,index]:prefs.weekdays.filter(d=>d!==index))}/>{day}</label>)}</div></fieldset>
+        <fieldset><legend>운영 요일</legend><div className="workflow-actions">{dayNames.map((day,index)=><label key={day}><AnimatedCheckbox checked={prefs.weekdays.includes(index)} onChange={e=>preference("weekdays",e.target.checked?[...prefs.weekdays,index]:prefs.weekdays.filter(d=>d!==index))}/>{day}</label>)}</div></fieldset>
         <label>시간대<input value={prefs.timezone} maxLength={100} onChange={e=>preference("timezone",e.target.value)}/></label>
-        <label><input type="checkbox" checked={prefs.github} onChange={e=>preference("github",e.target.checked)}/>GitHub 현황을 보고에 포함</label>
-        <label><input type="checkbox" checked={prefs.mail} onChange={e=>preference("mail",e.target.checked)}/>연결한 메일 현황을 보고에 포함</label>
+        <label><AnimatedCheckbox checked={prefs.github} onChange={e=>preference("github",e.target.checked)}/>GitHub 현황을 보고에 포함</label>
+        <label><AnimatedCheckbox checked={prefs.mail} onChange={e=>preference("mail",e.target.checked)}/>연결한 메일 현황을 보고에 포함</label>
         <div className="workflow-actions"><button disabled={busy}>비서 설정 저장</button><button type="button" disabled={busy} onClick={()=>void act({action:"reportNow"},"현재 상태 보고를 만들었습니다.")}>지금 상태 보고</button></div>
       </form>
       <form className="workflow-form" onSubmit={event=>{event.preventDefault();void act({action:"reminderAdd",when:new Date(when).toISOString(),text:reminder,repeatDays},"알림을 등록했습니다.").then(result=>{if(result){setReminder("");setWhen("");}});}}>

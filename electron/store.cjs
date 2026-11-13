@@ -70,6 +70,7 @@ class Store {
     };
     this.queue = Promise.resolve();
     this.repositories = new Map();
+    this.conversations = new (require('./conversation-store.cjs').ConversationStore)(directory);
   }
   async load() {
     try {
@@ -165,6 +166,7 @@ class Store {
         this.repositories.set(repository.id, repository);
         next.projects.push(portableProject);
         for (const saved of repository.saved.values()) {
+          if(saved.scope)throw Error('프로젝트 기록에 개인 대화가 섞여 있습니다. 원본은 보존했습니다.');
           const session = structuredClone(saved);
           session.compacting=false;
           const binding = raw.localThreads?.[session.id];
@@ -199,10 +201,14 @@ class Store {
     return JSON.parse(await fs.readFile(file, "utf8"));
   }
   snapshot() {
-    return structuredClone(this.state);
+    return structuredClone({...this.state,conversationProjects:this.conversations.projects(),sessions:this.visibleSessions()});
   }
+  visibleSessions(){return [...this.state.sessions,...this.conversations.sessions()].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));}
+  peekSession(id){return this.state.sessions.find(s=>s.id===id)||this.conversations.peekSession(id);}
+  isCurrentConversation(id){return this.conversations.isCurrent(id);}
+  syncConversationOwner(){return this.conversations.sync();}
   save() {
-    const snapshot = this.snapshot();
+    const snapshot = structuredClone(this.state),conversationSnapshots=this.conversations.snapshots();
     const write = async () => {
       const localThreads = {};
       for (const project of snapshot.projects) {
@@ -233,6 +239,7 @@ class Store {
         null,
         2,
       );
+      await this.conversations.commit(conversationSnapshots);
       await fs.mkdir(path.dirname(this.file), { recursive: true });
       const temp = `${this.file}.${randomUUID()}.tmp`;
       try {
@@ -254,6 +261,7 @@ class Store {
   }
   async addProject(directory) {
     const canonical = await fs.realpath(text(directory, "프로젝트 경로", 4096));
+    if(await this.conversations.isManagedPath(canonical))throw Error('개인 대화 저장소는 프로젝트로 연결할 수 없습니다.');
     if (!(await fs.stat(canonical)).isDirectory())
       throw new Error("폴더를 선택해 주세요.");
     const existing = this.state.projects.find((project) =>
@@ -264,6 +272,7 @@ class Store {
     if (existing && this.repositories.has(existing.id))
       return structuredClone(existing);
     const repository = await ProjectStore.open(canonical);
+    if([...repository.saved.values()].some(session=>session.scope))throw Error('개인 대화 저장소는 프로젝트로 가져올 수 없습니다.');
     const sameIdentity = this.state.projects.find(
       (project) => project.id === repository.id && project.path !== canonical,
     );
@@ -321,29 +330,31 @@ class Store {
     return structuredClone(project);
   }
   project(id) {
-    const project = this.state.projects.find((p) => p.id === id);
+    const project = this.state.projects.find((p) => p.id === id)||this.conversations.findProject(id);
     if (!project) throw new Error("프로젝트를 찾을 수 없습니다.");
     return project;
   }
   session(id) {
-    const session = this.state.sessions.find((s) => s.id === id);
+    const session = this.state.sessions.find((s) => s.id === id)||this.conversations.findSession(id);
     if (!session) throw new Error("대화를 찾을 수 없습니다.");
     return session;
   }
   async createSession(projectId, extra = {}) {
-    this.project(projectId);
+    const project=this.project(projectId),pool=this.conversations.poolForProject(projectId),target=pool?.sessions||this.state.sessions;
+    if(pool&&(extra.workflow||extra.personalAssistant||extra.scope&&extra.scope!==project.conversationScope))throw Error('프로젝트 업무는 프로젝트 대화에서 시작해 주세요.');
     const now = new Date().toISOString();
     let id = randomUUID();
     if (extra.personalAssistant === true) {
       const hex = createHash("sha256").update("flowrium:personal-assistant:" + projectId).digest("hex");
       id = [hex.slice(0,8),hex.slice(8,12),"8"+hex.slice(13,16),"a"+hex.slice(17,20),hex.slice(20,32)].join("-");
-      const existing = this.state.sessions.find(entry => entry.id === id);
+      const existing = target.find(entry => entry.id === id);
       if (existing && !existing.personalAssistant) throw new Error("비서 대화 식별자가 다른 대화와 겹칩니다. 기존 대화를 확인해 주세요.");
       if (existing) return structuredClone(existing);
     }
     const session = {
       id,
       projectId,
+      ...(pool&&{scope:project.conversationScope}),
       title: extra.title || "새로운 작업",
       ...(extra.personalAssistant === true && { personalAssistant: true }),
       ...(extra.workflow && { workflow: extra.workflow }),
@@ -355,26 +366,25 @@ class Store {
       createdAt: now,
       updatedAt: now,
     };
-    this.state.sessions.unshift(session);
+    target.unshift(session);
     try {
       await this.save();
     } catch (error) {
-      this.state.sessions = this.state.sessions.filter(
-        (item) => item.id !== session.id,
-      );
+      target.splice(target.indexOf(session),1);
       throw error;
     }
     return structuredClone(session);
   }
   async deleteSession(id) {
     const session = this.session(id);
-    const index = this.state.sessions.indexOf(session);
-    this.state.sessions.splice(index, 1);
+    const target=this.conversations.poolForProject(session.projectId)?.sessions||this.state.sessions;
+    const index = target.indexOf(session);
+    target.splice(index, 1);
     try {
       await this.save();
     } catch (error) {
-      this.state.sessions.splice(
-        Math.min(index, this.state.sessions.length),
+      target.splice(
+        Math.min(index, target.length),
         0,
         session,
       );

@@ -3,6 +3,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { _electron } = require("playwright");
+const {closeSettings}=require("./shell-test-helpers.cjs");
 const { Store } = require("../electron/store.cjs");
 
 async function run() {
@@ -59,7 +60,21 @@ async function run() {
       async () =>
         (await window.flowrium.securityState()).preferences?.idleMinutes === 5,
     );
-    await btn("설정 닫기").click();
+    await closeSettings(page);
+    const personal=await page.evaluate(()=>window.flowrium.createHubConversation({scope:'general',title:'잠금 중 내보내기 보호'}));
+    const blockedExport=path.join(tmp,'잠금 중 생성되면 안 되는 대화.md');
+    await app.evaluate(({dialog})=>{globalThis.flowriumSaveTest={original:dialog.showSaveDialog,release:null};dialog.showSaveDialog=()=>new Promise(resolve=>{globalThis.flowriumSaveTest.release=resolve;});});
+    const pendingExport=page.evaluate(id=>window.flowrium.exportSession(id),personal.id).then(value=>({ok:true,value}),error=>({ok:false,error:String(error)}));
+    for(let attempt=0;attempt<150;attempt++){if(await app.evaluate(()=>typeof globalThis.flowriumSaveTest.release==='function'))break;await new Promise(resolve=>setTimeout(resolve,10));}
+    assert.equal(await app.evaluate(()=>typeof globalThis.flowriumSaveTest.release),'function');
+    await assert.rejects(page.evaluate(()=>window.flowrium.logoutSecurity()),/진행 중/);
+    await page.evaluate(()=>window.flowrium.lockSecurity());
+    await app.evaluate((_,file)=>{globalThis.flowriumSaveTest.release({canceled:false,filePath:file});},blockedExport);
+    const exportResult=await pendingExport;assert.equal(exportResult.ok,false);assert.match(exportResult.error,/잠겼|계정|상태/);
+    await assert.rejects(fs.access(blockedExport),{code:'ENOENT'});
+    await app.evaluate(({dialog})=>{dialog.showSaveDialog=globalThis.flowriumSaveTest.original;delete globalThis.flowriumSaveTest;});
+    await page.evaluate(()=>window.flowrium.unlockSecurity('7904'));
+    await page.locator('.pf-card').filter({hasText:'잠금 검증 프로젝트'}).waitFor();
     await page.evaluate(async (id) => {
       await window.flowrium.send({
         sessionId: id,
@@ -101,7 +116,8 @@ async function run() {
       .filter({ hasText: "일치하지 않습니다" })
       .waitFor();
     await unlock();
-    await page.locator(".side-project[title*='승인 대기']").waitFor();
+    await page.getByRole("complementary",{name:"작업 공간 탐색"}).hover();
+    await page.locator(".side-project[title*='결정']").waitFor();
     const approval = await page.evaluate(async () =>
       (await window.flowrium.securityPending()).find(
         (e) => e.type === "approval",
@@ -151,7 +167,7 @@ async function run() {
       5,
     );
     console.log(
-      "실제 앱 보안 화면 통과 / 사용량 / PIN 등록과 오입력 / 잠금 중 IPC 차단 / 승인 복원 / 로그아웃 확인과 기록 보존 / 앱 재시작 잠금",
+      "실제 앱 보안 화면 통과 / 사용량 / PIN 등록과 오입력 / 저장 창 대기 중 잠금 후 개인 대화 내보내기와 파일 생성 차단 / 잠금 중 IPC 차단 / 승인 복원 / 로그아웃 확인과 기록 보존 / 앱 재시작 잠금",
     );
   } finally {
     if (app) await app.close();

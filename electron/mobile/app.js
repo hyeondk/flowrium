@@ -87,13 +87,21 @@ const action = (text, callback, className) => {
   button.addEventListener("click", callback);
   return button;
 };
+let noticeExitTimer;
+const hideNotice = () => {
+  clearTimeout(errorTimer);
+  clearTimeout(noticeExitTimer);
+  if (notice.hidden) return;
+  notice.dataset.phase = "exit";
+  noticeExitTimer = setTimeout(() => { notice.hidden = true; }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 240);
+};
 const showNotice = (message) => {
   clearTimeout(errorTimer);
+  clearTimeout(noticeExitTimer);
   notice.textContent = message;
   notice.hidden = false;
-  errorTimer = setTimeout(() => {
-    notice.hidden = true;
-  }, 6000);
+  notice.dataset.phase = "enter";
+  errorTimer = setTimeout(hideNotice, 6000);
 };
 const ownSessions = () =>
   (data?.sessions ?? []).filter((s) => s.projectId === selectedProject);
@@ -112,7 +120,16 @@ const running = (id) => (data?.running ?? []).includes(id);
 const label = (name, field) => {
   const box = node("label", name);
   field.setAttribute("aria-label", name);
-  box.append(field);
+  if (field instanceof HTMLInputElement && field.type === "checkbox") {
+    const control = node("span", undefined, "ui-checkbox-control");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 20 20"); svg.setAttribute("aria-hidden", "true"); svg.setAttribute("focusable", "false");
+    const rect = document.createElementNS(svg.namespaceURI, "rect");
+    for (const [key, value] of Object.entries({x:1,y:1,width:18,height:18,rx:5})) rect.setAttribute(key, String(value));
+    const path = document.createElementNS(svg.namespaceURI, "path");
+    path.setAttribute("d", "M5 10.2 8.3 13.4 15 6.8"); path.setAttribute("pathLength", "1");
+    svg.append(rect, path); control.append(field, svg); box.append(control);
+  } else box.append(field);
   return box;
 };
 function select(options, initial) {
@@ -262,7 +279,7 @@ function go(view, id) {
   route = view;
   resetHistory();
   preview = undefined;
-  notice.hidden = true;
+  hideNotice();
   if (view === "project") {
     selectedProject = id;
     detailTab = "work";

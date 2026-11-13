@@ -44,6 +44,7 @@ async function run() {
     app = null;
   };
   const button = (name) => page.getByRole("button", { name, exact: true });
+  const sidebarAction=async name=>{const side=page.locator('.workspace-side');await side.hover();await side.getByRole('button',{name,exact:true}).click();};
   const composer = () => page.getByLabel("Codex에 보낼 작업 요청");
   const until = async (fn) => {
     for (let i = 0; i < 160; i++) {
@@ -75,6 +76,7 @@ async function run() {
     await fs.unlink(path.join(profile, "composer-drafts", "legacy.json"));
     await launch();
     await button("개인 비서").click();
+    await page.locator('.conversation-dock').getByRole('heading',{name:session.title,exact:true}).waitFor();
     await until(
       async () => (await composer().inputValue()) === "이전 버전의 미전송 문장",
     );
@@ -97,7 +99,7 @@ async function run() {
         )) === "새로 편집한 미전송 초안",
     );
     await page.evaluate(() => window.flowrium.setSecurityPin("", "6804"));
-    await button("잠금").click();
+    await sidebarAction("잠금");
     await page.getByRole("heading", { name: "화면 잠금" }).waitFor();
     assert.equal(
       await page.evaluate(() => localStorage.getItem("flowrium.drafts")),
@@ -119,7 +121,7 @@ async function run() {
         .messages.length,
       0,
     );
-    await button("로그아웃").click();
+    await sidebarAction("로그아웃");
     await button("로그아웃 확인").click();
     await page.getByRole("heading", { name: "화면 잠금" }).waitFor();
     await unlock();

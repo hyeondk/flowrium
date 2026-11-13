@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useRef, useState } from "react";
 import { Mic, Square, Volume2, VolumeX, Upload } from "lucide-react";
 import type { VoicePreferences } from "../shared/voice";
@@ -28,12 +29,12 @@ export function VoiceSettings() {
         <label>OpenAI API 키<input aria-label="음성 인식 API 키" type="password" autoComplete="off" value={key} onChange={event=>setKey(event.target.value)}/></label>
         <div className="settings-buttons"><button className="button secondary" disabled={!key.trim()||busy} onClick={()=>{setBusy(true);void api!.configureVoice(key.trim()).then(()=>{setConfigured(true);setKey("");setNotice("음성 입력 키를 보안 저장소에 보관했습니다.");}).catch(error=>setNotice(String(error))).finally(()=>setBusy(false));}}>키 저장</button>{configured&&<button className="button subtle" disabled={busy} onClick={()=>{setBusy(true);void api!.configureVoice(null).then(()=>{setConfigured(false);setNotice("음성 입력 키를 삭제했습니다.");}).catch(error=>setNotice(String(error))).finally(()=>setBusy(false));}}>키 삭제</button>}</div>
       </>}
-      <label className="voice-choice"><input type="checkbox" checked={prefs.continuous} onChange={event=>change("continuous",event.target.checked)}/>연속 듣기 사용</label>
+      <label className="voice-choice"><AnimatedCheckbox checked={prefs.continuous} onChange={event=>change("continuous",event.target.checked)}/>연속 듣기 사용</label>
       <p>대화하는 동안 말소리를 구간별로 인식합니다. 답변 생성 중에는 마이크를 닫고, 끝나면 듣기를 이어갑니다. 화면을 떠나거나 잠그면 종료합니다.</p>
       {prefs.continuous&&<>
-        <label className="voice-choice"><input type="checkbox" checked={prefs.wakeEnabled} onChange={event=>change("wakeEnabled",event.target.checked)}/>호출어 뒤의 요청만 인식</label>
+        <label className="voice-choice"><AnimatedCheckbox checked={prefs.wakeEnabled} onChange={event=>change("wakeEnabled",event.target.checked)}/>호출어 뒤의 요청만 인식</label>
         {prefs.wakeEnabled&&<label>호출어<input aria-label="음성 호출어" value={prefs.wakeWord} maxLength={40} onChange={event=>change("wakeWord",event.target.value)}/></label>}
-        <label className="voice-choice"><input type="checkbox" checked={prefs.autoSubmit} disabled={!prefs.wakeEnabled} onChange={event=>change("autoSubmit",event.target.checked)}/>호출어 뒤 요청을 ChatGPT에 바로 전송</label>
+        <label className="voice-choice"><AnimatedCheckbox checked={prefs.autoSubmit} disabled={!prefs.wakeEnabled} onChange={event=>change("autoSubmit",event.target.checked)}/>호출어 뒤 요청을 ChatGPT에 바로 전송</label>
         <p>자동 전송을 선택하면 호출어 뒤의 요청으로 실제 작업이 시작됩니다. 선택하지 않으면 입력창에서 검토합니다. 호출어만 말한 뒤 30초 안에 요청을 이어 말할 수도 있습니다.</p>
       </>}
       <div className="voice-settings-grid"><label>말끝 무음 시간<select aria-label="말끝 무음 시간" value={prefs.silenceMs} onChange={event=>change("silenceMs",Number(event.target.value))}>{[500,700,900,1200,1600,2000,2500,3000].map(value=><option key={value} value={value}>{value/1000}초</option>)}</select></label><label>한 구간 최대 길이<select aria-label="음성 구간 최대 길이" value={prefs.maxSpeechSeconds} onChange={event=>change("maxSpeechSeconds",Number(event.target.value))}>{[15,30,45,60,90,120].map(value=><option key={value} value={value}>{value}초</option>)}</select></label></div>

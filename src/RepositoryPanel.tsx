@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import RepositoryInspection from "./RepositoryInspection";
 import RepositoryFlowPanel from "./RepositoryFlowPanel";
 import {useEffect,useState} from "react";
@@ -26,7 +27,7 @@ export default function RepositoryPanel({project}:{project:Project}) {
     <label>작업할 저장소<select aria-label="형상관리 저장소" value={repositoryId} onChange={e=>setRepository(e.target.value)}>{repositories.filter(r=>!r.hidden).map(r=><option value={r.id} key={r.id}>{r.name} / {r.path}</option>)}</select></label>
     <RepositoryFlowPanel project={project}/><RepositoryInspection key={project.id+repositoryId} id={project.id} repositoryId={repositoryId}/><fieldset disabled={busy}><div className="wb-tools"><button className="wb-secondary" onClick={()=>action({action:"terminal"})}>프로젝트 터미널 열기</button><button className="wb-secondary" onClick={()=>action({action:"changes"})}>변경 파일 새로 고침</button></div>
     <h2>변경 파일</h2>{files.length===0 && <p>선택할 변경 파일이 없습니다.</p>}
-    {files.map(f=><label className="repo-file" key={f.file}><input type="checkbox" checked={selected.includes(f.file)} onChange={e=>select(e.target.checked?[...selected,f.file]:selected.filter(v=>v!==f.file))}/><code>{f.code}</code>{f.file}</label>)}
+    {files.map(f=><label className="repo-file" key={f.file}><AnimatedCheckbox checked={selected.includes(f.file)} onChange={e=>select(e.target.checked?[...selected,f.file]:selected.filter(v=>v!==f.file))}/><code>{f.code}</code>{f.file}</label>)}
     <label>커밋 또는 변경 요청 제목<input value={title} onChange={e=>setTitle(e.target.value)}/></label>
     <div className="wb-tools"><button className="wb-secondary" disabled={!selected.length} onClick={()=>action({action:"diff",files:selected})}>차이 보기</button><button className="wb-secondary" disabled={!selected.length||!title.trim()} onClick={()=>review(`파일 ${selected.length}개 커밋`,{action:"commit",files:selected,message:title})}>선택한 파일 커밋</button>
     <button className="wb-secondary" onClick={()=>review("현재 브랜치를 origin으로 푸시",{action:"push"})}>브랜치 푸시</button></div>

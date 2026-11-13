@@ -135,6 +135,11 @@ jobs:
         run: node tests/terminal-packaged-e2e.cjs
       - name: 실제 앱에서 업무 대화 검증
         run: node tests/desktop-e2e.cjs
+      - name: 탐색 레일·대화함·동작·실행 상태
+        run: |
+          node tests/ui-motion-e2e.cjs
+          node tests/workspace-shell-e2e.cjs
+          node tests/conversation-scopes-native-e2e.cjs
       - name: 대시보드와 프로젝트·보관·업무 도구
         run: node tests/portfolio-e2e.cjs
       - name: 첨부·실행 큐·네이티브 분기와 되감기

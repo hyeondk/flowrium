@@ -170,13 +170,13 @@ class WorkflowRuntime {
     let target;
     try{target=this.store.session(targetId);}catch{message.status="failed";message.error="받는 대화가 삭제됐습니다.";await this.save();return;}
     if(target.workflow?.status==="done"){message.status="held";message.error="완료된 업무는 재개한 뒤 전달해 주세요.";await this.save();return;}
-    const source=message.sourceId&&this.store.state.sessions.find(s=>s.id===message.sourceId);
+    const source=message.sourceId&&(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===message.sourceId);
     message.status="dispatching";message.before=target.messages.length;
     const report=message.reportId&&this.record.reports.find(r=>r.id===message.reportId);
     if(report){report.status="writing";report.sessionId=target.id;report.deliveryId=message.id;}
     await this.save();
     try{
-      await this.controller.send({sessionId:targetId,text:`[Flowrium 업무 전달 / ${source?.title||"사용자"}]\n${message.text}`,mode:target.workflow?.teamSlot?.mode||"plan"});
+      await this.controller.send({sessionId:targetId,text:`[Flowrium 업무 전달 / ${source?.title||"사용자"}]\n${message.text}`,mode:message.kind==='request'&&source?.scope==='integrated'?'build':target.workflow?.teamSlot?.mode||"plan"});
       message.status="sent";message.sentAt=this.stamp();
     }catch(error){message.status="failed";message.error=String(error.message).slice(0,2000);if(report){report.status="failed";report.error=message.error;}}
     await this.save();
@@ -423,7 +423,7 @@ class WorkflowRuntime {
   }
   async onEvent(event){
     if(event.type==="done"){
-      const session=this.store.state.sessions.find(s=>s.id===event.sessionId);if(!session)return;
+      const session=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===event.sessionId);if(!session)return;
       const body=session.messages.findLast(m=>m.role==="assistant")?.text||event.text||"";
       this.notification(event.status==="completed"?"done":"error",session.title,body,session.id,session.workflow?.teamSlot?.runId||session.id);
       for(const delivery of this.record.deliveries.filter(d=>d.targetId===session.id&&d.reportId&&d.status==="sent"&&!d.completedAt)){
@@ -465,7 +465,7 @@ class WorkflowRuntime {
       }
       await this.save();await this.flush(session.id);
     }else{
-      const session=this.store.state.sessions.find(s=>s.id===event.sessionId);
+      const session=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===event.sessionId);
       const secret=event.type==="input"&&event.questions?.some(q=>q.isSecret);
       this.notification("approval",session?.title||"사용자 결정 필요",secret?"비밀 질문은 데스크톱 승인함에서 확인하세요.":event.text||"작업에 필요한 결정을 확인해 주세요.",event.sessionId,"승인");await this.save();
     }

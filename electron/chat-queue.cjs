@@ -57,12 +57,12 @@ class ChatQueue {
     });
     await this.flush(id);
   }
-  flushAll(){for(const s of this.store.state.sessions)void this.flush(s.id);}
+  flushAll(){for(const s of this.store.visibleSessions?.()||this.store.state.sessions)void this.flush(s.id);}
   flush(id){const task=this._flush(id).catch(e=>{this.controller.emitEvent({type:'error',text:e.message});});this.flights.add(task);task.finally(()=>this.flights.delete(task)).catch(()=>{});return task;}
   async _flush(id){
     const c=this.controller;
     if(this.busy.has(id)||c.runs.has(id)||c.editingSessions.has(id)||c.shuttingDown||!c.status.authenticated||c.options.canRun?.()===false)return;
-    const s=this.store.state.sessions.find(s=>s.id===id);if(!s||s.compacting)return;
+    const s=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===id);if(!s||s.compacting)return;
     const q=(s.queuedMessages||[]).find(q=>q.status==='queued'||q.status==='sending');
     if(!q||q.owner!==await this.owner()||q.error)return;
     this.busy.add(id);

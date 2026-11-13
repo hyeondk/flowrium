@@ -37,10 +37,21 @@ async function run() {
   try {
     let page = await launch();
     const btn = name => page.getByRole("button", { name, exact: true });
-    const goDashboard = () => page.locator(".workspace-side").getByRole("button",{name:"대시보드",exact:true}).click();
+    const sidebar = () => page.locator(".workspace-side");
+    const goDashboard = async () => { await sidebar().hover(); await sidebar().getByRole("button",{name:"대시보드",exact:true}).click(); };
     const goHome = async () => { await goDashboard(); await btn("업무 보드").click(); };
     const projectTabs = () => page.getByRole("navigation",{name:"프로젝트 상세 탭"});
-    const goProject = () => page.locator(".side-project").first().click();
+    const goProject = async () => { await sidebar().hover(); await sidebar().locator(".side-project").first().click(); };
+    await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='false');
+    await sidebar().hover();
+    await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');
+    await page.mouse.move(600,100);
+    await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='false');
+    await sidebar().hover();
+    await sidebar().getByRole('button',{name:'메뉴 고정',exact:true}).click();
+    await page.mouse.move(600,100);
+    assert.equal(await sidebar().getAttribute('data-pinned'),'true');
+    assert.equal(await sidebar().getAttribute('data-expanded'),'true');
     await app.evaluate(({ dialog }, selection) => {
       dialog.showOpenDialog = async () => ({canceled: false, filePaths:[selection]});
     }, project);
@@ -57,7 +68,9 @@ async function run() {
       await form.locator("textarea").fill("선택한 역할과 프로젝트 기록으로 확인해 주세요.");
       await btn("업무 시작").click();
       await waitForSession(page,"화면 검증 "+kind,s=>s.messages.some(m=>m.role==="assistant" && m.text.includes("확인한 결과")));
-      await page.getByRole("heading",{name:"화면 검증 "+kind,exact:true}).waitFor();
+      await page.locator('.conversation-dock').getByRole("heading",{name:"화면 검증 "+kind,exact:true}).waitFor();
+      assert(await form.isVisible(),'대화를 열어도 가운데 업무 설정 화면 유지');
+      assert.equal(await form.locator('input').first().inputValue(),'화면 검증 '+kind,'가운데 업무 설정 입력도 보존');
       if (kind === "research") {
         await btn("리서치 / 진행 중").click();
         await page.getByLabel("새 체크리스트 항목").fill("근거 확인");
@@ -118,7 +131,7 @@ async function run() {
     await page.locator(".approval-card").waitFor();
     await goDashboard();
     await page.getByRole("button",{name:/^승인함/}).click();
-    await btn("이번 작업 승인").click();
+    await page.locator('.repo-actions').getByRole('button',{name:'이번 작업 승인',exact:true}).click();
     await waitForSession(page,"화면 검증 task",s=>s.messages.some(m=>m.role==="assistant"&&m.text.includes("accept")));
     const restored = (await snapshot()).sessions;
     assert.equal(restored.length, 7);
@@ -153,7 +166,7 @@ async function run() {
     await page.locator(".messages .assistant").first().waitFor();
     await require("./activity-ui.cjs").verifyActivityUI(page);
     await require("./update-ui.cjs").verifyUpdateUI(app,page);
-    console.log("실제 앱 검증 통과 / 프로젝트 선택 / 로그인 연결 모의 응답 / 여섯 업무의 독립 요청과 답변 / 체크리스트 / 검토·완료·재개 / 산출물 및 원본 / 분기·이름·되감기 / 앱 재실행 복원 / 프로젝트 보관·재개 / 팀 역할 병렬 실행 / 승인함 / 업데이트 버튼");
+    console.log("실제 앱 검증 통과 / 메뉴 펼침·접힘·고정 / 프로젝트 선택 / 로그인 연결 모의 응답 / 여섯 업무의 독립 요청과 답변 / 오른쪽 대화와 가운데 업무 보드 유지 / 체크리스트 / 검토·완료·재개 / 산출물 및 원본 / 분기·이름·되감기 / 앱 재실행 복원 / 프로젝트 보관·재개 / 팀 역할 병렬 실행 / 승인함 / 업데이트 버튼");
   } catch(error) {
     if(app) console.error("화면 검증 진단:",await (await app.firstWindow()).locator("body").innerText().then(t=>t.slice(-1800)).catch(()=>"화면 닫힘"));
     throw error;

@@ -1,0 +1,111 @@
+@font-face{font-family:NanumSquareRound;src:url('../electron/mobile/fonts/NanumSquareRoundL.woff2') format('woff2');font-style:normal;font-weight:300;font-display:swap}
+@font-face{font-family:NanumSquareRound;src:url('../electron/mobile/fonts/NanumSquareRoundR.woff2') format('woff2');font-style:normal;font-weight:400;font-display:swap}
+@font-face{font-family:NanumSquareRound;src:url('../electron/mobile/fonts/NanumSquareRoundB.woff2') format('woff2');font-style:normal;font-weight:700;font-display:swap}
+@font-face{font-family:NanumSquareRound;src:url('../electron/mobile/fonts/NanumSquareRoundEB.woff2') format('woff2');font-style:normal;font-weight:800;font-display:swap}
+
+:root{
+  --font-ui:NanumSquareRound,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --control-height:40px;--row-height:44px;--body-size:14px;--body-line:1.6;--title-size:24px;--title-line:32px;--subtitle-line:24px;
+  --motion-duration:240ms;--motion-fast:200ms;--motion-slow:320ms;
+  --ease-enter:cubic-bezier(.16,1,.3,1);--ease-exit:cubic-bezier(.7,0,.84,0);--ease-check:cubic-bezier(.4,0,.2,1);
+  font-family:var(--font-ui);font-size:var(--body-size);line-height:var(--body-line);font-synthesis:none;
+}
+body,button,input,textarea,select{font-family:var(--font-ui)}
+body{font-size:var(--body-size);line-height:var(--body-line)}
+.brand,.brand-sub{font-family:var(--font-ui)}
+:is(h1,h2,h3,h4,h5,h6,p,label,button,summary){word-break:keep-all;overflow-wrap:normal}
+:is(h1,h2,h3,h4,h5,h6){letter-spacing:-.025em}
+.app-shell h1{font-size:var(--title-size);line-height:var(--title-line);font-weight:800}
+.app-shell h2{line-height:28px}.app-shell h3{line-height:24px}
+.app-shell p{line-height:var(--body-line)}
+:is(.pf-heading,.wb-project-head,.workspace-page-heading,.page-heading)>:is(p,div>p){font-size:14px;line-height:var(--subtitle-line)}
+:is(button,.button,input:not([type=checkbox]):not([type=radio]):not([type=range]),select){line-height:24px}
+:is(.button,.pf-primary,.pf-secondary,.wb-primary,.wb-secondary,.workflow-actions>button,.settings-buttons>button){min-height:var(--control-height);padding-block:6px;display:inline-flex;align-items:center;justify-content:center}
+:is(input:not([type=checkbox]):not([type=radio]):not([type=range]),select){min-height:var(--control-height);padding-block:6px}
+textarea{line-height:24px}
+:is(.pf-row,.repo-file,.workflow-notification,.di-task){min-height:var(--row-height)}
+button,select,a{transition:background-color var(--motion-fast) var(--ease-enter),color var(--motion-fast) var(--ease-enter),border-color var(--motion-fast) var(--ease-enter),box-shadow var(--motion-fast) var(--ease-enter)}
+button:active:not(:disabled){transition-timing-function:var(--ease-exit)}
+
+@keyframes ui-fade-in{from{opacity:0}to{opacity:1}}
+@keyframes ui-fade-out{from{opacity:1}to{opacity:0}}
+@keyframes ui-popup-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+@keyframes ui-popup-out{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(.9)}}
+@keyframes ui-sheet-in{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes ui-sheet-out{from{transform:translateY(0)}to{transform:translateY(100%)}}
+@keyframes ui-snackbar-in{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}
+@keyframes ui-snackbar-out{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(28px)}}
+@keyframes ui-title-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes ui-loading{to{transform:rotate(360deg)}}
+
+:is([data-motion=toast],[data-motion=fade])[data-phase=enter]{animation:ui-fade-in var(--motion-duration) var(--ease-enter) both}
+:is([data-motion=toast],[data-motion=fade])[data-phase=exit]{animation:ui-fade-out var(--motion-duration) var(--ease-exit) both}
+[data-motion=popup][data-phase=enter]{animation:ui-popup-in var(--motion-duration) var(--ease-enter) both;transform-origin:center}
+[data-motion=popup][data-phase=exit]{animation:ui-popup-out var(--motion-duration) var(--ease-exit) both;transform-origin:center}
+[data-motion=sheet][data-phase=enter]{animation:ui-sheet-in var(--motion-duration) var(--ease-enter) both}
+[data-motion=sheet][data-phase=exit]{animation:ui-sheet-out var(--motion-duration) var(--ease-exit) both}
+[data-motion=snackbar][data-phase=enter]{animation:ui-snackbar-in var(--motion-duration) var(--ease-enter) both}
+[data-motion=snackbar][data-phase=exit]{animation:ui-snackbar-out var(--motion-duration) var(--ease-exit) both}
+[data-phase=exit]{pointer-events:none}
+
+:is(.modal-backdrop,.command-scrim,.motion-overlay)[data-phase=enter]{animation:ui-fade-in var(--motion-duration) var(--ease-enter) both}
+:is(.modal-backdrop,.command-scrim,.motion-overlay)[data-phase=exit]{animation:ui-fade-out var(--motion-duration) var(--ease-exit) both}
+:is(.modal-backdrop,.command-scrim)[data-phase=enter]>:is([role=dialog],.settings-modal,.confirm-modal){animation:ui-popup-in var(--motion-duration) var(--ease-enter) both}
+:is(.modal-backdrop,.command-scrim)[data-phase=exit]>:is([role=dialog],.settings-modal,.confirm-modal){animation:ui-popup-out var(--motion-duration) var(--ease-exit) both}
+dialog[data-phase=enter]{animation:ui-popup-in var(--motion-duration) var(--ease-enter) both}
+dialog[data-phase=exit]{animation:ui-popup-out var(--motion-duration) var(--ease-exit) both}
+dialog[data-phase=enter]::backdrop{animation:ui-fade-in var(--motion-duration) var(--ease-enter) both}
+dialog[data-phase=exit]::backdrop{animation:ui-fade-out var(--motion-duration) var(--ease-exit) both}
+:is(.modal-backdrop,.command-scrim):not([data-phase]){animation:ui-fade-in var(--motion-duration) var(--ease-enter) both}
+:is(.modal-backdrop,.command-scrim):not([data-phase])>[role=dialog]{animation:ui-popup-in var(--motion-duration) var(--ease-enter) both}
+.toast:not([data-phase]){animation:ui-fade-in var(--motion-duration) var(--ease-enter) both}
+.command-scrim{align-items:flex-start;padding:12vh 16px}
+.motion-overlay{position:fixed;inset:0;z-index:1100;display:flex;align-items:center;justify-content:center;padding:24px;background:#080d1a9e;backdrop-filter:blur(6px)}
+.motion-surface{width:min(620px,100%);max-height:calc(100dvh - 48px);overflow:auto;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:20px;padding:24px;box-shadow:0 24px 90px #0004;outline:none}
+.motion-overlay[data-kind=sheet]{align-items:flex-end;padding:0}
+.motion-overlay[data-kind=sheet]>.motion-surface{border-radius:22px 22px 0 0;width:min(760px,100%);max-height:86dvh;padding-bottom:max(24px,env(safe-area-inset-bottom))}
+
+.ui-notification{position:fixed;z-index:1400;max-width:min(560px,calc(100vw - 32px));font-size:14px;line-height:24px}
+.ui-toast{right:24px;bottom:28px}
+.ui-snackbar{left:50%;bottom:28px;transform:translateX(-50%)}
+.ui-notification-surface{display:flex;align-items:center;gap:12px;min-height:52px;padding:10px 14px;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);box-shadow:0 12px 40px #0002}
+.ui-notice-indicator{display:grid;place-items:center;flex:0 0 24px;width:24px;height:24px;border-radius:50%;background:var(--accent-bg);color:var(--accent);font-weight:800}
+[data-tone=error] .ui-notice-indicator{color:var(--danger)}
+.ui-notice-message{word-break:keep-all;overflow-wrap:normal}
+.ui-notice-close{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;min-height:32px;padding:0;border-radius:8px;font-size:22px;line-height:32px}
+.ui-notice-close:hover{background:var(--panel-alt)}
+
+:is(.app-shell,body) .ui-checkbox-control{position:relative;display:inline-grid;place-items:center;flex:0 0 20px;width:20px;height:20px;vertical-align:middle;line-height:0}
+.ui-checkbox-control>input[type=checkbox]{position:absolute;inset:0;z-index:1;appearance:none;opacity:0;width:20px!important;height:20px!important;min-height:20px!important;margin:0;padding:0;cursor:pointer}
+.ui-checkbox-control>svg{width:20px;height:20px;overflow:visible;pointer-events:none}
+.ui-checkbox-control rect{fill:var(--input);stroke:var(--line);stroke-width:1.5;transition:fill 200ms var(--ease-check),stroke 200ms var(--ease-check)}
+.ui-checkbox-control path{fill:none;stroke:var(--bg);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset 240ms var(--ease-check)}
+.ui-checkbox-control>input:checked+svg rect{fill:var(--accent-bright);stroke:var(--accent-bright)}
+.ui-checkbox-control>input:checked+svg path{stroke-dashoffset:0}
+.ui-checkbox-control:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:4px;border-radius:5px}
+.ui-checkbox-control>input:disabled{cursor:default}.ui-checkbox-control>input:disabled+svg{opacity:.45}
+.ui-checkbox-control>input:indeterminate+svg path{d:path('M5 10 L15 10');stroke-dashoffset:0}
+
+.spin,[data-motion=loading]{animation:ui-loading 400ms linear infinite}
+:is(.pf-heading,.page-heading,.workspace-page-heading,.wb-project-head)>h1{animation:ui-title-in 280ms var(--ease-enter) both}
+:is(.pf-heading,.page-heading,.workspace-page-heading,.wb-project-head)>p{animation:ui-title-in 280ms var(--ease-enter) 60ms both}
+:is(.pf-heading,.page-heading,.workspace-page-heading,.wb-project-head)>div>h1{animation:ui-title-in 280ms var(--ease-enter) both}
+:is(.pf-heading,.page-heading,.workspace-page-heading,.wb-project-head)>div>p{animation:ui-title-in 280ms var(--ease-enter) 60ms both}
+.ui-title-stagger>*{animation:ui-title-in 280ms var(--ease-enter) both}.ui-title-stagger>:nth-child(2){animation-delay:60ms}.ui-title-stagger>:nth-child(3){animation-delay:120ms}
+
+@media(max-width:600px){
+ .ui-toast{right:16px;bottom:max(20px,env(safe-area-inset-bottom))}.ui-snackbar{bottom:max(20px,env(safe-area-inset-bottom))}
+ .motion-overlay{padding:16px}.motion-surface{padding:20px}
+ :is(.modal-backdrop,.command-scrim)[data-mobile-sheet=true]{align-items:flex-end;padding:0}
+ :is(.modal-backdrop,.command-scrim)[data-mobile-sheet=true]>[role=dialog]{width:100%!important;border-radius:22px 22px 0 0!important;max-height:90dvh!important}
+ :is(.modal-backdrop,.command-scrim)[data-mobile-sheet=true][data-phase=enter]>[role=dialog]{animation-name:ui-sheet-in}
+ :is(.modal-backdrop,.command-scrim)[data-mobile-sheet=true][data-phase=exit]>[role=dialog]{animation-name:ui-sheet-out}
+}
+@media(prefers-reduced-motion:reduce){
+ :root{--motion-duration:1ms;--motion-fast:1ms;--motion-slow:1ms}
+ *,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition-duration:1ms!important;scroll-behavior:auto!important}
+ [data-motion=popup],[data-motion=sheet],[data-motion=snackbar],.settings-modal,.confirm-modal,.ui-title-stagger>*{transform:none!important}
+}
+
+:is(.memory-panel,.workflow-hub,.input-request)>header h2,:is(.memory-panel,.workflow-hub,.input-request)>header h3{animation:ui-title-in 280ms var(--ease-enter) both}
+:is(.memory-panel,.workflow-hub)>header p,.input-request>p{animation:ui-title-in 280ms var(--ease-enter) 60ms both}

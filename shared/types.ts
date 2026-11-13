@@ -51,7 +51,9 @@ export interface UpdateState {
 }
 export type Effort = "low" | "medium" | "high";
 export type Mode = "plan" | "build" | "review";
+export type ConversationScope = "general" | "integrated";
 export interface Project {
+  conversationScope?: ConversationScope;
   id: string;
   name: string;
   path: string;
@@ -68,6 +70,7 @@ export interface Message {
   createdAt: string;
 }
 export interface Session {
+  scope?: ConversationScope;
   restoredDraft?:{text:string;attachments:ChatAttachment[]};
   personalAssistant?: true;
   id: string;
@@ -128,6 +131,7 @@ export interface FlowriumEvent {
   session?: Session;
 }
 export interface Bootstrap {
+  conversationProjects?: Project[];
   projects: Project[];
   sessions: Session[];
   settings: Settings;
@@ -152,6 +156,8 @@ export interface FlowriumAPI
     ProjectDetailsAPI,
     ActivityAPI,
     TerminalAPI {
+  createHubConversation(input:{scope:ConversationScope;title?:string}):Promise<Session>;
+  listHubConversations():Promise<{projects:Project[];sessions:Session[]}>;
   addChatAttachments(projectId:string,files:{name:string;type:string;bytes:Uint8Array}[]):Promise<ChatAttachment[]>;
   readChatAttachment(projectId:string,id:string):Promise<{attachment:ChatAttachment;dataUrl?:string}>;
   listQueuedMessages(sessionId:string):Promise<QueuedMessage[]>;

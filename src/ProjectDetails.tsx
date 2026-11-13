@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Archive, ArchiveRestore, Plus, RefreshCw, X } from "lucide-react";
 import type { Project } from "../shared/types";
@@ -52,7 +53,7 @@ export default function ProjectDetails({ project, onChange }: { project: Project
     </form>
     <section aria-label="프로젝트 체크리스트" className="pd-checklist"><h3>프로젝트 체크리스트</h3>
       {data.checklist.map((task) => <div className="pd-check" key={task.id}>
-        <label><input type="checkbox" disabled={busy} checked={task.done} onChange={(e) => void save({ action: "check", id: task.id, done: e.target.checked })}/>{task.text}</label>
+        <label><AnimatedCheckbox disabled={busy} checked={task.done} onChange={(e) => void save({ action: "check", id: task.id, done: e.target.checked })}/>{task.text}</label>
         <button type="button" aria-label={task.text + " 삭제"} disabled={busy} onClick={() => void save({ action: "remove", id: task.id })}><X size={13}/></button></div>)}
       <form className="pd-add" onSubmit={(e) => { e.preventDefault(); if (item.trim()) void save({ action: "add", text: item }); }}>
         <input aria-label="새 프로젝트 체크리스트 항목" maxLength={500} placeholder="새 항목" value={item} onChange={(e) => setItem(e.target.value)}/>

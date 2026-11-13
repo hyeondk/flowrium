@@ -6,10 +6,11 @@
     <meta name="theme-color" content="#ffffff" />
     <meta
       name="description"
-      content="프로젝트를 설계하고, 기능별 대화를 운영하고, 팀과 산출물까지 한곳에서 관리하세요. Flowrium은 Mac과 Windows용 프로젝트 작업 공간입니다."
+      content="대시보드를 유지한 채 오른쪽에서 통합 채팅 / 프로젝트 대화 / 일반 대화를 이어가세요. Flowrium은 본인의 ChatGPT 계정으로 사용하는 Mac과 Windows용 AI 작업 공간입니다."
     />
     <title>Flowrium</title>
     <link rel="icon" href="./mark.png" type="image/png" />
+    <link rel="preload" href="./fonts/NanumSquareRoundR.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="./style.css" />
     <script type="module" src="./site.js"></script>
   </head>
@@ -35,7 +36,7 @@
       <section class="hero wrap" aria-labelledby="hero-title">
         <span class="eyebrow">프로젝트 작업 공간</span>
         <h1 id="hero-title">프로젝트를 열고,<br />오늘 할 일을 고르세요.</h1>
-        <p>조사 / 문서 / 보고를 역할별 AI 대화에 맡기세요. 본인의 ChatGPT 계정으로 프로젝트 자료와 실제 작업 기록을 읽고, 대화 사이의 요청과 결과를 이어 산출물을 만듭니다.</p>
+        <p>본인의 ChatGPT 계정으로 조사 / 문서 / 보고를 맡기세요. 대시보드를 보면서 오른쪽 대화함에서 통합 채팅 / 프로젝트 대화 / 일반 대화를 따로 이어갑니다. 왼쪽 메뉴는 마우스를 올리면 펼쳐지고 벗어나면 접힙니다.</p>
         <div class="hero-actions">
           <a class="button primary" href="#download"
             >Flowrium 다운로드 <span aria-hidden="true">↓</span></a
@@ -50,7 +51,7 @@
       >
         <div class="section-heading">
           <div>
-            <h2 id="workspace-title">프로젝트와 오늘의 업무</h2>
+            <h2 id="workspace-title">대시보드와 나란히 이어가는 대화</h2>
           </div>
         </div>
         <figure class="app-preview">
@@ -58,14 +59,14 @@
             src="./workspace.png"
             width="1392"
             height="930"
-            alt="Flowrium 대시보드. 오늘의 할 일과 목표 진척, 최근 7일 업무 흐름 그래프, 프로젝트 메뉴가 보입니다."
+            alt="Flowrium 실제 화면. 왼쪽의 자동 확장 메뉴, 오늘의 할 일과 업무 그래프, 오른쪽의 통합 채팅 / 프로젝트 대화 / 일반 대화가 보입니다."
           />
-          <figcaption>예시 프로젝트로 촬영한 실제 대시보드 / 오늘의 목표와 할 일, 실제 기록의 시작과 완료 추이를 확인합니다.</figcaption>
+          <figcaption>예시 프로젝트로 촬영한 실제 화면 / 왼쪽 메뉴는 마우스를 올리면 펼쳐집니다. 오른쪽에서 통합 채팅 / 프로젝트 대화 / 일반 대화를 골라도 대시보드를 계속 볼 수 있습니다.</figcaption>
         </figure>
         <div class="features">
           <article>
-            <h3>업무에 맞는 전용 대화</h3>
-            <p>리서치 / 문서 / 보고 / 인계를 독립된 대화로 실행하세요. 파일과 이미지를 첨부하고 실행 중 지시를 이어 보내거나, 기준 요청에서 분기하고 되감습니다.</p>
+            <h3>세 범위로 나눈 대화</h3>
+            <p>통합 채팅으로 전체 업무를 살피고, 프로젝트 대화로 실제 작업을 맡기고, 일반 대화로 별개의 질문을 이어가세요. 파일 첨부 / 실행 중 추가 지시 / 분기와 되감기도 대화마다 사용할 수 있습니다.</p>
           </article>
           <article>
             <h3>대화에서 산출물로</h3>
@@ -184,9 +185,9 @@
           <li>
             <span>03</span>
             <div>
-              <h3>프로젝트 연결</h3>
+              <h3>프로젝트와 대화 선택</h3>
               <p>
-                프로젝트 폴더를 고르고 기능별 대화를 시작하세요. 같은 폴더에서 진행한 기존 Codex 대화도 골라 가져올 수 있습니다.
+                프로젝트 폴더를 연결하고 오른쪽에서 대화 범위를 고르세요. 일반 대화는 프로젝트 없이도 시작하며, 프로젝트에서 진행한 기존 Codex 대화도 골라 가져올 수 있습니다.
               </p>
             </div>
           </li>

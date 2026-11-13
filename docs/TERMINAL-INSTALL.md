@@ -70,26 +70,26 @@ Mac에서 직접 빌드한 최종 앱도 `~/Applications/Flowrium.app`에 설치
 ## 버전 고정과 설치 전 검증
 
 ```bash
-bash Flowrium-install.sh --version 0.4.0
-bash Flowrium-install.sh --version 0.4.0 --verify-only
+bash Flowrium-install.sh --version 0.5.0
+bash Flowrium-install.sh --version 0.5.0 --verify-only
 ```
 
 ```powershell
-& '.\Flowrium-install.ps1' -Version '0.4.0'
-& '.\Flowrium-install.ps1' -Version '0.4.0' -VerifyOnly
+& '.\Flowrium-install.ps1' -Version '0.5.0'
+& '.\Flowrium-install.ps1' -Version '0.5.0' -VerifyOnly
 ```
 
 특정 릴리스의 파일을 직접 내려받은 경우 같은 릴리스의 체크섬을 함께 지정할 수 있습니다.
 
 ```bash
 bash Flowrium-install.sh \
-  --package ./Flowrium-0.4.0-mac-arm64.zip \
+  --package ./Flowrium-0.5.0-mac-arm64.zip \
   --checksums ./SHA256SUMS.txt --verify-only
 ```
 
 ```powershell
 & '.\Flowrium-install.ps1' `
-  -Package '.\Flowrium-0.4.0-win-x64.exe' `
+  -Package '.\Flowrium-0.5.0-win-x64.exe' `
   -Checksums '.\SHA256SUMS.txt' -VerifyOnly
 ```
 
@@ -107,7 +107,7 @@ Windows 러너에서는 다음 명령으로 실제 PowerShell 설치기의 검�
 ```powershell
 node --test tests/installer-support.test.cjs
 node tests/installer-windows-e2e.cjs
-node tests/installer-windows-e2e.cjs --installer release/Flowrium-0.4.0-win-x64.exe --checksums release/SHA256SUMS.txt
+node tests/installer-windows-e2e.cjs --installer release/Flowrium-0.5.0-win-x64.exe --checksums release/SHA256SUMS.txt
 ```
 
 이 테스트는 생성한 임시 자료와 검증 프로세스를 종료·정리합니다. 기존 프로젝트와 로그인 정보를 검증 대상으로 사용하지 않습니다.

@@ -56,18 +56,19 @@ async function main() {
         "로그아웃",
       ],
     );
-    await button("사이드바 접기").click();
-    assert.ok(
-      await page
-        .locator(".workspace-side")
-        .evaluate((n) => n.getBoundingClientRect().width < 90),
-    );
-    await button("사이드바 펼치기").click();
-    assert.ok(
-      await page
-        .locator(".workspace-side")
-        .evaluate((n) => n.getBoundingClientRect().width > 180),
-    );
+    await page.locator('.side-account i[data-connected=true]').waitFor();
+    const rail=page.locator('.workspace-side');
+    await page.mouse.move(400,100);await page.waitForTimeout(300);
+    assert.equal(await rail.getAttribute('data-expanded'),'false');
+    const before=await page.locator('.main-shell').boundingBox();
+    await rail.hover();await page.waitForTimeout(300);
+    assert.equal(await rail.getAttribute('data-expanded'),'true');
+    assert.equal((await page.locator('.sidebar-surface').boundingBox()).width,232);
+    assert.deepEqual(await page.locator('.main-shell').boundingBox(),before,'메뉴를 올려도 본문 배치 유지');
+    await button('메뉴 고정').click();await page.mouse.move(400,100);
+    await page.waitForTimeout(300);assert.equal(await rail.getAttribute('data-expanded'),'true');
+    await button('메뉴 자동 접기').click();await page.mouse.move(500,100);await page.waitForTimeout(300);
+    assert.equal(await rail.getAttribute('data-expanded'),'false');
     await page
       .locator(".pf-heading")
       .getByRole("button", { name: "프로젝트 추가" })
@@ -181,7 +182,7 @@ async function main() {
       .first()
       .click();
     await page.getByLabel("완료 기록 검색").fill("주민 동선 조사");
-    await button("업무 재개").click();
+    await page.locator(".main-shell").getByRole("button",{name:"업무 재개",exact:true}).click();
     await page.waitForFunction(
       async () =>
         (await window.flowrium.bootstrap()).sessions.find(

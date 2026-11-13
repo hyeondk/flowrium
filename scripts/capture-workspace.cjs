@@ -100,7 +100,13 @@ async function capture() {
     await page.getByRole('heading',{name:'오늘의 할 일',exact:true}).waitFor();
     assert.equal(await page.title(),'Flowrium');
     await page.evaluate(() => document.fonts.ready);
+    assert.ok(await page.evaluate(()=>getComputedStyle(document.body).fontFamily.includes('NanumSquareRound')&&document.fonts.check('400 14px NanumSquareRound')&&document.fonts.check('700 14px NanumSquareRound')),'나눔스퀘어라운드 본문과 굵은 글꼴 로드');
+    await page.locator('.conversation-dock').getByRole('button',{name:'새 통합 대화',exact:true}).waitFor();
+    await page.locator('.conversation-dock').getByRole('button',{name:'새 일반 대화',exact:true}).waitFor();
+    await page.locator('.workspace-side').hover();
+    await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');
     await page.mouse.move(1380, 920);
+    await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='false');
     await page.screenshot({
       path: path.join(root, "docs", "workspace.png"),
       animations: "disabled",
@@ -140,6 +146,8 @@ async function capture() {
           );
         });
     for (const theme of ["light", "dark"]) {
+      await page.locator('.workspace-side').hover();
+      await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');
       if (theme === "dark") {
         await page.getByRole("button", { name: "설정", exact: true }).click();
         await page.getByRole("button", { name: "어둡게", exact: true }).click();
@@ -156,6 +164,9 @@ async function capture() {
           ),
         );
       }
+      await page.locator('.workspace-side').hover();
+      await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');
+      for(const heading of await page.locator('.workspace-side h2').evaluateAll(rows=>rows.map(el=>({text:el.textContent,lineHeight:parseFloat(getComputedStyle(el).lineHeight),height:el.getBoundingClientRect().height}))))assert.ok(heading.lineHeight<=heading.height+.5,theme+' 메뉴 제목 줄 높이 / '+heading.text+' / '+heading.lineHeight+' / '+heading.height);
       for (const selector of [
         ".side-account",
         ".side-group h2",
@@ -173,6 +184,8 @@ async function capture() {
         );
       }
     }
+    await page.getByRole('button',{name:'대화함 접기',exact:true}).click();
+    await page.locator('.conversation-dock').waitFor({state:'hidden'});
     for (const width of [768, 390, 320]) {
       await page.setViewportSize({ width, height: 844 });
       assert.ok(
@@ -215,7 +228,7 @@ async function capture() {
       );
     }
     console.log(
-      "예시 데이터 실제 대시보드 촬영 / 밝은 테마와 어두운 테마 본문 대비 / 768·390·320픽셀 대시보드 / 320픽셀 상세 아홉 탭",
+      "예시 데이터 실제 대시보드와 오른쪽 대화함 촬영 / 메뉴 펼침과 접힘 / 나눔스퀘어라운드 로드 / 밝은 테마와 어두운 테마 본문 대비 / 768 / 390 / 320픽셀 대시보드 / 320픽셀 상세 아홉 탭",
     );
   } finally {
     if (app) await app.close();

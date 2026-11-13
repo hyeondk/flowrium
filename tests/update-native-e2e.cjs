@@ -12,7 +12,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { DesktopUpdater, artifactSuffix } = require('../electron/updater.cjs');
 const run = promisify(execFile);
 const version = require('../package.json').version;
-const previous = version === '0.2.0' ? '0.1.2' : version === '0.3.0' ? '0.2.0' : '0.3.0';
+const previous = version === '0.2.0' ? '0.1.2' : version === '0.3.0' ? '0.2.0' : version === '0.4.0' ? '0.3.0' : '0.4.0';
 const fixture = process.argv.includes('--unsigned-fixture');
 const unsigned = fixture || process.argv.includes('--expect-unsigned');
 const mac = process.platform === 'darwin';
@@ -126,7 +126,7 @@ async function installPreviousWindows(folder) {
   const base = 'https://github.com/hyeondk/flowrium/releases/download/v'+previous+'/';
   const url = base+name;
   let previousHash = 'ff7b59fc1a309a0906b5335cec606bd6ea2450ab9ba54ea641ac16cbbc064ddf';
-  if (['0.2.0','0.3.0'].includes(previous)) {
+  if (['0.2.0','0.3.0','0.4.0'].includes(previous)) {
     const response=await fetch('https://api.github.com/repos/hyeondk/flowrium/releases/tags/v'+previous);
     assert.ok(response.ok,previous+' 공개 릴리스 사전 설치 정보가 필요합니다.');
     const release=await response.json();
@@ -137,7 +137,7 @@ async function installPreviousWindows(folder) {
     const fetched=await fetch(sums.browser_download_url);assert.ok(fetched.ok);
     const list=Buffer.from(await fetched.arrayBuffer());
     assert.equal('sha256:'+createHash('sha256').update(list).digest('hex'),sums.digest);
-    previousHash=previous==='0.3.0'?'43ed7740b9fb2c45ee5050a37e92f967000230bb2996bacf9969b386b420cec1':'12fa38f5666a2a55d4f34683b7ac2264eebbb9163ace166ca57f5e3043baca09';
+    previousHash=previous==='0.4.0'?'2edeef466884e7b2482862befad5fc1e63cc6cad4879421193567f164b81a803':previous==='0.3.0'?'43ed7740b9fb2c45ee5050a37e92f967000230bb2996bacf9969b386b420cec1':'12fa38f5666a2a55d4f34683b7ac2264eebbb9163ace166ca57f5e3043baca09';
     assert.equal(binary.digest,'sha256:'+previousHash,previous+' 실설치 검증을 통과한 공개 파일과 달라졌습니다.');
     assert.ok(list.toString().split(/\r?\n/).some(row=>row.trim().split(/\s+/)[0]===previousHash && row.trim().split(/\s+/)[1]===name));
   }
@@ -238,7 +238,7 @@ async function main() {
       const { _electron } = require('playwright');
       const env = { ...process.env, CODEX_HOME: path.join(temporary, 'codex') };
       delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_RENDERER_URL;
-      if(['0.2.0','0.3.0'].includes(previous)) projectFixture=await require('./update-installed-ui.cjs').seedOldProject(userData,temporary);
+      if(['0.2.0','0.3.0','0.4.0'].includes(previous)) projectFixture=await require('./update-installed-ui.cjs').seedOldProject(userData,temporary);
       oldApp = await _electron.launch({ executablePath: binary, args: ['--user-data-dir=' + userData], env, timeout: 60000 });
       oldProcess = oldApp.process();
       const oldWindow = await oldApp.firstWindow();
@@ -255,7 +255,7 @@ async function main() {
       oldPid = old.pid;
       console.log('이전 설치 및 실제 창 확인', previous, oldPid, binary, '/ 실행기', oldProcess.pid);
     }
-    if (!mac && ['0.2.0','0.3.0'].includes(previous)) {
+    if (!mac && ['0.2.0','0.3.0','0.4.0'].includes(previous)) {
       const click=require('./update-installed-ui.cjs');
       await click.bindUpdateTransport(oldApp,{manifest,sums:sums.toString('utf8'),file,
         assetURL:url+assetName,sumsURL:url+'SHA256SUMS.txt'});

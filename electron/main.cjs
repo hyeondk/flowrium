@@ -230,6 +230,11 @@ async function launch() {
       return handler(...args);
     },
   });
+  require('./conversation-scopes.cjs').registerConversationScopes(register,store,controller,{
+    accountRevision:()=>security.accountRevision,
+    accountOwner:()=>security.data.accountOwner || 'unverified:'+security.accountRevision,
+    workflowAction:input=>apiHandlers.get('workflowAction')(input)
+  });
   externalTools = require('./external-tools.cjs').createExternalTools({ handlers: apiHandlers, workflow: workflowRuntime, store });
   projectTools = require('./project-ai-tools.cjs').createProjectTools({ handlers: apiHandlers, store });
   require("./portfolio.cjs").registerPortfolio(register, store, {
@@ -289,6 +294,7 @@ async function launch() {
       window.webContents.send("flowrium:event", payload);
   });
   register("bootstrap", async () => {
+    await store.syncConversationOwner?.();
     const snapshot = { ...store.snapshot(), version: app.getVersion(), platform: process.platform };
     await acknowledgeUpdateLaunch(app, "ready");
     return snapshot;
@@ -371,6 +377,7 @@ async function launch() {
       );
   });
   register("exportSession", async (id) => {
+    const revision=security.accountRevision,epoch=security.epoch;
     const session = store.session(text(id, "대화 식별자", 100));
     const project = store.project(session.projectId);
     const filename =
@@ -382,6 +389,7 @@ async function launch() {
       filters: [{ name: "마크다운 문서", extensions: ["md"] }],
     });
     if (selected.canceled || !selected.filePath) return false;
+    if(security.locked || security.loggingOut || revision!==security.accountRevision || epoch!==security.epoch || store.session(session.id)!==session)throw Error("계정과 잠금 상태가 바뀌었습니다. 내보내기를 다시 시작해 주세요.");
     const roles = { user: "나", assistant: "Codex", system: "작업 상태" };
     const body = [
       `# ${session.title}`,

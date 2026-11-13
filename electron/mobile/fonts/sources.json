@@ -1,0 +1,28 @@
+{
+  "provider": "NAVER",
+  "family": "NanumSquareRound",
+  "css": "https://hangeul.pstatic.net/hangeul_static/css/nanum-square-round.css",
+  "license": "https://help.naver.com/service/30016/contents/18088?osType=PC",
+  "files": {
+    "NanumSquareRoundL.woff2": {
+      "url": "https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundL.woff2",
+      "sha256": "6d7749f24a9b3a6bc1d7456e48c15eec1b89a1283b88e8ca11b7b891f046625f",
+      "size": 204428
+    },
+    "NanumSquareRoundR.woff2": {
+      "url": "https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundR.woff2",
+      "sha256": "3127eb6b4cf10a0a840d204d613f610bbbd7f8a7ce82c0f81d04713760f81758",
+      "size": 247228
+    },
+    "NanumSquareRoundB.woff2": {
+      "url": "https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundB.woff2",
+      "sha256": "4e8692a08d6c323f1bffb3641c7276d9c4bc8fa2891d78b02acc972776228600",
+      "size": 232072
+    },
+    "NanumSquareRoundEB.woff2": {
+      "url": "https://hangeul.pstatic.net/hangeul_static/webfont/NanumSquareRound/NanumSquareRoundEB.woff2",
+      "sha256": "31257cefdd0cec677b8278086e1d43fdfffb004ab40f96bd1aceda2e8d2f8e42",
+      "size": 226584
+    }
+  }
+}

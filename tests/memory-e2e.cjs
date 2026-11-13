@@ -68,6 +68,7 @@ async function run() {
     await btn("개인 비서").click();
     await page.getByLabel("비서 대화 보관 프로젝트").selectOption(project.id);
     await btn("비서 대화 열기").click();
+    await page.getByRole('dialog',{name:'개인 비서 연결',exact:true}).waitFor({state:'hidden'});
     await page
       .getByLabel("Codex에 보낼 작업 요청")
       .fill("현재 규칙을 확인해 주세요.");

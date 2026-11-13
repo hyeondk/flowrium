@@ -1,6 +1,9 @@
+@font-face{font-family:NanumSquareRound;src:url("./fonts/NanumSquareRoundR.woff2") format("woff2");font-style:normal;font-weight:400;font-display:swap}
+@font-face{font-family:NanumSquareRound;src:url("./fonts/NanumSquareRoundB.woff2") format("woff2");font-style:normal;font-weight:700;font-display:swap}
+@font-face{font-family:NanumSquareRound;src:url("./fonts/NanumSquareRoundEB.woff2") format("woff2");font-style:normal;font-weight:800;font-display:swap}
 :root {
   font-family:
-    -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic",
+    NanumSquareRound, "Apple SD Gothic Neo", "Malgun Gothic",
     sans-serif;
   color: #29292c;
   background: #fff;
@@ -86,6 +89,7 @@ button:focus-visible {
   letter-spacing: 0.02em;
 }
 .hero h1 {
+  font-weight: 800;
   font-size: clamp(2.25rem, 5.3vw, 3.875rem);
   line-height: 1.22;
   margin: 21px 0 25px;

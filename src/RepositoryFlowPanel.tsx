@@ -1,3 +1,4 @@
+import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useState } from 'react';
 import type { Project } from '../shared/types';
 import type { RepoChange, RepositoryDefinition, RepositoryIdentity } from '../shared/repository';
@@ -9,10 +10,10 @@ export default function RepositoryFlowPanel({project}:{project:Project}){
   useEffect(()=>{void run(refresh);},[project.id]);
   return <details className="repo-batch"><summary>여러 저장소 통합 실행 / 안전한 정리</summary><p>선택한 저장소와 파일을 확인하고 실행 계획을 만든 뒤 적용합니다. 실패한 단계는 실행 기록에서 재개할 수 있습니다.</p>
     <button disabled={busy} onClick={()=>void run(refresh)}>연결과 실행 기록 새로고침</button>
-    {repos.map(repo=><section key={repo.id}><label><input type="checkbox" checked={checked.includes(repo.id)} disabled={repo.hidden||busy} onChange={e=>{setChecked(v=>e.target.checked?[...v,repo.id]:v.filter(id=>id!==repo.id));if(e.target.checked)void run(async()=>{const list=await api!.repositoryAction(project.id,{action:'changes',repositoryId:repo.id});setFiles(v=>({...v,[repo.id]:list}));setPicked(v=>({...v,[repo.id]:[]}));});}}/>{repo.name} / {repo.path}{repo.hidden?' / 숨김':''}{repo.account?' / '+repo.account:''}</label>
-      {checked.includes(repo.id)&&<div>{(files[repo.id]||[]).map(f=><label className="repo-file" key={f.file}><input type="checkbox" checked={picked[repo.id]?.includes(f.file)||false} onChange={e=>setPicked(v=>({...v,[repo.id]:e.target.checked?[...(v[repo.id]||[]),f.file]:(v[repo.id]||[]).filter(p=>p!==f.file)}))}/>{f.code} / {f.file}</label>)}
+    {repos.map(repo=><section key={repo.id}><label><AnimatedCheckbox checked={checked.includes(repo.id)} disabled={repo.hidden||busy} onChange={e=>{setChecked(v=>e.target.checked?[...v,repo.id]:v.filter(id=>id!==repo.id));if(e.target.checked)void run(async()=>{const list=await api!.repositoryAction(project.id,{action:'changes',repositoryId:repo.id});setFiles(v=>({...v,[repo.id]:list}));setPicked(v=>({...v,[repo.id]:[]}));});}}/>{repo.name} / {repo.path}{repo.hidden?' / 숨김':''}{repo.account?' / '+repo.account:''}</label>
+      {checked.includes(repo.id)&&<div>{(files[repo.id]||[]).map(f=><label className="repo-file" key={f.file}><AnimatedCheckbox checked={picked[repo.id]?.includes(f.file)||false} onChange={e=>setPicked(v=>({...v,[repo.id]:e.target.checked?[...(v[repo.id]||[]),f.file]:(v[repo.id]||[]).filter(p=>p!==f.file)}))}/>{f.code} / {f.file}</label>)}
         <button disabled={busy} onClick={()=>void run(async()=>setIdentity(await api!.repositoryAction(project.id,{action:'identity',repositoryId:repo.id})))}>계정과 작성자 확인</button>
-        <label><input type="checkbox" checked={dropCommits} onChange={e=>setDropCommits(e.target.checked)}/>확인한 미푸시 커밋도 백업 후 정리</label><button disabled={busy||!(picked[repo.id]?.length||dropCommits)} onClick={()=>void run(async()=>setClean(await api!.repositoryFlow({action:'planClean',projectId:project.id,repositoryId:repo.id,files:picked[repo.id]||[],dropCommits})))}>이 저장소 정리 미리보기</button>
+        <label><AnimatedCheckbox checked={dropCommits} onChange={e=>setDropCommits(e.target.checked)}/>확인한 미푸시 커밋도 백업 후 정리</label><button disabled={busy||!(picked[repo.id]?.length||dropCommits)} onClick={()=>void run(async()=>setClean(await api!.repositoryFlow({action:'planClean',projectId:project.id,repositoryId:repo.id,files:picked[repo.id]||[],dropCommits})))}>이 저장소 정리 미리보기</button>
       </div>}
     </section>)}
     {identity&&<aside><p>GitHub 계정 / {identity.account||'CLI 기본 계정'} / 작성자 {identity.name} / {identity.email}</p>{identity.warnings.map(w=><p key={w}>{w}</p>)}</aside>}

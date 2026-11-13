@@ -1,6 +1,6 @@
 {
   "name": "flowrium",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
   "description": "프로젝트마다 독립된 AI 업무 대화를 운영하는 데스크톱 앱",
   "author": "hyeondk",

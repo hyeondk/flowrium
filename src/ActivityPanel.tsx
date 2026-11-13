@@ -4,6 +4,9 @@ import { ListChecks, MessageSquare, RefreshCw, Square } from "lucide-react";
 import type { SystemActivity } from "../shared/activity";
 import type { FlowriumEvent, Project, Session } from "../shared/types";
 import "./activity.css";
+import {ExecutionBadge} from './ExecutionStatus';
+import {sessionExecution,executionLabels,type ExecutionState} from '../shared/execution-state';
+import type {WorkflowProposal} from '../shared/workflow';
 
 interface ShortcutActions {
   board(): void;
@@ -36,6 +39,7 @@ interface Props {
   sessions: Session[];
   activities: Record<string, {status: string}>;
   approvals: FlowriumEvent[];
+  proposals?:WorkflowProposal[];
   onOpen(session: Session): void;
   onInterrupt(id: string): Promise<void>;
 }
@@ -49,8 +53,8 @@ function latestRequest(session: Session) {
   return "";
 }
 
-export function ActivityPanel({ projects, sessions, activities, approvals, onOpen, onInterrupt }: Props) {
-  const [source, setSource] = useState<"running" | "all">("running");
+export function ActivityPanel({ projects, sessions, activities, approvals, proposals=[], onOpen, onInterrupt }: Props) {
+  const [source, setSource] = useState<ExecutionState | "all">("running");
   const [system, setSystem] = useState<SystemActivity>();
   const [refresh, setRefresh] = useState(0);
   const [systemError, setSystemError] = useState("");
@@ -85,7 +89,7 @@ export function ActivityPanel({ projects, sessions, activities, approvals, onOpe
   }
 
   const running = sessions.filter(session => activities[session.id]);
-  const visible = source === "running" ? running : sessions;
+  const visible = source === "all" ? sessions : sessions.filter(s=>sessionExecution(s,activities[s.id],approvals,proposals)===source);
   const shortcut = /Mac/.test(navigator.platform) ? "⌘" : "Ctrl";
   return <main className="flow-activity">
     <header><ListChecks size={22}/><h1>작업 현황</h1></header>
@@ -104,18 +108,18 @@ export function ActivityPanel({ projects, sessions, activities, approvals, onOpe
     <SystemTools projects={projects}/>
     <section aria-label="전체 프로젝트의 업무">
       <div className="activity-section-title"><h2>업무 목록</h2><div className="activity-filter" aria-label="업무 범위">
-        <button aria-pressed={source === "running"} onClick={()=>setSource("running")}>실행 중 {running.length}</button>
+        {(['running','waiting','decision'] as const).map(state=><button key={state} aria-pressed={source===state} onClick={()=>setSource(state)}>{executionLabels[state]} {sessions.filter(s=>sessionExecution(s,activities[s.id],approvals,proposals)===state).length}</button>)}
         <button aria-pressed={source === "all"} onClick={()=>setSource("all")}>전체 {sessions.length}</button>
       </div></div>
       {stopError && <p role="alert">{stopError}</p>}
-      {visible.length === 0 && <p>{source === "running" ? "현재 실행 중인 업무가 없습니다." : "연결된 프로젝트에 대화가 없습니다."}</p>}
+      {visible.length === 0 && <p>{source === "all" ? "연결된 대화가 없습니다." : executionLabels[source]+" 상태의 대화가 없습니다."}</p>}
       <ul>{visible.map(session => {
         const active = activities[session.id];
-        const pending = approvals.some(a => a.sessionId === session.id);
+        const state=sessionExecution(session,active,approvals,proposals);
         const request = latestRequest(session);
         const project = projects.find(value=>value.id===session.projectId);
         return <li key={session.id}><div>
-          <small>{project?.name || "프로젝트"} / {pending ? "승인 대기" : active?.status || "대기"}</small>
+          <small>{session.scope==='general'?'일반 대화':session.scope==='integrated'?'통합 채팅':project?.name || "프로젝트"} / <ExecutionBadge state={state}/></small>
           <h3>{session.title}</h3>{request && <p className="activity-request">{request.slice(0,300)}</p>}
         </div><div className="activity-buttons">
           <button className="button subtle" onClick={()=>onOpen(session)}><MessageSquare size={14}/>대화 열기</button>
