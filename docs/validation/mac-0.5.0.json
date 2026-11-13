@@ -1,0 +1,40 @@
+{
+  "source": "47851150829af2b460ca43aaad9ddbfdf2403149",
+  "checkedAt": "2026-11-13T06:24:25.495Z",
+  "version": "0.5.0",
+  "platform": "darwin-arm64",
+  "installedBundle": "/Applications/Flowrium.app",
+  "signing": "ad-hoc",
+  "notarized": false,
+  "productionModulesMatched": 51,
+  "rendererJsCssFontsMatched": true,
+  "unitTests": {
+    "passed": 154,
+    "failed": 0
+  },
+  "checks": [
+    "ZIP과 SHA-256 검증 후 실제 설치 및 기존 앱 백업",
+    "실제 앱 화면과 기존 ChatGPT 연결",
+    "패키지 PDF·PPTX 본문 및 기본 일정 도우미",
+    "내장 터미널의 실제 키 입력·독립 탭·작업 폴더·종료",
+    "미공증 ZIP 자동 업데이트 거절 및 수동 설치 버튼",
+    "네이티브 교체 성공 확인·실패 복원",
+    "터미널 설치기 변조·경로·아키텍처 거부",
+    "격리 app.quit·native terminate의 큐 저장 후 정상 종료"
+  ],
+  "shutdownFixtureMs": {
+    "appQuit": 553,
+    "nativeTerminate": 561
+  },
+  "flowriumAndTestElectronProcessesAtCheck": 0,
+  "hashes": {
+    "Flowrium-0.5.0-mac-arm64.dmg": "b8b73e905d1c7712943f25e14b5f7478fe76fff29508e40eae05ae784b869af6",
+    "Flowrium-0.5.0-mac-arm64.zip": "82f6be9e4bb46647734cb76cce47ee263458daa2422fb461aecce163f163176a"
+  },
+  "limitations": [
+    "Developer ID와 Apple 공증 없음",
+    "기존 앱 전체 자료 이전과 외부 실계정·실기기 검사는 별도"
+  ],
+  "productionCodeVerifiedAt": "d2a35f8298b333186e986909bbd1a6ce8819812e",
+  "subsequentProductionDiffEmpty": true
+}
