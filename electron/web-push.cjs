@@ -84,6 +84,7 @@ class PushRuntime {
   }
   devices(c){return this.data.devices.filter(d=>d.scopeId===c.scopeId&&d.owner===c.owner);}
   async status(){return this.serial(async()=>{
+    if(!this.current().enabled)return {available:false,enabled:false,kinds:KINDS,devices:[],message:'휴대폰 연결을 켠 뒤 알림 저장소를 확인합니다.'};
     if(!this.available())return {available:false,enabled:false,kinds:KINDS,devices:[],message:'운영체제의 안전한 키 저장소가 필요합니다.'};
     await this.load();const c=this.current();
     return {available:true,enabled:c.enabled,kinds:KINDS,devices:this.devices(c).map(({id,label,kinds,createdAt,lastSentAt,lastError})=>({id,label,kinds,createdAt,lastSentAt,lastError}))};

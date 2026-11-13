@@ -16,6 +16,7 @@ test('VAPID 키와 구독을 암호화 저장하고 일반 문구만 중복 없�
 const f=await fixture(t),prepared=await f.runtime.action({action:'prepare'}),subscription=sub();assert.equal(Buffer.from(prepared.publicKey,'base64url').length,65);
 const {id}=await f.runtime.action({action:'subscribe',subscription,label:'시험 휴대폰',kinds:['done','decision']});
 const disk=await fs.readFile(path.join(f.directory,'web-push.encrypted'));for(const secret of [prepared.publicKey,subscription.endpoint,subscription.keys.auth,'시험 휴대폰'])assert.equal(disk.includes(Buffer.from(secret)),false);
+let decrypted=0;const reopened=new PushRuntime({directory:f.directory,secretStorage:{...f.storage,decryptString:buffer=>{decrypted++;return f.storage.decryptString(buffer)}},accountRevision:()=>0,getContext:()=>({enabled:true,scopeId:'scope-a'})});t.after(()=>reopened.shutdown());const restored=await reopened.status();assert.equal(restored.available,true);assert.equal(restored.enabled,true);assert.equal(restored.devices[0].id,id);assert.equal(restored.devices[0].label,'시험 휴대폰');assert.equal(decrypted,1);
 assert.deepEqual(await f.runtime.notify({id:'n1',kind:'done',title:'비밀 프로젝트 제목',body:'개인 작업 원문',url:'/#key=secret'}),{sent:1,failed:0});
 assert.deepEqual(await f.runtime.notify({id:'n1',kind:'done'}),{sent:0,failed:0});assert.equal(f.sent.length,1);assert.equal(JSON.stringify(f.sent).includes('secret'),false);assert.equal(JSON.stringify(f.sent).includes('개인'),false);
 await f.runtime.action({action:'preferences',id,kinds:['decision']});await f.runtime.notify({id:'n2',kind:'done'});assert.equal(f.sent.length,1);
@@ -30,6 +31,12 @@ f.setScope('scope-a');const pending=f.runtime.notify({id:'queued',kind:'done'});
 test('만료된 기기는 제거하고 운영체제 암호화 불가 시 구독을 저장하지 않는다',async t=>{
 const f=await fixture(t);await f.runtime.action({action:'prepare'});const {id}=await f.runtime.action({action:'subscribe',subscription:sub(),label:'기기',kinds:['done']});f.fail(Object.assign(Error('gone'),{statusCode:410}));assert.deepEqual(await f.runtime.action({action:'test',id}),{sent:false});assert.equal((await f.runtime.status()).devices.length,0);
 const denied=new PushRuntime({directory:f.directory,secretStorage:{isEncryptionAvailable:()=>false},getContext:()=>({enabled:true,scopeId:'active'})});assert.equal((await denied.status()).available,false);await assert.rejects(denied.action({action:'prepare'}));await denied.shutdown();
+});
+test('휴대폰 연결이 꺼진 상태 조회는 예외를 내는 키체인도 전혀 호출하지 않는다',async t=>{
+const directory=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-push-disabled-'));let calls=0;const unavailable=()=>{calls++;throw Error('호출하면 안 되는 키체인')};const runtime=new PushRuntime({directory,secretStorage:{isEncryptionAvailable:unavailable,decryptString:unavailable,encryptString:unavailable},getContext:()=>({enabled:false})});t.after(async()=>{await runtime.shutdown();await fs.rm(directory,{recursive:true,force:true})});
+await fs.writeFile(path.join(directory,'web-push.encrypted'),'열면 안 되는 기존 암호문');
+for(let index=0;index<2;index++){const state=await runtime.status();assert.equal(state.available,false);assert.equal(state.enabled,false);assert.deepEqual(state.devices,[]);assert.equal(state.message,'휴대폰 연결을 켠 뒤 알림 저장소를 확인합니다.');}
+assert.equal(calls,0);assert.equal(runtime.loaded,false);
 });
 test('서비스워커는 원문과 연결 키를 표시하거나 저장하지 않고 기존 창을 연다',async()=>{
 const vm=require('node:vm'),events={},shown=[];let pending,focused=0,posted;
