@@ -30,7 +30,7 @@ async function run() {
   let app;
   const launch = async () => {
     app = await electron.launch({args: [root], env, timeout: 45000});
-    const page = await app.firstWindow();
+    const page = await app.firstWindow();await page.setViewportSize({width:1440,height:1000});
     page.setDefaultTimeout(16000);
     return page;
   };
@@ -38,10 +38,11 @@ async function run() {
     let page = await launch();
     const btn = name => page.getByRole("button", { name, exact: true });
     const sidebar = () => page.locator(".workspace-side");
-    const goDashboard = async () => { await sidebar().hover(); await sidebar().getByRole("button",{name:"대시보드",exact:true}).click(); };
+    const closeDockOverlay=async()=>{const scrim=page.locator('.dock-mobile-scrim');if(await scrim.isVisible()){const dock=page.locator('.conversation-dock');if(await dock.getAttribute('data-phase')!=='exit')await dock.getByRole('button',{name:'대화함 접기',exact:true}).click();await scrim.waitFor({state:'hidden'});}};
+    const goDashboard = async () => { await closeDockOverlay(); await sidebar().hover(); await sidebar().getByRole("button",{name:"대시보드",exact:true}).click(); };
     const goHome = async () => { await goDashboard(); await btn("업무 보드").click(); };
     const projectTabs = () => page.getByRole("navigation",{name:"프로젝트 상세 탭"});
-    const goProject = async () => { await sidebar().hover(); await sidebar().locator(".side-project").first().click(); };
+    const goProject = async () => { await closeDockOverlay(); await sidebar().hover(); await sidebar().locator(".side-project").first().click(); };
     await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='false');
     await sidebar().hover();
     await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');

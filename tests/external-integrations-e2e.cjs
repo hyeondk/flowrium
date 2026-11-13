@@ -7,7 +7,7 @@ const {Store}=require('../electron/store.cjs');
   const profile=path.join(temp,'profile'),directory=path.join(temp,'project'),codex=path.join(temp,'codex');await fs.mkdir(directory);await fs.mkdir(codex);
   const store=new Store(profile);await store.load();const project=await store.addProject(directory);await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:codex};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
-  app=await electron.launch({args:[path.resolve(__dirname,'..')],env});const page=await app.firstWindow();page.setDefaultTimeout(20000);
+  app=await electron.launch({args:[path.resolve(__dirname,'..')],env});const page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(20000);
   await app.evaluate(async({ipcMain},{root,profile})=>{
    const req=process.getBuiltinModule('node:module').createRequire(root+'/package.json'),fs=req('node:fs/promises');
    const {Store}=req('./electron/store.cjs'),store=new Store(profile);await store.load();

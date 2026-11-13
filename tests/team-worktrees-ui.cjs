@@ -30,6 +30,7 @@ async function main() {
     const launch = async () => {
       app = await _electron.launch({ args: [path.resolve(__dirname, '..')], env, timeout: 45000 });
       const page = await app.firstWindow();
+      await page.setViewportSize({width:1440,height:1000});
       page.setDefaultTimeout(20000);
       await page.getByRole('button',{name:'화면 검증',exact:true}).click();
       await page.getByRole('navigation',{name:'프로젝트 상세 탭'}).getByRole('button',{name:'팀',exact:true}).click();

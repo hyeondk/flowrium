@@ -241,7 +241,7 @@ async function main() {
       if(['0.2.0','0.3.0','0.4.0'].includes(previous)) projectFixture=await require('./update-installed-ui.cjs').seedOldProject(userData,temporary);
       oldApp = await _electron.launch({ executablePath: binary, args: ['--user-data-dir=' + userData], env, timeout: 60000 });
       oldProcess = oldApp.process();
-      const oldWindow = await oldApp.firstWindow();
+      const oldWindow = await oldApp.firstWindow();await oldWindow.setViewportSize({width:1440,height:1000});
       await oldWindow.waitForLoadState('domcontentloaded');
       if(projectFixture) await require('./update-installed-ui.cjs').writeOldDraft(oldWindow,projectFixture);
       const old = await oldApp.evaluate(({ app, BrowserWindow }) => ({

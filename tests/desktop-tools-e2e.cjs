@@ -6,7 +6,7 @@ const {Store}=require("../electron/store.cjs");
  try{
   const store=new Store(path.join(temp,"profile"));await store.load();await store.saveSettings({codexPath:path.join(__dirname,"backend-fake-codex.cjs")});
   const env={...process.env,FLOWRIUM_USER_DATA:path.join(temp,"profile"),CODEX_HOME:path.join(temp,"codex")};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
-  app=await electron.launch({args:[path.resolve(__dirname,"..")],env});const page=await app.firstWindow();page.setDefaultTimeout(20000);
+  app=await electron.launch({args:[path.resolve(__dirname,"..")],env});const page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(20000);
   await app.evaluate(({ipcMain},{root})=>{
    const req=process.getBuiltinModule('node:module').createRequire(root+'/package.json');
    req('./electron/lyrics.cjs').registerLyrics((name,fn)=>{ipcMain.removeHandler('flowrium:'+name);ipcMain.handle('flowrium:'+name,(_,input)=>fn(input));},{fetchImpl:async()=>Response.json([{trackName:'시험 음악',artistName:'시험용 플레이어',duration:180,syncedLyrics:'[00:00.00]첫 번째 시험 문장\n[00:42.00]두 번째 시험 문장\n[01:20.00]마지막 시험 문장'}])});

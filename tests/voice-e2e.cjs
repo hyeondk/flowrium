@@ -8,7 +8,7 @@ const {Store}=require("../electron/store.cjs");
   const store=new Store(temp+"/profile");await store.load();await fs.mkdir(temp+"/project");const project=await store.addProject(temp+"/project");
   await store.saveSettings({codexPath:path.join(__dirname,"backend-fake-codex.cjs")});
   const env={...process.env,FLOWRIUM_USER_DATA:temp+"/profile",CODEX_HOME:temp+"/codex"};delete env.ELECTRON_RUN_AS_NODE;
-  app=await electron.launch({args:[path.resolve(__dirname,"..")],env});const page=await app.firstWindow();page.setDefaultTimeout(15000);
+  app=await electron.launch({args:[path.resolve(__dirname,"..")],env});const page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(15000);
   await newProjectConversation(page,project.id);
   await page.getByLabel("Codex에 보낼 작업 요청").waitFor();
   await app.evaluate(({ipcMain})=>{

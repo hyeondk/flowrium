@@ -14,7 +14,7 @@ async function main(createNew=false){
     });await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     const endpoint=`http://127.0.0.1:${server.address().port}`,store=new Store(profile);await store.load();await fs.mkdir(folder);const project=await store.addProject(folder);if(!createNew)await store.createSession(project.id,{title:'연속 음성 검증 대화'});await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
     const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
-    app=await _electron.launch({args:[path.resolve(__dirname,'..')],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(18000);
+    app=await _electron.launch({args:[path.resolve(__dirname,'..')],env,timeout:45000});page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(18000);
     const button=name=>page.getByRole('button',{name,exact:true}),composer=()=>page.getByLabel('Codex에 보낼 작업 요청');
     if(createNew)await newProjectConversation(page,project.id);else await openConversation(page,'연속 음성 검증 대화');await composer().waitFor();
     await app.evaluate(({ipcMain})=>{ipcMain.removeHandler('flowrium:allowVoiceCapture');ipcMain.handle('flowrium:allowVoiceCapture',()=>true);});

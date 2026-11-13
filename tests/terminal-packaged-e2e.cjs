@@ -25,7 +25,7 @@ async function main() {
     const selectedProfile = await app.evaluate(({ app }) => app.getPath('userData'));
     assert.equal(path.relative(profile, selectedProfile), '', '개인 계정의 앱 프로필과 격리돼야 합니다.');
     await app.evaluate(({ dialog }, folder) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [folder] }); }, project);
-    const page = await app.firstWindow(); page.setDefaultTimeout(20000);
+    const page = await app.firstWindow();await page.setViewportSize({width:1440,height:1000}); page.setDefaultTimeout(20000);
     assert.equal(await page.title(),'Flowrium');
     const document=await app.evaluate(async({app})=>{
       const req=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json');

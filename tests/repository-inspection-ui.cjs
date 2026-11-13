@@ -17,7 +17,7 @@ async function main(){
     const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temporary,'codex')};
     delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
     app=await _electron.launch({args:[path.resolve(__dirname,'..')],env,timeout:45000});
-    const page=await app.firstWindow();page.setDefaultTimeout(15000);
+    const page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(15000);
     const click=name=>page.getByRole('button',{name,exact:true}).click();
     await page.locator('.side-project').getByText('테스트',{exact:true}).click();
     await page.getByRole('navigation',{name:'프로젝트 상세 탭'}).getByRole('button',{name:'GitHub',exact:true}).click();await page.getByText('최근 커밋 1개',{exact:true}).click();

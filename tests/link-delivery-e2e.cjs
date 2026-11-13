@@ -4,7 +4,7 @@ const {_electron:electron}=require('playwright');
  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-link-ui-'));let app;
  try{
   const env={...process.env,FLOWRIUM_USER_DATA:path.join(temp,'profile'),CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
-  app=await electron.launch({args:[path.resolve(__dirname,'..')],env});const page=await app.firstWindow();page.setDefaultTimeout(20000);
+  app=await electron.launch({args:[path.resolve(__dirname,'..')],env});const page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(20000);
   await app.evaluate(async({ipcMain},{root,temp})=>{
    const req=process.getBuiltinModule('node:module').createRequire(root+'/package.json');globalThis.linkSent=[];globalThis.linkUrls=[];
    globalThis.delivery=req('./electron/link-delivery.cjs').registerLinkDelivery((name,fn)=>{ipcMain.removeHandler('flowrium:'+name);ipcMain.handle('flowrium:'+name,(_, ...args)=>fn(...args));},{

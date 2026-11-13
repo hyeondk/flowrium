@@ -8,7 +8,7 @@ async function main(){
  const session=await store.createSession(project.id,{title:'첨부 검증 대화'});await store.createSession(other.id,{title:'다른 프로젝트 대화'});await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
  const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
  const button=name=>page.getByRole('button',{name,exact:true});const input=()=>page.getByLabel('Codex에 보낼 작업 요청');
- async function launch(){app=await _electron.launch({args:[path.resolve(__dirname,'..')],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(16000);await button('개인 비서').waitFor();}
+ async function launch(){app=await _electron.launch({args:[path.resolve(__dirname,'..')],env,timeout:45000});page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(16000);await button('개인 비서').waitFor();}
  async function snapshot(){return page.evaluate(()=>window.flowrium.bootstrap());}
  async function until(fn){for(let i=0;i<250;i++){if(await fn())return;await new Promise(r=>setTimeout(r,30));}throw Error('채팅 화면 상태 대기 시간 초과');}
  async function open(title){await openConversation(page,title);}

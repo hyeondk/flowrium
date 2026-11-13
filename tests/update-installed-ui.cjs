@@ -20,9 +20,12 @@ async function bindUpdateTransport(application, fixture) {
 }
 async function clickAvailable(application,version) {
   const page=await application.firstWindow();
+  await page.setViewportSize({width:1440,height:1000});await page.bringToFront();
+  await application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>!w.isDestroyed())?.focus());
   page.setDefaultTimeout(25000);
   const banner=page.locator('.update-banner').filter({hasText:'Flowrium '+version+' 업데이트'});
   if(!await banner.isVisible()) {
+    const rail=page.locator('.workspace-side');if(await rail.count())await rail.hover();
     await page.locator('.settings-button').click();
     const settings=page.getByRole('dialog').getByRole('region',{name:'프로그램 업데이트'});
     const check=settings.getByRole('button',{name:'새 버전 확인'});

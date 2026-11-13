@@ -32,7 +32,7 @@ async function run() {
       env,
       timeout: 45000,
     });
-    const page = await app.firstWindow();
+    const page = await app.firstWindow();await page.setViewportSize({width:1440,height:1000});
     page.setDefaultTimeout(16000);
     const button = (name) => page.getByRole("button", { name, exact: true });
     let form = page.locator(".main-shell").getByRole("form", { name: "Codex 질문" });

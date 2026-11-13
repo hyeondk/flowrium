@@ -6,7 +6,7 @@ async function main(){
   await store.saveSettings({codexPath:path.join(__dirname,"backend-fake-codex.cjs")});
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,"codex")};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   let app,page;const button=name=>page.getByRole("button",{name,exact:true});
-  async function launch(){app=await _electron.launch({args:[path.resolve(__dirname,"..")],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(18000);
+  async function launch(){app=await _electron.launch({args:[path.resolve(__dirname,"..")],env,timeout:45000});page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(18000);
     await page.locator(".pf-card").filter({hasText:project.name}).click();await page.getByRole("navigation",{name:"프로젝트 상세 탭"}).getByRole("button",{name:"팀",exact:true}).click();}
   async function current(goal){return page.evaluate(async({id,goal})=>(await window.flowrium.readTeams(id)).runs.find(r=>r.prompt===goal),{id:project.id,goal});}
   try{

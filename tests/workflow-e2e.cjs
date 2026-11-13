@@ -9,7 +9,7 @@ async function main(){
   await store.saveSettings({codexPath:path.join(__dirname,"backend-fake-codex.cjs")});
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,"codex")};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   let app,page;
-  async function launch(){app=await _electron.launch({args:[path.resolve(__dirname,"..")],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(18000);}
+  async function launch(){app=await _electron.launch({args:[path.resolve(__dirname,"..")],env,timeout:45000});page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(18000);}
   const button=name=>page.getByRole("button",{name,exact:true});
   async function state(){return page.evaluate(()=>window.flowrium.workflowState());}
   async function wait(fn){for(let n=0;n<160;n++){const value=await state();if(fn(value))return value;await page.waitForTimeout(30);}throw Error("업무 연결 화면 검증 대기 시간 초과");}

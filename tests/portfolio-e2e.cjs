@@ -26,7 +26,7 @@ async function main() {
   let app;
   try {
     app = await electron.launch({ args: [root], env, timeout: 40000 });
-    const page = await app.firstWindow();
+    const page = await app.firstWindow();await page.setViewportSize({width:1440,height:1000});
     page.setDefaultTimeout(10000);
     const button = (name) => page.getByRole("button", { name, exact: true });
     const tab = (name) =>

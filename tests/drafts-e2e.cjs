@@ -36,7 +36,7 @@ async function run() {
       env,
       timeout: 45000,
     });
-    page = await app.firstWindow();
+    page = await app.firstWindow();await page.setViewportSize({width:1440,height:1000});
     page.setDefaultTimeout(16000);
   };
   const close = async () => {
