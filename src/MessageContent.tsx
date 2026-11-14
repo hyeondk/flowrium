@@ -1,12 +1,13 @@
 import {useMemo,useState} from 'react';
 import {ChevronDown,Copy,FileText,TerminalSquare} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {messageContent,safeLogPreview} from './message-content';
 import './message-content.css';
 
 type Props={text:string;role:'user'|'assistant'|'system';streaming?:boolean};
 function Markdown({text}:{text:string}){
- return <div className="markdown message-prose"><ReactMarkdown components={{a:({node:_,...props})=><a {...props} target="_blank" rel="noopener noreferrer"/>}}>{text}</ReactMarkdown></div>;
+ return <div className="markdown message-prose"><ReactMarkdown remarkPlugins={[remarkGfm]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={{a:({node:_,href,...props})=><a {...props} href={href} target={href?.startsWith('#')?undefined:'_blank'} rel="noopener noreferrer"/>,table:({node:_,...props})=><div className="message-table-wrap" role="region" aria-label="답변 표" tabIndex={0}><table {...props}/></div>}}>{text}</ReactMarkdown></div>;
 }
 function LogDetails({raw,title,failed=false,pending=false}:{raw:string;title:string;failed?:boolean;pending?:boolean}){
  const [open,setOpen]=useState(false),[original,setOriginal]=useState(false),[copied,setCopied]=useState(false),[copyError,setCopyError]=useState('');

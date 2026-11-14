@@ -141,7 +141,7 @@ node scripts/verify-downloads.mjs
 
 ## 배포
 
-Mac에서 `npm run dist:mac`, Windows에서 `npm run dist:win`을 실행하면 `release/`에 배포 파일이 생성됩니다. 저장소 배포의 대상은 Apple Silicon Mac과 Windows x64입니다. 배포용 아이콘은 사용자가 제공한 `Flow Icon.png`를 각 플랫폼 형식으로 변환한 파일입니다.
+Mac에서 `npm run dist:mac`, Windows에서 `npm run dist:win`을 실행하면 `release/`에 배포 파일이 생성됩니다. 저장소 배포의 대상은 Apple Silicon Mac과 Windows x64입니다. 배포용 아이콘은 사용자가 제공한 `Flow Icon.png`의 글자 형태를 유지한 파란색 변형을 각 플랫폼 형식으로 변환한 파일입니다. 원본 이미지도 보존합니다.
 
 [터미널 설치기](docs/TERMINAL-INSTALL.md)는 릴리스 체크섬을 확인하고 기존 앱을 백업합니다. Windows에서는 기존 폴더를 복사한 뒤 파일 목록과 SHA-256을 검증하고, 원래 제거 프로그램을 유지한 상태로 새 설치를 실행합니다. 설치 실패 시 불완전한 앱은 별도로 보관하고 검증한 이전 앱을 복원합니다. 프로젝트와 대화 데이터는 삭제하지 않습니다.
 
