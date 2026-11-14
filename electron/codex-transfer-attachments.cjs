@@ -12,17 +12,25 @@ async function image(part){
  }else throw Error('원격 이미지나 파일 참조는 원문에 보관했습니다. 자동 다운로드하지 않습니다.');
  const format=imageType(data);if(!format||!data.length||data.length>MAX_FILE)throw Error('지원하는 이미지 바이트가 아닙니다. 원문 참조는 보존했습니다.');return{data,...format};
 }
-async function materialize(store,project,data,guard){
- const groups=new Map(),warnings=[];let copied=0,missing=0;
+async function materialize(store,project,data,guard,options={}){
+ const groups=new Map(),warnings=[];let copied=0,missing=0,recovered=0,recovery;
+ async function readImage(entry,key){
+  try{return await image(entry.part);}catch(error){
+   if(entry.part.type!=='localImage')throw error;
+   if(!recovery)recovery=require('./codex-rollout-images.cjs').recoverSavedImages(data,{guard,resolveHistoryBase:options.resolveHistoryBase,onWarning:warning=>warnings.push(warning)}).catch(failure=>{guard();warnings.push('대화 기록의 이미지 사본 확인 보류 / '+String(failure.message));return new Map();});
+   const candidate=(await recovery).get(key);guard();if(!candidate)throw error;return candidate;
+  }
+ }
  const root=path.join(project.path,'.flowrium','codex-source',hash(data.thread.id));await projectDirectory(path.dirname(root));await projectDirectory(root);const cache=path.join(root,'attachments');await projectDirectory(cache);
  for(const entry of data.attachments){guard();const key=hash(entry.key+'\0'+JSON.stringify(entry.part)),file=path.join(cache,key+'.json');let attachment;
   try{let saved;try{saved=await readJSON(file);}catch(error){if(error.code!=='ENOENT')throw error;}
    if(saved){if(saved.version!==1||saved.key!==key)throw Error('보관한 첨부 정보가 변경됐습니다.');const [resolved]=await resolveAttachments(store,project.id,[saved.attachment.id]);const {path:_,image:__,dataUrl:___,...record}=resolved;attachment=record;}
-   else{const bytes=await image(entry.part);guard();const [record]=await addAttachments(store,project.id,[{name:'Codex-첨부-'+key.slice(0,12)+bytes.extension,type:bytes.type,bytes:bytes.data}]);guard();await createJSON(file,{version:1,key,attachment:record});attachment=record;copied++;}
+   else{const bytes=await readImage(entry,key);guard();const restored=bytes.provenance==='saved-conversation-image';const [record]=await addAttachments(store,project.id,[{name:(restored?'Codex-기록사본-':'Codex-첨부-')+key.slice(0,12)+bytes.extension,type:bytes.type,bytes:bytes.data}]);guard();await createJSON(file,{version:1,key,attachment:record,...(restored?{recovery:{provenance:bytes.provenance,sha256:bytes.sha256}}:{})});attachment=record;copied++;if(restored)recovered++;}
    const messageId=stable('codex-message:'+data.thread.id+':'+entry.key+':0'),rows=groups.get(messageId)||[];if(!rows.some(row=>row.id===attachment.id))rows.push(attachment);groups.set(messageId,rows);
   }catch(error){missing++;warnings.push('첨부 원문 참조 보존 / '+String(error.message));}
  }
  const messages=[];for(const message of data.messages){const files=groups.get(message.id)||[];messages.push({...message,...(files.length?{attachments:files.slice(0,10)}:{})});for(let offset=10;offset<files.length;offset+=10)messages.push({...message,id:stable(message.id+':추가첨부:'+offset),text:'이 요청의 추가 첨부 자료',attachments:files.slice(offset,offset+10)});}
- return{messages,warnings,copied,missing};
+ if(recovered)warnings.push('대화 기록에 보관된 이미지 사본 '+recovered+'개를 복구했습니다. 원래 임시 파일과 해상도나 바이트가 다를 수 있습니다.');
+ return{messages,warnings,copied,missing,recovered};
 }
 module.exports={materialize,image};

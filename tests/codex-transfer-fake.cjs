@@ -4,7 +4,7 @@ if(!file)throw Error('합성 대화 자료가 필요합니다.');
 const write=value=>process.stdout.write(JSON.stringify(value)+'\n');
 function load(){return JSON.parse(fs.readFileSync(file,'utf8'));}
 function save(value){fs.writeFileSync(file,JSON.stringify(value));}
-function thread(data){return {id:data.threadId,name:data.title,cwd:data.folder,createdAt:data.createdAt,updatedAt:data.updatedAt,source:'appServer',modelProvider:'openai',model:'test-model',reasoningEffort:'medium',status:{type:'notLoaded'},ephemeral:false};}
+function thread(data){return {id:data.threadId,name:data.title,cwd:data.folder,createdAt:data.createdAt,updatedAt:data.updatedAt,source:'appServer',...(data.rolloutPath?{path:data.rolloutPath}:{}),modelProvider:'openai',model:'test-model',reasoningEffort:'medium',status:{type:'notLoaded'},ephemeral:false};}
 readline.createInterface({input:process.stdin}).on('line',line=>{let input;try{input=JSON.parse(line);}catch{return;}const {id,method,params={}}=input;const data=load();const reply=result=>write({id,result});
  if(method==='initialize')return reply({userAgent:'합성 연결 검사'});
  if(method==='initialized')return;

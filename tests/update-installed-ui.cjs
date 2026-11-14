@@ -50,10 +50,10 @@ async function seedOldProject(userData,temporary) {
   return {project:project.id,session:session.id,directory,message,draft:{text:'보내기 전의 검증 문장',mode:'plan'}};
 }
 async function checkProject(page,fixture) {
-  const assert=require('node:assert/strict'),path=require('node:path');
+  const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs/promises');
   const state=await page.evaluate(()=>window.flowrium.bootstrap());
   const project=state.projects.find(p=>p.id===fixture.project);
-  assert.equal(path.relative(project.path,fixture.directory),'');
+  assert.equal(path.relative(await fs.realpath(project.path),await fs.realpath(fixture.directory)),'','설치 전후 같은 실제 프로젝트 폴더 보존');
   const session=state.sessions.find(s=>s.id===fixture.session);
   assert.equal(session.projectId,fixture.project);assert.equal(session.workflow,undefined);
   assert.deepEqual(session.messages,[fixture.message]);
