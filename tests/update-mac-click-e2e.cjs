@@ -35,7 +35,7 @@ async function main(){
     await run('/usr/bin/codesign',['--force','--sign','-',newApp]);
     await run('/usr/bin/ditto',['-c','-k','--keepParent',newApp,file]);
     const data=await fs.readFile(file),sum=digest(data),sums=sum+'  '+name+'\n';
-    const url='https://github.com/hyeondk/flowrium/releases/download/v'+next+'/';
+    const url='https://github.com/hyeondk/flowrium/releases/download/'+releaseTag(next)+'/';
     const entries=[[name,data.length,sum],['SHA256SUMS.txt',Buffer.byteLength(sums),digest(sums)]];
     const manifest={tag_name:releaseTag(next),prerelease:false,draft:false,assets:entries.map(([name,size,sha])=>({
       name,size,digest:'sha256:'+sha,browser_download_url:url+name}))};
