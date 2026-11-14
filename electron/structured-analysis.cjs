@@ -1,10 +1,7 @@
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),{randomUUID}=require('node:crypto');
 const {CodexClient}=require('./codex.cjs');
 function analysisEffort(preferred,model,data){
- if(!model||!Array.isArray(data))return undefined;
- const row=data.find(row=>(row.model||row.id)===model),supported=row?.supportedReasoningEfforts?.map(value=>value.reasoningEffort).filter(value=>['none','minimal','low','medium','high','xhigh','max','ultra'].includes(value))||[];
- if(!supported.length)return undefined;
- return supported.includes(preferred)?preferred:supported.includes(row.defaultReasoningEffort)?row.defaultReasoningEffort:supported[0];
+ return model?require('./model-effort.cjs').supportedEffort(preferred,model,data):undefined;
 }
 function disabledConnections(config){
  const overrides={'features.shell_tool':false,'features.unified_exec':false,'features.multi_agent':false,'features.default_mode_request_user_input':false,'features.sleep_tool':false,'features.skill_search':false,'web_search':'disabled','plugins._default.enabled':false,'apps._default.enabled':false,'project_doc_max_bytes':0};
@@ -35,9 +32,7 @@ async function runStructuredAnalysis(controller,input){
   if(account.account?.type!=='chatgpt')throw Error('AI 분석에는 본인의 ChatGPT 계정 연결이 필요합니다.');
   if(owner!==(controller.options.queueOwner?.()??'local')||controller.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다.');
   const config=await controller.client.request('config/read',{includeLayers:false});
-  const selectedModel=input.model||controller.store.state.settings.model;
-  const modelData=await controller.client.request('model/list',{limit:100,includeHidden:false}).catch(()=>null);
-  const effort=analysisEffort(input.effort||controller.store.state.settings.effort,selectedModel,modelData?.data);
+  const effort=input.effort||controller.store.state.settings.effort;
   if(owner!==(controller.options.queueOwner?.()??'local')||controller.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다.');
   const overrides=disabledConnections(config.config);
   client=controller.options.analysisClientFactory?.(overrides)||new CodexClient({...controller.client.options,configOverrides:overrides});

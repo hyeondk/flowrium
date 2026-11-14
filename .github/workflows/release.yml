@@ -385,6 +385,13 @@ jobs:
         id: verify_39
         continue-on-error: true
         run: node tests/window-lifecycle-e2e.cjs
+      - name: Mac 일반 실행과 완전 종료
+        id: verify_40
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          version=$(node -p 'require("./package.json").flowriumVersion')
+          node tests/mac-quit-lifecycle-e2e.cjs --archive "release/Flowrium-${version}-mac-arm64.zip" --sequential
       - name: 모든 검증 결과 확인
         if: ${{ !cancelled() }}
         env:

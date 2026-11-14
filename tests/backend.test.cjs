@@ -283,10 +283,18 @@ test("완료 시 저장 실패도 응답을 보존하고 완료 이벤트와 잠
     mode: "plan",
   });
   await started;
-  store.save = async () => {
-    throw new Error("검증용 저장 실패");
+  let finalSaveFailures = 0;
+  store.save = async (...args) => {
+    // turn/started 이후에도 턴 식별자 저장이 남을 수 있으므로 완료 저장만 실패시킨다.
+    if (controller.runs.get(session.id)?.finalized) {
+      finalSaveFailures++;
+      throw new Error("검증용 저장 실패");
+    }
+    return originalSave(...args);
   };
   const result = await done;
+  assert.equal(finalSaveFailures, 1);
+  assert.equal(result.status, "completed");
   assert.match(result.text, /기록을 저장하지 못했습니다/);
   assert.equal(controller.runs.size, 0);
   assert.match(store.session(session.id).messages.at(-1).text, /확인한 결과/);

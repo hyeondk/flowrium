@@ -18,7 +18,7 @@ import MusicPanel from "./MusicPanel";
 import IntegrationPanel from "./IntegrationPanel";
 import RemotePanel from "./RemotePanel";
 import { VoiceSettings, VoiceComposer, SpeakMessageButton } from "./VoiceTools";
-import {effortOptions,effortLabels} from "../shared/model-options";
+import {effortOptions,effortLabels,effectiveEffort} from "../shared/model-options";
 import {modelDisplayName} from '../shared/model-display';
 import SettingsLayout,{SettingsGroup} from "./SettingsLayout";
 import CodexTransferPanel,{CodexLinkBar} from "./CodexTransferPanel";
@@ -1915,11 +1915,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   생각의 깊이
                   <select
                     className="text-input"
-                    value={data.settings.effort}
+                    value={effectiveEffort(models.find(row=>row.id===data.settings.model)||(!data.settings.model?models.find(row=>row.isDefault):undefined),data.settings.effort)||''}
                     onChange={(e) =>
                       saveSettings({ effort: e.target.value as Effort })
                     }
                   >
+                    <option value="" disabled>모델 기본값</option>
                     {effortOptions(models.find(row=>row.id===data.settings.model)||(!data.settings.model?models.find(row=>row.isDefault):undefined)).map(row=><option key={row.reasoningEffort} value={row.reasoningEffort}>{effortLabels[row.reasoningEffort]}</option>)}
                   </select>
                 </label>

@@ -19,6 +19,8 @@ class Controller extends EventEmitter {
     this.store = store;
     this.options = options;
     this.client = options.client || new CodexClient(options);
+    this.client.options ||= {};
+    this.client.options.captureTurnGuard=params=>{const run=this.findRun(params.threadId);return run?()=>this.runs.get(run.sessionId)===run&&!run.cancelled&&!run.finalized&&run.ownerRevision===(this.options.queueOwner?.()??'local'):()=>true;};
     this.runs = new Map();
     this.editingSessions = new Set();
     this.loadedThreads = new Set();

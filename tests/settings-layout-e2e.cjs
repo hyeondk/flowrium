@@ -5,7 +5,18 @@ const path=require('node:path');
 const {_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs');
 
+function colorAlpha(value){
+ const color=value.trim().toLowerCase();if(color==='transparent')return 0;
+ const rgba=/^rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)$/.exec(color);
+ return rgba?Number(rgba[1]):1;
+}
+function checkTransparentColors(){
+ for(const color of ['transparent','rgba(0, 0, 0, 0)','rgba(229, 239, 247, 0)','rgba(229,239,247,0.0)'])assert.equal(colorAlpha(color),0,'알파 0인 색은 RGB와 무관하게 완전 투명');
+ for(const color of ['rgba(0, 0, 0, 1)','rgba(229, 239, 247, 0.001)','rgb(0, 0, 0)','#000000','white'])assert.notEqual(colorAlpha(color),0,'불투명하거나 일부 보이는 색은 투명으로 통과하지 않음');
+}
+
 async function run(){
+ checkTransparentColors();
  const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-settings-layout-')));
  let app,page;const errors=[],measurements=[];
  try{
@@ -31,7 +42,7 @@ async function run(){
    measurements.push(m);assert(m.padding.every(value=>value>=16),width+' 설정 표면 내부 여백');assert(m.heading.x>=m.panel.x+m.padding[0]-.5,width+' 제목이 테두리에 붙지 않음');assert(m.description.x>=m.panel.x+m.padding[0]-.5,width+' 설명이 표면 여백 안에 표시');
    assert(m.controls.every(c=>c.x>=m.panel.x+m.padding[0]-1&&c.right<=m.panel.right-m.padding[1]+1),width+' 입력과 버튼의 가로 경계');assert(m.controls.every(c=>c.height>=(m.pointerFine?32:36)),width+' 입력 방식에 맞는 컨트롤 최소 높이');assert(m.rows.every(r=>r.height>=48),width+' 설정 행 높이');
    assert(m.switches.every(c=>Math.abs(c.right-(m.panel.right-m.padding[1]-1))<2),width+' 스위치 오른쪽 정렬');assert(Math.abs(m.action.right-(m.panel.right-m.padding[1]-1))<2,width+' 폼 행동 그룹 오른쪽 정렬');assert(m.content.scroll<=m.content.client+1,width+' 설정 본문 가로 넘침 없음');assert(m.document.scroll<=m.document.client+1,width+' 문서 가로 넘침 없음');
-   assert(Math.abs(m.modal.x+m.modal.width/2-width/2)<2,width+' 팝업 가로 중앙');assert(Math.abs(m.modal.y+m.modal.height/2-height/2)<2,width+' 팝업 세로 중앙');assert.match(m.ghost.background,/rgba\(0, 0, 0, 0\)|transparent/,width+' 비선택 메뉴는 투명한 버튼');assert.match(m.ghost.border,/rgba\(0, 0, 0, 0\)|transparent/,width+' 비선택 메뉴는 개별 테두리 없음');assert(m.words.every(w=>new Set(w.tops.map(v=>Math.round(v))).size<=1),width+' 한글 어절 단위 줄바꿈');
+   assert(Math.abs(m.modal.x+m.modal.width/2-width/2)<2,width+' 팝업 가로 중앙');assert(Math.abs(m.modal.y+m.modal.height/2-height/2)<2,width+' 팝업 세로 중앙');assert.equal(colorAlpha(m.ghost.background),0,width+' 비선택 메뉴 배경 알파 0 / '+m.ghost.background);assert.equal(colorAlpha(m.ghost.border),0,width+' 비선택 메뉴 테두리 알파 0 / '+m.ghost.border);assert(m.words.every(w=>new Set(w.tops.map(v=>Math.round(v))).size<=1),width+' 한글 어절 단위 줄바꿈');
   }
   await page.setViewportSize({width:1440,height:1000});await page.locator('.settings-nav-item[data-settings-target="general"]').click();await page.getByRole('region',{name:'프로그램 업데이트',exact:true}).waitFor();await page.waitForTimeout(300);
   const update=await page.getByRole('region',{name:'프로그램 업데이트',exact:true}).evaluate(e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e),text=e.querySelector('strong').getBoundingClientRect();return{left:r.left,right:r.right,textLeft:text.left,padding:parseFloat(s.paddingLeft),height:r.height};});assert(update.textLeft>=update.left+update.padding-1,'업데이트 문구의 내부 여백');assert(update.padding>=16,'조밀한 업데이트 표면 여백');
@@ -50,4 +61,5 @@ async function baseline(){
   assert(rows.every(r=>r.paddingLeft===0&&r.textInsetX<2),'기존 업데이트·보안 표면의 여백 없음 재현');await fs.mkdir(path.join(root,'.flowrium-tmp'),{recursive:true});await fs.writeFile(path.join(root,'.flowrium-tmp/settings-baseline-061.json'),JSON.stringify({version:await app.evaluate(({app})=>app.getVersion()),rows},null,2));await page.screenshot({path:path.join(root,'.flowrium-tmp/settings-baseline-061.png'),animations:'disabled'});console.log('기존 설치 앱에서 업데이트 / 보안 표면 가로·위쪽 패딩 0 재현',JSON.stringify(rows));
  }finally{if(app)await app.close();await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});}
 }
-(process.argv.includes('--baseline')?baseline():run()).catch(error=>{console.error(error);process.exitCode=1});
+if(process.argv.includes('--check-colors')){checkTransparentColors();console.log('투명색 표기 4종 허용 / 불투명과 부분 투명 5종 거절 통과');}
+else (process.argv.includes('--baseline')?baseline():run()).catch(error=>{console.error(error);process.exitCode=1});

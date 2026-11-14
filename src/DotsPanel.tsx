@@ -35,7 +35,7 @@ export default function DotsPanel({active=true,blocked=false}:{active?:boolean;b
  async function perform(action:()=>Promise<unknown>){try{await action();setError('');if(api)setState(await api.readDotsState())}catch(e){setError(e instanceof Error?e.message:String(e))}}
  return <section className="dots-panel" aria-label="Dots 공식 화면">
   <header className="dots-toolbar"><div><strong>개인 비서</strong><small>Dots 공식 화면</small></div><button className="dock-icon" aria-label="Dots 새로고침" disabled={!api||blocked||!active} onClick={()=>void perform(()=>api!.reloadDotsView())}><RefreshCw size={15}/></button><button className="dock-icon" aria-label="Dots 외부 브라우저에서 열기" disabled={!api||blocked||!active} onClick={()=>void perform(()=>api!.openDotsExternal())}><ExternalLink size={15}/></button></header>
-  <p className="dots-caption">공식 텍스트 웹 화면에서 별도로 로그인합니다. 통화 기능과 Flowrium 대화 자동 동기화는 지원하지 않습니다.</p>
+  <p className="dots-caption">처음에는 Flowrium에 연결한 것과 같은 ChatGPT 계정으로 웹 로그인하세요. 이 기기에서 로그인 상태를 유지합니다. 통화와 Flowrium 대화 자동 동기화는 지원하지 않습니다.</p>
   {state?.externalHost&&<div className="dots-external-request"><span>{state.externalHost}에서 외부 페이지를 열려고 합니다.</span><button type="button" className="button subtle" disabled={blocked||!active} onClick={()=>void perform(()=>api!.openDotsExternal())}>외부 브라우저에서 열기</button></div>}
   {(error||state?.error)&&<p className="dots-error" role="status">{error||state?.error}</p>}
   <div className="dots-native-host" ref={host}>{blocked||!active?<p>다른 창을 닫은 뒤 Dots를 이어서 확인하세요.</p>:state?.loading?<p><LoaderCircle className="spin" size={16}/>공식 화면을 불러오고 있습니다.</p>:null}</div>

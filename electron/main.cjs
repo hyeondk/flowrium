@@ -598,6 +598,13 @@ else {
     Promise.allSettled([externalRepositoryAccess?.shutdown(),dotsRuntime?.shutdown(),workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.(), projectPorts?.shutdown(), codexTransfer?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
       .then(() => { lifecycleDiagnostic('quit-services-finished'); return teamRuntime?.flush(); })
       .then(() => { lifecycleDiagnostic('quit-teams-finished'); return drafts.queue; })
-      .finally(() => { lifecycleDiagnostic('quit-finished'); app.quit(); });
+      .finally(() => {
+        lifecycleDiagnostic('quit-finished');
+        setImmediate(() => {
+          if (window && !window.isDestroyed()) window.setEnabled(true);
+          lifecycleDiagnostic('quit-reenter');
+          app.quit();
+        });
+      });
   });
 }

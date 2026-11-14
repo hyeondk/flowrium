@@ -127,6 +127,7 @@ class CodexClient extends EventEmitter {
     this.ready = false;
     this.intentionalClose = false;
     this.descriptor = null;
+    this.modelCatalog=null;this.modelCatalogFlight=null;this.threadModels=new Map();this.catalogEpoch=0;
   }
   async start(configured) {
     if (this.ready && this.proc) return;
@@ -213,6 +214,7 @@ class CodexClient extends EventEmitter {
   }
   _fail(error) {
     this.ready = false;
+    this.clearModelCatalog();
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(error);
@@ -229,6 +231,30 @@ class CodexClient extends EventEmitter {
     this.proc.stdin.write(`${JSON.stringify(message)}\n`);
   }
   request(method, params = {}, timeout = 30_000) {
+    if(method==='turn/start')return this.normalizedTurn(params,timeout);
+    if(method==='model/list'&&!params.cursor){
+      const owner=this.options.queueOwner?.()??'local',epoch=this.catalogEpoch;
+      if(this.modelCatalogFlight?.owner===owner)return this.modelCatalogFlight.promise;
+      const flight={owner,promise:null};
+      flight.promise=this.rawRequest(method,params,timeout).then(result=>{if(epoch===this.catalogEpoch&&owner===(this.options.queueOwner?.()??'local'))this.modelCatalog={owner,at:Date.now(),data:Array.isArray(result?.data)?result.data:[]};return result}).finally(()=>{if(this.modelCatalogFlight===flight)this.modelCatalogFlight=null});
+      this.modelCatalogFlight=flight;return flight.promise;
+    }
+    const result=this.rawRequest(method,params,timeout);
+    if(['thread/start','thread/resume','thread/fork'].includes(method))return result.then(value=>{const id=value?.thread?.id||params.threadId,model=value?.model||params.model;if(id&&model)this.threadModels.set(id,model);return value});
+    if(method==='account/logout')return result.then(value=>{this.clearModelCatalog();return value});
+    return result;
+  }
+  clearModelCatalog(){this.catalogEpoch++;this.modelCatalog=null;this.modelCatalogFlight=null;this.threadModels.clear();}
+  async normalizedTurn(params,timeout){
+    const epoch=this.catalogEpoch,owner=this.options.queueOwner?.()??'local',current=this.options.captureTurnGuard?.(params)||(()=>true);
+    if(this.options.canRun?.()===false||!current())throw Error('계정이나 작업 상태가 바뀌었습니다.');
+    if(!this.modelCatalog||this.modelCatalog.owner!==owner||Date.now()-this.modelCatalog.at>300000)await this.request('model/list',{limit:100,includeHidden:false},Math.min(timeout,5000)).catch(()=>{if(this.modelCatalog?.owner===owner)this.modelCatalog=null;});
+    if(epoch!==this.catalogEpoch||owner!==(this.options.queueOwner?.()??'local')||this.options.canRun?.()===false||!current())throw Error('계정이나 연결 상태가 바뀌었습니다. 다시 요청해 주세요.');
+    const model=params.model||this.threadModels.get(params.threadId),effort=require('./model-effort.cjs').supportedEffort(params.effort,model,this.modelCatalog?.owner===owner?this.modelCatalog.data:undefined),next={...params};
+    if(effort===undefined)delete next.effort;else next.effort=effort;
+    return this.rawRequest('turn/start',next,timeout).then(result=>{if(params.model&&params.threadId)this.threadModels.set(params.threadId,params.model);return result});
+  }
+  rawRequest(method, params = {}, timeout = 30_000) {
     const id = ++this.counter;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
