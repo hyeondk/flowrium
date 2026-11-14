@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { readdir, writeFile } from "node:fs/promises";
+import { readdir, writeFile, readFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 
+import versions from '../electron/version.cjs';
+const version=versions.releaseVersion(JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8')));
 const directory = resolve(process.argv[2] || "release");
 const names = (await readdir(directory))
   .filter((name) =>
-    ['install.sh','install.ps1','flowrium-install-support.cjs','SOURCE-COMMIT.txt'].includes(name) || /^Flowrium-[0-9A-Za-z.-]+-(?:mac-arm64\.(?:dmg|zip)|win-x64\.exe|source\.tar\.gz)$/.test(
+    ['install.sh','install.ps1','flowrium-install-support.cjs','SOURCE-COMMIT.txt'].includes(name) || name.startsWith('Flowrium-'+version+'-') && /^Flowrium-[0-9A-Za-z._-]+-(?:mac-arm64\.(?:dmg|zip)|win-x64\.exe|source\.tar\.gz)$/.test(
       name,
     ),
   )

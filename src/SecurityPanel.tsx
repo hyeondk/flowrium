@@ -294,7 +294,7 @@ export function SecurityPanel({ security }: Props) {
           />
         </label>
         <div>
-          <button className="button subtle" disabled={busy}>
+          <button type="submit" className="button primary" disabled={busy}>
             {state.hasPin ? "잠금 번호 변경" : "잠금 번호 설정"}
           </button>
           {state.hasPin && (

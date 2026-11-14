@@ -1,3 +1,4 @@
+import type {CodexTransferAPI,CodexTransferLink} from "./codex-transfer";
 import type { MigrationAPI } from "./migration";
 import type { ProjectPortsAPI } from "./project-ports";
 import type { VoiceServerAPI } from "./voice-server";
@@ -74,6 +75,7 @@ export interface Message {
   createdAt: string;
 }
 export interface Session {
+  codexLink?:CodexTransferLink;
   scope?: ConversationScope;
   restoredDraft?:{text:string;attachments:ChatAttachment[]};
   personalAssistant?: true;
@@ -147,6 +149,7 @@ export interface Bootstrap {
 }
 export interface FlowriumAPI
   extends
+    CodexTransferAPI,
     MigrationAPI,
     ProjectPortsAPI,
     VoiceServerAPI,

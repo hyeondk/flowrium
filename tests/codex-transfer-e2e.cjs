@@ -1,0 +1,32 @@
+const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
+const {_electron}=require('playwright'),{Store}=require('../electron/store.cjs');
+const {closeSettings,openConversation}=require('./shell-test-helpers.cjs');
+async function main(){const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-copy-ui-')));let app,page;
+ try{
+  const profile=path.join(temp,'profile'),folder=path.join(temp,'합성 프로젝트'),fixture=path.join(temp,'source.json');await fs.mkdir(folder);
+  const threadId=crypto.randomUUID(),now=Math.floor(Date.now()/1000),source={threadId,folder,title:'이어갈 합성 프로젝트 대화',createdAt:now-10,updatedAt:now,turns:[{id:crypto.randomUUID(),status:'completed',startedAt:now-5,completedAt:now-4,items:[{id:crypto.randomUUID(),type:'userMessage',content:[{type:'text',text:'이전 프로젝트 요청'}]},{id:crypto.randomUUID(),type:'agentMessage',text:'이전 프로젝트 답변',phase:'final_answer'},{id:crypto.randomUUID(),type:'commandExecution',command:'검증 명령',aggregatedOutput:'보존할 합성 도구 기록'}]}]};await fs.writeFile(fixture,JSON.stringify(source));
+  const original=crypto.createHash('sha256').update(await fs.readFile(fixture)).digest('hex');const store=new Store(profile);await store.load();await store.saveSettings({codexPath:path.join(__dirname,'codex-transfer-fake.cjs')});
+  const env={...process.env,FLOWRIUM_USER_DATA:profile,FLOWRIUM_CODEX_TRANSFER_FIXTURE:fixture,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
+  app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(16000);
+  // 프로젝트 발견 목록만 합성 위치로 공급합니다. 실제 IPC / 원문 조회 / 보관 / 대화 저장은 제품 코드를 사용합니다.
+  await app.evaluate(({app},{folder,threadId})=>{const req=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json'),{CodexTransfer}=req('./electron/codex-transfer.cjs'),original=CodexTransfer.prototype.projects;CodexTransfer.prototype.projects=function(input){return original.call(this,{...input,projects:[{name:'합성 프로젝트',path:folder,threadIds:[threadId]}]});};},{folder,threadId});
+  await page.locator('.side-account i[data-connected=true]').waitFor();await page.getByRole('button',{name:'설정',exact:true}).click();await page.locator('[data-settings-target=transfer]').click();const panel=page.getByRole('region',{name:'Codex 프로젝트 대화 연결',exact:true});
+  await panel.getByRole('button',{name:'Codex 대화 찾기',exact:true}).click();await panel.getByText(source.title,{exact:true}).waitFor();assert.equal(crypto.createHash('sha256').update(await fs.readFile(fixture)).digest('hex'),original,'미리보기 원본 불변');
+  await app.evaluate(({app})=>{const req=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json'),{CodexTransfer}=req('./electron/codex-transfer.cjs'),original=CodexTransfer.prototype.archive;CodexTransfer.prototype.archive=async function(...args){global.__transferArchiveWaiting=true;await new Promise(resolve=>{global.__releaseTransferArchive=resolve;});CodexTransfer.prototype.archive=original;return original.apply(this,args);};});
+  await panel.getByRole('button',{name:'선택한 대화 연결',exact:true}).click();
+  for(let n=0;n<100&&!await app.evaluate(()=>global.__transferArchiveWaiting);n++)await new Promise(resolve=>setTimeout(resolve,50));
+  assert(await app.evaluate(()=>global.__transferArchiveWaiting),'원문 보관 중 변경 경합 재현');
+  const blocked=await page.evaluate(async()=>{const data=await window.flowrium.bootstrap();try{await window.flowrium.createSession(data.projects[0].id);return false;}catch(error){return /대화 연결을 처리 중/.test(String(error));}});assert(blocked,'대화 연결 중 다른 변경은 IPC에서 차단');
+  await app.evaluate(()=>{global.__releaseTransferArchive();delete global.__releaseTransferArchive;delete global.__transferArchiveWaiting;});
+  await panel.getByRole('status').filter({hasText:'연결 1개'}).waitFor();assert.equal(crypto.createHash('sha256').update(await fs.readFile(fixture)).digest('hex'),original,'가져오는 동안 원본 불변');
+  let snapshot=await page.evaluate(()=>window.flowrium.bootstrap()),session=snapshot.sessions.find(s=>s.threadId===threadId);assert(session?.codexLink);assert.equal(session.codexLink.mode,'linked');assert(session.messages.some(m=>m.text.includes('보존할 합성 도구 기록')));
+  await panel.locator('summary').filter({hasText:'대화 연결 기록'}).click();await panel.getByRole('button',{name:'보관 원문',exact:true}).click();await panel.locator('pre').filter({hasText:'flowrium-codex-source'}).waitFor();await closeSettings(page);await openConversation(page,source.title);
+  await page.locator('.codex-link-bar').waitFor();await page.getByRole('button',{name:'좋아요',exact:true}).first().click();
+  const changed=JSON.parse(await fs.readFile(fixture,'utf8')),at=now+5;changed.updatedAt=at;changed.turns.push({id:crypto.randomUUID(),status:'completed',startedAt:at,completedAt:at,items:[{id:crypto.randomUUID(),type:'userMessage',content:[{type:'text',text:'원래 앱에서 추가한 합성 요청'}]},{id:crypto.randomUUID(),type:'agentMessage',text:'원래 앱에서 추가한 합성 답변',phase:'final_answer'}]});await fs.writeFile(fixture,JSON.stringify(changed));
+  await page.getByRole('button',{name:'대화 새로고침',exact:true}).click();await page.getByText('원래 앱에서 추가한 합성 답변',{exact:true}).waitFor();snapshot=await page.evaluate(()=>window.flowrium.bootstrap());session=snapshot.sessions.find(s=>s.threadId===threadId);assert(session.messages.some(m=>m.reaction==='like'),'갱신 뒤 로컬 반응 보존');
+  const request='Flowrium에서 이어 쓰는 합성 요청';await page.getByLabel('Codex에 보낼 작업 요청').fill(request);await page.getByRole('button',{name:'작업 보내기',exact:true}).click();await page.getByText('연결한 대화에서 받은 합성 응답',{exact:true}).waitFor();const finalSource=JSON.parse(await fs.readFile(fixture,'utf8'));assert.equal(finalSource.lastInput.filter(part=>part.type==='text').map(part=>part.text).join('\n'),request,'사용자 원문을 내부 프롬프트로 바꾸지 않음');
+  assert.equal(finalSource.turns[0].items[0].content[0].text,source.turns[0].items[0].content[0].text,'과거 사용자 원문 보존');
+  console.log('대화 연결 실제 앱 / 미리보기·원본 불변·보관 원문 / 대화 열기 / 외부 새 메시지 갱신 / 좋아요 유지 / 같은 threadId에서 사용자 원문 전송·응답 / 과거 대화 보존 통과');
+ }catch(error){if(page)console.error('합성 화면 상태',await page.locator('body').innerText().catch(()=>''));throw error;}finally{if(app)await app.close().catch(()=>{});await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});}
+}
+main().catch(error=>{console.error(error);process.exitCode=1;});

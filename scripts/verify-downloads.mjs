@@ -9,7 +9,7 @@ assert.equal(validRepository("../repo"), false);
 
 const repository = "example/flowrium";
 function release(tag = "v0.2.0") {
-  const version = tag.slice(1);
+  const version = tag.startsWith("v")?tag.slice(1):tag;
   const names = [
     `Flowrium-${version}-mac-arm64.dmg`,
     `Flowrium-${version}-mac-arm64.zip`,
@@ -50,6 +50,8 @@ for (const invalid of [
 ]) {
   assert.deepEqual(assetIds({...current, assets: [{...dmg, ...invalid}, zip, hashes]}), []);
 }
+assert.deepEqual(assetIds(release('261114_01')),['mac-arm64','win-x64']);
+for(const tag of ['261114_00','261114_1','260229_01','261331_01','v261114_01'])assert.deepEqual(assetIds(release(tag)),[]);
 const html = await readFile(new URL("../docs/index.html", import.meta.url), "utf8");
 for (const match of html.matchAll(/(?:src|href)="\.\/([^"?#]+)"/g)) {
   await access(new URL(`../docs/${match[1]}`, import.meta.url));

@@ -4,6 +4,8 @@ const { randomUUID } = require("node:crypto");
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const copy = (value) => structuredClone(value);
+const DEFAULT_JSON_BYTES=32*1024*1024,SESSION_REVISION_BYTES=128*1024*1024;
+function jsonLimit(options){const limit=options?.maxBytes??DEFAULT_JSON_BYTES;if(!Number.isSafeInteger(limit)||limit<1||limit>SESSION_REVISION_BYTES)throw Error('기록 파일의 읽기·쓰기 한도를 확인해 주세요.');return limit;}
 function validateDate(value) {
   return (
     typeof value === "string" &&
@@ -39,6 +41,7 @@ function validateSession(session, projectId) {
   )
     throw new Error("가져온 대화의 원본 식별자가 올바르지 않습니다.");
   if (session.personalAssistant !== undefined && session.personalAssistant !== true) throw new Error("개인 비서 대화 형식이 올바르지 않습니다.");
+  if(session.codexLink!==undefined)require("./codex-transfer-link.cjs").validateLink(session.codexLink);
   if(session.scope!==undefined&&!['general','integrated'].includes(session.scope))throw Error('대화 종류를 확인해 주세요.');
   if (session.preferences !== undefined) require("./chat-preferences.cjs").preferences(session.preferences);
   if (session.workflow !== undefined) require("./workbench.cjs").validateWorkflow(session.workflow);
@@ -69,13 +72,14 @@ function conflict() {
     "다른 컴퓨터의 변경 또는 동기화 충돌을 발견했습니다. 원본은 보존했습니다. 대화를 내보낸 뒤 프로젝트 폴더의 변경 사항을 확인하고 다시 연결해 주세요.",
   );
 }
-async function readJSON(file) {
+async function readJSON(file,options={}) {
+  const limit=jsonLimit(options);
   const stat = await fs.lstat(file);
   if (!stat.isFile() || stat.isSymbolicLink())
     throw new Error(
       "프로젝트 기록은 선택한 폴더 안의 일반 파일이어야 합니다. 원본은 보존됩니다.",
     );
-  if (stat.size > 32 * 1024 * 1024)
+  if (stat.size > limit)
     throw new Error(
       "프로젝트 기록이 허용 크기를 초과했습니다. 원본은 보존됩니다.",
     );
@@ -89,12 +93,13 @@ async function readJSON(file) {
     throw error;
   }
 }
-async function createJSON(file, value) {
+async function createJSON(file, value,options={}) {
+  const limit=jsonLimit(options);
   // Exclusive creation ensures that neither another computer's revision nor an
   // existing source file is replaced. Every update gets a fresh revision UUID.
   let handle;
   const data = JSON.stringify(value, null, 2);
-  if (Buffer.byteLength(data, "utf8") > 32 * 1024 * 1024)
+  if (Buffer.byteLength(data, "utf8") > limit)
     throw new Error(
       "대화 기록이 허용 크기에 도달했습니다. 현재 대화를 내보내고 새 대화를 시작해 주세요.",
     );
@@ -187,7 +192,7 @@ class ProjectStore {
       const match = /^([0-9a-f-]{36})--([0-9a-f-]{36})\.json$/i.exec(name);
       if (!match || !UUID.test(match[1]) || !UUID.test(match[2]))
         throw conflict();
-      const record = await readJSON(path.join(this.history, name));
+      const record = await readJSON(path.join(this.history, name),{maxBytes:SESSION_REVISION_BYTES});
       if (
         !record ||
         record.version !== 1 ||
@@ -281,6 +286,7 @@ class ProjectStore {
       await createJSON(
         path.join(this.history, `${change.id}--${revision}.json`),
         record,
+        {maxBytes:SESSION_REVISION_BYTES},
       );
       this.heads.set(change.id, revision);
       if (change.session) this.saved.set(change.id, copy(change.session));
@@ -303,4 +309,4 @@ async function projectDirectory(directory) {
     await fs.mkdir(directory, { recursive: true });
   }
 }
-module.exports = { ProjectStore, validateSession, validateDate, UUID, readJSON, createJSON, projectDirectory };
+module.exports = { ProjectStore, validateSession, validateDate, UUID, readJSON, createJSON, projectDirectory, DEFAULT_JSON_BYTES, SESSION_REVISION_BYTES };

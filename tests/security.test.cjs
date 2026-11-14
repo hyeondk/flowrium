@@ -281,7 +281,7 @@ test("절전, 자리 비움, 업무 마감 잠금 / 승인 복원 / 작업 중�
     id: "대화",
     workflow: { kind: "pause" },
   });
-  controller.runs.set("대화", { sessionId: "대화" });
+  controller.runs.set("대화", { sessionId: "대화",ownerRevision:security.accountRevision });
   controller.emitEvent({ type: "status", sessionId: "대화" });
   await api.lockSecurity();
   controller.client.approvals.set("승인", {});
@@ -315,7 +315,7 @@ test("계정이 바뀌면 잠금 중에 도착한 이전 계정의 질문을 취
   await security.accountOwner({ type:"chatgpt",email:"first@example.invalid" });
   await api.setSecurityPin("", "8822");await api.lockSecurity();
   const state = {type:"input",requestId:"q",sessionId:"s",questions:[{id:"secret",isSecret:true}]};
-  controller.runs.set("s",{sessionId:"s"});
+  controller.runs.set("s",{sessionId:"s",ownerRevision:security.accountRevision});
   controller.client.inputs=new Map([["q",{}]]);
   const calls=[];
   controller.client.resolveInput=(id,cancel)=>{calls.push([id,cancel]);controller.client.inputs.delete(id);};
@@ -324,4 +324,13 @@ test("계정이 바뀌면 잠금 중에 도착한 이전 계정의 질문을 취
   assert.deepEqual(calls,[["q",true]]);
   await api.unlockSecurity("8822");
   assert(!(await api.securityPending()).some(e=>e.type==="input"));
+});
+test('계정 변경은 모든 실행 연결의 승인과 질문을 취소하고 이전 실행을 중지하며 복원 목록을 비운다',async t=>{
+ const {controller,security,api}=await create(t);await security.accountOwner({type:'chatgpt',email:'before@example.invalid'});
+ const actions=[],secondary={ready:true,inputs:new Map([['질문',{}]]),approvals:new Map([['보조승인',{}]]),resolveInput(id,cancel){actions.push(['질문취소',id,cancel]);this.inputs.delete(id);},decide(id,decision){actions.push(['승인거절',id,decision]);this.approvals.delete(id);},async request(method,params){actions.push([method,params.threadId]);}};
+ controller.client.approvals.set('기본승인',{});controller.client.decide=(id,decision)=>{actions.push(['승인거절',id,decision]);controller.client.approvals.delete(id);};controller.clients=()=>[controller.client,secondary];controller.requestClient=(id,kind='approvals')=>controller.clients().find(client=>client[kind]?.has(id));
+ const run={sessionId:'원래대화',threadId:'합성thread',turnId:'합성turn',ownerRevision:security.accountRevision,client:secondary};controller.runs.set(run.sessionId,run);controller.finish=async(current,status)=>{actions.push(['실행종료',status]);controller.runs.delete(current.sessionId);};
+ for(const requestId of ['기본승인','보조승인'])controller.emitEvent({type:'approval',sessionId:run.sessionId,requestId,details:'이전 계정의 비공개 명령'});controller.emitEvent({type:'input',sessionId:run.sessionId,requestId:'질문',questions:[]});
+ assert.equal((await api.securityPending()).length,4);await security.accountOwner({type:'chatgpt',email:'after@example.invalid'});await new Promise(setImmediate);
+ assert.equal(run.cancelled,true);assert.equal(controller.client.approvals.size,0);assert.equal(secondary.approvals.size,0);assert.equal(secondary.inputs.size,0);assert(actions.some(row=>row[0]==='turn/interrupt'));assert(actions.some(row=>row[0]==='실행종료'));assert.deepEqual(await api.securityPending(),[]);
 });

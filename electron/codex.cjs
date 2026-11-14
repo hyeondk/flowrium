@@ -115,6 +115,8 @@ class CodexClient extends EventEmitter {
   constructor(options = {}) {
     super();
     this.options = options;
+    this.maxProtocolLineBytes=options.maxProtocolLineBytes??16*1024*1024;
+    if(!Number.isSafeInteger(this.maxProtocolLineBytes)||this.maxProtocolLineBytes<1024*1024||this.maxProtocolLineBytes>128*1024*1024)throw Error('Codex 응답 제한은 1MB에서 128MB 사이여야 합니다.');
     this.proc = null;
     this.pending = new Map();
     this.approvals = new Map();
@@ -156,20 +158,20 @@ class CodexClient extends EventEmitter {
       { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, shell: false, env },
     );
     this.proc = proc;
-    let buffer = "";
+    let buffer = "",bufferBytes=0;
     proc.stdout.setEncoding("utf8");
     proc.stdout.on("data", (chunk) => {
-      buffer += chunk;
-      if (buffer.length > 16 * 1024 * 1024) {
-        this._fail(new Error("Codex 응답 크기가 허용 범위를 초과했습니다."));
-        proc.kill();
-        return;
-      }
+      if(this.proc!==proc)return;
+      buffer += chunk;bufferBytes+=Buffer.byteLength(chunk);
       for (;;) {
         const end = buffer.indexOf("\n");
-        if (end < 0) break;
-        const line = buffer.slice(0, end);
-        buffer = buffer.slice(end + 1);
+        if (end < 0) {
+          if(bufferBytes>this.maxProtocolLineBytes){this._fail(Object.assign(new Error("Codex 응답 크기가 허용 범위를 초과했습니다."),{code:"PROTOCOL_FRAME_TOO_LARGE"}));proc.kill();}
+          break;
+        }
+        const line = buffer.slice(0, end),lineBytes=Buffer.byteLength(line);
+        if(lineBytes>this.maxProtocolLineBytes){this._fail(Object.assign(new Error("Codex 응답 크기가 허용 범위를 초과했습니다."),{code:"PROTOCOL_FRAME_TOO_LARGE"}));proc.kill();return;}
+        buffer = buffer.slice(end + 1);bufferBytes-=lineBytes+1;
         if (!line.trim()) continue;
         try {
           this._message(JSON.parse(line));

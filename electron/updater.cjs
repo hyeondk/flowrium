@@ -5,12 +5,12 @@ const path = require('node:path');
 const { spawn, execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const execute = promisify(execFile);
+const {newer,nativeVersion,displayVersion,parseReleaseTag}=require('./version.cjs');
 
 const repository = 'https://github.com/hyeondk/flowrium';
 const latest = 'https://api.github.com/repos/hyeondk/flowrium/releases/latest';
 const apiHosts = new Set(['api.github.com', 'github.com', 'release-assets.githubusercontent.com',
   'objects.githubusercontent.com', 'github-releases.githubusercontent.com']);
-const stableVersion = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/;
 const maxPackage = 2 * 1024 ** 3;
 function errorText(error) {
   if (error?.name === 'TimeoutError') return '업데이트 서버 응답 시간이 초과됐습니다. 다시 시도해 주세요.';
@@ -22,13 +22,6 @@ function errorText(error) {
   return '업데이트 정보를 읽지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해 주세요.';
 }
 
-function newer(candidate, installed) {
-  if (!stableVersion.test(candidate) || !stableVersion.test(installed)) return false;
-  const parts = installed.split('.').map(Number);
-  const next = candidate.split('.').map(Number);
-  const index = next.findIndex((part, i) => part !== parts[i]);
-  return index !== -1 && next[index] > parts[index];
-}
 function artifactSuffix(platform, arch) {
   if (platform === 'darwin' && arch === 'arm64') return 'mac-' + arch + '.zip';
   if (platform === 'win32' && arch === 'x64') return 'win-x64.exe';
@@ -36,12 +29,12 @@ function artifactSuffix(platform, arch) {
 }
 function selectRelease(data, current, suffix) {
   if (!data || data.draft !== false || data.prerelease !== false) return null;
-  const version = String(data.tag_name || '').replace(/^v/, '');
-  if (data.tag_name !== 'v' + version || !newer(version, current)) return null;
+  const version = parseReleaseTag(data.tag_name);
+  if (!version || !newer(version,current)) return null;
   const filename = 'Flowrium-' + version + '-' + suffix;
   function pick(name, limit) {
     const matches = (data.assets || []).filter((item) => item.name === name);
-    const expected = repository + '/releases/download/v' + version + '/' + name;
+    const expected = repository + '/releases/download/' + data.tag_name + '/' + name;
     if (matches.length !== 1 || matches[0].browser_download_url !== expected)
       throw new Error('이 버전의 설치 파일 또는 검증 목록이 아직 준비되지 않았습니다.');
     const { size, digest } = matches[0];
@@ -121,7 +114,7 @@ async function prepareMac(file, stage, version, target, signal) {
   const plist = path.join(bundle, 'Contents', 'Info.plist');
   const value = async (key) => (await execute('/usr/libexec/PlistBuddy', ['-c', 'Print :' + key, plist])).stdout.trim();
   if (await value('CFBundleIdentifier') !== 'io.github.hyeondk.flowrium' ||
-      await value('CFBundleShortVersionString') !== version || await value('CFBundleExecutable') !== 'Flowrium')
+      await value('CFBundleShortVersionString') !== nativeVersion(version) || await value('CFBundleExecutable') !== 'Flowrium')
     throw new Error('업데이트의 앱 식별자 또는 버전이 올바르지 않습니다.');
   const { stdout: format } = await execute('/usr/bin/file', ['-b', path.join(bundle, 'Contents', 'MacOS', 'Flowrium')]);
   if (!/Mach-O.*\barm64(?:e)?\b/.test(format)) throw new Error('Apple Silicon용 실행 파일을 찾을 수 없습니다.');
@@ -153,7 +146,7 @@ async function acknowledgeUpdateLaunch(app, phase, argv = process.argv) {
   const token = argv.find((arg) => typeof arg === 'string' && arg.startsWith(launchFlag))?.slice(launchFlag.length);
   if (!token || !launchToken.test(token)) return false;
   const base = receiptBase(app.getPath('userData'), token);
-  const version=app.getVersion(),executable=app.getPath('exe');
+  const version=nativeVersion(app.getVersion()),executable=app.getPath('exe');
   const key=JSON.stringify([base,phase,version,executable]);
   if(launchAcknowledgements.has(key))return launchAcknowledgements.get(key);
   const pending=(async()=>{try {
@@ -200,6 +193,7 @@ async function launchWindowsHelper(command, args, env, receipt, resultPath) {
 async function handoff({ platform, file, stage, version, target, parentPid, resultPath, signal, sha256 }) {
   let command, args;
   const env = { ...process.env };
+  version=nativeVersion(version);
   const token = randomUUID();
   const receipt = receiptBase(path.dirname(resultPath), token);
   const executable = platform === 'darwin' ? path.join(target, 'Contents', 'MacOS', 'Flowrium') : target;
@@ -254,12 +248,12 @@ class DesktopUpdater extends EventEmitter {
     super();
     Object.assign(this, { app, isBusy, platform, arch, fetchImpl, execPath, parentPid, transfer });
     this.suffix = artifactSuffix(platform, arch);
-    this.state = { status: 'idle', currentVersion: app.getVersion(), message: '새 버전을 확인할 수 있습니다.' };
+    this.state = { status: 'idle', currentVersion: displayVersion(app.getVersion()), message: '새 버전을 확인할 수 있습니다.' };
     this.timers = [];
   }
   getState() { return { ...this.state }; }
   set(status, message, extra = {}) {
-    this.state = { status, currentVersion: this.app.getVersion(),
+    this.state = { status, currentVersion: displayVersion(this.app.getVersion()),
       ...(this.candidate ? { latestVersion: this.candidate.version } : {}), message, ...extra };
     this.emit('state', this.getState());
     return this.getState();

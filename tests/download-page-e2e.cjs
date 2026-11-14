@@ -69,13 +69,13 @@ async function run() {
     page.on('requestfinished',request=>pending.delete(request));
     page.on('requestfailed',request=>{pending.delete(request);requestFailures.push({url:request.url(),error:request.failure()?.errorText});});
     page.on('pageerror',error=>pageErrors.push(error.message));
-    let tag = "v0.3.0",
+    let tag = "261114_01",
       error = false;
     await page.route(
       "https://api.github.com/repos/" + repository + "/releases/latest",
       (route) => {
         if (error) return route.fulfill({ status: 503, body: "unavailable" });
-        const version = tag.slice(1),
+        const version = tag.startsWith("v")?tag.slice(1):tag,
           names = [
             "Flowrium-" + version + "-mac-arm64.dmg",
             "Flowrium-" + version + "-mac-arm64.zip",
@@ -141,7 +141,7 @@ async function run() {
     }
     assert.match(
       await page.locator('[data-download="mac-arm64"]').getAttribute("href"),
-      /v0\.3\.0\/Flowrium-0\.3\.0-mac-arm64\.dmg$/,
+      /261114_01\/Flowrium-261114_01-mac-arm64\.dmg$/,
     );
     tag = "v0.1.2";
     await page.reload({waitUntil:'domcontentloaded'});

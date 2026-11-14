@@ -137,3 +137,12 @@ test('동시에 화면 준비를 알릴 때 한 번만 쓰고 도우미가 정�
   await Promise.all(['.json','.starting','.ready','.helper'].map(ext=>fs.rm(base+ext,{force:true})));
   assert.equal(await acknowledgeUpdateLaunch(app,'ready',argv),true);assert.equal(writes,1);assert.deepEqual(await fs.readdir(dir),[]);
 });
+
+test('날짜 태그와 파일 이름을 검증하고 날짜판 알림은 공개 버전으로 표시한다',async t=>{
+ const version='261114_02',file='Flowrium-'+version+'-mac-arm64.zip',url='https://github.com/hyeondk/flowrium/releases/download/'+version+'/',data=Buffer.from('날짜판 업데이트'),list=Buffer.from(sha(data)+'  '+file+'\n');
+ const release={tag_name:version,draft:false,prerelease:false,assets:[[file,data],['SHA256SUMS.txt',list]].map(([name,bytes])=>({name,size:bytes.length,digest:'sha256:'+sha(bytes),browser_download_url:url+name}))};
+ const directory=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-dated-update-'));t.after(()=>fs.rm(directory,{recursive:true,force:true}));let transferred;
+ const updater=new DesktopUpdater({app:{isPackaged:true,getVersion:()=> '26.11.1401',getPath:()=>directory,quit:()=>{}},platform:'darwin',arch:'arm64',execPath:path.join(directory,'Flowrium.app/Contents/MacOS/Flowrium'),fetchImpl:async target=>target.includes('api.github.com')?Response.json(release):new Response(target.endsWith('SHA256SUMS.txt')?list:data),transfer:async value=>{transferred=value;}});
+ const result=await updater.check();assert.equal(result.status,'available');assert.equal(result.currentVersion,'261114_01');assert.equal(result.latestVersion,version);await updater.install();assert.equal(transferred.version,version);assert.equal(require('../electron/version.cjs').nativeVersion(transferred.version),'26.11.1402');
+ assert.equal(selectRelease({...release,tag_name:'v261114_02'},'26.11.1401','mac-arm64.zip'),null);assert.equal(selectRelease({...release,tag_name:'261132_01'},'26.11.1401','mac-arm64.zip'),null);
+});

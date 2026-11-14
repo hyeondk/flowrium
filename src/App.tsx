@@ -16,6 +16,9 @@ import IntegrationPanel from "./IntegrationPanel";
 import RemotePanel from "./RemotePanel";
 import { VoiceSettings, VoiceComposer, SpeakButton } from "./VoiceTools";
 import {effortOptions,effortLabels} from "../shared/model-options";
+import SettingsLayout,{SettingsGroup} from "./SettingsLayout";
+import CodexTransferPanel,{CodexLinkBar} from "./CodexTransferPanel";
+import MessageHistory from "./MessageHistory";
 import MigrationPanel from "./MigrationPanel";
 import { useSecurity, SecurityPanel, LockScreen } from "./SecurityPanel";
 import { ProjectPortfolio } from "./ProjectPortfolio";
@@ -96,7 +99,7 @@ const initial: Bootstrap = {
   projects: [],
   sessions: [],
   settings: { effort: "medium", theme: "light" },
-  version: packageInfo.version,
+  version: packageInfo.flowriumVersion || packageInfo.version,
   platform: "preview",
 };
 const modes = [
@@ -951,6 +954,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       </button>
                     </div>
                   </div>
+                  <CodexLinkBar key={session.id} session={session} running={running} onChange={rememberSession}/>
                   {session.context&&<div className="chat-context">문맥 {session.context.percent}% / {session.context.used.toLocaleString("ko-KR")} / {session.context.max.toLocaleString("ko-KR")} 토큰 <progress max={100} value={session.context.percent}/>{session.compacting&&<span>문맥 압축 중</span>}</div>}
                   <ChatQueuePanel session={session} onCancel={id=>{void api!.cancelQueuedMessage(session.id,id).catch(fail);}} onResume={()=>{void api!.resumeQueuedMessages(session.id).catch(fail);}}/>
                   {session.workflow && <WorkSessionControls key={session.id} session={session} onSessionChange={rememberSession} running={running} />}
@@ -964,9 +968,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                           el.scrollHeight - el.clientHeight - el.scrollTop < 90;
                     }}
                   >
-                    {session.messages.map((message) => (
+                    <MessageHistory key={session.id} messages={session.messages} scrollRef={messages} stickToBottom={stickToBottom} renderMessage={(message) => (
                       <article
                         className={`message ${message.role}`}
+                        data-message-id={message.id}
                         key={message.id}
                       >
                         <span className={`message-avatar ${message.role}`}>
@@ -1023,7 +1028,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                           </div>
                         </div>
                       </article>
-                    ))}
+                    )}/>
                     {running && (
                       <article className="message assistant">
                         <span className="message-avatar assistant">
@@ -1788,14 +1793,14 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 <X size={20} />
               </button>
             </div>
-            <div className="modal-content">
-              <UpdatePanel settings state={update} fail={fail} />
-              <SecurityPanel security={security}/>
-              <MigrationPanel/>
-              <IntegrationPanel projectId={projectId}/>
-              <RemotePanel/>
-              <VoiceSettings/>
-              <div className="settings-section">
+            <SettingsLayout>
+              <SettingsGroup id="general"><UpdatePanel settings state={update} fail={fail}/></SettingsGroup>
+              <SettingsGroup id="security"><SecurityPanel security={security}/></SettingsGroup>
+              <SettingsGroup id="transfer"><CodexTransferPanel onChanged={async()=>{if(!api)return;const next=await api.bootstrap();setData(next);if(!projectId&&next.projects[0])setProjectId(next.projects[0].id);}} onOpen={id=>{void (async()=>{const next=await api!.bootstrap();setData(next);const found=next.sessions.find(row=>row.id===id);if(found){setSettingsOpen(false);selectSession(found);}})().catch(fail);}}/><MigrationPanel/></SettingsGroup>
+              <SettingsGroup id="integrations"><IntegrationPanel projectId={projectId}/></SettingsGroup>
+              <SettingsGroup id="remote"><RemotePanel/></SettingsGroup>
+              <SettingsGroup id="voice"><VoiceSettings/></SettingsGroup>
+              <SettingsGroup id="account"><div className="settings-section">
                 <h3>
                   <Terminal size={17} />
                   Codex 연결
@@ -1913,7 +1918,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </select>
                 </label>
               </div>
-              <div className="settings-section appearance">
+              </SettingsGroup><SettingsGroup id="appearance"><div className="settings-section appearance">
                 <div>
                   <h3>화면 테마</h3>
                   <p>편안하게 집중할 수 있는 모습으로</p>
@@ -1938,10 +1943,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               <div className="settings-note">
                 <ShieldCheck size={17} />
                 <p>
-                  작업할 프로젝트 폴더를 각각 연결하세요. 대화는 각
-                  프로젝트의 .flowrium 폴더에 저장됩니다. 요청을 보내면 해당
-                  문맥이 Codex로 전달됩니다. ChatGPT로 이어갈 때는 복사된 내용을
-                  직접 붙여넣습니다.
+                  대화와 자료는 이 기기와 선택한 프로젝트에 보관합니다.
+                  공개 설치 파일과 소스 묶음에는 개인 대화나 로그인 자료를 포함하지 않습니다.
                 </p>
               </div>
               <button
@@ -1950,10 +1953,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               >
                 공식 Codex 연결 문서
                 <ExternalLink size={13} />
-              </button>
-            </div>
+              </button></SettingsGroup>
+            </SettingsLayout>
             <div className="modal-footer">
-              <span>Flowrium</span><span>v{data.version}</span>
+              <span>Flowrium</span><span>{data.version}</span>
               <button
                 className="button secondary"
                 onClick={() => setSettingsOpen(false)}

@@ -15,6 +15,7 @@ const { Store, text } = require("./store.cjs");
 const { Controller } = require("./controller.cjs");
 const { publicMessage } = require("./errors.cjs");
 
+const { displayVersion } = require("./version.cjs");
 const { DesktopUpdater, acknowledgeUpdateLaunch } = require("./updater.cjs");
 const { registerWorkbench } = require("./workbench.cjs");
 app.setName("Flowrium");
@@ -34,6 +35,7 @@ let linkDelivery;
 let voice;
 let projectPorts;
 let migration;
+let codexTransfer;
 let migrationTransition=false;
 let importRestartRequired=false;
 let activeOperations=0;
@@ -68,6 +70,7 @@ function validateSender(event) {
 }
 async function invokeRegistered(name,handler,args){
   if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
+  if(codexTransfer?.isBusy()&&!/^(read|list)/.test(name)&&!['codexTransferAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','googleStatus','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList'].includes(name))throw Error('대화 연결을 처리 중입니다. 끝난 뒤 변경해 주세요.');
   activeOperations++;
   try{return await security.guard(name,()=>handler(...args));}finally{activeOperations--;}
 }
@@ -205,7 +208,7 @@ async function launch() {
   terminals = require("./terminal.cjs").registerTerminal(register, store, { canOpen: () => !updater.isInstalling() });
   updater = new DesktopUpdater({ app, isBusy: () => terminals.isBusy()
     ? "내장 터미널의 세션을 닫은 뒤 업데이트해 주세요."
-    : migrationTransition || importRestartRequired || migration?.busy || voice?.isBusy?.() || projectPorts?.isBusy() || systemTools.isBusy() || teamGitBusy() || teamRuntime.isBusy() || workflowRuntime?.isBusy() || linkDelivery?.isBusy() || repositoryBusy() || controller.runs.size > 0 || controller.editingSessions.size > 0 || controller.analysisRuns?.size > 0 });
+    : codexTransfer?.isBusy() || migrationTransition || importRestartRequired || migration?.busy || voice?.isBusy?.() || projectPorts?.isBusy() || systemTools.isBusy() || teamGitBusy() || teamRuntime.isBusy() || workflowRuntime?.isBusy() || linkDelivery?.isBusy() || repositoryBusy() || controller.runs.size > 0 || controller.editingSessions.size > 0 || controller.analysisRuns?.size > 0 });
   updater.on("state", (state) => {
     if (!security.locked && window && !window.isDestroyed()) window.webContents.send("flowrium:update", state);
   });
@@ -270,7 +273,7 @@ async function launch() {
   });
   securityRuntime = registerSecurity(register, security, {
     controller, powerMonitor, powerSaveBlocker, Notification,
-    busy: () => teamGitBusy() || teamRuntime.isBusy() || workflowRuntime?.isBusy() || controller.runs.size > 0 || controller.editingSessions.size > 0 || controller.analysisRuns?.size > 0,
+    busy: () => codexTransfer?.isBusy() || teamGitBusy() || teamRuntime.isBusy() || workflowRuntime?.isBusy() || controller.runs.size > 0 || controller.editingSessions.size > 0 || controller.analysisRuns?.size > 0,
     ready: async () => { await drafts.migration; await acknowledgeUpdateLaunch(app, "ready"); },
     focus: () => { if (!window) createWindow(); if (window.isMinimized()) window.restore(); window.show(); window.focus(); },
   });
@@ -278,7 +281,7 @@ async function launch() {
     store, controller, handlers: apiHandlers, isLocked: () => security.locked || security.loggingOut,
     accountRevision: () => security.accountRevision,
     onContextChanged: () => webPush?.invalidate(),
-    version: app.getVersion(), guard: (name, action) => security.guard(name, action),
+    version: displayVersion(app.getVersion()), guard: (name, action) => security.guard(name, action),
   });
   webPush = require('./web-push.cjs').registerWebPush(register, {
     directory:app.getPath('userData'),secretStorage:require('electron').safeStorage,
@@ -298,7 +301,14 @@ async function launch() {
       send:input=>integrations.sendMail(input),
     },
   });
-  const migrationBusy=()=>activeOperations>1||updater.isInstalling()||terminals.isBusy()||systemTools.isBusy()||teamGitBusy()||teamRuntime.isBusy()||workflowRuntime.isBusy()||linkDelivery.isBusy()||repositoryBusy()||voice.isBusy?.()||projectPorts.isBusy()||controller.runs.size>0||controller.editingSessions.size>0||controller.analysisRuns?.size>0;
+  codexTransfer=require('./codex-transfer.cjs').registerCodexTransfer(register,store,controller,{
+    accountRevision:()=>security.accountRevision,
+    accountOwner:()=>security.data.accountOwner||'unverified:'+security.accountRevision,
+    stateEpoch:()=>security.epoch,
+    canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater.isInstalling(),
+    isBusy:()=>activeOperations>1||migrationTransition||migration?.busy||updater.isInstalling()||controller.runs.size>0||controller.editingSessions.size>0||controller.analysisRuns?.size>0||workflowRuntime.isBusy()||teamRuntime.isBusy(),
+  });
+  const migrationBusy=()=>codexTransfer?.isBusy()||activeOperations>1||updater.isInstalling()||terminals.isBusy()||systemTools.isBusy()||teamGitBusy()||teamRuntime.isBusy()||workflowRuntime.isBusy()||linkDelivery.isBusy()||repositoryBusy()||voice.isBusy?.()||projectPorts.isBusy()||controller.runs.size>0||controller.editingSessions.size>0||controller.analysisRuns?.size>0;
   migration=require('./migration.cjs').registerMigration(register,store,{
     accountRevision:()=>security.accountRevision,
     accountOwner:()=>security.data.accountOwner || 'unverified:'+security.accountRevision,
@@ -309,7 +319,7 @@ async function launch() {
     beforeApply:async()=>{
       if(migrationBusy())throw Error('실행 중인 작업을 마친 뒤 이관해 주세요.');
       migrationTransition=true;
-      const results=await Promise.allSettled([workflowRuntime.shutdown(),linkDelivery.shutdown(),webPush.shutdown(),voice.shutdown(),projectPorts.shutdown(),remote.shutdown(),music.shutdown()]);
+      const results=await Promise.allSettled([workflowRuntime.shutdown(),linkDelivery.shutdown(),webPush.shutdown(),voice.shutdown(),projectPorts.shutdown(),codexTransfer.shutdown(),remote.shutdown(),music.shutdown()]);
       const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
       await drafts.queue;await store.queue;
     },
@@ -329,7 +339,7 @@ async function launch() {
   });
   register("bootstrap", async () => {
     await store.syncConversationOwner?.();
-    const snapshot = { ...store.snapshot(), version: app.getVersion(), platform: process.platform };
+    const snapshot = { ...store.snapshot(), version: displayVersion(app.getVersion()), platform: process.platform };
     await acknowledgeUpdateLaunch(app, "ready");
     return snapshot;
   });
@@ -373,7 +383,7 @@ async function launch() {
   register("approval", (input) => {
     if (!input || !["accept", "decline"].includes(input.decision))
       throw new Error("승인 선택을 확인해 주세요.");
-    controller.client.decide(
+    controller.decideApproval(
       text(input.requestId, "승인 식별자", 100),
       input.decision,
     );
@@ -522,7 +532,7 @@ else {
     event.preventDefault();
     quitting = true;
     if (window && !window.isDestroyed()) window.setEnabled(false);
-    Promise.allSettled([workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.(), projectPorts?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
+    Promise.allSettled([workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.(), projectPorts?.shutdown(), codexTransfer?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
       .then(() => teamRuntime?.flush())
       .then(() => drafts.queue)
       .finally(() => app.quit());

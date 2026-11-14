@@ -101,6 +101,7 @@ async function checkNewProfile(binary,temporary,userData,fixture,version) {
     },fixture.session);
     assert.deepEqual(migrated,fixture.draft);
     assert.equal(await page.evaluate(()=>localStorage.getItem('flowrium.drafts')),null);
+    await page.locator('.workspace-side').hover();
     await page.locator('.workspace-side').getByRole('button',{name:'대시보드',exact:true}).click();
     await page.locator('.pf-row').filter({hasText:'보존할 대화'}).first().click();
     const composer=page.getByLabel('Codex에 보낼 작업 요청',{exact:true});

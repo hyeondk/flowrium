@@ -2,19 +2,20 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { validRepository } from "../docs/releases.mjs";
 
+import versions from '../electron/version.cjs';
 const repository = process.env.GITHUB_REPOSITORY;
 
 const token = process.env.GITHUB_TOKEN;
 const pkg = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 );
+const version=versions.releaseVersion(pkg),expectedTag=versions.releaseTag(version);
 const manual = process.env.STAGE_FROM_MAIN === "true" && process.env.GITHUB_REF === "refs/heads/main";
-const tag = manual ? `v${pkg.version}` : process.env.GITHUB_REF_NAME;
+const tag = manual ? expectedTag : process.env.GITHUB_REF_NAME;
 if (
   !validRepository(repository) ||
   !token ||
-  tag !== `v${pkg.version}` ||
-  !/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(tag)
+  tag !== expectedTag
 )
   throw new Error("릴리스 저장소 / 토큰 / 버전을 확인해 주세요.");
 
@@ -22,14 +23,14 @@ const directory = resolve("release");
 const names = (await readdir(directory)).filter(
   (name) =>
     ['SHA256SUMS.txt','install.sh','install.ps1','flowrium-install-support.cjs','SOURCE-COMMIT.txt'].includes(name) ||
-    /^Flowrium-[0-9A-Za-z.-]+-(?:mac-arm64\.(?:dmg|zip)|win-x64\.exe|source\.tar\.gz)$/.test(
+    name.startsWith('Flowrium-'+version+'-') && /^Flowrium-[0-9A-Za-z._-]+-(?:mac-arm64\.(?:dmg|zip)|win-x64\.exe|source\.tar\.gz)$/.test(
       name,
     ),
 );
 for (const required of [
-  ...(process.env.EXPECT_MAC === "true" ? [`Flowrium-${pkg.version}-mac-arm64.dmg`, `Flowrium-${pkg.version}-mac-arm64.zip`] : []),
-  `Flowrium-${pkg.version}-win-x64.exe`,
-  `Flowrium-${pkg.version}-source.tar.gz`,
+  ...(process.env.EXPECT_MAC === "true" ? [`Flowrium-${version}-mac-arm64.dmg`, `Flowrium-${version}-mac-arm64.zip`] : []),
+  `Flowrium-${version}-win-x64.exe`,
+  `Flowrium-${version}-source.tar.gz`,
   'install.sh','install.ps1','flowrium-install-support.cjs','SOURCE-COMMIT.txt',
   "SHA256SUMS.txt",
 ]) {

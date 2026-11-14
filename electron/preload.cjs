@@ -4,6 +4,7 @@ const invoke = (method, ...args) =>
 contextBridge.exposeInMainWorld(
   "flowrium",
   Object.freeze({
+    codexTransferAction: input=>invoke('codexTransferAction',input),
     migrationAction: input => invoke('migrationAction',input),
     readProjectPorts: id => invoke('readProjectPorts',id),
     projectPortsAction: (id,input) => invoke('projectPortsAction',id,input),

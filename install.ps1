@@ -14,9 +14,18 @@ Set-StrictMode -Version Latest
 function Assert-Stopped {
   if (Get-Process -Name Flowrium -ErrorAction SilentlyContinue) { throw 'Flowrium이 실행 중입니다. 앱과 관련 작업을 종료한 뒤 다시 설치하세요.' }
 }
-function Assert-Version([string]$Value) {
+function Convert-NativeVersion([string]$Value) {
+  if ($Value -match '^(\d{6})_(0[1-9]|[1-9]\d)$') {
+    $digits=$Matches[1]; $sequence=[int]$Matches[2]
+    $year=[int]($digits.Substring(0,2)); $month=[int]($digits.Substring(2,2)); $day=[int]($digits.Substring(4,2))
+    try { $date=[DateTime]::new((2000+$year),$month,$day) } catch { throw '릴리스 날짜를 확인해 주세요.' }
+    if ($date.ToString('yyMMdd',[Globalization.CultureInfo]::InvariantCulture) -cne $digits) { throw '릴리스 날짜를 확인해 주세요.' }
+    return ([string]$year + '.' + $month + '.' + ($day*100+$sequence))
+  }
   if ($Value -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw '릴리스 버전 형식을 확인해 주세요.' }
+  return $Value
 }
+function Assert-Version([string]$Value) { [void](Convert-NativeVersion $Value) }
 function Get-ExpectedHash([string]$Name, [string]$Manifest) {
   $matchesFound = @()
   foreach ($line in [IO.File]::ReadAllLines($Manifest)) {
@@ -106,17 +115,17 @@ $work = Join-Path ([IO.Path]::GetTempPath()) ('flowrium-install-' + [Guid]::NewG
 $backup = ''; $createdDestination = $false; $success = $false
 try {
   $base = 'https://github.com/hyeondk/flowrium/releases/latest/download'
-  if ($Version) { $base = 'https://github.com/hyeondk/flowrium/releases/download/v' + $Version }
+  if ($Version) { $tag=$Version; if (-not $Version.Contains('_')) { $tag='v'+$Version }; $base = 'https://github.com/hyeondk/flowrium/releases/download/' + $tag }
   if (-not $Checksums) { $Checksums = Join-Path $work 'SHA256SUMS.txt'; Receive-File ($base + '/SHA256SUMS.txt') $Checksums }
   $suffix = '-win-x64.exe'; if ($FromSource) { $suffix = '-source.tar.gz' }
-  $pattern = '^Flowrium-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)' + [Regex]::Escape($suffix) + '$'
+  $pattern = '^Flowrium-(\d{6}_\d{2}|\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)' + [Regex]::Escape($suffix) + '$'
   if (-not $Package) {
     $names = @([IO.File]::ReadAllLines($Checksums) | ForEach-Object { if ($_ -match '^([0-9a-fA-F]{64})\s+\*?(Flowrium-[^\s]+)\s*$' -and $Matches[2].EndsWith($suffix, [StringComparison]::Ordinal)) { $Matches[2] } })
     if ($names.Count -ne 1) { throw '릴리스의 설치 파일을 하나로 확인하지 못했습니다.' }
     $name = $names[0]; if ($name -notmatch $pattern) { throw '설치 파일 이름을 확인해 주세요.' }; $Package = Join-Path $work $name; Receive-File ($base + '/' + $name) $Package
   } else { $name = [IO.Path]::GetFileName($Package) }
   if ($name -notmatch $pattern) { throw '설치 파일의 제품 이름과 아키텍처를 확인해 주세요.' }
-  $releaseVersion = $Matches[1]; Assert-Version $releaseVersion
+  $releaseVersion = $Matches[1]; $nativeReleaseVersion=Convert-NativeVersion $releaseVersion
   if ($Version -and $Version -cne $releaseVersion) { throw '설치 파일과 요청한 버전이 다릅니다.' }
   Assert-Hash $Package $name $Checksums
   Write-Output ('릴리스 검증 완료 / Flowrium ' + $releaseVersion)
@@ -157,7 +166,7 @@ try {
   if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf) -or (Get-PEArchitecture $installedExe) -ne 'x64') { throw '설치된 앱의 Windows x64 구조를 확인하지 못했습니다.' }
   $installedVersion = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
   try { $installedVersion = ([Version]::Parse(($installedVersion -split '[+ ]')[0])).ToString(3) } catch { throw '설치된 앱의 버전 정보를 확인하지 못했습니다.' }
-  if ($installedVersion -ne ($releaseVersion -split '-')[0]) { throw '설치된 앱의 버전이 요청한 릴리스와 다릅니다.' }
+  if ($installedVersion -ne ($nativeReleaseVersion -split '-')[0]) { throw '설치된 앱의 버전이 요청한 릴리스와 다릅니다.' }
   $success = $true
   Write-Output ('설치 완료 / ' + $installedExe)
   if ($backup) { Write-Output ('이전 앱 백업 / ' + $backup) }

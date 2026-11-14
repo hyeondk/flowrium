@@ -1,5 +1,10 @@
 const fs=require('node:fs/promises'),path=require('node:path'),{gunzipSync}=require('node:zlib');
-function version(value){if(typeof value!=='string'||!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value))throw Error('릴리스 버전 형식을 확인해 주세요.');return value;}
+function nativeVersion(value){
+ if(typeof value!=='string')throw Error('릴리스 버전 형식을 확인해 주세요.');const m=/^(\d{2})(\d{2})(\d{2})_(0[1-9]|[1-9]\d)$/.exec(value);
+ if(m){const [y,month,day,seq]=m.slice(1).map(Number),d=new Date(Date.UTC(2000+y,month-1,day));if(d.getUTCFullYear()!==2000+y||d.getUTCMonth()!==month-1||d.getUTCDate()!==day)throw Error('릴리스 날짜를 확인해 주세요.');return `${y}.${month}.${day*100+seq}`;}
+ if(!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value))throw Error('릴리스 버전 형식을 확인해 주세요.');return value;
+}
+function version(value){nativeVersion(value);return value;}
 function relative(value){if(typeof value!=='string'||!value||value.length>1500||value.startsWith('/')||value.includes('\\')||/[:\x00-\x1f\x7f]/.test(value)||value.split('/').some(p=>!p||p==='.'||p==='..'||['.git','node_modules','.flowrium-tmp'].includes(p)))throw Error('소스 묶음에 안전하지 않은 경로가 있습니다.');return value;}
 function field(buffer,start,length){return buffer.subarray(start,start+length).toString('utf8').split('\0')[0];}
 function octal(value){if(!/^[ 0-7]*$/.test(value))throw Error('소스 묶음의 숫자 형식이 잘못됐습니다.');const n=parseInt(value.trim()||'0',8);if(!Number.isSafeInteger(n)||n<0)throw Error('소스 묶음의 크기를 확인해 주세요.');return n;}
@@ -15,10 +20,10 @@ function parseArchive(gzip){
  return {root,entries};
 }
 async function extractSource(archive,destination,expectedVersion){
- version(expectedVersion);const parsed=parseArchive(await fs.readFile(archive)),packageEntry=parsed.entries.find(e=>e.name===parsed.root+'/package.json'&&!e.directory),lock=parsed.entries.find(e=>e.name===parsed.root+'/package-lock.json'&&!e.directory);if(!packageEntry||!lock)throw Error('소스 묶음의 프로젝트 파일이 없습니다.');const pkg=JSON.parse(packageEntry.body.toString());if(pkg.name!=='flowrium'||pkg.version!==expectedVersion)throw Error('소스의 제품 이름이나 버전이 릴리스와 다릅니다.');
+ version(expectedVersion);const parsed=parseArchive(await fs.readFile(archive)),packageEntry=parsed.entries.find(e=>e.name===parsed.root+'/package.json'&&!e.directory),lock=parsed.entries.find(e=>e.name===parsed.root+'/package-lock.json'&&!e.directory);if(!packageEntry||!lock)throw Error('소스 묶음의 프로젝트 파일이 없습니다.');const pkg=JSON.parse(packageEntry.body.toString());if(pkg.name!=='flowrium'||pkg.version!==nativeVersion(expectedVersion)||(expectedVersion.includes('_')&&pkg.flowriumVersion!==expectedVersion))throw Error('소스의 제품 이름이나 버전이 릴리스와 다릅니다.');
  for(const name of ['scripts/prepare-runtime.cjs','scripts/package-desktop.cjs','scripts/build-native.cjs'])if(!parsed.entries.some(e=>e.name===parsed.root+'/'+name&&!e.directory))throw Error('소스에 필수 빌드 절차가 없습니다.');
  await fs.mkdir(destination,{recursive:false});try{for(const entry of parsed.entries){const target=path.join(destination,...entry.name.split('/'));if(entry.directory)await fs.mkdir(target,{recursive:true,mode:0o755});else{await fs.mkdir(path.dirname(target),{recursive:true,mode:0o755});await fs.writeFile(target,entry.body,{flag:'wx',mode:entry.executable?0o755:0o644});}}}catch(error){await fs.rm(destination,{recursive:true,force:true});throw error;}return path.join(destination,parsed.root);
 }
 function peArchitecture(bytes){if(bytes.length<64||bytes.toString('ascii',0,2)!=='MZ')throw Error('Windows 설치 파일 형식을 확인해 주세요.');const offset=bytes.readUInt32LE(60);if(offset>bytes.length-6||bytes.toString('binary',offset,offset+4)!=='PE\0\0')throw Error('Windows 설치 파일 형식을 확인해 주세요.');return {0x8664:'x64',0xaa64:'arm64',0x14c:'x86'}[bytes.readUInt16LE(offset+4)]||'unknown';}
-module.exports={version,relative,parseArchive,extractSource,peArchitecture};
+module.exports={version,nativeVersion,relative,parseArchive,extractSource,peArchitecture};
 if(require.main===module){(async()=>{const [action,archive,destination,expected]=process.argv.slice(2);if(action!=='extract-source'||!archive||!destination||!expected)throw Error('소스 검증 요청을 확인해 주세요.');console.log(await extractSource(archive,destination,expected));})().catch(error=>{console.error(error.message);process.exitCode=1;});}

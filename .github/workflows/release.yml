@@ -2,7 +2,7 @@ name: 데스크톱 설치 파일 만들기
 
 on:
   push:
-    tags: ['v*']
+    tags: ['v*', '[0-9][0-9][0-9][0-9][0-9][0-9]_*']
   workflow_dispatch:
     inputs:
       platform:
@@ -61,7 +61,7 @@ jobs:
       - name: 신규 기능별 실제 앱 검사
         run: |
           result=0
-          for feature in migration voice-servers project-ports portfolio-reports-popup
+          for feature in migration voice-servers project-ports portfolio-reports-popup codex-transfer settings-layout long-conversation
           do
             if ! node "tests/${feature}-e2e.cjs"
             then
@@ -89,7 +89,7 @@ jobs:
           node-version: '24'
           package-manager-cache: false
       - name: 버전과 태그 확인
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/')
         run: node scripts/check-release-tag.mjs
       - run: npm ci
       - name: 독립 Node와 GitHub 실행 도구 준비
@@ -181,6 +181,13 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
       - name: 번들 Codex 실행 파일 확인
         run: node scripts/verify-native.cjs
+      - name: 공개 패키지의 개인 자료 제외 검사
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            node scripts/verify-release-privacy.cjs --resources release/win-unpacked/resources
+          else
+            node scripts/verify-release-privacy.cjs --resources release/mac-arm64/Flowrium.app/Contents/Resources
+          fi
       - name: 패키지 내장 터미널 검증
         run: node tests/terminal-packaged-e2e.cjs
       - name: 실제 앱에서 업무 대화 검증
@@ -269,7 +276,7 @@ jobs:
         run: |
           node scripts/create-checksums.mjs release
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            node tests/installer-windows-e2e.cjs --installer "release/Flowrium-$(node -p 'require("./package.json").version')-win-x64.exe" --checksums release/SHA256SUMS.txt
+            node tests/installer-windows-e2e.cjs --installer "release/Flowrium-$(node -p '(require("./package.json").flowriumVersion || require("./package.json").version)')-win-x64.exe" --checksums release/SHA256SUMS.txt
           else
             node tests/installer-mac-e2e.cjs
           fi
@@ -299,6 +306,13 @@ jobs:
             fi
           done
           exit "$result"
+      - name: Codex 프로젝트 대화 연결 / 설정 배치
+        id: verify_21
+        continue-on-error: true
+        run: |
+          node tests/codex-transfer-e2e.cjs
+          node tests/settings-layout-e2e.cjs
+          node tests/long-conversation-e2e.cjs
       - name: 모든 검증 결과 확인
         if: ${{ !cancelled() }}
         env:
@@ -318,7 +332,7 @@ jobs:
             release/Flowrium-*-${{ matrix.os }}-${{ matrix.arch }}.exe
 
   draft:
-    if: startsWith(github.ref, 'refs/tags/v') || (github.ref == 'refs/heads/main' && inputs.stage_release)
+    if: startsWith(github.ref, 'refs/tags/') || (github.ref == 'refs/heads/main' && inputs.stage_release)
     name: 초안 릴리스 저장
     needs: build
     runs-on: ubuntu-latest

@@ -6,6 +6,7 @@ const {createHash}=require('node:crypto');
 const run=require('node:util').promisify(require('node:child_process').execFile);
 const { _electron }=require('playwright');
 const {bindUpdateTransport,clickAvailable}=require('./update-installed-ui.cjs');
+const {releaseVersion,releaseTag,nativeVersion,nextVersion}=require('../electron/version.cjs');
 const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 async function main(){
   assert.equal(process.platform,'darwin');
@@ -15,7 +16,7 @@ async function main(){
     const old=path.join(temp,'installed','Flowrium.app');
     const input=process.argv[2]||path.resolve('release/mac-arm64/Flowrium.app');
     const binary=path.join(old,'Contents','MacOS','Flowrium');
-    const next=require('../package.json').version.replace(/(\d+)$/,n=>String(Number(n)+1));
+    const next=nextVersion(releaseVersion(require('../package.json')));
     const name='Flowrium-'+next+'-mac-arm64.zip', file=path.join(temp,name);
     await fs.mkdir(path.dirname(old));
     await run('/usr/bin/ditto',[input,old]);
@@ -30,13 +31,13 @@ async function main(){
       '<key>CFBundleIdentifier</key><string>io.github.hyeondk.flowrium</string>'+
       '<key>CFBundleExecutable</key><string>Flowrium</string>'+
       '<key>CFBundlePackageType</key><string>APPL</string>'+
-      '<key>CFBundleShortVersionString</key><string>'+next+'</string></dict></plist>');
+      '<key>CFBundleShortVersionString</key><string>'+nativeVersion(next)+'</string></dict></plist>');
     await run('/usr/bin/codesign',['--force','--sign','-',newApp]);
     await run('/usr/bin/ditto',['-c','-k','--keepParent',newApp,file]);
     const data=await fs.readFile(file),sum=digest(data),sums=sum+'  '+name+'\n';
     const url='https://github.com/hyeondk/flowrium/releases/download/v'+next+'/';
     const entries=[[name,data.length,sum],['SHA256SUMS.txt',Buffer.byteLength(sums),digest(sums)]];
-    const manifest={tag_name:'v'+next,prerelease:false,draft:false,assets:entries.map(([name,size,sha])=>({
+    const manifest={tag_name:releaseTag(next),prerelease:false,draft:false,assets:entries.map(([name,size,sha])=>({
       name,size,digest:'sha256:'+sha,browser_download_url:url+name}))};
     const env={...process.env,CODEX_HOME:path.join(temp,'codex')};
     delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_RENDERER_URL;

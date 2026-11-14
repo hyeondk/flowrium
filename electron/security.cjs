@@ -15,7 +15,7 @@ const DEFAULTS = Object.freeze({
 const idleChoices = [0, 5, 10, 15, 30, 60];
 const publicWhileLocked = new Set(["securityState", "unlockSecurity"]);
 const accountCommands = new Set([
-  "reactMessage", "migrationAction", "readProjectPorts", "projectPortsAction",
+  "codexTransferAction", "reactMessage", "migrationAction", "readProjectPorts", "projectPortsAction",
   "voiceServersState", "configureVoiceServer", "previewVoiceServer", "voiceServerAction", "chooseVoiceServerPath",
   "exportSession", "createHubConversation", "listHubConversations",
   "readDrafts",
@@ -371,9 +371,25 @@ function registerSecurity(
     if (state.locked || state.accountRevision !== accountRevision) controller.cancelStructuredAnalyses?.();
     if (state.accountRevision !== accountRevision) {
       accountRevision = state.accountRevision;
-      for (const id of controller.client.inputs?.keys() || []) {
-        try { controller.client.resolveInput(id,true); } catch { /* 끊어진 연결에도 질문 원문을 남기지 않는다. */ }
-        approvals.delete(id);
+      approvals.clear();
+      for (const client of controller.clients?.() || [controller.client]) {
+        for (const id of [...(client.inputs?.keys() || [])]) {
+          try { client.resolveInput(id,true); } catch { client.inputs?.delete(id); }
+        }
+        for (const id of [...(client.approvals?.keys() || [])]) {
+          try { client.decide(id,'decline'); } catch { /* 끊어진 연결은 아래에서 정리한다. */ }
+          finally { client.approvals?.delete(id); }
+        }
+      }
+      for (const run of [...controller.runs.values()]) {
+        if (run.ownerRevision === state.accountRevision) continue;
+        run.cancelled=true;
+        const client=run.client||controller.client;
+        void (async()=>{
+          try { if(run.threadId&&run.turnId&&client.ready!==false)await client.request('turn/interrupt',{threadId:run.threadId,turnId:run.turnId},2500); }
+          catch { /* 연결을 종료해도 이전 계정의 추가 실행을 허용하지 않는다. */ }
+          finally { await controller.finish?.(run,'interrupted').catch(()=>{}); }
+        })();
       }
     }
     syncPower();
@@ -391,7 +407,7 @@ function registerSecurity(
   };
   function pending() {
     const events = [...controller.runs.values()]
-      .filter((r) => !r.finalized)
+      .filter((r) => !r.finalized && r.ownerRevision === security.accountRevision)
       .map((r) => ({
         type: "status",
         sessionId: r.sessionId,
@@ -401,9 +417,10 @@ function registerSecurity(
           : "Codex가 작업하고 있습니다.",
       }));
     for (const [id, event] of approvals) {
+      const client=controller.requestClient?.(id,event.type==='input'?'inputs':'approvals')||controller.client;
       if (
-        (event.type === "input" ? controller.client.inputs?.has(id) : controller.client.approvals.has(id)) &&
-        controller.runs.has(event.sessionId)
+        (event.type === "input" ? client.inputs?.has(id) : client.approvals?.has(id)) &&
+        controller.runs.get(event.sessionId)?.ownerRevision === security.accountRevision
       )
         events.push(event);
       else approvals.delete(id);
@@ -411,6 +428,8 @@ function registerSecurity(
     return events;
   }
   function observe(event) {
+    const run=event.sessionId&&controller.runs.get(event.sessionId);
+    if(run&&run.ownerRevision!==undefined&&run.ownerRevision!==security.accountRevision)return;
     if (event.type === "approval" || event.type === "input") approvals.set(event.requestId, event);
     if (event.type === "inputResolved") approvals.delete(event.requestId);
     if (event.type === "done") {
