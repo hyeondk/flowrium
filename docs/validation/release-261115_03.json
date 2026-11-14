@@ -140,8 +140,19 @@
   ],
   "verificationCompletedAt": "2026-11-14T22:01:45.358Z",
   "downloadPageVerification": {
-    "status": "기본 브랜치 배포 뒤 실제 페이지 확인 예정",
-    "url": "https://hyeondk.github.io/flowrium/"
+    "status": "passed",
+    "method": "실제 공개 페이지의 브라우저 접근성 화면 확인",
+    "url": "https://hyeondk.github.io/flowrium/",
+    "title": "Flowrium",
+    "publicVersion": "261115_03",
+    "platformCount": 2,
+    "macUrl": "https://github.com/hyeondk/flowrium/releases/download/261115_03/Flowrium-261115_03-mac-arm64.dmg",
+    "windowsUrl": "https://github.com/hyeondk/flowrium/releases/download/261115_03/Flowrium-261115_03-win-x64.exe",
+    "personalDataUsed": false,
+    "deploymentRun": "https://github.com/hyeondk/flowrium/actions/runs/43646070818",
+    "deploymentSource": "35fa3a184fd548a4c9872d28959dfa0d67d3c81e",
+    "deploymentConclusion": "success",
+    "pageCodeAndAssetsUnchangedBySubsequentReceiptCommit": true
   },
   "assets": [
     {
@@ -207,5 +218,20 @@
       "digestMatched": true,
       "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/install.sh"
     }
-  ]
+  ],
+  "redundantTagBuild": {
+    "run": "https://github.com/hyeondk/flowrium/actions/runs/43645887703",
+    "conclusion": "cancelled",
+    "reason": "이미 검증하고 공개한 제품과 동일한 문서 변경 태그의 중복 빌드 / 공개 릴리스의 불필요한 초안 저장 방지",
+    "productChanges": 0
+  },
+  "cleanup": {
+    "ownIntermediateDuplicateFilesRemoved": 3,
+    "duplicateLogicalBytes": 1048478061,
+    "ownPrivateDiagnosticCopiesRemoved": 10,
+    "ownMacAndWindowsExtractionsRemoved": true,
+    "finalArtifactsPreserved": 9,
+    "sourceAndUserDataAndCredentialsAndBackupsPreserved": true,
+    "privateMarkerCopyRemovedAfterFinalGitScan": true
+  }
 }
