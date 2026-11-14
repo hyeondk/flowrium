@@ -87,7 +87,7 @@ label:has(>.ui-switch-control){display:flex!important;align-items:center!importa
 .side-state[data-state=waiting]{background:var(--accent-bg);color:var(--accent-bright)}.dock-scope-card[data-scope=integrated] .dock-scope-icon{background:var(--accent-bg);color:var(--accent-bright)}
 
 /* 왼쪽 메뉴의 아이콘과 글자는 펼친 상태와 접힌 상태 모두 같은 시작점을 사용합니다. */
-.app-shell .workspace-side :is(.side-row,.side-brand){justify-content:flex-start!important;text-align:left!important;padding-inline:10px}.app-shell .workspace-side .side-row{height:44px;min-height:44px}.app-shell .workspace-side .side-brand{padding:0;border:0;background:none}
+.app-shell .workspace-side :is(.side-row,.side-brand){justify-content:flex-start!important;text-align:left!important}.app-shell .workspace-side .side-brand{border:0;background:none}
 :is(.app-shell,.security-screen,.motion-overlay,.modal-backdrop,dialog) :is(button.primary,button.pf-primary,button.wb-primary,button[type=submit],.composer-send){background-color:#163869}
 .report-overlay>.motion-surface{width:min(760px,100%);padding:0}.report-overlay .pf-page{height:auto;min-height:0;overflow:visible;border:0;background:var(--panel)}.report-overlay .pf-content{padding:24px}.report-overlay .pf-heading h1{font-size:22px;line-height:30px}.report-overlay .pf-tabs{margin-bottom:20px}.report-overlay .pf-form{max-width:none}.report-overlay .pf-report-targets{max-height:180px;overflow:auto}.report-overlay .pf-form button[type=submit]{margin-left:auto}
 

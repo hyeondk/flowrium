@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs=require('node:fs/promises'),path=require('node:path');
 const {createHash}=require('node:crypto');
 const {ProjectStore,projectDirectory}=require('./project-store.cjs');
@@ -12,13 +13,13 @@ class ConversationStore{
  constructor(directory){this.directory=directory;this.getOwner=()=>0;this.pools=new Map();this.tail=Promise.resolve();}
  owner(){const value=String(this.getOwner());if(!value||value.length>100)throw stale();return value;}
  async base(create=false){if(create)await fs.mkdir(this.directory,{recursive:true,mode:0o700});const base=await fs.realpath(this.directory).catch(e=>{if(!create&&e.code==='ENOENT')return path.resolve(this.directory);throw e;});return path.join(base,'conversation-hub');}
- async isManagedPath(value){const relative=path.relative(await this.base(),value);return !relative||(!relative.startsWith('..'+path.sep)&&relative!=='..'&&!path.isAbsolute(relative));}
+ async isManagedPath(value){const relative=relativePath(await this.base(),value);return !relative||(!relative.startsWith('..'+path.sep)&&relative!=='..'&&!path.isAbsolute(relative));}
  serial(action){const result=this.tail.then(action);this.tail=result.catch(()=>{});return result;}
  async sync(){return this.serial(async()=>{const owner=this.owner();if(!this.pools.has(owner))await this.load(owner);if(owner!==this.owner())throw stale();return this.pools.get(owner);});}
  async folder(owner,scope,create=false){
   const base=await this.base(create),key=createHash('sha256').update(owner).digest('hex').slice(0,32),parent=path.join(base,key),directory=path.join(parent,scope);
   if(create){await projectDirectory(base);await projectDirectory(parent);await projectDirectory(directory);}
-  else{for(const item of [base,parent,directory]){const stat=await fs.lstat(item);if(!stat.isDirectory()||stat.isSymbolicLink()||path.relative(item,await fs.realpath(item)))throw Error('개인 대화 저장 위치가 변경됐습니다. 원본을 보존했습니다.');}}
+  else{for(const item of [base,parent,directory]){const stat=await fs.lstat(item);if(!stat.isDirectory()||stat.isSymbolicLink()||relativePath(item,await fs.realpath(item)))throw Error('개인 대화 저장 위치가 변경됐습니다. 원본을 보존했습니다.');}}
   return directory;
  }
  async readProject(owner,scope,create=false){

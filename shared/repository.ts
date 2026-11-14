@@ -89,7 +89,7 @@ export interface RepositoryAPI {
   ): Promise<string>;
 }
 
-export interface RepositoryDefinition { id:string; name:string; path:string; github:string; account:string; base:string; hidden?:boolean;projectId:string }
+export interface RepositoryDefinition { sourceProjectId?:string;access?:import('./project-details').RepositoryAccessState;accessMessage?:string; id:string; name:string; path:string; github:string; account:string; base:string; hidden?:boolean;projectId:string }
 export interface RepositoryAccount { login:string; active:boolean; state:string; protocol:string }
 export interface RepositoryIdentity {name:string;email:string;account:string;warnings:string[]}
 export interface RepositoryAPI {

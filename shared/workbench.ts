@@ -58,7 +58,7 @@ export interface Workflow {
   checklist: { id: string; text: string; done: boolean }[];
   teamSlot?: { runId: string; index: number; mode?: Mode; isolated?: boolean; integration?: boolean };
   source?: { sessionId: string; title: string; summary: string };
-  completion?: { at: string; summary: string; commits: WorkCommit[] };
+  completion?: { at: string; summary: string; commits: WorkCommit[]; repositoryFlowId?: string };
 }
 export type WorkFormat = "md" | "html" | "pdf" | "pptx";
 export interface Artifact {

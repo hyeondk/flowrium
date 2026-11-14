@@ -138,6 +138,7 @@ class Migration {
       let record=remap(JSON.parse(data.toString()),ids,paths);
       if(relative==='.flowrium/project.json'){record.id=ids[p.id];if(existing)continue;}
       if(relative.startsWith('.flowrium/sessions/')){relative='.flowrium/sessions/'+record.sessionId+'--'+record.revision+'.json';if(record.session)record.session=inactive(record.session);}
+      if(relative.startsWith('.flowrium/details/')&&record.data?.shortcuts)record.data.shortcuts=require('./project-shortcuts.cjs').migratedShortcuts(record.data.shortcuts);
       if(record.session&&p.scope!=='project'){record.session.scope=p.scope;delete record.session.workflow;delete record.session.personalAssistant;}
       data=Buffer.from(JSON.stringify(record,null,2));
      }

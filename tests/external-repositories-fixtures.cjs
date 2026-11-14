@@ -1,0 +1,8 @@
+const fs=require('node:fs/promises'),path=require('node:path'),{execFile}=require('node:child_process'),{promisify}=require('node:util'),{randomUUID}=require('node:crypto');
+const run=promisify(execFile),{Store}=require('../electron/store.cjs');
+async function git(cwd,...args){return (await run('git',['-c','core.hooksPath='+path.join(cwd,'.no-hooks'),'-c','commit.gpgSign=false',...args],{cwd,env:{...process.env,GIT_CONFIG_NOSYSTEM:'1',GIT_TERMINAL_PROMPT:'0'},windowsHide:true})).stdout.trim();}
+async function setup(base){const root=await fs.realpath(await fs.mkdtemp(path.join(base,'external-repositories-'))),folderA=path.join(root,'target-project'),folderB=path.join(root,'separate-root'),other=path.join(root,'unregistered-folder'),profile=path.join(root,'profile');for(const f of [folderA,folderB,other])await fs.mkdir(f);
+ for(const [folder,file]of [[folderA,'a.txt'],[folderB,'b.txt']]){await git(folder,'init','-b','main');await git(folder,'config','user.name','Flowrium synthetic');await git(folder,'config','user.email','fixture@example.invalid');await git(folder,'config','commit.gpgSign','false');await fs.writeFile(path.join(folder,file),'합성 원본\n');await git(folder,'add',file);await git(folder,'commit','-m','합성 초기 기록');}
+ const store=new Store(profile);await store.load();const target=await store.addProject(folderA),source=await store.addProject(folderB);const local={id:randomUUID(),name:'대상 내부',path:'.',github:'',account:'',base:'main'},external={id:randomUUID(),name:'외부 저장소',path:'.',sourceProjectId:source.id,github:'',account:'',base:'main'};
+ return {root,profile,store,target,source,other,local,external,git};}
+module.exports={setup,git};

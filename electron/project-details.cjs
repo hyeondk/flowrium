@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
@@ -57,19 +58,21 @@ function validate(data) {
     (g.due !== undefined && !day(g.due)) || (g.carriedTo !== undefined && !UUID.test(g.carriedTo)))) throw invalid();
   if (data.schedule !== undefined && (!Array.isArray(data.schedule) || data.schedule.length > 100 || data.schedule.some(e =>
     !e || !UUID.test(e.id) || !Number.isInteger(e.day) || e.day < 0 || e.day > 6 || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(e.time) || !field(e.text, 500)))) throw invalid();
+  if(Array.isArray(data.repositories)&&data.repositories.some(r=>r?.sourceProjectId!==undefined&&!UUID.test(r.sourceProjectId)))throw invalid();
   if (data.repositories !== undefined && (!Array.isArray(data.repositories) || data.repositories.length > 32 || new Set(data.repositories.map(r => r.id)).size !== data.repositories.length ||
-    new Set(data.repositories.map(r => r.path)).size !== data.repositories.length || data.repositories.some(r => !r || !UUID.test(r.id) || !field(r.name, 100) || !relative(r.path) ||
+    new Set(data.repositories.map(r => (r?.sourceProjectId||data.projectId)+':'+r?.path)).size !== data.repositories.length || data.repositories.some(r => !r || !UUID.test(r.id) || !field(r.name, 100) || !relative(r.path) ||
       (r.github && !/^[a-zA-Z0-9-]+\/[a-zA-Z0-9_.-]+$/.test(r.github)) || (r.account && !/^[a-zA-Z0-9-]{1,39}$/.test(r.account)) ||
       (r.base && (typeof r.base !== 'string' || r.base.length > 200 || /[\x00-\x20~^:?*\[\\]/.test(r.base))) || (r.hidden !== undefined && typeof r.hidden !== 'boolean')))) throw invalid();
   if (data.chatCwd !== undefined && !relative(data.chatCwd)) throw invalid();
   if (data.services !== undefined && (!Array.isArray(data.services) || data.services.length>32 || new Set(data.services.map(s=>s.id)).size!==data.services.length || data.services.some(s=>!s||!UUID.test(s.id)||!field(s.name,100)||!relative(s.cwd)||!field(s.command,2000)))) throw invalid();
   if (data.kickoff !== undefined) kickoffFields(data.kickoff);
+  if(data.shortcuts!==undefined)require('./project-shortcuts.cjs').validateShortcuts(data.shortcuts);
   return data;
 }
 async function folderFor(store, projectId) {
   if (typeof projectId !== 'string' || !UUID.test(projectId)) throw invalid();
   const project = store.project(projectId);
-  if (path.relative(project.path, await fs.realpath(project.path)) !== '') throw conflict();
+  if (relativePath(project.path, await fs.realpath(project.path)) !== '') throw conflict();
   const root = path.join(project.path, '.flowrium');
   await projectDirectory(root);
   const metadata = await readJSON(path.join(root, 'project.json'));
@@ -100,9 +103,10 @@ async function latest(folder, projectId) {
 function apply(data, change) {
   switch (change?.action) {
     case 'import': {
-      const allowed=['kickoff','periodGoals','owner','goal','dueDate','archivedAt','checklist','repositories','chatCwd','schedule','services'];
+      const allowed=['kickoff','periodGoals','owner','goal','dueDate','archivedAt','checklist','repositories','chatCwd','schedule','services','shortcuts'];
       if(!change.data || typeof change.data!=='object')throw invalid();
       for(const key of allowed) if(Object.hasOwn(change.data,key))data[key]=structuredClone(change.data[key]);
+      if(data.shortcuts)data.shortcuts=require('./project-shortcuts.cjs').migratedShortcuts(data.shortcuts);
       break;
     }
     case 'kickoff': {
@@ -148,6 +152,7 @@ function apply(data, change) {
     }
     case 'schedule':
       data.schedule = (change.entries || []).map(e => ({id:e.id || randomUUID(),day:e.day,time:e.time,text:field(e.text,500)})); break;
+    case 'shortcuts':data.shortcuts=require('./project-shortcuts.cjs').validateShortcuts(change.shortcuts);break;
     case 'repositories':
       data.repositories = structuredClone(change.repositories);
       data.chatCwd = change.chatCwd || '.';
@@ -198,7 +203,10 @@ async function updateDetails(store, projectId, previous, change) {
   if ((change?.action === 'repositories' || change?.action === 'import') && data.repositories) {
     const { inside } = require('./project-repositories.cjs');
     const root = await fs.realpath(store.project(projectId).path);
-    for (const repo of data.repositories) await inside(root,repo.path);
+    for (const repo of data.repositories) {
+      if(repo.sourceProjectId){if(change.action==='repositories')await require('./project-repositories.cjs').resolveRepositoryDirectory(store,store.project(projectId),repo);}
+      else await inside(root,repo.path);
+    }
     await inside(root,data.chatCwd || '.');
     for(const service of data.services || [])await inside(root,service.cwd);
   }
@@ -209,6 +217,9 @@ async function updateDetails(store, projectId, previous, change) {
 }
 function registerProjectDetails(register, store) {
   register('readProjectDetails', (projectId) => readDetails(store, projectId));
-  register('updateProjectDetails', (projectId, previous, change) => updateDetails(store, projectId, previous, change));
+  register('updateProjectDetails', (projectId, previous, change) => {
+    if(change?.action==='shortcuts'||change?.action==='import')throw Error('바로가기 설정이나 카드 가져오기 화면에서 변경해 주세요.');
+    return updateDetails(store, projectId, previous, change);
+  });
 }
 module.exports = { registerProjectDetails, readDetails, updateDetails, kickoffFields, validateDetails:validate };

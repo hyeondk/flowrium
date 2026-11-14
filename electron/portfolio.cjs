@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { execFile } = require("node:child_process");
@@ -59,7 +60,7 @@ function safeName(name) {
 async function checkedRoot(store, id) {
   const project = store.project(id);
   const root = await fs.realpath(project.path);
-  if (path.relative(project.path, root)) throw unknown();
+  if (relativePath(project.path, root)) throw unknown();
   return root;
 }
 async function descend(root, parts, create = false) {
@@ -77,7 +78,7 @@ async function descend(root, parts, create = false) {
     if (
       !stat.isDirectory() ||
       stat.isSymbolicLink() ||
-      path.relative(at, await fs.realpath(at))
+      relativePath(at, await fs.realpath(at))
     )
       throw unknown();
   }
@@ -109,7 +110,7 @@ async function noteAt(root, spec, relative) {
   if (
     !stat.isFile() ||
     stat.isSymbolicLink() ||
-    path.relative(file, await fs.realpath(file))
+    relativePath(file, await fs.realpath(file))
   )
     throw unknown();
   const info = {

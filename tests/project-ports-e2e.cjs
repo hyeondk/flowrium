@@ -21,7 +21,7 @@ async function run() {
       app = await _electron.launch({ args: [root], env, timeout: 45000 }); page = await app.firstWindow();
       page.setDefaultTimeout(16000); page.on('pageerror', error => errors.push(error.message)); await page.setViewportSize({ width: 1440, height: 1000 });
       await page.getByRole('heading', { name: '프로젝트 대시보드', exact: true }).waitFor();
-      await page.waitForFunction(() => document.querySelector('.side-account i')?.dataset.connected === 'true');
+      await page.waitForFunction(() => document.querySelector('.side-usage')?.dataset.connected === 'true');
       await app.evaluate(({ clipboard }) => { clipboard.writeText = text => { globalThis.flowriumPortCopied = text; }; });
     }
     async function openPorts() {

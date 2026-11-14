@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
@@ -30,7 +31,7 @@ function teamDefinition(input) {
 }
 async function directory(folder, create = true) {
   if (create) await projectDirectory(folder);
-  if (!(await fs.lstat(folder)).isDirectory() || path.relative(folder, await fs.realpath(folder)) !== '')
+  if (!(await fs.lstat(folder)).isDirectory() || relativePath(folder, await fs.realpath(folder)) !== '')
     throw new Error('팀 기록 폴더가 프로젝트 밖의 위치를 가리킵니다.');
   return folder;
 }

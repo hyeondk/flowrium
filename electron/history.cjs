@@ -1,3 +1,4 @@
+const { samePath: sameFilesystemPath } = require('./path-boundary.cjs');
 const path = require("node:path");
 const { fileURLToPath } = require("node:url");
 const { createHash } = require("node:crypto");
@@ -24,7 +25,7 @@ function samePath(value, expected) {
     const wanted = path.resolve(expected);
     return process.platform === "win32"
       ? actual.toLowerCase() === wanted.toLowerCase()
-      : actual === wanted;
+      : sameFilesystemPath(actual, wanted);
   } catch {
     return false;
   }

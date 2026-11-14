@@ -32,10 +32,10 @@ async function main() {
       const page = await app.firstWindow();
       await page.setViewportSize({width:1440,height:1000});
       page.setDefaultTimeout(20000);
-      await page.locator('.side-account i[data-connected=true]').waitFor();
+      await page.locator('.side-usage[data-connected=true]').waitFor();
       await page.locator('.workspace-side').hover();
       await page.locator('.workspace-side').getByRole('button',{name:'화면 검증',exact:true}).click();
-      await page.getByRole('navigation',{name:'프로젝트 상세 탭'}).getByRole('button',{name:'팀',exact:true}).click();
+      await page.mouse.move(800,100);await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='false');await page.getByRole('navigation',{name:'프로젝트 상세 탭'}).getByRole('button',{name:'팀',exact:true}).click();
       return page;
     };
     let page = await launch();

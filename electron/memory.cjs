@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
@@ -53,7 +54,7 @@ async function checkedFolder(parent, name, create) {
   if (
     !stat.isDirectory() ||
     stat.isSymbolicLink() ||
-    path.relative(
+    relativePath(
       path.join(await fs.realpath(parent), name),
       await fs.realpath(dir),
     ) !== ""
@@ -66,7 +67,7 @@ async function rootFor(store, projectId, scope, create) {
   if (scope === "personal")
     return checkedFolder(path.dirname(store.file), "personal-memory", create);
   if (scope !== "project") throw invalid();
-  if (path.relative(project.path, await fs.realpath(project.path)) !== "")
+  if (relativePath(project.path, await fs.realpath(project.path)) !== "")
     throw conflict();
   const directory = await checkedFolder(project.path, ".flowrium", false);
   if (

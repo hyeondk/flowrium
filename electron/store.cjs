@@ -1,3 +1,4 @@
+const { samePath } = require('./path-boundary.cjs');
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID, createHash } = require("node:crypto");
@@ -267,14 +268,14 @@ class Store {
     const existing = this.state.projects.find((project) =>
       process.platform === "win32"
         ? project.path.toLowerCase() === canonical.toLowerCase()
-        : project.path === canonical,
+        : samePath(project.path, canonical),
     );
     if (existing && this.repositories.has(existing.id))
       return structuredClone(existing);
     const repository = await ProjectStore.open(canonical);
     if([...repository.saved.values()].some(session=>session.scope))throw Error('개인 대화 저장소는 프로젝트로 가져올 수 없습니다.');
     const sameIdentity = this.state.projects.find(
-      (project) => project.id === repository.id && project.path !== canonical,
+      (project) => project.id === repository.id && !samePath(project.path, canonical),
     );
     if (sameIdentity) {
       try {
@@ -390,6 +391,25 @@ class Store {
       );
       throw error;
     }
+  }
+  async restoreSession(snapshot) {
+    const project=this.project(snapshot.projectId),pool=this.conversations.poolForProject(project.id),target=pool?.sessions||this.state.sessions;
+    validateSession(snapshot,project.id);
+    if((pool&&snapshot.scope!==project.conversationScope)||(!pool&&snapshot.scope))throw Error('복원할 대화의 저장 범위를 확인해 주세요.');
+    if(this.peekSession(snapshot.id))throw Error('같은 대화가 이미 있습니다. 기존 대화를 보존했습니다.');
+    const session=structuredClone(snapshot);session.compacting=false;
+    for(const queued of session.queuedMessages||[])if(['queued','sending'].includes(queued.status))queued.status='cancelled';
+    target.unshift(session);
+    try{await this.save();}catch(error){target.splice(target.indexOf(session),1);throw error;}
+    return structuredClone(session);
+  }
+  async disconnectProject(id) {
+    const project=this.state.projects.find(p=>p.id===id);if(!project)throw Error('연결한 프로젝트를 선택해 주세요.');
+    const previousProjects=this.state.projects,previousSessions=this.state.sessions;
+    this.state.projects=previousProjects.filter(p=>p.id!==id);this.state.sessions=previousSessions.filter(s=>s.projectId!==id);
+    try{await this.save();}catch(error){this.state.projects=previousProjects;this.state.sessions=previousSessions;throw error;}
+    this.repositories.delete(id);
+    return structuredClone(project);
   }
   async saveSettings(input) {
     const previous = this.state.settings;

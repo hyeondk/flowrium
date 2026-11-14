@@ -20,7 +20,7 @@ async function run() {
     for (const name of ['첫 보고 프로젝트', '두 번째 보고 프로젝트']) { const folder = path.join(temp, name); await fs.mkdir(folder); const project = await store.addProject(folder); projects.push(project); await store.createSession(project.id, { title: name + ' 최근 작업' }); }
     const env = { ...process.env, FLOWRIUM_USER_DATA: profile, CODEX_HOME: path.join(temp, 'codex') }; delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_RENDERER_URL;
     app = await _electron.launch({ args: [root], env, timeout: 45000 }); page = await app.firstWindow(); page.setDefaultTimeout(16000); page.on('pageerror', error => errors.push(error.message));
-    await page.setViewportSize({ width: 1440, height: 1000 }); await page.getByRole('heading', { name: '프로젝트 대시보드', exact: true }).waitFor(); await page.waitForFunction(() => document.querySelector('.side-account i')?.dataset.connected === 'true');
+    await page.setViewportSize({ width: 1440, height: 1000 }); await page.getByRole('heading', { name: '프로젝트 대시보드', exact: true }).waitFor(); await page.waitForFunction(() => document.querySelector('.side-usage')?.dataset.connected === 'true');
     const originalView = await page.locator('.main-shell').getAttribute('data-view');
     const snapshot = () => page.evaluate(() => window.flowrium.bootstrap());
     async function open(title) { await page.locator('.workspace-side').hover(); await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: title, exact: true }).click(); const dialog = page.getByRole('dialog', { name: title, exact: true }); await dialog.waitFor(); await dialog.getByLabel('보고서 AI 모델', { exact: true }).locator('option[value="test-model"]').waitFor({ state: 'attached' }); await page.waitForTimeout(300); return dialog; }

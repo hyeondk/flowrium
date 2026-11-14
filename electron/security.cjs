@@ -15,6 +15,10 @@ const DEFAULTS = Object.freeze({
 const idleChoices = [0, 5, 10, 15, 30, 60];
 const publicWhileLocked = new Set(["securityState", "unlockSecurity"]);
 const accountCommands = new Set([
+  "repositoryAccessAction",
+  "projectShortcutAction",
+  "showDotsView", "reloadDotsView", "openDotsExternal",
+  "trashAction", "deleteSession",
   "codexTransferAction", "reactMessage", "migrationAction", "readProjectPorts", "projectPortsAction",
   "voiceServersState", "configureVoiceServer", "previewVoiceServer", "voiceServerAction", "chooseVoiceServerPath",
   "exportSession", "createHubConversation", "listHubConversations",

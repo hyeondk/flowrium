@@ -1,0 +1,17 @@
+.project-shortcuts { word-break:keep-all; }
+.project-shortcut-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:10px; margin:14px 0; }
+.project-shortcut-list article { min-width:0; padding:14px; border:1px solid var(--border); border-radius:12px; background:var(--panel-alt,var(--surface)); }
+.project-shortcut-summary { display:flex; gap:9px; align-items:center; min-height:32px; }
+.project-shortcut-summary > svg { color:var(--accent,var(--muted)); flex:none; }
+.project-shortcut-summary > label { flex:1; min-width:0; }
+.project-shortcut-summary input { width:100%; }
+.project-shortcut-kind { font-size:11px; color:var(--muted); margin-left:auto; white-space:nowrap; }
+.project-shortcut-target { font-size:12px; line-height:1.7; color:var(--muted); overflow-wrap:anywhere; word-break:normal; }
+.project-shortcuts .pf-actions { flex-wrap:wrap; gap:8px; }
+.project-shortcuts button { display:inline-flex; align-items:center; gap:6px; }
+.project-shortcut-form { display:grid; grid-template-columns:minmax(110px,.5fr) minmax(140px,1fr) minmax(180px,1.5fr) auto; gap:12px; align-items:end; margin:20px 0 14px; }
+.project-shortcut-form h3 { grid-column:1/-1; }
+.project-shortcut-form label { display:grid; gap:7px; min-width:0; }
+.project-shortcut-form :is(input,select) { width:100%; }
+@media(max-width:1000px) { .project-shortcut-form { grid-template-columns:1fr 1fr; } }
+@media(max-width:600px) { .project-shortcut-form { grid-template-columns:1fr; } }

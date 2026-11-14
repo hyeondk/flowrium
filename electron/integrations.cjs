@@ -14,9 +14,10 @@ const scopes = [
 function registerIntegrations(
   register,
   store,
-  { directory, secretStorage, openExternal, fetchImpl = fetch },
+  { directory, secretStorage, openExternal, fetchImpl = fetch, publicOAuthClient },
 ) {
   const file = path.join(directory, "google.enc");
+  const publishedClient=require("./google-client.cjs").publishedGoogleClient(publicOAuthClient);
   let generation = 0;
   let googleTools;
   function current(expected) {
@@ -37,6 +38,7 @@ function registerIntegrations(
         );
       data = {};
     }
+    if(!data.clientId&&publishedClient)data={...data,...publishedClient};
     return data;
   }
   async function persist(value, expected = generation) {

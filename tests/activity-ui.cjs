@@ -41,8 +41,7 @@ async function verifyActivityUI(page) {
   await page.locator('.conversation-dock').getByRole("heading", {name:created.title,exact:true}).waitFor();
   assert.equal(created.messages.length,0,'새 대화 단축키는 실제 빈 대화를 생성');
   assert.equal(created.workflow,undefined,'새 대화는 이전 업무 역할을 복제하지 않음');
-  assert.equal(await page.locator('.app-shell').getAttribute('data-chat-focus'),'true','새 대화는 넓게 열림');
-  await button('대시보드와 나란히 보기').click();
+  assert.equal(await page.locator('.app-shell').getAttribute('data-chat-focus'),'false','새 대화는 본 화면을 가리지 않음');
   assert(await page.locator('[data-work-kind=task]').isVisible(),'새 대화를 열어도 가운데 업무 보드 유지');
   console.log("실제 앱 검증 / 시스템 자원 / 작업중·대기·결정과 전체 목록 / 열기 / 중단 / 네 단축키와 모달 보호 / 빈 대화 실제 생성과 가운데 화면 유지");
 }

@@ -27,6 +27,7 @@ import "./portfolio.css";
 import PortfolioBoard from "./PortfolioBoard";
 import ArtifactViewer from "./ArtifactViewer";
 import DashboardInsights from "./DashboardInsights";
+import DashboardConnections from './DashboardConnections';
 
 const api = window.flowrium;
 export const errorText = (error: unknown) =>
@@ -265,7 +266,7 @@ interface Props {
   view: PortfolioView;
   projects: Project[];
   sessions: Session[];
-  onNavigate(view: PortfolioView): void;
+  onNavigate(view: PortfolioView | 'calendar'): void;
   onProject(project: Project, tab: ProjectTab): void;
   onOpenSession(session: Session): void;
   onChooseProject(): void;
@@ -673,6 +674,7 @@ export function ProjectPortfolio({
               </button>
             </div>
             <DashboardInsights cards={cards} sessions={records} onOpen={onOpenSession} onProject={id=>{const p=projects.find(p=>p.id===id);if(p)onProject(p,"home");}}/>
+            {projects.length>0&&<DashboardConnections onOpenCalendar={()=>onNavigate('calendar')}/>}
             {tools}
             <PortfolioBoard cards={cards} onOpen={p=>onProject(p,"home")} onImported={onCreated} onChange={(id,archived)=>{if(id)onArchived?.(id,!!archived);reload(r=>r+1);}}/>
             <div className="pf-section-header">

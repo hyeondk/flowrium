@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID, createHash } = require('node:crypto');
@@ -8,13 +9,14 @@ const { atomic } = require('./portfolio-operations.cjs');
 const exec=promisify(execFile);
 const steps=['commit','push','pr','merge','done'];
 const hash=(text)=>createHash('sha256').update(text).digest('hex');
+const workKey=session=>hash(JSON.stringify([session.title,session.updatedAt,session.workflow||null]));
 function safeFile(value){if(typeof value!=='string'||!value||value.length>1500||path.isAbsolute(value)||value.includes('\\')||/[\x00-\x1f:]/.test(value)||value.split('/').some(p=>!p||['..','.git','.flowrium'].includes(p)))throw Error('선택한 파일 경로를 확인해 주세요.');return value;}
 async function git(cwd,args){try{return (await exec('git',args,{cwd,env:{...require('./runtime.cjs').runtimeEnvironment(),GIT_TERMINAL_PROMPT:'0'},windowsHide:true,timeout:30000,maxBuffer:4*1024*1024})).stdout;}catch(e){throw Error((e.stderr||e.message).trim().slice(-1500));}}
 async function snapshot(repo,files=[]){
   const head=(await git(repo.cwd,['rev-parse','HEAD']).catch(()=>'' )).trim(),branch=(await git(repo.cwd,['branch','--show-current'])).trim();
   const status=await git(repo.cwd,['status','--porcelain=v1','--no-renames','-z','--untracked-files=all','--','.',':(exclude).flowrium',':(exclude).flowrium/**']);
   const values=[];
-  for(const file of files){safeFile(file);const target=path.join(repo.cwd,...file.split('/'));try{const stat=await fs.lstat(target);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>32*1024*1024||path.relative(target,await fs.realpath(target)))throw Error('정리할 파일을 확인해 주세요.');values.push([file,hash(await fs.readFile(target))]);}catch(e){if(e.code==='ENOENT')values.push([file,'deleted']);else throw e;}}
+  for(const file of files){safeFile(file);const target=path.join(repo.cwd,...file.split('/'));try{const stat=await fs.lstat(target);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>32*1024*1024||relativePath(target,await fs.realpath(target)))throw Error('정리할 파일을 확인해 주세요.');values.push([file,hash(await fs.readFile(target))]);}catch(e){if(e.code==='ENOENT')values.push([file,'deleted']);else throw e;}}
   const indexPath=(await git(repo.cwd,['rev-parse','--git-path','index'])).trim();
   const remotes=await git(repo.cwd,['remote','-v']);
   const index=await fs.readFile(path.resolve(repo.cwd,indexPath)).catch(e=>{if(e.code==='ENOENT')return Buffer.alloc(0);throw e;});
@@ -26,14 +28,22 @@ function registerRepositoryFlow(register,store,action,{isUpdating=()=>false,isSe
   const file=id=>{if(typeof id!=='string'||!/^[0-9a-f-]{36}$/.test(id))throw Error('실행 기록을 확인해 주세요.');return path.join(directory,id+'.json');};
   const save=run=>atomic(file(run.id),run);
   async function load(id){return JSON.parse(await fs.readFile(file(id),'utf8'));}
-  async function check(run){for(const row of run.rows){const repo=await repositoryFor(store,run.projectId,row.repositoryId);const current=await snapshot(repo,row.files);if(current.key!==row.expected.key)throw Error(repo.name+' 저장소가 변경됐습니다. 실행 계획을 다시 확인해 주세요.');}}
+  function completionTarget(run,row){
+    if(!row.sessionId)throw Error('병합 후 완료할 프로젝트 업무를 먼저 선택해 주세요.');
+    const session=store.session(row.sessionId);if(session.projectId!==run.projectId||session.scope&&session.scope!=='project')throw Error('완료할 프로젝트 업무를 확인해 주세요.');
+    if(isSessionRunning(session.id)||(session.queuedMessages||[]).some(message=>['queued','sending'].includes(message.status)))throw Error('실행 중이거나 대기 지시가 있는 업무는 완료할 수 없습니다.');
+    const ownCompletion=session.workflow?.status==='done'&&session.workflow.completion?.repositoryFlowId===run.id;
+    if(!ownCompletion&&(session.workflow?.status==='done'||row.workExpected&&workKey(session)!==row.workExpected.key))throw Error('완료할 업무가 실행 계획 이후 변경됐습니다. 계획을 다시 만들어 주세요.');
+    return {session,ownCompletion};
+  }
+  async function check(run){for(const row of run.rows){if(row.through==='done')completionTarget(run,row);const repo=await repositoryFor(store,run.projectId,row.repositoryId);const current=await snapshot(repo,row.files);if(current.key!==row.expected.key)throw Error(repo.name+' 저장소가 변경됐습니다. 실행 계획을 다시 확인해 주세요.');}}
   async function execute(run){
     if(busy||isUpdating())throw Error('다른 작업이 끝난 뒤 다시 실행하세요.');busy=true;
     try{
       await check(run);run.state='running';run.error='';await save(run);
       for(const row of run.rows){
         const repo=await repositoryFor(store,run.projectId,row.repositoryId),invoke=input=>action(run.projectId,{...input,repositoryId:row.repositoryId});
-        for(const stage of steps.slice(0,steps.indexOf(row.through)+1)){
+        for(const stage of steps.slice(0,Math.min(steps.indexOf(row.through),3)+1)){
           if(row.completed.includes(stage))continue;
           if(isUpdating())throw Error('앱 상태가 변경되어 실행을 멈췄습니다.');
           const actual=await snapshot(repo,row.files);if(actual.key!==row.expected.key)throw Error(repo.name+'의 파일이나 브랜치가 변경됐습니다.');
@@ -50,15 +60,24 @@ function registerRepositoryFlow(register,store,action,{isUpdating=()=>false,isSe
             row.pull={number:pr.number,head:pr.headRefOid};
             if(stage==='merge')row.log.push(await invoke({action:'merge',number:pr.number,head:pr.headRefOid}));
           }
-          if(stage==='done'&&row.sessionId){
-            if(isSessionRunning(row.sessionId))throw Error('실행 중인 업무는 완료할 수 없습니다.');
-            const session=store.session(row.sessionId);if(session.projectId!==run.projectId)throw Error('프로젝트 업무를 확인해 주세요.');
-            session.workflow ||= require('./workbench.cjs').validateWorkflow({kind:'task',status:'active',role:'프로젝트 실무 담당자',brief:'',audience:'',from:'',to:'',checklist:[]});
-            session.workflow.status='done';session.workflow.completion={at:new Date().toISOString(),summary:row.message,commits:row.expected.head?[{hash:row.expected.head,at:new Date().toISOString(),subject:row.message}]:[]};
-            session.updatedAt=new Date().toISOString();await store.save();
-          }
           row.completed.push(stage);row.expected=await snapshot(repo,row.files);run.updatedAt=new Date().toISOString();await save(run);
         }
+      }
+      // 모든 저장소의 선택 단계를 마친 뒤에만 연결 업무를 완료한다.
+      const finishing=run.rows.filter(row=>row.through==='done'&&!row.completed.includes('done'));
+      for(const row of finishing)completionTarget(run,row);
+      for(const sessionId of new Set(finishing.map(row=>row.sessionId))){
+        if(isUpdating())throw Error('앱 상태가 변경되어 업무 완료를 멈췄습니다.');
+        const linked=finishing.filter(row=>row.sessionId===sessionId),{session,ownCompletion}=completionTarget(run,linked[0]);
+        if(!ownCompletion){
+          const previous=structuredClone(session),at=new Date().toISOString();
+          const workflow=structuredClone(session.workflow||require('./workbench.cjs').validateWorkflow({kind:'task',status:'active',role:'프로젝트 실무 담당자',brief:'',audience:'',from:'',to:'',checklist:[]}));
+          workflow.status='done';workflow.completion={at,summary:linked.map(row=>row.message||row.title||row.name).join(' / ').slice(0,1000),commits:[...new Map(linked.filter(row=>row.expected.head).map(row=>[row.expected.head,{hash:row.expected.head,at,subject:row.message||row.title||row.name}])).values()].slice(0,30),repositoryFlowId:run.id};
+          session.workflow=workflow;session.updatedAt=at;
+          try{await store.save();}catch(error){Object.assign(session,previous);if(!previous.workflow)delete session.workflow;throw error;}
+        }
+        for(const row of linked){row.completed.push('done');row.workActual={id:session.id,title:session.title,status:session.workflow.status,completedAt:session.workflow.completion.at};}
+        run.updatedAt=new Date().toISOString();await save(run);
       }
       run.state='done';await save(run);onEvent({kind:'repository',title:'저장소 통합 실행 완료',runId:run.id});return run;
     }catch(e){run.state='failed';run.error=e.message;await save(run);return run;}finally{busy=false;}
@@ -83,8 +102,11 @@ function registerRepositoryFlow(register,store,action,{isUpdating=()=>false,isSe
         if(steps.indexOf(row.through)>=2&&(!row.title?.trim()||row.title.length>240||!row.body?.trim()||row.body.length>10000))throw Error('변경 요청 제목과 설명을 입력해 주세요.');
         const expected=await snapshot(repo,files);if(!expected.branch)throw Error('이름이 있는 브랜치를 선택해 주세요.');
         const base=row.base||repo.base||'main';await git(repo.cwd,['check-ref-format','--branch',base]);
-        if(row.sessionId&&store.session(row.sessionId).projectId!==input.projectId)throw Error('완료할 업무를 확인해 주세요.');
-        run.rows.push({repositoryId:repo.id,name:repo.name,files,message:row.message||'',base,title:row.title||'',body:row.body||'',through:row.through,sessionId:row.sessionId||null,expected,completed:[],log:[]});
+        let workExpected=null;
+        if(row.sessionId){const session=store.session(row.sessionId);if(session.projectId!==input.projectId||session.scope&&session.scope!=='project')throw Error('완료할 업무를 확인해 주세요.');workExpected={id:session.id,title:session.title,status:session.workflow?.status||'active',updatedAt:session.updatedAt,key:workKey(session)};}
+        const item={repositoryId:repo.id,name:repo.name,files,message:row.message||'',base,title:row.title||'',body:row.body||'',through:row.through,sessionId:row.sessionId||null,workExpected,expected,completed:[],log:[]};
+        if(row.through==='done')completionTarget(run,item);
+        run.rows.push(item);
       }
       await save(run);return run;
     }

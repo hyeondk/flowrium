@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs=require('node:fs/promises'),path=require('node:path'),{randomUUID,createHash}=require('node:crypto');
 const {gzip,gunzip}=require('node:zlib'),{promisify}=require('node:util');
 const compress=promisify(gzip),expand=promisify(gunzip),hash=b=>createHash('sha256').update(b).digest('hex');
@@ -10,7 +11,7 @@ async function walk(root,base=root){
 function safeRelative(value){if(typeof value!=='string'||path.isAbsolute(value)||value.includes('\\')||/[\x00-\x1f:]/.test(value)||value.split('/').some(p=>!p||p==='..')||!/^\.flowrium\/(sessions|teams|attachments|drive-cache)\//.test(value))throw Error('보관할 기록 경로를 확인해 주세요.');return value;}
 async function recordPath(root,relative,create=false){
   const parts=safeRelative(relative).split('/'),name=parts.pop();let at=await fs.realpath(root);
-  for(const part of parts){at=path.join(at,part);if(create)await fs.mkdir(at).catch(e=>{if(e.code!=='EEXIST')throw e;});const stat=await fs.lstat(at);if(!stat.isDirectory()||stat.isSymbolicLink()||path.relative(at,await fs.realpath(at)))throw Error('기록 폴더가 다른 위치를 가리켜 작업을 멈췄습니다.');}
+  for(const part of parts){at=path.join(at,part);if(create)await fs.mkdir(at).catch(e=>{if(e.code!=='EEXIST')throw e;});const stat=await fs.lstat(at);if(!stat.isDirectory()||stat.isSymbolicLink()||relativePath(at,await fs.realpath(at)))throw Error('기록 폴더가 다른 위치를 가리켜 작업을 멈췄습니다.');}
   return path.join(at,name);
 }
 function registerStorageTools(register,store,{isRunning=()=>false,isTeamRunning=()=>false,getTeamRuns,canRun=()=>true}={}){
@@ -43,7 +44,7 @@ function registerStorageTools(register,store,{isRunning=()=>false,isTeamRunning=
     for(const s of store.state.sessions)if((input.kinds.includes('sessions')||selectedTeamSessions.has(s.id))&&Date.parse(s.updatedAt)<cutoff&&!isRunning(s.id)&&!s.personalAssistant&&!protect.has(s.id)&&(!s.workflow?.teamSlot||selectedTeamSessions.has(s.id))){plan.sessions.push({id:s.id,projectId:s.projectId,title:s.title,key:hash(JSON.stringify(s))});}
     const excluded=new Set(plan.sessions.map(s=>s.id)),refs=await references(excluded);
     for(const p of store.state.projects){
-      const add=async relative=>{const file=await recordPath(p.path,relative),st=await fs.lstat(file);if(!st.isFile()||st.isSymbolicLink()||path.relative(file,await fs.realpath(file)))throw Error('일반 기록 파일만 보관할 수 있습니다.');const bytes=await fs.readFile(file);plan.files.push({projectId:p.id,path:relative,size:st.size,key:hash(bytes)});plan.bytes+=st.size;};
+      const add=async relative=>{const file=await recordPath(p.path,relative),st=await fs.lstat(file);if(!st.isFile()||st.isSymbolicLink()||relativePath(file,await fs.realpath(file)))throw Error('일반 기록 파일만 보관할 수 있습니다.');const bytes=await fs.readFile(file);plan.files.push({projectId:p.id,path:relative,size:st.size,key:hash(bytes)});plan.bytes+=st.size;};
       for(const f of await walk(path.join(p.path,'.flowrium','sessions'))){const id=f.relative.split('--')[0];if(excluded.has(id))await add('.flowrium/sessions/'+f.relative);}
       for(const r of plan.teams.filter(r=>r.projectId===p.id))for(const f of r.files)await add(f);
       if(input.kinds.includes('attachments')){

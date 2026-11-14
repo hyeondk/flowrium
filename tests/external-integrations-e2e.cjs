@@ -37,7 +37,7 @@ const {Store}=require('../electron/store.cjs');
    });globalThis.externalRuntime=runtime;
   },{root:path.resolve(__dirname,'..'),profile});
   assert.equal(await page.title(),'Flowrium');
-  const button=name=>page.getByRole('button',{name,exact:true});
+  const button=name=>page.getByRole('dialog',{name:'설정',exact:true}).getByRole('button',{name,exact:true});
   await page.getByRole('button',{name:'프로젝트 추가',exact:true}).first().waitFor();
   const projectButton=page.getByRole('button',{name:new RegExp(project.name)}).first();if(await projectButton.count())await projectButton.click();
   await page.locator('.settings-button').click();await button('일정').click();

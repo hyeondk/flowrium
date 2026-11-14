@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
@@ -62,7 +63,7 @@ function registerTerminal(register, store, { canOpen = () => true, env = process
     if (purpose !== undefined && purpose !== 'github-login') throw new Error('지원하지 않는 터미널 시작 요청입니다.');
     const project = store.project(projectId);
     const cwd = await fs.realpath(project.path);
-    if (path.relative(cwd, project.path) !== '' || !(await fs.stat(cwd)).isDirectory())
+    if (relativePath(cwd, project.path) !== '' || !(await fs.stat(cwd)).isDirectory())
       throw new Error('프로젝트 폴더 경로가 바뀌었습니다. 원래 폴더를 다시 연결해 주세요.');
     if (stopping || !canOpen()) throw new Error('앱 업데이트 중에는 터미널을 열 수 없습니다.');
     if (sessions.size >= MAX_SESSIONS) throw new Error('열지 않는 터미널을 닫은 뒤 새 터미널을 추가해 주세요.');

@@ -53,3 +53,23 @@
 :is(.app-shell,.settings-modal,.motion-overlay) .music-mini .music-range,:is(.app-shell,.settings-modal,.motion-overlay) .music-mini .music-controls > small { display: none; }
 @media(max-width:950px) { :is(.app-shell,.settings-modal,.motion-overlay) .music-stage { flex-direction: column; align-items: stretch; } :is(.app-shell,.settings-modal,.motion-overlay) .music-video { width: 100%; flex: none; max-width: 100%; } :is(.app-shell,.settings-modal,.motion-overlay) .music-page { padding: 24px; } }
 @media(max-width:600px) { :is(.app-shell,.settings-modal,.motion-overlay) .music-page { padding: 16px; } :is(.app-shell,.settings-modal,.motion-overlay) :is(.music-stage,.music-lists,.music-lyrics-panel) { padding: 16px; } :is(.app-shell,.settings-modal,.motion-overlay) .music-lists form { grid-template-columns: minmax(0,1fr); } :is(.app-shell,.settings-modal,.motion-overlay) .music-lists form > button { justify-self: end; } :is(.app-shell,.settings-modal,.motion-overlay) .music-list { gap: 8px; } :is(.app-shell,.settings-modal,.motion-overlay) .music-list > button:first-child { flex-wrap: wrap; } }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-list-thumbnail { width: 52px; height: 36px; object-fit: cover; border-radius: 6px; flex: none; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-list > button:first-child > span { min-width: 0; word-break: keep-all; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-info-action { flex: none; width: 32px; justify-content: center; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-queue-tools { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; color: var(--muted); font-size: 12px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-queue-tools button { display: inline-flex; gap: 6px; align-items: center; padding: 6px 8px; min-height: 32px; border-radius: 8px; font-size: 12px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-page > ol.music-queue { list-style: none; padding: 12px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-queue button { display: flex; align-items: center; gap: 12px; padding: 10px; min-height: 54px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-queue-number { color: var(--dim); width: 22px; flex: none; font-size: 11px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-queue img { width: 52px; height: 36px; object-fit: cover; border-radius: 6px; flex: none; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-queue-label { display: grid; gap: 3px; min-width: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-queue-label strong { font-size: 13px; font-weight: 600; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-queue-label small { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-queue-more { display: block; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; margin: 12px auto 0; color: var(--accent); font-size: 12px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .music-info-notice { font-size: 12px; line-height: 22px; color: var(--muted); margin-top: 16px; word-break: keep-all; }
+@media(max-width:600px) {
+  :is(.app-shell,.settings-modal,.motion-overlay) .music-list { gap: 8px; }
+  :is(.app-shell,.settings-modal,.motion-overlay) .music-list > button:first-child { flex-wrap: nowrap; }
+  :is(.app-shell,.settings-modal,.motion-overlay) .music-queue button { gap: 8px; padding: 8px; }
+  :is(.app-shell,.settings-modal,.motion-overlay) .music-queue-number { width: 16px; }
+}

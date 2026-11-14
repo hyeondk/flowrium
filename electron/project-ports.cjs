@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const net = require('node:net');
@@ -74,13 +75,13 @@ async function projectFolder(store, id, create = false) {
   if (typeof id !== 'string' || !UUID.test(id)) throw invalid();
   const project = store.state.projects.find(item => item.id === id);
   if (!project || project.conversationScope) throw Error('등록한 프로젝트의 포트표만 사용할 수 있습니다.');
-  if (path.relative(project.path, await fs.realpath(project.path))) throw Error('프로젝트 경로가 변경됐습니다. 원본을 보존했습니다.');
+  if (relativePath(project.path, await fs.realpath(project.path))) throw Error('프로젝트 경로가 변경됐습니다. 원본을 보존했습니다.');
   const root = path.join(project.path, '.flowrium'); await projectDirectory(root);
   if ((await readJSON(path.join(root, 'project.json'))).id !== id) throw Error('프로젝트 식별자가 변경됐습니다. 원본을 보존했습니다.');
   const folder = path.join(root, 'ports');
   try { const stat = await fs.lstat(folder); if (!stat.isDirectory() || stat.isSymbolicLink()) throw Error('포트 기록 폴더가 다른 위치를 가리킵니다. 원본을 보존했습니다.'); }
   catch (error) { if (error.code !== 'ENOENT') throw error; if (!create) return null; await projectDirectory(folder); }
-  if (path.relative(root, await fs.realpath(folder)) !== 'ports') throw Error('포트 기록 위치가 변경됐습니다. 원본을 보존했습니다.');
+  if (relativePath(root, await fs.realpath(folder)) !== 'ports') throw Error('포트 기록 위치가 변경됐습니다. 원본을 보존했습니다.');
   return folder;
 }
 async function readAssignment(store, id) {

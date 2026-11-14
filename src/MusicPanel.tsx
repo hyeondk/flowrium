@@ -11,8 +11,9 @@ import {
   Repeat,
   Plus,
   Trash2,
+  RefreshCw,
 } from "lucide-react";
-import type { MusicState, MusicLyrics } from "../shared/music";
+import type { MusicState, MusicLyrics, MusicInfo } from "../shared/music";
 import "./music.css";
 const initial: MusicState = {
   lists: [],
@@ -56,6 +57,29 @@ export default function MusicPanel({
   latest.current = state;
   const entry = state.lists.find((v) => v.id === state.selected),
     api = window.flowrium;
+  const [adding,setAdding] = useState(false),[musicNotice,setMusicNotice] = useState('');
+  const [infos,setInfos] = useState<Record<string,MusicInfo>>({}),[infoBusy,setInfoBusy] = useState(false),[infoRefresh,setInfoRefresh] = useState(0),[queueLimit,setQueueLimit] = useState(50);
+  const infoEpoch=useRef(0),infoRef=useRef(infos),lockedRef=useRef(locked);
+  infoRef.current=infos;lockedRef.current=locked;
+  const queueIds=Array.isArray(track.queue)?track.queue.filter(id=>typeof id==='string'&&/^[a-zA-Z0-9_-]{6,100}$/.test(id)).slice(0,queueLimit):[];
+  const queueKey=queueIds.join(',');
+  useEffect(()=>{setQueueLimit(50);},[state.selected]);
+  useEffect(()=>{
+    const epoch=++infoEpoch.current;
+    if(!api||locked||!visible||!queueIds.length){setInfoBusy(false);return;}
+    const missing=queueIds.filter(id=>infoRefresh>0||!infoRef.current[id]);
+    if(!missing.length){setInfoBusy(false);return;}
+    setInfoBusy(true);
+    void (async()=>{
+      for(let index=0;index<missing.length;index+=50){
+        const rows=await api.musicInfo({videoIds:missing.slice(index,index+50),refresh:infoRefresh>0});
+        if(epoch!==infoEpoch.current)return;
+        setInfos(current=>({...current,...Object.fromEntries(rows.map(row=>[row.id,row]))}));
+      }
+    })().catch(()=>{if(epoch===infoEpoch.current)setMusicNotice('곡 정보를 읽지 못했습니다. 재생은 계속 사용할 수 있습니다.');})
+      .finally(()=>{if(epoch===infoEpoch.current)setInfoBusy(false);});
+    return()=>{infoEpoch.current++;};
+  },[api,locked,visible,queueKey,infoRefresh]);
   const [lyrics, setLyrics] = useState<MusicLyrics | null>(), [lyricsNotice, setLyricsNotice] = useState(''), [lyricsBusy,setLyricsBusy] = useState(false);
   const lyricEpoch = useRef(0);
   useEffect(()=>{lyricEpoch.current++;setLyrics(undefined);setLyricsNotice('');},[track.title,track.author,state.selected,locked]);
@@ -164,6 +188,8 @@ export default function MusicPanel({
       );
   }, [ready]);
   async function add() {
+    if(adding||locked)return;
+    setAdding(true);setMusicNotice('');
     try {
       const parsed = new URL(input);
       if (
@@ -186,27 +212,48 @@ export default function MusicPanel({
         throw Error("동영상 또는 재생목록을 확인해 주세요.");
       if (state.lists.some((v) => v.id === id))
         throw Error("이미 저장한 목록입니다.");
+      const chosenName=name.trim();
+      let info:MusicInfo|undefined;
+      try{[info]=await api!.musicInfo(list?{playlistId:id}:{videoIds:[id]});}catch{}
+      if(lockedRef.current)return;
+      const current=latest.current;
+      if(current.lists.some(item=>item.id===id))throw Error('이미 저장한 목록입니다.');
       await save({
-        ...state,
+        ...current,
         lists: [
-          ...state.lists,
+          ...current.lists,
           {
             id,
             kind: list ? "playlist" : "video",
             url: list
               ? "https://www.youtube.com/playlist?list=" + id
               : "https://www.youtube.com/watch?v=" + id,
-            title: name.trim() || "재생목록 " + (state.lists.length + 1),
+            title: chosenName || info?.title || "재생목록 " + (current.lists.length + 1),
             lyrics: "",
+            ...(info?.thumbnail&&{thumbnail:info.thumbnail}),
           },
         ],
       });
       setInput("");
       setName("");
       setError("");
+      if(!info?.available)setMusicNotice('제목과 이미지를 읽지 못해 입력한 이름으로 저장했습니다. 목록에서 정보를 다시 읽을 수 있습니다.');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    }
+    } finally{setAdding(false);}
+  }
+  async function refreshEntry(id:string){
+    const item=latest.current.lists.find(value=>value.id===id);
+    if(!api||!item||locked||adding)return;
+    setAdding(true);setMusicNotice('');
+    try{
+      const [info]=await api.musicInfo(item.kind==='playlist'?{playlistId:id,refresh:true}:{videoIds:[id],refresh:true});
+      if(lockedRef.current)return;
+      if(!info?.available)throw Error('목록 정보를 읽지 못했습니다. 현재 이름과 재생 설정은 유지됩니다.');
+      const current=latest.current;
+      await save({...current,lists:current.lists.map(value=>value.id===id?{...value,title:info.title,...(info.thumbnail&&{thumbnail:info.thumbnail})}:value)});
+      setMusicNotice('목록의 실제 이름과 이미지를 불러왔습니다.');
+    }catch(value){setMusicNotice(value instanceof Error?value.message:String(value));}finally{setAdding(false);}
   }
   return (
     <div
@@ -354,6 +401,7 @@ export default function MusicPanel({
                 placeholder="YouTube 동영상 또는 재생목록 주소"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                disabled={adding}
                 required
               />
               <input
@@ -362,8 +410,9 @@ export default function MusicPanel({
                 maxLength={200}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                disabled={adding}
               />
-              <button className="button secondary">
+              <button className="button secondary" disabled={adding}>
                 <Plus size={15} />
                 추가
               </button>
@@ -371,10 +420,11 @@ export default function MusicPanel({
             {state.lists.map((item) => (
               <div className="music-list" key={item.id}>
                 <button onClick={() => void play(item.id)}>
-                  <Play size={15} />
-                  {item.title}
+                  {item.thumbnail?<img className="music-list-thumbnail" src={item.thumbnail} alt="" loading="lazy" referrerPolicy="no-referrer"/>:<Play size={15} />}
+                  <span>{item.title}</span>
                   {state.selected === item.id && <small>선택됨</small>}
                 </button>
+                <button type="button" className="music-info-action" aria-label={item.title+' 이름과 이미지 자동 읽기'} title="실제 이름과 이미지로 바꾸기" disabled={adding} onClick={()=>void refreshEntry(item.id)}><RefreshCw size={15}/></button>
                 <button
                   aria-label={item.title + " 삭제"}
                   onClick={() => {
@@ -407,18 +457,18 @@ export default function MusicPanel({
             </button>
           </nav>
           {tab === "queue" ? (
-            <ol>
-              {track.queue.map((id, i) => (
+            <><div className="music-queue-tools"><span>{track.queue.length}곡{infoBusy?' / 곡 정보 확인 중':''}</span><button type="button" disabled={infoBusy||!queueIds.length} onClick={()=>setInfoRefresh(value=>value+1)}><RefreshCw size={14}/>곡 정보 다시 읽기</button></div><ol className="music-queue">
+              {queueIds.map((id, i) => (
                 <li key={id + i}>
                   <button
                     onClick={() => command("at", i)}
                     aria-pressed={i === track.index}
                   >
-                    {i + 1}. {id}
+                    <span className="music-queue-number">{i+1}</span>{infos[id]?.thumbnail&&<img src={infos[id].thumbnail} alt="" loading="lazy" referrerPolicy="no-referrer"/>}<span className="music-queue-label"><strong>{infos[id]?.title||'곡 정보 확인 중'}</strong><small>{infos[id]?.author||(!infos[id]?.available&&infos[id]?'정보를 읽지 못한 곡 / '+id:id)}</small></span>
                   </button>
                 </li>
               ))}
-            </ol>
+            </ol>{queueLimit<track.queue.length&&<button type="button" className="music-queue-more" onClick={()=>setQueueLimit(value=>value+50)}>다음 50곡 보기</button>}</>
           ) : entry ? (
             <section className="music-lyrics-panel">
             <button disabled={!track.title || lyricsBusy || locked} onClick={()=>void lookupLyrics()}>{lyricsBusy?'가사 검색 중':'현재 곡 가사 자동 검색'}</button>
@@ -450,6 +500,7 @@ export default function MusicPanel({
               {error}
             </p>
           )}
+          {musicNotice&&<p className="music-info-notice" role="status">{musicNotice}</p>}
         </>
       )}
     </div>

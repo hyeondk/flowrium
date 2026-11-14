@@ -53,6 +53,7 @@ function validateState(input) {
       ...parsed,
       title: v.title.trim() || parsed.id,
       lyrics: v.lyrics || "",
+      ...(v.thumbnail && { thumbnail: require('./music-metadata.cjs').thumbnail(v.thumbnail) }),
     };
   });
   if (new Set(lists.map((v) => v.id)).size !== lists.length)
@@ -81,7 +82,9 @@ function validateState(input) {
     repeatOne: !!input.repeatOne,
   };
 }
-function registerMusic(register, directory) {
+function registerMusic(register, directory, options = {}) {
+  const metadata = require('./music-metadata.cjs').createMusicMetadata(options);
+  register('musicInfo', input => metadata.read(input));
   const file = path.join(directory, "music.json");
   let queue = Promise.resolve(),
     server,
@@ -154,7 +157,7 @@ function registerMusic(register, directory) {
     return { url: origin + playerPath };
   });
   return {
-    shutdown: () => server && new Promise((resolve) => server.close(resolve)),
+    shutdown: () => { metadata.shutdown(); return server && new Promise((resolve) => server.close(resolve)); },
   };
 }
 function playerHTML(origin) {

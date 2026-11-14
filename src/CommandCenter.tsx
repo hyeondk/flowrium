@@ -15,7 +15,7 @@ export default function CommandCenter({projects,sessions,onProject,onSession,onV
     if(action==='newChat')latest.current.onNew();else latest.current.onView(({dashboard:'dashboard',history:'history',settings:'settings'} as Record<string,string>)[action]);
   };document.addEventListener('keydown',handler,true);return()=>document.removeEventListener('keydown',handler,true);},[prefs]);
   useEffect(()=>{if(open)input.current?.focus();},[open]);
-  const pages=[['dashboard','대시보드'],['archive','완료'],['outputs','산출물'],['music','뮤직'],['settings','설정'],['kickoff','프로젝트 추가']];
+  const pages=[['dashboard','대시보드'],['calendar','일정'],['archive','완료'],['outputs','산출물'],['music','뮤직'],['settings','설정'],['kickoff','프로젝트 추가']];
   const items=[...projects.map(p=>({id:'p'+p.id,label:p.name,kind:'프로젝트',run:()=>onProject(p)})),...sessions.map(s=>({id:'s'+s.id,label:s.title,kind:'대화',run:()=>onSession(s)})),...pages.map(([id,label])=>({id, label,kind:'화면',run:()=>onView(id)}))].filter(i=>(i.label+i.kind).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())).slice(0,60);
   const pick=(index:number)=>{items[index]?.run();setOpen(false);};
   return <><button className="command-trigger" aria-label="프로젝트와 화면 찾기" onClick={()=>{setOpen(true);setActive(0);}}><Search size={17}/><span>프로젝트와 대화 찾기</span><kbd>{/Mac/.test(navigator.platform)?'⌘':'Ctrl'} K</kbd></button><MotionOverlay open={open} onClose={()=>setOpen(false)} label="프로젝트와 화면 찾기" className="command-scrim" initialFocus="input[aria-label='전체 검색어']">

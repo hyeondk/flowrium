@@ -1,3 +1,4 @@
+const { samePath: sameFilesystemPath } = require('./path-boundary.cjs');
 const fs=require('node:fs/promises'),path=require('node:path');
 const {constants}=require('node:fs');
 const {fileURLToPath}=require('node:url');
@@ -76,7 +77,7 @@ async function recoverSavedImages(data,options={}){
   const stat=await fs.lstat(file),length=endByte??stat.size;
   if(!stat.isFile()||stat.isSymbolicLink())throw Error('보관 대화는 링크가 아닌 일반 파일이어야 합니다.');
   if(!Number.isSafeInteger(length)||length<1||length>stat.size||length>MAX_SOURCE)throw Error('보관 대화의 2GB 읽기 범위를 확인해 주세요.');
-  const real=await fs.realpath(file);if(real!==path.resolve(file))throw Error('보관 대화 경로가 다른 위치를 가리킵니다.');
+  const real=await fs.realpath(file);if(!sameFilesystemPath(real,path.resolve(file)))throw Error('보관 대화 경로가 다른 위치를 가리킵니다.');
   const pathKey=process.platform==='win32'?real.toLowerCase():real;if((seenPaths.get(pathKey)||0)>=length){warn('이미 확인한 원본 파일의 범위는 중복해서 읽지 않았습니다.');return;}if(totalRead+length>MAX_SOURCE)throw Error('보관 대화의 합계가 2GB 읽기 범위를 넘었습니다.');seenPaths.set(pathKey,length);totalRead+=length;guard();
   const handle=await fs.open(file,constants.O_RDONLY|(constants.O_NOFOLLOW||0)),local=new Map(),ambiguous=new Set();let sourceConfirmed=false,stream,base;
   try{

@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const path = require("node:path");
 const fs = require("node:fs/promises");
 const { randomUUID } = require("node:crypto");
@@ -206,7 +207,7 @@ function reportPrompt(r) {
 async function projectDir(parent, name) {
   const filename = path.join(parent, name);
   await projectDirectory(filename);
-  if (path.relative(await fs.realpath(filename), filename) !== "")
+  if (relativePath(await fs.realpath(filename), filename) !== "")
     throw stale();
   return filename;
 }

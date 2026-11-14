@@ -200,6 +200,7 @@ class Controller extends EventEmitter {
     return next;
   }
   async deleteSession(id) {
+    if(this.trashRuntime)return this.trashRuntime.deleteLocalSession(id);
     if (this.runs.has(id) || this.editingSessions.has(id))
       throw new Error(
         "실행 중인 대화는 삭제할 수 없습니다. 먼저 작업을 중지해 주세요.",

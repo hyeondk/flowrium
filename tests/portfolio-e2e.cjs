@@ -53,9 +53,11 @@ async function main() {
         .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("aria-label"))),
       [
         "대시보드",
+        "일정",
         "프로젝트 추가",
         "산출물",
         "완료",
+        "휴지통",
         "업무 연결 / 비서",
         "주간업무보고",
         "업무 마감",
@@ -66,14 +68,14 @@ async function main() {
         "로그아웃",
       ],
     );
-    await page.locator('.side-account i[data-connected=true]').waitFor();
+    await page.locator('.side-usage[data-connected=true]').waitFor();
     const rail=page.locator('.workspace-side');
     await page.mouse.move(400,100);await page.waitForTimeout(300);
     assert.equal(await rail.getAttribute('data-expanded'),'false');
     const before=await page.locator('.main-shell').boundingBox();
     await rail.hover();await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');await page.waitForTimeout(300);
     assert.equal(await rail.getAttribute('data-expanded'),'true');
-    assert.equal((await page.locator('.sidebar-surface').boundingBox()).width,232);
+    assert.equal((await page.locator('.sidebar-surface').boundingBox()).width,240);
     assert.deepEqual(await page.locator('.main-shell').boundingBox(),before,'메뉴를 올려도 본문 배치 유지');
     await button('메뉴 고정').click();await page.mouse.move(400,100);
     await page.waitForTimeout(300);assert.equal(await rail.getAttribute('data-expanded'),'true');

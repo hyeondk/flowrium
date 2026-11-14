@@ -7,6 +7,8 @@ import "./shell.css";
 import "./design-system.css";
 import "./chat-workspace.css";
 import "./surface-polish.css";
+import "./workspace-layout.css";
+import "./compact-density.css";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -70,8 +70,7 @@ async function run() {
       await btn("업무 시작").click();
       await waitForSession(page,"화면 검증 "+kind,s=>s.messages.some(m=>m.role==="assistant" && m.text.includes("확인한 결과")));
       await page.locator('.conversation-dock').getByRole("heading",{name:"화면 검증 "+kind,exact:true}).waitFor();
-      assert.equal(await page.locator('.app-shell').getAttribute('data-chat-focus'),'true','업무 대화는 넓게 열림');
-      await btn('대시보드와 나란히 보기').click();
+      assert.equal(await page.locator('.app-shell').getAttribute('data-chat-focus'),'false','대화는 우측에 고정되고 본 화면 유지');
       assert(await form.isVisible(),'대화를 열어도 가운데 업무 설정 화면 유지');
       assert.equal(await form.locator('input').first().inputValue(),'화면 검증 '+kind,'가운데 업무 설정 입력도 보존');
       if (kind === "research") {

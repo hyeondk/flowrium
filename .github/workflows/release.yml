@@ -11,7 +11,7 @@ on:
         options: [all, windows]
         default: all
       test_scope:
-        description: 전체 배포 검증 또는 Codex 접근 범위만 빠르게 점검
+        description: 전체 배포 검증 / 대화 접근 범위 / 신규 기능 검사
         type: choice
         options: [all, scopes, features]
         default: all
@@ -61,7 +61,7 @@ jobs:
       - name: 신규 기능별 실제 앱 검사
         run: |
           result=0
-          for feature in migration voice-servers project-ports portfolio-reports-popup codex-transfer settings-layout long-conversation chat-layout navigation-layout feature-surfaces
+          for feature in migration voice-servers project-ports portfolio-reports-popup codex-transfer settings-layout long-conversation chat-layout navigation-layout feature-surfaces message-content workspace-interactions google-calendar-workspace dots-view dock-layout-modes trash-ui project-shortcuts repository-completion external-repositories
           do
             if ! node "tests/${feature}-e2e.cjs"
             then
@@ -327,6 +327,42 @@ jobs:
         id: verify_24
         continue-on-error: true
         run: node tests/feature-surfaces-e2e.cjs
+      - name: 메시지 본문 / 서식 / 코드 / 파일과 링크
+        id: verify_25
+        continue-on-error: true
+        run: node tests/message-content-e2e.cjs
+      - name: 작업 공간 상호작용 / 대화 열기와 이동
+        id: verify_26
+        continue-on-error: true
+        run: node tests/workspace-interactions-e2e.cjs
+      - name: Google 일정 작업 공간
+        id: verify_27
+        continue-on-error: true
+        run: node tests/google-calendar-workspace-e2e.cjs
+      - name: 프로젝트 점 보기
+        id: verify_28
+        continue-on-error: true
+        run: node tests/dots-view-e2e.cjs
+      - name: 대화 화면 배치 전환
+        id: verify_29
+        continue-on-error: true
+        run: node tests/dock-layout-modes-e2e.cjs
+      - name: 휴지통 / 복원 / 비우기
+        id: verify_30
+        continue-on-error: true
+        run: node tests/trash-ui-e2e.cjs
+      - name: 프로젝트 폴더 / 편집기 바로가기
+        id: verify_31
+        continue-on-error: true
+        run: node tests/project-shortcuts-e2e.cjs
+      - name: 저장소 변경 / 작업 완료
+        id: verify_32
+        continue-on-error: true
+        run: node tests/repository-completion-e2e.cjs
+      - name: 외부 저장소 / 연결 / 프로젝트 이동
+        id: verify_33
+        continue-on-error: true
+        run: node tests/external-repositories-e2e.cjs
       - name: 모든 검증 결과 확인
         if: ${{ !cancelled() }}
         env:

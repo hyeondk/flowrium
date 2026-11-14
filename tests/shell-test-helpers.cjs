@@ -15,7 +15,7 @@ async function openConversation(page,title,{expanded=false}={}){
  if(session.scope)await dock.locator('.dock-scope-card[data-scope="'+session.scope+'"]').getByRole('button').first().click();
  else{const project=data.projects.find(p=>p.id===session.projectId);await dock.locator('.dock-project-row').filter({has:page.getByText(project.name,{exact:true})}).click();}
  await dock.locator('.dock-session').filter({has:page.getByText(title,{exact:true})}).click();await composer(page).waitFor();
- if(!expanded){const split=page.getByRole('button',{name:'대시보드와 나란히 보기',exact:true});if(await split.isVisible())await split.click();}
+ const toggle=page.getByRole('button',{name:expanded?'대화 패널 넓히기':'대화 패널 좁히기',exact:true});if(await toggle.isVisible())await toggle.click();
 }
 async function newProjectConversation(page,projectId){
  const data=await page.evaluate(()=>window.flowrium.bootstrap()),project=data.projects.find(p=>p.id===projectId),dock=await dockHome(page);

@@ -22,6 +22,8 @@ app.setName("Flowrium");
 let security;
 let microphoneUntil = 0;
 let securityRuntime;
+let dotsRuntime;
+let externalRepositoryAccess;
 let drafts;
 let updater;
 let terminals;
@@ -69,8 +71,9 @@ function validateSender(event) {
     throw new Error("허용되지 않은 앱 화면입니다.");
 }
 async function invokeRegistered(name,handler,args){
-  if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
-  if(codexTransfer?.isBusy()&&!/^(read|list)/.test(name)&&!['codexTransferAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','googleStatus','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList'].includes(name))throw Error('대화 연결을 처리 중입니다. 끝난 뒤 변경해 주세요.');
+  if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity','hideDotsView','readDotsState'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
+  if(codexTransfer?.isBusy()&&!/^(read|list)/.test(name)&&!['codexTransferAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','googleStatus','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('대화 연결을 처리 중입니다. 끝난 뒤 변경해 주세요.');
+  if(controller?.trashRuntime?.isBusy()&&!/^(read|list)/.test(name)&&!['trashAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','interrupt','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('삭제 또는 복원을 마친 뒤 변경해 주세요.');
   activeOperations++;
   try{return await security.guard(name,()=>handler(...args));}finally{activeOperations--;}
 }
@@ -159,8 +162,15 @@ async function launch() {
     app.quit();
     return;
   }
+  dotsRuntime=require('./dots-view.cjs').registerDotsView(register,{
+    getWindow:()=>window,accountRevision:()=>security.accountRevision,
+    ownerHash:()=>security.data.accountOwner||'unverified:'+security.accountRevision,
+    canShow:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling()&&!migration?.busy&&!codexTransfer?.isBusy()&&!controller?.trashRuntime?.isBusy(),
+    openExternal:url=>shell.openExternal(url),
+  });
   voice = require("./voice.cjs").registerVoice(register, {
     directory: app.getPath("userData"), secretStorage: require("electron").safeStorage,
+    publicOAuthClient:require("./google-client.json"),
     canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling(),
     accountRevision:()=>security.accountRevision,
     accountOwner:()=>security.data.accountOwner || 'unverified:'+security.accountRevision,
@@ -174,6 +184,7 @@ async function launch() {
   });
   const integrations = require("./integrations.cjs").registerIntegrations(register, store, {
     directory: app.getPath("userData"), secretStorage: require("electron").safeStorage,
+    publicOAuthClient:require("./google-client.json"),
     openExternal: url => shell.openExternal(url),
   });
   app.on("will-quit", () => integrations.shutdown());
@@ -222,6 +233,12 @@ async function launch() {
     worktreeAction: (id, run, input) => apiHandlers.get('teamWorktreeAction')(id, run, input) });
   register("readSystemActivity", require("./activity.cjs").readSystemActivity);
   require("./project-details.cjs").registerProjectDetails(register, store);
+  externalRepositoryAccess=require('./external-repository-access.cjs').registerExternalRepositoryAccess(register,store,{
+    directory:app.getPath('userData'),accountOwner:()=>security.data.accountOwner,
+    accountRevision:()=>security.accountRevision,
+    canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling()&&!controller?.trashRuntime?.isBusy(),
+    chooseDirectory:async({source,defaultPath})=>{dotsRuntime?.hide();const result=await dialog.showOpenDialog(window,{title:source.name+' 외부 저장소의 최상위 폴더 확인',defaultPath,properties:['openDirectory'],buttonLabel:'이 등록 폴더 연결 허용'});return result.canceled?null:result.filePaths[0]||null;},
+  });
   projectPorts=require('./project-ports.cjs').registerProjectPorts(register,store,{accountRevision:()=>security.accountRevision,canWrite:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater.isInstalling()});
   const memory = require("./memory.cjs").registerMemory(register, store, { accountRevision: () => security.accountRevision });
   workflowRuntime = require("./workflow.cjs").registerWorkflow(register, store, controller, {
@@ -308,6 +325,20 @@ async function launch() {
     canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater.isInstalling(),
     isBusy:()=>activeOperations>1||migrationTransition||migration?.busy||updater.isInstalling()||controller.runs.size>0||controller.editingSessions.size>0||controller.analysisRuns?.size>0||workflowRuntime.isBusy()||teamRuntime.isBusy(),
   });
+  require('./trash.cjs').registerTrash(register,store,controller,{
+    accountRevision:()=>security.accountRevision,
+    accountOwner:()=>security.data.accountOwner||'unverified:'+security.accountRevision,
+    stateEpoch:()=>security.epoch,
+    canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater.isInstalling(),
+    isProjectBusy:()=>terminals.isBusy()||systemTools.isBusy()||teamGitBusy()||teamRuntime.isBusy()||workflowRuntime.isBusy()||repositoryBusy()||projectPorts.isBusy(),
+  });
+  require('./project-shortcuts.cjs').registerProjectShortcuts(register,store,{
+    accountRevision:()=>security.accountRevision,stateEpoch:()=>security.epoch,
+    canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater.isInstalling(),
+    chooseDirectory:async project=>{dotsRuntime?.hide();const selected=await dialog.showOpenDialog(window,{title:'프로젝트 바로가기 폴더 선택',defaultPath:project.path,properties:['openDirectory']});return selected.canceled?null:selected.filePaths[0]||null;},
+    openExternal:target=>shell.openExternal(target),
+    openPath:async folder=>{const error=await shell.openPath(folder);if(error)throw Error('폴더를 열지 못했습니다. 위치와 접근 권한을 확인해 주세요.');},
+  });
   const migrationBusy=()=>codexTransfer?.isBusy()||activeOperations>1||updater.isInstalling()||terminals.isBusy()||systemTools.isBusy()||teamGitBusy()||teamRuntime.isBusy()||workflowRuntime.isBusy()||linkDelivery.isBusy()||repositoryBusy()||voice.isBusy?.()||projectPorts.isBusy()||controller.runs.size>0||controller.editingSessions.size>0||controller.analysisRuns?.size>0;
   migration=require('./migration.cjs').registerMigration(register,store,{
     accountRevision:()=>security.accountRevision,
@@ -319,7 +350,7 @@ async function launch() {
     beforeApply:async()=>{
       if(migrationBusy())throw Error('실행 중인 작업을 마친 뒤 이관해 주세요.');
       migrationTransition=true;
-      const results=await Promise.allSettled([workflowRuntime.shutdown(),linkDelivery.shutdown(),webPush.shutdown(),voice.shutdown(),projectPorts.shutdown(),codexTransfer.shutdown(),remote.shutdown(),music.shutdown()]);
+      const results=await Promise.allSettled([externalRepositoryAccess?.shutdown(),dotsRuntime?.shutdown(),workflowRuntime.shutdown(),linkDelivery.shutdown(),webPush.shutdown(),voice.shutdown(),projectPorts.shutdown(),codexTransfer.shutdown(),remote.shutdown(),music.shutdown()]);
       const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
       await drafts.queue;await store.queue;
     },
@@ -327,10 +358,10 @@ async function launch() {
     onRestart:()=>{app.relaunch();setImmediate(()=>app.quit());return{restarting:true};},
   });
   let remoteAccountRevision = security.accountRevision;
-  security.on("state", state => { if (state.accountRevision !== remoteAccountRevision) { remoteAccountRevision = state.accountRevision; integrations.invalidate(); macPim.invalidate(); linkDelivery.invalidate(); webPush.invalidate(); voice?.cancel?.(); void remote.stopAccess(); } });
+  security.on("state", state => { if (state.accountRevision !== remoteAccountRevision) { remoteAccountRevision = state.accountRevision; integrations.invalidate(); macPim.invalidate(); linkDelivery.invalidate(); webPush.invalidate(); voice?.cancel?.(); dotsRuntime?.invalidate(); void remote.stopAccess(); } });
   app.on("will-quit", () => { void remote.shutdown(); });
   security.on("state", (state) => {
-    if (state.locked) { microphoneUntil = 0; voice?.cancel?.(); webPush.invalidate(); }
+    if (state.locked) { microphoneUntil = 0; voice?.cancel?.(); webPush.invalidate(); dotsRuntime?.hide(); }
     if (window && !window.isDestroyed()) window.webContents.send("flowrium:security", state);
   });
   controller.on("event", (payload) => {
@@ -532,7 +563,7 @@ else {
     event.preventDefault();
     quitting = true;
     if (window && !window.isDestroyed()) window.setEnabled(false);
-    Promise.allSettled([workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.(), projectPorts?.shutdown(), codexTransfer?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
+    Promise.allSettled([externalRepositoryAccess?.shutdown(),dotsRuntime?.shutdown(),workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.(), projectPorts?.shutdown(), codexTransfer?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
       .then(() => teamRuntime?.flush())
       .then(() => drafts.queue)
       .finally(() => app.quit());

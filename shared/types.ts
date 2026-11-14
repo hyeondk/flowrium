@@ -1,4 +1,6 @@
 import type {CodexTransferAPI,CodexTransferLink} from "./codex-transfer";
+import type {TrashAPI} from './trash';
+import type { DotsAPI } from "./dots";
 import type { MigrationAPI } from "./migration";
 import type { ProjectPortsAPI } from "./project-ports";
 import type { VoiceServerAPI } from "./voice-server";
@@ -14,7 +16,7 @@ import type { TeamWorktreesAPI } from "./team-worktrees";
 import type { PortfolioAPI } from "./portfolio";
 import type { TerminalAPI } from "./terminal";
 import type { ActivityAPI } from "./activity";
-import type { ProjectDetailsAPI } from "./project-details";
+import type { ExternalRepositoryAPI, ProjectDetailsAPI } from "./project-details";
 import type { TeamsAPI } from "./teams";
 import type { RepositoryAPI } from "./repository";
 import type { WorkbenchAPI, Workflow } from "./workbench";
@@ -149,6 +151,9 @@ export interface Bootstrap {
 }
 export interface FlowriumAPI
   extends
+    DotsAPI,
+    ExternalRepositoryAPI,
+    TrashAPI,
     CodexTransferAPI,
     MigrationAPI,
     ProjectPortsAPI,

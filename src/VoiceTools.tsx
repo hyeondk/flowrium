@@ -1,5 +1,5 @@
 import { AnimatedSwitch } from './ui-motion';
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Mic, Square, Volume2, VolumeX, Upload } from "lucide-react";
 import type { VoicePreferences } from "../shared/voice";
 import { afterWakeWord } from "../shared/voice-activity";
@@ -7,6 +7,7 @@ import { captureVoice } from "./voice-capture";
 import { VoiceServerPanel } from './VoiceServerPanel';
 import type { VoiceServerId } from '../shared/voice-server';
 import "./voice.css";
+import {speakableMessage} from "./message-content";
 
 export function VoiceSettings() {
   const [prefs,setPrefs]=useState<VoicePreferences|null>(null),[configured,setConfigured]=useState(false),
@@ -164,3 +165,5 @@ export function SpeakButton({text}:{text:string}) {
   }
   return <span className="voice-read"><button className="icon-button" aria-label={speaking?"읽기 중단":"답변 읽어주기"} onClick={()=>void play()}>{speaking?<VolumeX size={14}/>:<Volume2 size={14}/>}</button>{message&&<span role="status">{message}</span>}</span>;
 }
+
+export function SpeakMessageButton({text}:{text:string}){const body=useMemo(()=>speakableMessage(text,"assistant"),[text]);return body?<SpeakButton text={body}/>:null}

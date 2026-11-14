@@ -10,7 +10,7 @@ function registerRepository(register, store, isUpdating, options = {}) {
   const readers = new Map();
   const handler = async (id, input) => {
     const project = store.project(text(id,"프로젝트 식별자",100));
-    if(input?.action === "repositories") return require("./project-repositories.cjs").repositoriesFor(store,project,{includeHidden:true}).then(rows=>rows.map(({cwd,...row})=>row));
+    if(input?.action === "repositories") return require("./project-repositories.cjs").repositoriesFor(store,project,{includeHidden:true,includeUnavailable:true}).then(rows=>rows.map(({cwd,...row})=>row));
     const repository = await require("./project-repositories.cjs").repositoryFor(store,project,input?.repositoryId);
     const cwd = repository.cwd;
     if (!input || typeof input !== "object") throw new Error("저장소 작업을 확인해 주세요.");

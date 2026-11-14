@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {randomUUID, createHash} = require('node:crypto');
@@ -65,11 +66,11 @@ async function resolveAttachments(store,projectId,ids=[]) {
   let total=0;
   for(const id of ids) {
     const dir=path.join(root,id), stat=await fs.lstat(dir);
-    if (!stat.isDirectory()||stat.isSymbolicLink()||path.relative(root,await fs.realpath(dir))!==id) throw Error('첨부 파일은 프로젝트 안의 원본이어야 합니다.');
+    if (!stat.isDirectory()||stat.isSymbolicLink()||relativePath(root,await fs.realpath(dir))!==id) throw Error('첨부 파일은 프로젝트 안의 원본이어야 합니다.');
     const [record]=checkedAttachments([await readJSON(path.join(dir,'attachment.json'))]);
     if(record.id!==id) throw Error('첨부 파일 정보가 바뀌었습니다.');
     const file=path.join(dir,record.name), fileStat=await fs.lstat(file);
-    if(!fileStat.isFile()||fileStat.isSymbolicLink()||fileStat.size!==record.size||path.relative(dir,await fs.realpath(file)).normalize('NFC')!==record.name.normalize('NFC')) throw Error('첨부 파일 원본을 확인해 주세요.');
+    if(!fileStat.isFile()||fileStat.isSymbolicLink()||fileStat.size!==record.size||relativePath(dir,await fs.realpath(file)).normalize('NFC')!==record.name.normalize('NFC')) throw Error('첨부 파일 원본을 확인해 주세요.');
     total+=fileStat.size;if(total>MAX_TOTAL)throw Error('첨부 합계가 50MB를 넘었습니다.');
     const data=await fs.readFile(file);
     if(createHash('sha256').update(data).digest('hex')!==record.sha256) throw Error('첨부 파일 내용이 변경됐습니다. 다시 첨부해 주세요.');

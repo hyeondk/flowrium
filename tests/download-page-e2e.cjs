@@ -111,8 +111,8 @@ async function run() {
     });
     assert.deepEqual(fonts.counts,[1,1,1]);assert.match(fonts.family,/NanumSquareRound/);
     for(const name of ['NanumSquareRoundR.woff2','NanumSquareRoundB.woff2','NanumSquareRoundEB.woff2'])assert.ok(serverRequests.includes('/fonts/'+name),'공식 로컬 글꼴 '+name);
-    assert.match(await page.locator('.hero p').innerText(),/대화는 넓게 열리고, 필요하면 대시보드와 나란히 볼 수 있습니다/);
-    assert.match(await page.locator('.app-preview figcaption').innerText(),/예시 프로젝트로 촬영한 실제 화면입니다.*대시보드와 나란히 보세요/);
+    assert.match(await page.locator('.hero p').innerText(),/우측 대화를 고정한 채 왼쪽에서 대시보드와 자료를 살펴볼 수 있습니다/);
+    assert.match(await page.locator('.app-preview figcaption').innerText(),/예시 프로젝트로 촬영한 실제 화면입니다.*대시보드와 우측 대화는 독립적으로 탐색/);
     const image = page.locator(".app-preview img");
     await page.waitForFunction(()=>{const image=document.querySelector('.app-preview img');return image?.complete&&image.naturalWidth===1440&&image.naturalHeight===1000;});
     assert.equal(

@@ -3,9 +3,9 @@ import {effortOptions,effortLabels} from '../shared/model-options';
 import {useState} from 'react';
 import type {Session,ConversationEdit,Model,Effort,ChatPreferences,ChatAttachment} from '../shared/types';
 const initial={answerLength:'normal',testing:true,askNext:false,autoCompact:true,compactAt:80} as const;
-export function ConversationTools({session,models,running,onOpen,onChange,notify,fail,defaults,onDefaults,onRewind}:{
+export function ConversationTools({session,models,running,onOpen,onChange,notify,fail,defaults,onDefaults,onRewind,onDelete}:{
  session:Session;models:Model[];running:boolean;onOpen:(s:Session)=>void;onChange:(s:Session)=>void;notify:(s:string)=>void;fail:(e:unknown)=>void;
- defaults?:ChatPreferences;onDefaults?:(p:ChatPreferences)=>void;onRewind?:(draft:{text:string;attachments:ChatAttachment[]})=>void;
+ defaults?:ChatPreferences;onDefaults?:(p:ChatPreferences)=>void;onRewind?:(draft:{text:string;attachments:ChatAttachment[]})=>void;onDelete?:()=>void;
 }) {
  const linked=session.codexLink?.mode==='linked';
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[title,setTitle]=useState(session.title);
@@ -53,6 +53,7 @@ export function ConversationTools({session,models,running,onOpen,onChange,notify
   {!linked&&messageId&&<button className="button subtle" onClick={()=>setConfirm(true)}>이 요청 전으로 되감기</button>}
   {confirm&&<div><p>Codex 내부 대화도 선택한 요청 전으로 되감습니다. 프로젝트 파일은 보존되며 원래 대화 상태의 사본을 유지합니다.</p><button className="button primary" onClick={()=>apply({action:'rewind',messageId})}>되감기 확인</button></div>}
   <button className="button subtle" disabled={linked||!session.threadId} onClick={()=>apply({action:'compact'})}>Codex 문맥 압축</button>
+  {onDelete&&<button className="button danger" onClick={()=>{setOpen(false);onDelete();}}>대화 삭제</button>}
  </fieldset></MotionOverlay>
  </div>;
 }

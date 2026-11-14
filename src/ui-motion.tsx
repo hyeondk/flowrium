@@ -36,8 +36,8 @@ export function MotionPresence({ open, durationMs = 240, children }: { open: boo
 
 export function ModalPortal({children}:{children:ReactNode}){return createPortal(children,document.body);}
 
-export function MotionOverlay({ open, onClose, children, label, className = '', kind = 'popup', durationMs = 240, initialFocus }: {
-  open: boolean; onClose?: () => void; children: ReactNode; label: string; className?: string; kind?: 'popup' | 'sheet'; durationMs?: number; initialFocus?:string;
+export function MotionOverlay({ open, onClose, children, label, className = '', kind = 'popup', durationMs = 240, initialFocus, persist=false }: {
+  open: boolean; onClose?: () => void; children: ReactNode; label: string; className?: string; kind?: 'popup' | 'sheet'; durationMs?: number; initialFocus?:string; persist?:boolean;
 }) {
   const { present, phase } = usePresence(open, durationMs);
   const surface = useRef<HTMLElement>(null);
@@ -59,9 +59,9 @@ export function MotionOverlay({ open, onClose, children, label, className = '', 
     document.addEventListener('keydown', key);
     return () => { document.removeEventListener('keydown', key); if (before?.isConnected) before.focus(); };
   }, [present, open, initialFocus]);
-  if (!present) return null;
-  return <ModalPortal><div className={`motion-overlay ${className}`} data-phase={phase} data-kind={kind} style={{ '--motion-duration': `${Math.max(200, Math.min(400, durationMs))}ms` } as CSSProperties} onMouseDown={event => { if (open && event.target === event.currentTarget) onClose?.(); }}>
-    <section className="motion-surface" data-motion={kind} data-phase={phase} role="dialog" aria-modal="true" aria-label={label} tabIndex={-1} ref={surface} inert={phase === 'exit'}>{children}</section>
+  if (!present && !persist) return null;
+  return <ModalPortal><div className={`motion-overlay ${className}`} data-phase={phase} data-kind={kind} hidden={!present} aria-hidden={!present} style={{ display:present?undefined:'none', '--motion-duration': `${Math.max(200, Math.min(400, durationMs))}ms` } as CSSProperties} onMouseDown={event => { if (open && event.target === event.currentTarget) onClose?.(); }}>
+    <section className="motion-surface" data-motion={kind} data-phase={phase} role={present?"dialog":undefined} aria-modal={present?true:undefined} aria-label={label} tabIndex={-1} ref={surface} inert={phase === 'exit'}>{children}</section>
   </div></ModalPortal>;
 }
 

@@ -28,6 +28,7 @@ import "./portfolio.css";
 import AdvancedGoals from "./AdvancedGoals";
 import ProjectRepositories from "./ProjectRepositories";
 import ProjectAIActions from "./ProjectAIActions";
+import ProjectShortcuts from "./ProjectShortcuts";
 
 const api = window.flowrium;
 export const projectTabs: [ProjectTab, string][] = [
@@ -483,6 +484,7 @@ export function ProjectOverview({
         {isNative && <div className="pf-native-pane">{renderPanel(tab)}</div>}
         {tab === "home" && (
           <>
+            {data && <ProjectShortcuts project={project} data={data} onChange={change} onManage={() => onTabChange('settings')}/>}
             <div className="pf-stats">
               <button onClick={() => onTabChange("work")}>
                 <span>진행 및 검토 업무</span>
@@ -621,6 +623,7 @@ export function ProjectOverview({
           />
         )}
         {tab === "settings" && data && <ProjectRepositories project={project} data={data} onChange={change}/>}
+        {tab === "settings" && data && <ProjectShortcuts project={project} data={data} editable onChange={change}/>}
         {tab === "settings" && (
           <>
             <div className="pf-section-header">

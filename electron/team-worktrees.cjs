@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
@@ -36,7 +37,7 @@ async function ancestor(cwd, older, newer) {
   try { await git(cwd, ['merge-base','--is-ancestor',older,newer]); return true; }
   catch (e) { if (e.code === 1) return false; throw e; }
 }
-function samePath(a,b) { return path.relative(path.resolve(a),path.resolve(b)) === ''; }
+function samePath(a,b) { return relativePath(path.resolve(a),path.resolve(b)) === ''; }
 async function checkedDir(folder, create) {
   if (create) await projectDirectory(folder);
   if (!(await fs.lstat(folder)).isDirectory() || !samePath(folder, await fs.realpath(folder))) throw invalid();

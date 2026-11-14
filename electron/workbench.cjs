@@ -1,3 +1,4 @@
+const { relativePath } = require('./path-boundary.cjs');
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID, createHash } = require("node:crypto");
@@ -39,6 +40,7 @@ function validateWorkflow(w) {
   if (w.source && (!uuid.test(w.source.sessionId) || !bounded(w.source.title, 300) || !bounded(w.source.summary, 12000))) throw invalid();
   if (w.completion && (!validTime(w.completion.at) || !bounded(w.completion.summary, 1000) || !Array.isArray(w.completion.commits) ||
       w.completion.commits.length > 30 || !w.completion.commits.every((c) => c && /^[0-9a-f]{4,64}$/i.test(c.hash) && validTime(c.at) && bounded(c.subject, 400)))) throw invalid();
+  if(w.completion?.repositoryFlowId!==undefined&&!uuid.test(w.completion.repositoryFlowId))throw invalid();
   return w;
 }
 function required(value, max) {
@@ -61,7 +63,7 @@ function inPeriod(value, w) {
 }
 async function projectRoot(project) {
   const root = await fs.realpath(project.path);
-  if (path.relative(root, project.path) !== "" || !(await fs.stat(root)).isDirectory())
+  if (relativePath(root, project.path) !== "" || !(await fs.stat(root)).isDirectory())
     throw new Error("연결한 프로젝트의 경로가 변경됐습니다. 원래 폴더를 확인해 주세요.");
   return root;
 }
@@ -119,7 +121,7 @@ async function checkedDirectory(root, parts, create = false) {
       catch (error) { if (error.code !== "EEXIST") throw error; }
     }
     const st = await fs.lstat(dir);
-    if (!st.isDirectory() || st.isSymbolicLink() || path.relative(dir, await fs.realpath(dir)) !== "")
+    if (!st.isDirectory() || st.isSymbolicLink() || relativePath(dir, await fs.realpath(dir)) !== "")
       throw new Error("프로젝트 밖을 가리키는 산출물 폴더는 열 수 없습니다.");
   }
   return dir;
@@ -130,7 +132,7 @@ async function artifactFile(root, relative) {
   const dir = await checkedDirectory(root, parts);
   const file = path.join(dir, name);
   const stat = await fs.lstat(file);
-  if (!stat.isFile() || stat.isSymbolicLink() || path.relative(file, await fs.realpath(file)) !== "") throw new Error("일반 문서 파일만 열 수 있습니다.");
+  if (!stat.isFile() || stat.isSymbolicLink() || relativePath(file, await fs.realpath(file)) !== "") throw new Error("일반 문서 파일만 열 수 있습니다.");
   return { file, stat };
 }
 function artifactInfo(relative, stat) {

@@ -4,6 +4,14 @@ const invoke = (method, ...args) =>
 contextBridge.exposeInMainWorld(
   "flowrium",
   Object.freeze({
+    projectShortcutAction:(id,input)=>invoke('projectShortcutAction',id,input),
+    repositoryAccessAction:(project,input)=>invoke('repositoryAccessAction',project,input),
+    readDotsState:()=>invoke('readDotsState'),
+    showDotsView:bounds=>invoke('showDotsView',bounds),
+    hideDotsView:()=>invoke('hideDotsView'),
+    reloadDotsView:()=>invoke('reloadDotsView'),
+    openDotsExternal:()=>invoke('openDotsExternal'),
+    trashAction: input=>invoke('trashAction',input),
     codexTransferAction: input=>invoke('codexTransferAction',input),
     migrationAction: input => invoke('migrationAction',input),
     readProjectPorts: id => invoke('readProjectPorts',id),
@@ -144,6 +152,7 @@ contextBridge.exposeInMainWorld(
     allowVoiceCapture: () => invoke("allowVoiceCapture"),
     transcribeVoice: value => invoke("transcribeVoice", value),
     musicState: () => invoke("musicState"),
+    musicInfo: input => invoke('musicInfo', input),
     findMusicLyrics: input => invoke("findMusicLyrics", input),
     saveMusic: (value) => invoke("saveMusic", value),
     musicPlayer: () => invoke("musicPlayer"),
