@@ -1,0 +1,41 @@
+{
+  "version": "261115_02",
+  "source": "4f267e8382e241049129a7181c26651b9bee8797",
+  "releaseId": 445509758,
+  "url": "https://github.com/hyeondk/flowrium/releases/tag/261115_02",
+  "draft": false,
+  "target": "4f267e8382e241049129a7181c26651b9bee8797",
+  "assetCount": 9,
+  "hashes": {
+    "Flowrium-261115_02-mac-arm64.dmg": "879cc0546bd2808cff8c610fd28cc0370638d7eb1e751eae8895805cf1838304",
+    "Flowrium-261115_02-mac-arm64.zip": "74c6d44446b2ad742d497f56bd30358ddc82e2e388c971f7f970ff7a20b8dc75",
+    "Flowrium-261115_02-source.tar.gz": "0c326215a675461ba3c71aebebcfe61c47e180e74445236f449c4e89280b51fa",
+    "Flowrium-261115_02-win-x64.exe": "03a127d87e8eaf4514d27fac211ac138d05bb3d4c1d3b81f06063e122739ef46",
+    "SHA256SUMS.txt": "92d361ffd07c5da7634cc860428cb0735eee0df032df5959ea64ca352f346546",
+    "SOURCE-COMMIT.txt": "3e2addeeafa10dce550d3d122831ac722952f85e093b1614a701596e74f6fae6",
+    "flowrium-install-support.cjs": "c466afcc9e1692159f9a1728b048784569ba00b1ac75f81d5bc73f5a1d715122",
+    "install.ps1": "b181a71dd7a723285166f8921ca94ba9fb0cbd9abd7c2b8a9e67d36851f0c2f5",
+    "install.sh": "d51ab1de56d47fff28cb5e8777ffd5b7e55581441ea3ccd07ee8235c4067ea1b"
+  },
+  "sizes": {
+    "Flowrium-261115_02-mac-arm64.dmg": 368531198,
+    "Flowrium-261115_02-mac-arm64.zip": 356519702,
+    "Flowrium-261115_02-source.tar.gz": 7797283,
+    "Flowrium-261115_02-win-x64.exe": 323441190,
+    "SHA256SUMS.txt": 728,
+    "SOURCE-COMMIT.txt": 60,
+    "flowrium-install-support.cjs": 6783,
+    "install.ps1": 13794,
+    "install.sh": 15549
+  },
+  "localAndRemoteAssetDigestsMatch": true,
+  "manifestMatches": true,
+  "buildSource": "28655b06be72783635c9919d9b418a0bed7c4b2a",
+  "sourceProductFilesUnchangedSinceBuild": true,
+  "publishedAt": "2026-11-14T18:43:26Z",
+  "published": true,
+  "windowsRun": "https://github.com/hyeondk/flowrium/actions/runs/43624767979",
+  "windowsFollowupRun": "https://github.com/hyeondk/flowrium/actions/runs/43625298068",
+  "downloadPage": "https://hyeondk.github.io/flowrium/",
+  "downloadPageVerificationPending": true
+}

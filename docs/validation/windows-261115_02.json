@@ -1,7 +1,7 @@
 {
   "version": "261115_02",
   "nativeVersion": "26.11.1502",
-  "source": "6019b588eb6f8e52f0c24b50c95affc53f68f897",
+  "source": "4f267e8382e241049129a7181c26651b9bee8797",
   "builtSource": "28655b06be72783635c9919d9b418a0bed7c4b2a",
   "platform": "win32-x64",
   "recordedAt": "2026-11-14T18:31:55Z",
@@ -200,12 +200,23 @@
   },
   "sourceMatch": {
     "status": "verified",
-    "source": "6019b588eb6f8e52f0c24b50c95affc53f68f897",
+    "source": "4f267e8382e241049129a7181c26651b9bee8797",
     "builtSource": "28655b06be72783635c9919d9b418a0bed7c4b2a",
     "changedFilesBetweenCommits": [
-      "tests/external-repositories-e2e.cjs"
+      "docs/REMAINING-261115_02.md",
+      "docs/REPLACEMENT-STATUS.md",
+      "docs/TERMINAL-INSTALL.md",
+      "docs/VALIDATION-261115_02.md",
+      "docs/chat.png",
+      "docs/release-notes.md",
+      "docs/validation/mac-261115_02.json",
+      "docs/validation/windows-261115_02.json",
+      "docs/workspace.png",
+      "install.sh",
+      "tests/external-repositories-e2e.cjs",
+      "tests/installer-mac-e2e.cjs"
     ],
-    "changeDescription": "외부 저장소 검증에서 backend 저장 완료를 기다리는 테스트 코드만 변경됐다.",
+    "changeDescription": "설치 스크립트·검사·공개 문서만 후속 변경 / 앱 바이너리의 제품 파일 변경 없음",
     "productCodeChangedBetweenCommits": false,
     "packageOrLockfileChangedBetweenCommits": false,
     "packagedByteComparison": {
@@ -240,7 +251,26 @@
     "markers": 33,
     "skippedVendorBinaryBodies": 17,
     "privateMarkerComparisonPassed": true,
-    "publicSourceScanPending": true
+    "publicSourceScanPending": false,
+    "publicSourceCheck": {
+      "checked": {
+        "git": 453,
+        "asar": 0,
+        "resources": 0,
+        "source": 453
+      },
+      "findings": {
+        "sensitivePaths": 0,
+        "markerPaths": 0,
+        "markerFiles": 0,
+        "markerMatches": 0,
+        "unsafeEntries": 0,
+        "unreadable": 0,
+        "buildPolicy": 0,
+        "archivePolicy": 0
+      },
+      "privateMarkerComparisonPassed": true
+    }
   },
   "cleanup": {
     "ciOwnedInstallerRegistrationRemoved": true,
@@ -248,8 +278,8 @@
     "artifactDownloadedByThisValidationWriter": false,
     "localElectronStartedByThisValidationWriter": false
   },
-  "releaseStatus": "pending",
-  "release": null,
+  "releaseStatus": "published",
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_02",
   "artifact": {
     "digest": "sha256:ecc14f231786eb33c65b8a667dafc128af425d73866d54c1a4594d8ce3a1ba39",
     "expired": false,
@@ -263,5 +293,10 @@
       "id": 43624767979,
       "repository_id": 1455266710
     }
-  }
+  },
+  "published": true,
+  "releaseAssetsVerified": 9,
+  "publicSourceSha256": "0c326215a675461ba3c71aebebcfe61c47e180e74445236f449c4e89280b51fa",
+  "sourceFollowupPending": false,
+  "sourceProductFilesUnchangedSinceBuild": true
 }

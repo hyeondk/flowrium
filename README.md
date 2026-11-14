@@ -4,7 +4,7 @@
 
 [다운로드](https://hyeondk.github.io/flowrium/), [릴리스와 설치 파일](https://github.com/hyeondk/flowrium/releases), [터미널 설치](docs/TERMINAL-INSTALL.md), [기능별 지원 범위](docs/FEATURES.md), [Codex 대화 연결](docs/CODEX-CHAT-LINK.md), [사용 범위와 전환 상태](docs/REPLACEMENT-STATUS.md)
 
-**261115_02**는 우측에 고정한 AI 대화와 독립적으로 탐색하는 대시보드를 제공합니다. 작업 과정은 접어서 확인하고, 작성 서식은 본문으로 표시합니다. 조밀한 파란색·회색 화면, 중앙 음악·알림 팝업, 제작자 표시와 남은 사용량, 파란 아이콘을 적용했습니다. Google 일정 작업 화면과 오늘 일정·메일 요약, 공식 Dots 웹 탭을 추가했습니다. 현재 검증과 배포 준비 상태는 [기능별 남은 항목](docs/REMAINING-261115_02.md)에서 구분합니다. 공개 설치본은 [릴리스](https://github.com/hyeondk/flowrium/releases)에서 확인하세요.
+**261115_02**는 우측에 고정한 AI 대화와 독립적으로 탐색하는 대시보드를 제공합니다. 작업 과정은 접어서 확인하고, 작성 서식은 본문으로 표시합니다. 조밀한 파란색·회색 화면, 중앙 음악·알림 팝업, 제작자 표시와 남은 사용량, 파란 아이콘을 적용했습니다. Google 일정 작업 화면과 오늘 일정·메일 요약, 공식 Dots 웹 탭을 추가했습니다. 검증한 범위와 남은 조건은 [기능별 남은 항목](docs/REMAINING-261115_02.md)에서 구분합니다. [261115_02 설치본](https://github.com/hyeondk/flowrium/releases/tag/261115_02)을 공개했습니다.
 
 ![예시 프로젝트로 촬영한 실제 대시보드. 오늘의 할 일과 목표 진척, 최근 7일 업무 그래프를 표시합니다.](docs/workspace.png)
 

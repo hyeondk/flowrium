@@ -2,11 +2,11 @@
   "version": "261115_02",
   "nativeVersion": "26.11.1502",
   "validatedDate": "2026-11-15",
-  "source": "6019b588eb6f8e52f0c24b50c95affc53f68f897",
+  "source": "4f267e8382e241049129a7181c26651b9bee8797",
   "buildSource": "28655b06be72783635c9919d9b418a0bed7c4b2a",
-  "sourceFollowupPending": true,
+  "sourceFollowupPending": false,
   "sourceFollowupScope": "터미널 설치기의 숨김 및 색인 제외 백업 처리 / 바이너리 내부 제품 파일 변경 없음",
-  "publicSourceSha256": null,
+  "publicSourceSha256": "0c326215a675461ba3c71aebebcfe61c47e180e74445236f449c4e89280b51fa",
   "platform": "darwin-arm64",
   "unit": {
     "tests": 300,
@@ -164,15 +164,35 @@
     "skippedVendorBinaryBodies": 11,
     "scope": "배포 소스와 ASAR 및 리소스의 경로 / 제공한 비공개 표식 / 압축 경계 / 빌드 포함 정책",
     "syntheticPublicCapturesOnly": true,
-    "personalContentsPublished": false
+    "personalContentsPublished": false,
+    "publicSourceScanPending": false,
+    "publicSourceCheck": {
+      "checked": {
+        "git": 453,
+        "asar": 0,
+        "resources": 0,
+        "source": 453
+      },
+      "findings": {
+        "sensitivePaths": 0,
+        "markerPaths": 0,
+        "markerFiles": 0,
+        "markerMatches": 0,
+        "unsafeEntries": 0,
+        "unreadable": 0,
+        "buildPolicy": 0,
+        "archivePolicy": 0
+      },
+      "privateMarkerComparisonPassed": true
+    }
   },
   "testTemporaryProfilesCleaned": true,
   "runningOwnedTestAppsAtCheck": 0,
   "windowsIndependentInstallationStatus": "별도 Windows 검증 문서에서 기록",
-  "releaseStatus": "최종 소스 및 릴리스 메타데이터 갱신 대기",
-  "published": false,
-  "releaseAssetsVerified": null,
-  "release": null,
+  "releaseStatus": "published",
+  "published": true,
+  "releaseAssetsVerified": 9,
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_02",
   "validationScope": {
     "isolatedProfiles": true,
     "actualLocalInstallationAndReadCheckPassed": true,
@@ -231,5 +251,6 @@
     "existingBackupsPreserved": true,
     "finderApplicationsViewChecked": true,
     "globalDatabaseReset": false
-  }
+  },
+  "sourceProductFilesUnchangedSinceBuild": true
 }
