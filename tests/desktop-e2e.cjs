@@ -109,7 +109,7 @@ async function run() {
     await btn("대화 연결 설정 저장").click();
     await page.locator(".conversation-popover").waitFor({state:"hidden"});
     await app.evaluate(({shell})=>{shell.openExternal=async value=>{globalThis.flowriumTestExternal=value;};});
-    await page.locator(".chatgpt-button").click();
+    await page.locator(".dock-chatgpt-button").click();
     assert.equal(await app.evaluate(()=>globalThis.flowriumTestExternal),chatAddress);
     await btn("대화 관리").click();
     await btn("여기까지 새 대화로 분기").click();
@@ -134,7 +134,7 @@ async function run() {
     await page.locator(".approval-card").waitFor();
     await goDashboard();
     await page.getByRole("button",{name:/^승인함/}).click();
-    await page.locator('.repo-actions').getByRole('button',{name:'이번 작업 승인',exact:true}).click();
+    await page.locator('.inbox-page').getByRole('button',{name:'이번 작업 승인',exact:true}).click();
     await waitForSession(page,"화면 검증 task",s=>s.messages.some(m=>m.role==="assistant"&&m.text.includes("accept")));
     const restored = (await snapshot()).sessions;
     assert.equal(restored.length, 7);

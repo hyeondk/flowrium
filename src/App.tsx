@@ -274,6 +274,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [historySelected, setHistorySelected] = useState<string[]>([]);
   const [historyError, setHistoryError] = useState("");
   const settingsPresence=usePresence(settingsOpen),historyPresence=usePresence(historyOpen),deletePresence=usePresence(Boolean(pendingDelete)),sidebarPresence=usePresence(sidebarOpen,260),dockPresence=usePresence(dockOpen,280);
+  const isChatFocused=dockPresence.present&&chatActive&&chatExpanded;
   const [deciding, setDeciding] = useState<Record<string, boolean>>({});
   const [stopping, setStopping] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState("");
@@ -934,6 +935,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
 
   function renderChat(){const project=conversationProject;return (
           <div className="dock-chat-content">
+            {isChatFocused&&!settingsOpen&&<UpdatePanel state={update} fail={fail}/>}
             <div className={`workspace-main ${session ? "has-session" : ""}`}>
               {session ? (
                 <>
@@ -943,9 +945,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         <MessageSquare size={13} />
                         {session.scope==='integrated'?'통합 채팅':session.scope==='general'?'일반 대화':'프로젝트 대화'}
                       </span>
-                      <h2>{session.title}</h2>
+                      <h2 title={session.title}>{session.title}</h2>
                     </div>
                     <div className="session-actions">
+                      <button className="icon-button dock-chatgpt-button" aria-label="ChatGPT로 이어가기" title="ChatGPT로 이어가기" onClick={handoff}><ExternalLink size={17}/></button>
                       <ConversationTools key={session.id} session={session} models={models} running={running} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} defaults={data.settings.chatDefaults} onDefaults={chatDefaults=>setData(old=>({...old,settings:{...old.settings,chatDefaults}}))} onRewind={draft=>setDrafts(prev=>({...prev,[draftKey]:{text:draft.text,mode,attachments:draft.attachments}}))} />
                       <button
                         className="icon-button"
@@ -1338,7 +1341,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           </div>
   )}
   return (
-    <div className="app-shell" data-chat-focus={dockPresence.present&&chatActive&&chatExpanded}>
+    <div className="app-shell" data-chat-focus={isChatFocused}>
       {sidebarPresence.present && (
         <button
           className="sidebar-backdrop" data-phase={sidebarPresence.phase}
@@ -1394,7 +1397,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           </div>
         </header>
         <MusicPanel visible={loaded&&view==="music"} locked={security.state.locked}/>
-        {!settingsOpen && <UpdatePanel state={update} fail={fail} />}
+        {!settingsOpen&&!isChatFocused && <UpdatePanel state={update} fail={fail} />}
         {!loaded ? (
           <div className="loading-page">
             <LoaderCircle className="spin" />

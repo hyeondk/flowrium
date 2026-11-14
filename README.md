@@ -4,9 +4,11 @@
 
 [다운로드](https://hyeondk.github.io/flowrium/), [릴리스와 설치 파일](https://github.com/hyeondk/flowrium/releases), [터미널 설치](docs/TERMINAL-INSTALL.md), [기능별 지원 범위](docs/FEATURES.md), [Codex 대화 연결](docs/CODEX-CHAT-LINK.md), [사용 범위와 전환 상태](docs/REPLACEMENT-STATUS.md)
 
-**261114_02**는 대화를 넓게 여는 화면과 간결한 입력 영역을 제공합니다. 메뉴의 겹침과 펼침 중 클릭 누락을 수정하고 Flow 로고의 중심을 맞췄습니다. 대시보드와 프로젝트, 업무 도구, 보관, 외부 연결을 설정 화면과 같은 간격으로 정리했으며, 파란색과 회색의 패널 깊이와 전환 효과를 적용했습니다. 검사 범위와 설치 조건은 [최종 검증 기록](https://github.com/hyeondk/flowrium/blob/main/docs/VALIDATION-261114_02.md)에 기록합니다. 설치본은 검증을 마친 [공개 릴리스](https://github.com/hyeondk/flowrium/releases)에서 제공하며 [날짜 버전 규칙](docs/VERSIONING.md)을 따릅니다.
+**261115_01**는 대화를 넓게 여는 화면과 간결한 입력 영역을 제공합니다. 메뉴의 겹침과 펼침 중 클릭 누락을 수정하고 Flow 로고의 중심을 맞췄습니다. 대시보드와 프로젝트, 업무 도구, 보관, 외부 연결을 설정 화면과 같은 간격으로 정리했으며, 파란색과 회색의 패널 깊이와 전환 효과를 적용했습니다. 검사 범위와 설치 조건은 [최종 검증 기록](https://github.com/hyeondk/flowrium/blob/main/docs/VALIDATION-261115_01.md)에 기록합니다. 설치본은 검증을 마친 [공개 릴리스](https://github.com/hyeondk/flowrium/releases)에서 제공하며 [날짜 버전 규칙](docs/VERSIONING.md)을 따릅니다.
 
 ![예시 프로젝트로 촬영한 실제 대시보드. 오늘의 할 일과 목표 진척, 최근 7일 업무 그래프를 표시합니다.](docs/workspace.png)
+
+![합성 대화로 검사한 넓은 채팅 화면입니다.](docs/chat.png)
 
 ![합성 프로젝트로 검사한 설정 화면입니다. 분류별 탐색과 내부 여백, 오른쪽 행동 버튼을 사용합니다.](docs/settings.png)
 

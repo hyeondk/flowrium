@@ -1,8 +1,9 @@
 const composer=page=>page.getByLabel('Codex에 보낼 작업 요청');
 async function dockHome(page){
+ await page.locator('.app-shell').waitFor();
  const dock=page.getByRole('complementary',{name:'통합 / 프로젝트 / 일반 대화'});
  const toggle=page.locator('.dock-toggle');
- if(!await dock.isVisible()){await toggle.waitFor();await toggle.click();}
+ if(!await dock.isVisible()){await toggle.waitFor();if(await toggle.getAttribute('aria-expanded')!=='true')await toggle.click();}
  await dock.waitFor();
  const back=dock.getByRole('button',{name:'대화 목록으로',exact:true});if(await back.isVisible())await back.click();
  const home=dock.getByRole('button',{name:'대화 홈으로',exact:true});if(await home.isVisible())await home.click();
