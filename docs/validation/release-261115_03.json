@@ -2,37 +2,210 @@
   "version": "261115_03",
   "nativeVersion": "26.11.1503",
   "buildSource": "920ea48d62d8f5d2195a67e2201f9c30bc4f1e1e",
-  "snapshotPhase": "게시 전 검증 기록 / 최신 게시 결과는 온라인 검증 문서 참조",
-  "published": false,
+  "snapshotPhase": "공개 게시 후 검증 기록",
+  "published": true,
   "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_03",
   "downloadPage": "https://hyeondk.github.io/flowrium/",
   "platforms": [
     "darwin-arm64",
     "win32-x64"
   ],
-  "validatedBinaryAssets": [
-    {
-      "name": "Flowrium-261115_03-mac-arm64.zip",
-      "size": 356513740,
-      "sha256": "012a3d1653b10c1203a36b340139f1dfab49e59a5d8663473069746f0793af41"
-    },
-    {
-      "name": "Flowrium-261115_03-mac-arm64.dmg",
-      "size": 368527296,
-      "sha256": "3a4b228eb418fd05f548d48b7f36b19132ee30acf710aad99e970808a0380c5b"
-    },
-    {
-      "name": "Flowrium-261115_03-win-x64.exe",
-      "size": 323437025,
-      "sha256": "9a9ee351931c59b0322eeb31e349c97e9f6668f6000f2b2edf2fa0affdda50ee"
+  "sourceArchive": {
+    "sourceCommit": "80aea81db6b23e402c025b26d8b16bd3cafd813d",
+    "name": "Flowrium-261115_03-source.tar.gz",
+    "size": 7831973,
+    "sha256": "4dcb7786d40a1a0cbe8eaa3fe73d1b1b8691f3a937ea0bd2754f802508d23994",
+    "entries": 488,
+    "files": 470,
+    "directories": 18,
+    "privacy": {
+      "ok": true,
+      "checked": {
+        "git": 0,
+        "asar": 0,
+        "resources": 0,
+        "source": 470
+      },
+      "findings": {
+        "sensitivePaths": 0,
+        "markerPaths": 0,
+        "markerFiles": 0,
+        "markerMatches": 0,
+        "unsafeEntries": 0,
+        "unreadable": 0,
+        "buildPolicy": 0,
+        "archivePolicy": 0
+      },
+      "markers": 33,
+      "skippedVendorBinaries": 0
     }
-  ],
-  "sourceArchive": "정확한 압축 소스 커밋은 릴리스의 SOURCE-COMMIT.txt에 기록 / 생성 후 개인정보 검사 결과를 온라인 영수증에 갱신",
+  },
   "productSourceChangesAfterBuild": false,
   "macNormalInstalledLaunchAndQuitVerified": true,
   "windowsWorkflow": "https://github.com/hyeondk/flowrium/actions/runs/43642951690",
   "windowsWorkflowConclusion": "success",
-  "publicAssetDigestVerification": "게시 전 / 공개 후 서버 SHA-256과 크기 대조 예정",
+  "publicAssetDigestVerification": "GitHub 서버 SHA-256과 로컬 파일의 해시 / 크기 / 업로드 상태 9개 일치",
   "privateConversationOrCredentialsIncluded": false,
-  "remainingActualAccountConditions": "각 사용자의 Dots 최초 웹 로그인 / 외부 계정과 기기 권한 / 원본이 없는 첨부 복구와 자동 양방향 웹 대화 동기화는 별도 범위"
+  "remainingActualAccountConditions": "각 사용자의 Dots 최초 웹 로그인 / 외부 계정과 기기 권한 / 원본이 없는 첨부 복구와 자동 양방향 웹 대화 동기화는 별도 범위",
+  "publishedAt": "2026-11-14T22:01:42Z",
+  "releaseId": 445615950,
+  "sourceCommit": "80aea81db6b23e402c025b26d8b16bd3cafd813d",
+  "tagResolution": {
+    "ref": "refs/tags/261115_03",
+    "commit": "80aea81db6b23e402c025b26d8b16bd3cafd813d",
+    "chain": [
+      {
+        "type": "commit",
+        "sha": "80aea81db6b23e402c025b26d8b16bd3cafd813d"
+      }
+    ],
+    "matched": true
+  },
+  "assetCount": 9,
+  "manifestEntriesVerified": 8,
+  "assetRedownloaded": false,
+  "anonymousHeads": [
+    {
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/Flowrium-261115_03-mac-arm64.dmg",
+      "anonymous": true,
+      "method": "HEAD",
+      "status": 200,
+      "length": 368527296,
+      "matched": true
+    },
+    {
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/Flowrium-261115_03-mac-arm64.zip",
+      "anonymous": true,
+      "method": "HEAD",
+      "status": 200,
+      "length": 356513740,
+      "matched": true
+    },
+    {
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/Flowrium-261115_03-source.tar.gz",
+      "anonymous": true,
+      "method": "HEAD",
+      "status": 200,
+      "length": 7831973,
+      "matched": true
+    },
+    {
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/Flowrium-261115_03-win-x64.exe",
+      "anonymous": true,
+      "method": "HEAD",
+      "status": 200,
+      "length": 323437025,
+      "matched": true
+    },
+    {
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/SHA256SUMS.txt",
+      "anonymous": true,
+      "method": "HEAD",
+      "status": 200,
+      "length": 728,
+      "matched": true
+    },
+    {
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/SOURCE-COMMIT.txt",
+      "anonymous": true,
+      "method": "HEAD",
+      "status": 200,
+      "length": 60,
+      "matched": true
+    },
+    {
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/flowrium-install-support.cjs",
+      "anonymous": true,
+      "method": "HEAD",
+      "status": 200,
+      "length": 6783,
+      "matched": true
+    },
+    {
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/install.ps1",
+      "anonymous": true,
+      "method": "HEAD",
+      "status": 200,
+      "length": 13794,
+      "matched": true
+    },
+    {
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/install.sh",
+      "anonymous": true,
+      "method": "HEAD",
+      "status": 200,
+      "length": 15549,
+      "matched": true
+    }
+  ],
+  "verificationCompletedAt": "2026-11-14T22:01:45.358Z",
+  "downloadPageVerification": {
+    "status": "기본 브랜치 배포 뒤 실제 페이지 확인 예정",
+    "url": "https://hyeondk.github.io/flowrium/"
+  },
+  "assets": [
+    {
+      "name": "Flowrium-261115_03-mac-arm64.dmg",
+      "size": 368527296,
+      "sha256": "3a4b228eb418fd05f548d48b7f36b19132ee30acf710aad99e970808a0380c5b",
+      "digestMatched": true,
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/Flowrium-261115_03-mac-arm64.dmg"
+    },
+    {
+      "name": "Flowrium-261115_03-mac-arm64.zip",
+      "size": 356513740,
+      "sha256": "012a3d1653b10c1203a36b340139f1dfab49e59a5d8663473069746f0793af41",
+      "digestMatched": true,
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/Flowrium-261115_03-mac-arm64.zip"
+    },
+    {
+      "name": "Flowrium-261115_03-source.tar.gz",
+      "size": 7831973,
+      "sha256": "4dcb7786d40a1a0cbe8eaa3fe73d1b1b8691f3a937ea0bd2754f802508d23994",
+      "digestMatched": true,
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/Flowrium-261115_03-source.tar.gz"
+    },
+    {
+      "name": "Flowrium-261115_03-win-x64.exe",
+      "size": 323437025,
+      "sha256": "9a9ee351931c59b0322eeb31e349c97e9f6668f6000f2b2edf2fa0affdda50ee",
+      "digestMatched": true,
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/Flowrium-261115_03-win-x64.exe"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "size": 728,
+      "sha256": "5222535b04296aa96860edcead35c3021bd4829662b1a234fb070ecf7f8b466a",
+      "digestMatched": true,
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/SHA256SUMS.txt"
+    },
+    {
+      "name": "SOURCE-COMMIT.txt",
+      "size": 60,
+      "sha256": "c395a366c0016df38184ccd70a59bd078837ea40d13eceb1a3c8885fa9c21a5c",
+      "digestMatched": true,
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/SOURCE-COMMIT.txt"
+    },
+    {
+      "name": "flowrium-install-support.cjs",
+      "size": 6783,
+      "sha256": "c466afcc9e1692159f9a1728b048784569ba00b1ac75f81d5bc73f5a1d715122",
+      "digestMatched": true,
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/flowrium-install-support.cjs"
+    },
+    {
+      "name": "install.ps1",
+      "size": 13794,
+      "sha256": "b181a71dd7a723285166f8921ca94ba9fb0cbd9abd7c2b8a9e67d36851f0c2f5",
+      "digestMatched": true,
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/install.ps1"
+    },
+    {
+      "name": "install.sh",
+      "size": 15549,
+      "sha256": "d51ab1de56d47fff28cb5e8777ffd5b7e55581441ea3ccd07ee8235c4067ea1b",
+      "digestMatched": true,
+      "url": "https://github.com/hyeondk/flowrium/releases/download/261115_03/install.sh"
+    }
+  ]
 }

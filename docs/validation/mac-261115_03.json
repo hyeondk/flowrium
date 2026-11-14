@@ -6,8 +6,8 @@
   "source": "920ea48d62d8f5d2195a67e2201f9c30bc4f1e1e",
   "platform": "darwin-arm64",
   "validationStatus": "단위 334개 / 기능 52종 / 원본 패키지 4종 / 실제 설치와 개인 프로필 일반 실행 및 정상 종료 통과",
-  "published": false,
-  "release": null,
+  "published": true,
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_03",
   "unit": {
     "tests": 334,
     "passed": 334,
@@ -358,9 +358,30 @@
       "markers": 33,
       "skippedVendorBinaries": 11
     },
-    "sourceArchiveScanStatus": "최종 소스 압축 준비 후 검사 대기",
+    "sourceArchiveScanStatus": "통과",
     "privateMarkerValuesPublished": false,
-    "personalConversationsUsedInPublicFixtures": false
+    "personalConversationsUsedInPublicFixtures": false,
+    "sourceArchiveScan": {
+      "ok": true,
+      "checked": {
+        "git": 0,
+        "asar": 0,
+        "resources": 0,
+        "source": 470
+      },
+      "findings": {
+        "sensitivePaths": 0,
+        "markerPaths": 0,
+        "markerFiles": 0,
+        "markerMatches": 0,
+        "unsafeEntries": 0,
+        "unreadable": 0,
+        "buildPolicy": 0,
+        "archivePolicy": 0
+      },
+      "markers": 33,
+      "skippedVendorBinaries": 0
+    }
   },
   "localInstallation": {
     "installerCompleted": true,
@@ -401,9 +422,16 @@
     "필요한 첨부와 원본 파일의 보존 및 접근 가능 여부를 따로 대조합니다.",
     "원본이 없는 첨부나 외부 서비스의 미수집 기록을 자동 재생성하지 않습니다."
   ],
-  "pending": [
-    "최종 소스 압축 개인정보 검사",
-    "공개 릴리스와 다운로드 파일 대조"
-  ],
-  "windowsIndependentInstallationStatus": "별도 Windows 검증 문서에서 기록"
+  "pending": [],
+  "windowsIndependentInstallationStatus": "별도 Windows 검증 문서에서 기록",
+  "publicSourceArchive": {
+    "sourceCommit": "80aea81db6b23e402c025b26d8b16bd3cafd813d",
+    "name": "Flowrium-261115_03-source.tar.gz",
+    "size": 7831973,
+    "sha256": "4dcb7786d40a1a0cbe8eaa3fe73d1b1b8691f3a937ea0bd2754f802508d23994",
+    "files": 470
+  },
+  "releaseAssetsVerified": 9,
+  "publicSourceCommit": "80aea81db6b23e402c025b26d8b16bd3cafd813d",
+  "publicAssetVerification": "서버 SHA-256 / 파일 크기 / 업로드 상태 일치 9개와 익명 HTTP 200 9개 확인 / 자산 전체 재다운로드 검사와 구분"
 }

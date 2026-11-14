@@ -8,8 +8,8 @@
   "platform": "win32-x64",
   "runner": "windows-latest / 일회용 GitHub 호스팅 러너",
   "validationStatus": "Windows 전체 기능과 격리 환경의 실제 설치 / 업데이트 통과",
-  "published": false,
-  "release": null,
+  "published": true,
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_03",
   "run": {
     "id": 43642951690,
     "url": "https://github.com/hyeondk/flowrium/actions/runs/43642951690",
@@ -403,10 +403,6 @@
     "installerName": "Flowrium-261115_03-win-x64.exe"
   },
   "pendingChecks": {
-    "publication": {
-      "status": "pending",
-      "scope": "공개 릴리스 / 설치 파일 해시 / 다운로드 링크 대조"
-    },
     "realAccountAndDeviceUse": {
       "status": "not-verified",
       "scope": "실제 Windows 사용자 계정 첫 로그인 / Dots 실제 계정 / 외부 계정 권한 / 실제 마이크와 외부 회선"
@@ -482,5 +478,8 @@
       }
     },
     "scope": "실제 Windows 설치·재설치·업데이트·로그인 검증과 분리된 정적 검사다. 공식 의존성 전체를 소스와 비교하지 않는다."
-  }
+  },
+  "releaseAssetsVerified": 9,
+  "publicSourceCommit": "80aea81db6b23e402c025b26d8b16bd3cafd813d",
+  "publicAssetVerification": "서버 SHA-256 / 파일 크기 / 업로드 상태 일치 9개와 익명 HTTP 200 9개 확인 / 자산 전체 재다운로드 검사와 구분"
 }
