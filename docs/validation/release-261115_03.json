@@ -1,0 +1,38 @@
+{
+  "version": "261115_03",
+  "nativeVersion": "26.11.1503",
+  "buildSource": "920ea48d62d8f5d2195a67e2201f9c30bc4f1e1e",
+  "snapshotPhase": "게시 전 검증 기록 / 최신 게시 결과는 온라인 검증 문서 참조",
+  "published": false,
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_03",
+  "downloadPage": "https://hyeondk.github.io/flowrium/",
+  "platforms": [
+    "darwin-arm64",
+    "win32-x64"
+  ],
+  "validatedBinaryAssets": [
+    {
+      "name": "Flowrium-261115_03-mac-arm64.zip",
+      "size": 356513740,
+      "sha256": "012a3d1653b10c1203a36b340139f1dfab49e59a5d8663473069746f0793af41"
+    },
+    {
+      "name": "Flowrium-261115_03-mac-arm64.dmg",
+      "size": 368527296,
+      "sha256": "3a4b228eb418fd05f548d48b7f36b19132ee30acf710aad99e970808a0380c5b"
+    },
+    {
+      "name": "Flowrium-261115_03-win-x64.exe",
+      "size": 323437025,
+      "sha256": "9a9ee351931c59b0322eeb31e349c97e9f6668f6000f2b2edf2fa0affdda50ee"
+    }
+  ],
+  "sourceArchive": "정확한 압축 소스 커밋은 릴리스의 SOURCE-COMMIT.txt에 기록 / 생성 후 개인정보 검사 결과를 온라인 영수증에 갱신",
+  "productSourceChangesAfterBuild": false,
+  "macNormalInstalledLaunchAndQuitVerified": true,
+  "windowsWorkflow": "https://github.com/hyeondk/flowrium/actions/runs/43642951690",
+  "windowsWorkflowConclusion": "success",
+  "publicAssetDigestVerification": "게시 전 / 공개 후 서버 SHA-256과 크기 대조 예정",
+  "privateConversationOrCredentialsIncluded": false,
+  "remainingActualAccountConditions": "각 사용자의 Dots 최초 웹 로그인 / 외부 계정과 기기 권한 / 원본이 없는 첨부 복구와 자동 양방향 웹 대화 동기화는 별도 범위"
+}

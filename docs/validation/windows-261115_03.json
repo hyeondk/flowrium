@@ -1,0 +1,486 @@
+{
+  "version": "261115_03",
+  "nativeVersion": "26.11.1503",
+  "validatedDate": "2026-11-15",
+  "headSha": "920ea48d62d8f5d2195a67e2201f9c30bc4f1e1e",
+  "source": "920ea48d62d8f5d2195a67e2201f9c30bc4f1e1e",
+  "buildSource": "920ea48d62d8f5d2195a67e2201f9c30bc4f1e1e",
+  "platform": "win32-x64",
+  "runner": "windows-latest / 일회용 GitHub 호스팅 러너",
+  "validationStatus": "Windows 전체 기능과 격리 환경의 실제 설치 / 업데이트 통과",
+  "published": false,
+  "release": null,
+  "run": {
+    "id": 43642951690,
+    "url": "https://github.com/hyeondk/flowrium/actions/runs/43642951690",
+    "conclusion": "success",
+    "branch": "codex/flowrium-261115-03",
+    "jobs": [
+      {
+        "id": 132594335169,
+        "name": "Windows",
+        "conclusion": "success"
+      },
+      {
+        "id": 132598235074,
+        "name": "Windows 설치와 업데이트 독립 검증",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "unit": {
+    "tests": 334,
+    "passed": 332,
+    "failed": 0,
+    "skipped": 2,
+    "command": "npm test",
+    "scope": "합성 자료 / 로컬 시험 서버 / 실제 사용자 계정 모델 요청과 구분",
+    "skippedCases": [
+      {
+        "file": "tests/backend-project-store.test.cjs",
+        "reason": "Windows의 심볼릭 링크 생성 권한에 의존하는 기록 폴더 외부 링크 검사"
+      },
+      {
+        "file": "tests/path-boundary.test.cjs",
+        "reason": "Darwin 전용 Node / Electron 간 한글 경로 첫 작업 검사"
+      }
+    ]
+  },
+  "ptyUnit": {
+    "tests": 3,
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "command": "node --test --test-reporter=spec tests/terminal.test.cjs",
+    "includedInNpmTest": true,
+    "note": "별도 사전 검사이며 전체 단위 수에 더하지 않습니다."
+  },
+  "functionalRegression": {
+    "sourceSuiteCount": 51,
+    "passed": 51,
+    "failed": 0,
+    "functionalStepCount": 35,
+    "successfulFunctionalSteps": 35,
+    "results": [
+      {
+        "file": "tests/desktop-e2e.cjs",
+        "status": "passed",
+        "step": "실제 앱에서 업무 대화 검증"
+      },
+      {
+        "file": "tests/ui-motion-e2e.cjs",
+        "status": "passed",
+        "step": "탐색 레일·대화함·동작·실행 상태"
+      },
+      {
+        "file": "tests/workspace-shell-e2e.cjs",
+        "status": "passed",
+        "step": "탐색 레일·대화함·동작·실행 상태"
+      },
+      {
+        "file": "tests/conversation-scopes-native-e2e.cjs",
+        "status": "passed",
+        "step": "탐색 레일·대화함·동작·실행 상태"
+      },
+      {
+        "file": "tests/portfolio-e2e.cjs",
+        "status": "passed",
+        "step": "대시보드와 프로젝트·보관·업무 도구"
+      },
+      {
+        "file": "tests/chat-core-e2e.cjs",
+        "status": "passed",
+        "step": "첨부·실행 큐·네이티브 분기와 되감기"
+      },
+      {
+        "file": "tests/chat-core-native-e2e.cjs",
+        "status": "passed",
+        "step": "첨부·실행 큐·네이티브 분기와 되감기"
+      },
+      {
+        "file": "tests/portfolio-extensions-e2e.cjs",
+        "status": "passed",
+        "step": "목표·그래프·산출물·복원과 실제 모델 도구"
+      },
+      {
+        "file": "tests/project-ai-native-e2e.cjs",
+        "status": "passed",
+        "step": "목표·그래프·산출물·복원과 실제 모델 도구"
+      },
+      {
+        "file": "tests/html-export-electron.cjs",
+        "status": "passed",
+        "step": "목표·그래프·산출물·복원과 실제 모델 도구"
+      },
+      {
+        "file": "tests/workflow-e2e.cjs",
+        "status": "passed",
+        "step": "대화 위임·비서 보고·기억·동적 팀"
+      },
+      {
+        "file": "tests/teams-automation-e2e.cjs",
+        "status": "passed",
+        "step": "대화 위임·비서 보고·기억·동적 팀"
+      },
+      {
+        "file": "tests/external-integrations-e2e.cjs",
+        "status": "passed",
+        "step": "외부 자료·일정 검토·연결 주소 전달"
+      },
+      {
+        "file": "tests/link-delivery-e2e.cjs",
+        "status": "passed",
+        "step": "외부 자료·일정 검토·연결 주소 전달"
+      },
+      {
+        "file": "tests/teams-directed-e2e.cjs",
+        "status": "passed",
+        "step": "팀 배정·결정·완료 보고"
+      },
+      {
+        "file": "tests/team-worktrees-ui.cjs",
+        "status": "passed",
+        "step": "독립 Git 작업 환경과 통합"
+      },
+      {
+        "file": "tests/input-request-e2e.cjs",
+        "status": "passed",
+        "step": "Codex 질문의 보기·직접 답변과 비밀 입력"
+      },
+      {
+        "file": "tests/input-native-e2e.cjs",
+        "status": "passed",
+        "step": "Codex 질문의 보기·직접 답변과 비밀 입력"
+      },
+      {
+        "file": "tests/security-e2e.cjs",
+        "status": "passed",
+        "step": "잠금·로그아웃·초안 복원"
+      },
+      {
+        "file": "tests/drafts-e2e.cjs",
+        "status": "passed",
+        "step": "미전송 초안의 이전·계정별 복원"
+      },
+      {
+        "file": "tests/memory-e2e.cjs",
+        "status": "passed",
+        "step": "개인 메모와 프로젝트 지시·비서"
+      },
+      {
+        "file": "tests/desktop-tools-e2e.cjs",
+        "status": "passed",
+        "step": "음악·음성 입력의 실제 화면"
+      },
+      {
+        "file": "tests/voice-e2e.cjs",
+        "status": "passed",
+        "step": "음악·음성 입력의 실제 화면"
+      },
+      {
+        "file": "tests/voice-continuous-e2e.cjs",
+        "status": "passed",
+        "step": "음악·음성 입력의 실제 화면"
+      },
+      {
+        "file": "tests/mobile-e2e.cjs",
+        "status": "passed",
+        "step": "휴대폰 화면과 인증"
+      },
+      {
+        "file": "tests/mobile-extensions-e2e.cjs",
+        "status": "passed",
+        "step": "휴대폰 화면과 인증"
+      },
+      {
+        "file": "tests/workbench-document-e2e.cjs",
+        "status": "passed",
+        "step": "문서 내보내기 검증"
+      },
+      {
+        "file": "tests/migration-e2e.cjs",
+        "status": "passed",
+        "step": "전체 자료 이관 / 음성 서버 관리 / 자동 포트표 / 보고 팝업"
+      },
+      {
+        "file": "tests/voice-servers-e2e.cjs",
+        "status": "passed",
+        "step": "전체 자료 이관 / 음성 서버 관리 / 자동 포트표 / 보고 팝업"
+      },
+      {
+        "file": "tests/project-ports-e2e.cjs",
+        "status": "passed",
+        "step": "전체 자료 이관 / 음성 서버 관리 / 자동 포트표 / 보고 팝업"
+      },
+      {
+        "file": "tests/portfolio-reports-popup-e2e.cjs",
+        "status": "passed",
+        "step": "전체 자료 이관 / 음성 서버 관리 / 자동 포트표 / 보고 팝업"
+      },
+      {
+        "file": "tests/codex-transfer-e2e.cjs",
+        "status": "passed",
+        "step": "Codex 프로젝트 대화 연결 / 설정 배치"
+      },
+      {
+        "file": "tests/settings-layout-e2e.cjs",
+        "status": "passed",
+        "step": "Codex 프로젝트 대화 연결 / 설정 배치"
+      },
+      {
+        "file": "tests/long-conversation-e2e.cjs",
+        "status": "passed",
+        "step": "Codex 프로젝트 대화 연결 / 설정 배치"
+      },
+      {
+        "file": "tests/chat-layout-e2e.cjs",
+        "status": "passed",
+        "step": "넓은 대화 / 본문 높이 / 입력 영역 / 스크롤 위치"
+      },
+      {
+        "file": "tests/navigation-layout-e2e.cjs",
+        "status": "passed",
+        "step": "긴 프로젝트 목록 / 메뉴 구획 / 화면 높이별 배치"
+      },
+      {
+        "file": "tests/feature-surfaces-e2e.cjs",
+        "status": "passed",
+        "step": "기능별 화면 / 여백 / 작은 화면 / 가로 넘침"
+      },
+      {
+        "file": "tests/message-content-e2e.cjs",
+        "status": "passed",
+        "step": "메시지 본문 / 서식 / 코드 / 파일과 링크"
+      },
+      {
+        "file": "tests/workspace-interactions-e2e.cjs",
+        "status": "passed",
+        "step": "작업 공간 상호작용 / 대화 열기와 이동"
+      },
+      {
+        "file": "tests/dots-view-e2e.cjs",
+        "status": "passed",
+        "step": "프로젝트 점 보기"
+      },
+      {
+        "file": "tests/dock-layout-modes-e2e.cjs",
+        "status": "passed",
+        "step": "대화 화면 배치 전환"
+      },
+      {
+        "file": "tests/trash-ui-e2e.cjs",
+        "status": "passed",
+        "step": "휴지통 / 복원 / 비우기"
+      },
+      {
+        "file": "tests/project-shortcuts-e2e.cjs",
+        "status": "passed",
+        "step": "프로젝트 폴더 / 편집기 바로가기"
+      },
+      {
+        "file": "tests/repository-completion-e2e.cjs",
+        "status": "passed",
+        "step": "저장소 변경 / 작업 완료"
+      },
+      {
+        "file": "tests/external-repositories-e2e.cjs",
+        "status": "passed",
+        "step": "외부 저장소 / 연결 / 프로젝트 이동"
+      },
+      {
+        "file": "tests/decision-continuation-e2e.cjs",
+        "status": "passed",
+        "step": "결정 요청 / 명시 진행 / 모델 후속 추천"
+      },
+      {
+        "file": "tests/trash-purge-e2e.cjs",
+        "status": "passed",
+        "step": "휴지통 영구 삭제 / 비우기"
+      },
+      {
+        "file": "tests/dock-resize-motion-e2e.cjs",
+        "status": "passed",
+        "step": "대화 크기 조절 / 패널 동작"
+      },
+      {
+        "file": "tests/chat-continuation-native-e2e.cjs",
+        "status": "passed",
+        "step": "후속 작업 실제 프로토콜 검사"
+      },
+      {
+        "file": "tests/decision-notice-layout-e2e.cjs",
+        "status": "passed",
+        "step": "결정 알림과 헤더 포인터 접근"
+      },
+      {
+        "file": "tests/window-lifecycle-e2e.cjs",
+        "status": "passed",
+        "step": "앱 창 닫힘과 재실행"
+      }
+    ],
+    "scope": "실제 Electron / 번들 Codex 앱 서버 / 합성 프로젝트와 초안 / 로컬 모의 모델과 외부 연결",
+    "notes": [
+      "검사 스크립트 수와 기능 단계 수는 서로 다른 집계입니다.",
+      "Mac 전용 검사와 독립 설치 작업은 이 기능 검사 수에 포함하지 않습니다.",
+      "검사 수를 전체 앱 기능 수나 실제 계정의 완료율로 해석하지 않습니다."
+    ]
+  },
+  "buildAndPackageChecks": {
+    "build": "passed",
+    "windowsUpdaterHelper": "passed",
+    "downloadPageStatic": "passed",
+    "downloadPageBrowser": "passed",
+    "nativeCodex": {
+      "status": "passed",
+      "version": "0.167.2",
+      "authenticated": false
+    },
+    "packagedTerminalAndDocuments": {
+      "status": "passed",
+      "test": "tests/terminal-packaged-e2e.cjs"
+    },
+    "ciReleasePrivacy": {
+      "status": "passed",
+      "checked": {
+        "git": 468,
+        "asar": 1436,
+        "resources": 2321,
+        "source": 0
+      },
+      "findings": 0,
+      "privateMarkersProvidedInCi": 0,
+      "scope": "CI에서 생성한 win-unpacked 패키지 / 별도 로컬 개인 자료 표식 검사는 아래 대기 항목과 구분"
+    }
+  },
+  "installation": {
+    "jobId": 132598235074,
+    "jobConclusion": "success",
+    "manualUpgrade": {
+      "status": "passed",
+      "test": "tests/installer-windows-e2e.cjs",
+      "from": "0.6.0",
+      "to": "261115_03",
+      "previousBinary": "실제 공개 0.6.0 설치 파일을 내려받아 해시를 확인한 뒤 실행",
+      "checks": [
+        "실제 설치",
+        "새 버전 교체",
+        "재설치와 이전 앱 백업",
+        "합성 프로젝트와 미전송 초안 복원",
+        "파일 변조 / ARM64 / 버전 불일치 / 자료 경로 차단",
+        "실행 중 설치 거절",
+        "시험 앱과 설치 등록 및 임시 폴더 정리"
+      ]
+    },
+    "automaticUpdate": {
+      "status": "passed",
+      "test": "tests/update-native-e2e.cjs",
+      "fromVersionLabel": "261115_02",
+      "to": "261115_03",
+      "toNativeVersion": "26.11.1503",
+      "previousAppFixture": "동일 최종 03 소스에 직전 날짜 버전 번호를 적용해 생성한 격리 앱",
+      "actualPublished02BinaryTested": false,
+      "transport": "시험용 업데이트 정보와 다운로드 응답 / 실제 설치 파일과 운영체제 교체 도우미",
+      "checks": [
+        "앱의 실제 업데이트 배너와 설치 버튼",
+        "기존 프로세스 종료",
+        "실제 설치 파일 교체",
+        "새 버전 프로세스 재시작",
+        "합성 프로젝트와 초안 복원"
+      ]
+    },
+    "realUserAccountLoginTested": false,
+    "realUserDataDeleted": false
+  },
+  "artifact": {
+    "id": 14133387460,
+    "name": "flowrium-win-x64",
+    "runId": 43642951690,
+    "url": "https://github.com/hyeondk/flowrium/actions/runs/43642951690/artifacts/14133387460",
+    "sizeInBytes": 323294710,
+    "archiveDigest": "sha256:7993c9eec703538ee26746948e6bf02635bdd8217ab532cb4154b4b7b4d2b9dd",
+    "digestScope": "GitHub Actions 산출물 묶음의 해시 / 내부 EXE 해시와 구분",
+    "expired": false,
+    "installerName": "Flowrium-261115_03-win-x64.exe"
+  },
+  "pendingChecks": {
+    "publication": {
+      "status": "pending",
+      "scope": "공개 릴리스 / 설치 파일 해시 / 다운로드 링크 대조"
+    },
+    "realAccountAndDeviceUse": {
+      "status": "not-verified",
+      "scope": "실제 Windows 사용자 계정 첫 로그인 / Dots 실제 계정 / 외부 계정 권한 / 실제 마이크와 외부 회선"
+    }
+  },
+  "evidence": {
+    "mainJobUrl": "https://github.com/hyeondk/flowrium/actions/runs/43642951690/job/132594335169",
+    "installationJobUrl": "https://github.com/hyeondk/flowrium/actions/runs/43642951690/job/132598235074",
+    "previousReleaseResultsReused": false
+  },
+  "packageValidation": {
+    "status": "passed",
+    "installer": {
+      "name": "Flowrium-261115_03-win-x64.exe",
+      "size": 323437025,
+      "sha256": "9a9ee351931c59b0322eeb31e349c97e9f6668f6000f2b2edf2fa0affdda50ee",
+      "bootstrapArchitecture": "x86",
+      "payloadArchitecture": "x64"
+    },
+    "privacy": {
+      "ok": true,
+      "checked": {
+        "git": 0,
+        "asar": 1436,
+        "resources": 2321,
+        "source": 0
+      },
+      "findings": {
+        "sensitivePaths": 0,
+        "markerPaths": 0,
+        "markerFiles": 0,
+        "markerMatches": 0,
+        "unsafeEntries": 0,
+        "unreadable": 0,
+        "buildPolicy": 0,
+        "archivePolicy": 0
+      },
+      "markers": 33,
+      "skippedVendorBinaries": 17
+    },
+    "productMatch": {
+      "ok": true,
+      "productFiles": 100,
+      "compared": 99,
+      "byteIdentical": 12,
+      "lineEndingsOnly": 85,
+      "repeatedCRLFOnly": 1,
+      "packagingMetadataOnly": 1,
+      "missing": 0,
+      "unexpected": 0,
+      "differences": 0,
+      "generatedFiles": [
+        {
+          "file": "electron/update-helpers/Flowrium.Update.exe",
+          "sha256": "5585c3934457416f4a08d3ceba4f418513dd31dfb731019b2e978ce706bd62cb",
+          "x64": true,
+          "sourceByteComparison": false,
+          "note": "Windows에서 생성한 도우미로 실제 설치·업데이트 검증과 C# 원본 대조를 별도로 확인해야 한다."
+        }
+      ],
+      "lineEndingException": {
+        "file": "dist/index.html",
+        "strictSingleCRLFOnlyMatch": false,
+        "repeatedCRBeforeLFOnlyMatch": true,
+        "sourceLF": 22,
+        "packagedLF": 22,
+        "packagedSingleCRLF": 19,
+        "packagedRepeatedCRLF": 1,
+        "standaloneCR": 0,
+        "line": 20,
+        "location": "root div 닫는 태그 뒤 줄바꿈",
+        "note": "85개 텍스트 파일은 단일 CRLF만 차이이며 이 파일은 CRCRLF 1곳을 별도 공개한다. 줄바꿈 CR 반복을 제외한 내용은 모두 일치한다."
+      }
+    },
+    "scope": "실제 Windows 설치·재설치·업데이트·로그인 검증과 분리된 정적 검사다. 공식 의존성 전체를 소스와 비교하지 않는다."
+  }
+}
