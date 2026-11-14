@@ -111,13 +111,13 @@ async function run() {
     });
     assert.deepEqual(fonts.counts,[1,1,1]);assert.match(fonts.family,/NanumSquareRound/);
     for(const name of ['NanumSquareRoundR.woff2','NanumSquareRoundB.woff2','NanumSquareRoundEB.woff2'])assert.ok(serverRequests.includes('/fonts/'+name),'공식 로컬 글꼴 '+name);
-    assert.match(await page.locator('.hero p').innerText(),/통합 채팅 \/ 프로젝트 대화 \/ 일반 대화/);
-    assert.match(await page.locator('.app-preview figcaption').innerText(),/마우스를 올리면 펼쳐집니다/);
+    assert.match(await page.locator('.hero p').innerText(),/대화는 넓게 열리고, 필요하면 대시보드와 나란히 볼 수 있습니다/);
+    assert.match(await page.locator('.app-preview figcaption').innerText(),/예시 프로젝트로 촬영한 실제 화면입니다.*대시보드와 나란히 보세요/);
     const image = page.locator(".app-preview img");
-    await page.waitForFunction(()=>{const image=document.querySelector('.app-preview img');return image?.complete&&image.naturalWidth===1392&&image.naturalHeight===930;});
+    await page.waitForFunction(()=>{const image=document.querySelector('.app-preview img');return image?.complete&&image.naturalWidth===1440&&image.naturalHeight===1000;});
     assert.equal(
       await image.evaluate(
-        (e) => e.complete && e.naturalWidth === 1392 && e.naturalHeight === 930,
+        (e) => e.complete && e.naturalWidth === 1440 && e.naturalHeight === 1000,
       ),
       true,
     );
