@@ -1,0 +1,127 @@
+{
+  "version": "261114_01",
+  "source": "ed89103b6f1a6ff33ba60fafb6f84054d3ca5c39",
+  "platform": "win32-x64",
+  "run": "https://github.com/hyeondk/flowrium/actions/runs/43585004147",
+  "jobs": {
+    "build": {
+      "id": 132417484106,
+      "conclusion": "success"
+    },
+    "installAndUpdate": {
+      "id": 132419610883,
+      "conclusion": "success"
+    }
+  },
+  "conclusion": "success",
+  "unit": {
+    "total": 255,
+    "passed": 254,
+    "failed": 0,
+    "skipped": 1,
+    "skipReason": "Windows 권한에 의존하는 검사 1개 제외"
+  },
+  "checks": {
+    "allRequiredChecks": true,
+    "allDesktopRegression": true,
+    "settingsLayout": true,
+    "longConversation": true,
+    "packagedFreshAccount": true,
+    "packagedTerminalAndDocuments": true,
+    "nativeInstallerAndBackup": true
+  },
+  "installationTransition": {
+    "from": "0.6.0",
+    "to": "261114_01",
+    "method": "manual-install",
+    "actualInstallationPassed": true,
+    "restartPassed": true,
+    "dataPreserved": true
+  },
+  "dateVersionUpdate": {
+    "from": "261113_99",
+    "to": "261114_01",
+    "actualUpdateButtonPassed": true,
+    "downloadInstallRestartPassed": true,
+    "dataPreserved": true
+  },
+  "releaseStatus": "published",
+  "publicArtifactVerification": {
+    "size": 323275445,
+    "sha256": "2b8169c3c0972a3fd5a9105bcb159e98766d73f4feccdc9ff32e7d39e71cc5a6",
+    "matchesCiArtifactAndRelease": true
+  },
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261114_01",
+  "sourceMatch": {
+    "source": "ed89103b6f1a6ff33ba60fafb6f84054d3ca5c39",
+    "expectedSource": "ed89103b6f1a6ff33ba60fafb6f84054d3ca5c39",
+    "architecture": "x64",
+    "publicVersion": "261114_01",
+    "internalVersion": "26.11.1401",
+    "compared": 89,
+    "identical": 11,
+    "crlfNormalized": 77,
+    "generatedWindowsHelper": 1,
+    "missing": [],
+    "unexpected": [],
+    "mismatches": [
+      {
+        "file": "dist/index.html",
+        "local": "6c87dfa1995645d738de274a94cecbfa0039f47cb003b87220a9d8b5b14964b9",
+        "packaged": "06dad609cd19c146c86841cf47164b2c6f765310885ec05ae9e170594a97164f"
+      }
+    ],
+    "ok": true,
+    "strictCrlfSourceMatch": false,
+    "sourceMatchType": "제품 텍스트 / 플랫폼별 줄바꿈 표현을 구분",
+    "standardMatchingFiles": 88,
+    "htmlLineEndingDifference": {
+      "file": "dist/index.html",
+      "count": 1,
+      "localRepeatedCR": 0,
+      "packagedRepeatedCR": 1,
+      "onlyLineEndingRepresentation": true,
+      "normalizedMarkupEqual": true,
+      "tagsAttributesAndTextUnchanged": true,
+      "normalization": "줄바꿈 직전의 연속 CR을 하나의 LF로 통일 / 그 외 문자는 변경하지 않음"
+    },
+    "frontendAssets": [
+      {
+        "file": "dist/assets/index-BdiCAdZW.js",
+        "byteEqual": true,
+        "crlfEqual": true,
+        "localSha256": "d88471863cf8f7b152b517dfd7b20e9154957c310e63d55157b8d37bd4db755e",
+        "packagedSha256": "d88471863cf8f7b152b517dfd7b20e9154957c310e63d55157b8d37bd4db755e"
+      },
+      {
+        "file": "dist/assets/index-SCakJ4dG.css",
+        "byteEqual": true,
+        "crlfEqual": true,
+        "localSha256": "ebbb8972e999014bde7a11c58a922e83660998048dd6851711ce1e23a68e6d42",
+        "packagedSha256": "ebbb8972e999014bde7a11c58a922e83660998048dd6851711ce1e23a68e6d42"
+      }
+    ],
+    "sourceMatch": true
+  },
+  "privacy": {
+    "ok": true,
+    "checked": {
+      "git": 374,
+      "asar": 1428,
+      "resources": 2321,
+      "source": 374
+    },
+    "findings": {
+      "sensitivePaths": 0,
+      "markerPaths": 0,
+      "markerFiles": 0,
+      "markerMatches": 0,
+      "unsafeEntries": 0,
+      "unreadable": 0,
+      "buildPolicy": 0,
+      "archivePolicy": 0
+    },
+    "skippedVendorBinaries": 17,
+    "privateMarkerComparisonPassed": true
+  }
+}

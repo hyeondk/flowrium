@@ -1,0 +1,66 @@
+{
+  "version": "261114_01",
+  "source": "ed89103b6f1a6ff33ba60fafb6f84054d3ca5c39",
+  "buildSource": "bbe14115c0485c7653ef6017372ea0e365057999",
+  "platform": "darwin-arm64",
+  "unit": {
+    "tests": 255,
+    "passed": 255,
+    "failed": 0,
+    "skipped": 0
+  },
+  "package": {
+    "dmgVerified": true,
+    "codeSignatureIntegrity": true,
+    "zipDmgAsarMatch": true,
+    "gatekeeperExitCode": 3,
+    "developerIdNotarized": false,
+    "sourceFilesChecked": 71,
+    "sourceFilesMatch": true,
+    "freshAccountAuthenticated": false,
+    "bundledToolsVerified": true,
+    "packagedTerminalAndDocumentsPassed": true,
+    "updateButtonPassed": true,
+    "unsignedUpdateRejected": true,
+    "updateHelperAndRollbackPassed": true
+  },
+  "conversation": {
+    "nativeRoundtripTurns": 3,
+    "sameThreadContextConfirmed": true,
+    "originalAppBackendReadConfirmed": true,
+    "alreadyOpenNativeUiRefreshVerified": false,
+    "simultaneousWritingSupported": false,
+    "executionClientReleased": true,
+    "localApplyAndRestartVerified": true,
+    "localAttachmentReadAndDecodeVerified": true,
+    "missingImageReferencesPreserved": true,
+    "savedImageCopyIsNotOriginalByteGuarantee": true
+  },
+  "privacy": {
+    "checked": {
+      "git": 374,
+      "asar": 1418,
+      "resources": 2305,
+      "source": 374
+    },
+    "findings": {
+      "sensitivePaths": 0,
+      "markerPaths": 0,
+      "markerFiles": 0,
+      "markerMatches": 0,
+      "unsafeEntries": 0,
+      "unreadable": 0,
+      "buildPolicy": 0,
+      "archivePolicy": 0
+    },
+    "privateMarkerComparisonPassed": true,
+    "skippedVendorBinaries": 11
+  },
+  "guiFinalSuiteCount": 30,
+  "guiFinalSuiteStatus": "passed",
+  "guiFinalSuiteSource": "bbe14115c0485c7653ef6017372ea0e365057999",
+  "runningTestElectronAtCheck": 0,
+  "changesAfterBuild": "배포 워크플로와 Windows 설치 / 업데이트 검사 파일만 변경 / 제품 코드 71개 SHA-256 일치",
+  "releaseStatus": "published",
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261114_01"
+}
