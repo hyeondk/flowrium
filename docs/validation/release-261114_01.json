@@ -34,5 +34,30 @@
     "size": 323135696,
     "sha256": "4fceb67f2e07b1efe612b7b0a0e3efb23b5ca8e0a8c181402471f64ffe616dea"
   },
-  "downloadPage": "https://hyeondk.github.io/flowrium/"
+  "downloadPage": "https://hyeondk.github.io/flowrium/",
+  "downloadPageVerification": {
+    "title": "Flowrium",
+    "status": "261114_01 공개 / 2개 플랫폼의 설치 파일을 받을 수 있습니다.",
+    "downloads": [
+      {
+        "platform": "mac-arm64",
+        "url": "https://github.com/hyeondk/flowrium/releases/download/261114_01/Flowrium-261114_01-mac-arm64.dmg",
+        "disabled": "false"
+      },
+      {
+        "platform": "win-x64",
+        "url": "https://github.com/hyeondk/flowrium/releases/download/261114_01/Flowrium-261114_01-win-x64.exe",
+        "disabled": "false"
+      }
+    ],
+    "javascriptErrors": [],
+    "mockedRequests": false,
+    "checkedAt": "2026-11-14T10:47:57.704Z"
+  },
+  "pagesRun": {
+    "url": "https://github.com/hyeondk/flowrium/actions/runs/43586902140",
+    "source": "4d977d61690b02054a2c1e1ce5e1dd70d64f175b",
+    "conclusion": "success"
+  },
+  "anonymousLatestReleaseVerified": true
 }
