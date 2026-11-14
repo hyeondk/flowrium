@@ -31,3 +31,6 @@
 @media(pointer:coarse){.workspace-side .side-group .side-row{height:32px;min-height:32px}}
 @media(max-height:700px) and (pointer:fine){.workspace-side .side-group .side-row{height:24px;min-height:24px}.workspace-side .side-group{margin-top:5px;padding-top:4px}.workspace-side .side-group h2{height:12px;min-height:12px;line-height:12px}.workspace-side .side-brand-row{margin-bottom:4px}}
 .app-shell .workspace-side :is(.side-group h2,.side-account){color:var(--text)}
+/* 하단 도구가 패널 가장자리에 붙지 않도록 마지막 여백을 확보합니다. */
+.app-shell .workspace-side .sidebar-surface{padding-bottom:18px}
+@media(max-height:700px){.app-shell .workspace-side .sidebar-surface{padding-bottom:14px}}

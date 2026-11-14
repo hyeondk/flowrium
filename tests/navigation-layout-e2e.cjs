@@ -83,6 +83,7 @@ async function run() {
       assert.ok(m.groups[0].bottom <= m.groups[1].top + 1, `${m.width}×${m.height} 보관과 도구 그룹 분리`);
       assert.ok(m.nav.bottom <= m.account.top + 1, `${m.width}×${m.height} 탐색 스크롤과 계정 영역 분리`);
       assert.ok(m.account.bottom <= m.surface.bottom + 1, `${m.width}×${m.height} 계정 영역 경계`);
+      assert.ok(m.surface.bottom-m.account.bottom >= (m.height<=700?13:17), `${m.width}×${m.height} 패널 하단 고정 여백`);
       assert.ok(m.rows.every(r => r.height >= 24), `${m.width}×${m.height} 조밀한 메뉴 행의 최소 클릭 높이`);
       assert.ok(m.rows.every(r => Math.abs(r.iconLeft - m.rows[0].iconLeft) < 1), `${m.width}×${m.height} 메뉴 아이콘 왼쪽 시작점`);
       assert.ok(m.documentOverflow <= 1, `${m.width}×${m.height} 문서 가로 넘침 없음`);

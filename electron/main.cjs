@@ -45,6 +45,10 @@ const apiHandlers = new Map();
 let window;
 let controller;
 let quitting = false;
+let launchComplete = false;
+let windowRequestPending = false;
+let creatingWindow = false;
+const lifecycleDiagnostics = process.env.FLOWRIUM_LIFECYCLE_DIAGNOSTICS === '1';
 const DEV_URL = process.env.ELECTRON_RENDERER_URL;
 if (!app.isPackaged && process.env.FLOWRIUM_USER_DATA)
   app.setPath("userData", path.resolve(process.env.FLOWRIUM_USER_DATA));
@@ -95,6 +99,37 @@ function trustedMediaFrame(contents, details) {
     return new URL(details.requestingUrl).href.split("#")[0] === expected;
   } catch { return false; }
 }
+function lifecycleDiagnostic(phase) {
+  if (!lifecycleDiagnostics) return;
+  try {
+    require('node:fs').writeSync(2, '[FlowriumLifecycle] ' + JSON.stringify({
+      phase, ready: app.isReady(), launchComplete, quitting,
+      windows: app.isReady() ? BrowserWindow.getAllWindows().filter(value => !value.isDestroyed()).length : 0,
+      windowRequestPending, creatingWindow,
+    }) + '\n');
+  } catch { /* 선택 진단 출력 실패는 앱 실행을 방해하지 않는다. */ }
+}
+function ensureWindow() {
+  if (quitting) { lifecycleDiagnostic('window-request-ignored'); return null; }
+  if (!app.isReady() || !launchComplete || creatingWindow) {
+    windowRequestPending = true;
+    lifecycleDiagnostic('window-request-pending');
+    return null;
+  }
+  if (!window || window.isDestroyed()) {
+    creatingWindow = true;
+    try { createWindow(); } finally { creatingWindow = false; }
+  }
+  windowRequestPending = false;
+  if (window && !window.isDestroyed()) {
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+    lifecycleDiagnostic('window-focused');
+    return window;
+  }
+  return null;
+}
 function createWindow() {
   window = new BrowserWindow({
     width: 1440,
@@ -112,6 +147,9 @@ function createWindow() {
       webSecurity: true,
     },
   });
+  const createdWindow = window;
+  lifecycleDiagnostic('create-window');
+  window.once('ready-to-show', () => lifecycleDiagnostic('ready-to-show'));
   drafts.beginMigration(window.webContents);
   window.webContents.on('page-title-updated', event => { event.preventDefault(); if (window && !window.isDestroyed()) window.setTitle('Flowrium'); });
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -135,7 +173,8 @@ function createWindow() {
   });
   window.on("closed", () => {
     if (security?.state().hasPin) security.lock("closed");
-    window = null;
+    if (window === createdWindow) window = null;
+    lifecycleDiagnostic('closed');
   });
   if (DEV_URL && !app.isPackaged) {
     const url = new URL(DEV_URL);
@@ -148,15 +187,18 @@ function createWindow() {
   } else window.loadURL(productionUrl);
 }
 async function launch() {
+  lifecycleDiagnostic('launch-start');
   await acknowledgeUpdateLaunch(app, "starting");
   const { Security, registerSecurity } = require("./security.cjs");
   security = new Security(app.getPath("userData"));
   await security.load();
+  lifecycleDiagnostic('security-ready');
   const store = new Store(app.getPath("userData"));
   try {
     const recovered=await require('./migration.cjs').recoverMigrations(app.getPath('userData'));
     if(recovered.some(row=>row.status==='recovery-required'))throw Error('자료 이관 복구가 완료되지 않았습니다. 원본과 백업을 보존하고 복구 결과를 확인해 주세요. / '+path.join(app.getPath('userData'),'migration-records'));
     await store.load();
+    lifecycleDiagnostic('store-ready');
   } catch (error) {
     dialog.showErrorBox("Flowrium 작업 공간 확인", error.message);
     app.quit();
@@ -285,7 +327,7 @@ async function launch() {
     controller, powerMonitor, powerSaveBlocker, Notification,
     busy: () => codexTransfer?.isBusy() || teamGitBusy() || teamRuntime.isBusy() || workflowRuntime?.isBusy() || controller.runs.size > 0 || controller.editingSessions.size > 0 || controller.analysisRuns?.size > 0,
     ready: async () => { await drafts.migration; await acknowledgeUpdateLaunch(app, "ready"); },
-    focus: () => { if (!window) createWindow(); if (window.isMinimized()) window.restore(); window.show(); window.focus(); },
+    focus: ensureWindow,
   });
   const remote = require("./remote.cjs").registerRemote(register, {
     store, controller, handlers: apiHandlers, isLocked: () => security.locked || security.loggingOut,
@@ -362,6 +404,7 @@ async function launch() {
     await store.syncConversationOwner?.();
     const snapshot = { ...store.snapshot(), version: displayVersion(app.getVersion()), platform: process.platform };
     await acknowledgeUpdateLaunch(app, "ready");
+    lifecycleDiagnostic('bootstrap-ready');
     return snapshot;
   });
   register("chooseProject", async () => {
@@ -521,25 +564,23 @@ async function launch() {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
-  createWindow();
+  launchComplete = true;
+  ensureWindow();
   updater.start();
-  app.on("activate", () => {
-    if (!window) createWindow();
-  });
 }
 const lock = app.requestSingleInstanceLock();
 if (!lock) app.quit();
 else {
   app.on("second-instance", () => {
-    if (window) {
-      if (window.isMinimized()) window.restore();
-      window.focus();
-    }
+    lifecycleDiagnostic('second-instance');
+    ensureWindow();
   });
+  app.on("activate", () => { lifecycleDiagnostic('activate'); ensureWindow(); });
   app
     .whenReady()
     .then(launch)
     .catch((error) => {
+      lifecycleDiagnostic('launch-failed');
       dialog.showErrorBox("Flowrium 실행 오류", error.message);
       app.quit();
     });
@@ -552,10 +593,11 @@ else {
     if (quitting || !controller) return;
     event.preventDefault();
     quitting = true;
+    lifecycleDiagnostic('quit-start');
     if (window && !window.isDestroyed()) window.setEnabled(false);
     Promise.allSettled([externalRepositoryAccess?.shutdown(),dotsRuntime?.shutdown(),workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.(), projectPorts?.shutdown(), codexTransfer?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
-      .then(() => teamRuntime?.flush())
-      .then(() => drafts.queue)
-      .finally(() => app.quit());
+      .then(() => { lifecycleDiagnostic('quit-services-finished'); return teamRuntime?.flush(); })
+      .then(() => { lifecycleDiagnostic('quit-teams-finished'); return drafts.queue; })
+      .finally(() => { lifecycleDiagnostic('quit-finished'); app.quit(); });
   });
 }

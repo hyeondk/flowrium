@@ -53,7 +53,6 @@ async function main() {
         .evaluateAll((nodes) => nodes.map((n) => n.getAttribute("aria-label"))),
       [
         "대시보드",
-        "일정",
         "프로젝트 추가",
         "산출물",
         "완료",

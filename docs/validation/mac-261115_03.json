@@ -1,0 +1,318 @@
+{
+  "version": "261115_03",
+  "nativeVersion": "26.11.1503",
+  "validatedDate": "2026-11-15",
+  "source": "858441eaa0944f3c3fed58262709130cf90ff016",
+  "buildSource": "858441eaa0944f3c3fed58262709130cf90ff016",
+  "platform": "darwin-arm64",
+  "validationStatus": "진행 중인 공개 검증 초안",
+  "releaseStatus": "최종 패키지와 실제 설치 확인 진행 중",
+  "published": false,
+  "release": null,
+  "publicSourceSha256": null,
+  "releaseAssetsVerified": 0,
+  "unit": {
+    "tests": 320,
+    "passed": 320,
+    "failed": 0,
+    "skipped": 0,
+    "evidence": "unit-model-google-removal-final.log",
+    "scope": "합성 자료 기반 단위 검사 / 실제 사용자 계정의 모델 요청과 구분"
+  },
+  "functionalRegression": {
+    "initial": {
+      "suiteCount": 15,
+      "passed": 13,
+      "failed": 2,
+      "results": [
+        {
+          "file": "navigation-layout-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "dock-layout-modes-e2e.cjs",
+          "passed": false
+        },
+        {
+          "file": "dots-view-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "external-integrations-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "link-delivery-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "desktop-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "project-shortcuts-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "drafts-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "decision-continuation-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "trash-purge-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "ui-motion-e2e.cjs",
+          "passed": false
+        },
+        {
+          "file": "workspace-interactions-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "settings-layout-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "feature-surfaces-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "message-content-e2e.cjs",
+          "passed": true
+        }
+      ],
+      "failuresRetainedForTransparency": true
+    },
+    "followup": {
+      "suiteCount": 6,
+      "passed": 6,
+      "failed": 0,
+      "results": [
+        {
+          "file": "dock-layout-modes-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "dots-view-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "dock-resize-motion-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "ui-motion-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "memory-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "feature-surfaces-e2e.cjs",
+          "passed": true
+        }
+      ],
+      "resolvedInitialFailures": [
+        "dock-layout-modes-e2e.cjs",
+        "ui-motion-e2e.cjs"
+      ]
+    },
+    "finalSourceRecheck": {
+      "source": "858441eaa0944f3c3fed58262709130cf90ff016",
+      "suiteCount": 7,
+      "passed": 7,
+      "failed": 0,
+      "results": [
+        {
+          "file": "navigation-layout-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "workspace-interactions-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "decision-continuation-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "trash-purge-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "dock-resize-motion-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "settings-layout-e2e.cjs",
+          "passed": true
+        },
+        {
+          "file": "feature-surfaces-e2e.cjs",
+          "passed": true
+        }
+      ],
+      "evidence": "mac-858441.json"
+    },
+    "syntheticProfilesOnly": true,
+    "controlledLocalNativeModels": true,
+    "realExternalAccountCoverageClaimed": false,
+    "allThemeCombinationsClaimed": false
+  },
+  "package": {
+    "architecture": "arm64",
+    "finalArtifactsComplete": false,
+    "finalArtifactVerificationStatus": "최종 ZIP 정적·서명·Helper·개인정보·자체 제품 파일 대조 완료 / 나머지 패키지와 일반 실행 검증 대기",
+    "adHoc": true,
+    "developerIdSigned": false,
+    "appleNotarized": false,
+    "gatekeeperAccepted": false,
+    "gatekeeperEvaluationPerformed": true,
+    "gatekeeperNote": "최종 ZIP에서 추출한 앱에 실제 Gatekeeper 평가를 수행해 거절을 확인 / 임시 서명 무결성 통과와 Apple 공증 부재를 구분",
+    "dmgIntegrityVerified": null,
+    "zipAndDmgProductsIdentical": null,
+    "signatureIntegrityVerified": true,
+    "sourceFilesCompared": 99,
+    "sourceFilesByteIdentical": 97,
+    "artifacts": [
+      {
+        "name": "Flowrium-261115_03-mac-arm64.zip",
+        "size": 356512467,
+        "sha256": "fe0ea2c36741811ef94c6f4ad68d6e91bb5bdcc6a1d94ac50b1de7f962ac177d",
+        "sizeVerified": true,
+        "sha256Verified": true
+      },
+      {
+        "name": "Flowrium-261115_03-mac-arm64.dmg",
+        "size": 368527694,
+        "sha256": "a0f5ffebfca7b7432c8a1685f75b59dd9259eb6a187133176581463c0539cee9",
+        "sizeVerified": true,
+        "sha256Verified": true
+      }
+    ],
+    "unsignedAutomaticReplacementRejected": true,
+    "manualDownloadPageVerified": true,
+    "nativeUpdateReadinessAndRollbackVerified": true,
+    "updateValidationScope": "실제 설치 앱 경로를 명시한 격리 검사 / 미공증 ZIP의 자동 교체 거절과 수동 다운로드 / 네이티브 교체 도우미 준비 및 이전 앱 복원",
+    "teamIdentifierPresent": false,
+    "sourceFileMatch": {
+      "passed": true,
+      "productFiles": 99,
+      "compared": 99,
+      "byteIdentical": 97,
+      "packagingMetadataOnly": 1,
+      "codeIdenticalSignatureOnly": 1,
+      "lineEndingsOnly": 0,
+      "missing": 0,
+      "unexpected": 0,
+      "differences": 0,
+      "note": "97개는 바이트 동일 / package.json 1개는 빌드 메타데이터만 정리 / 기본 앱 도우미 1개는 서명과 LINKEDIT 크기 정보를 제외한 실행 코드 동일 / 모바일 형식 선언 파일은 빌더 기본 제외 정책으로 실행 코드가 아님"
+    }
+  },
+  "localInstallation": {
+    "installerCompleted": true,
+    "installedPublicVersionConfirmed": "261115_03",
+    "installedBinaryTerminalAndDocumentProbePassed": true,
+    "terminalDocumentsScope": "설치된 앱 실행 파일을 격리 프로필로 실행해 터미널 / PDF와 PPTX 생성·읽기 / 기본 앱 도우미 번들을 확인",
+    "actualPrivateProfileFinalReadCheckStatus": "진행 중 / 완료 결과 미수신",
+    "actualPrivateProfileFinalReadCheckPassed": null,
+    "actualAccountConnectionRetained": null,
+    "installedIconVisuallyVerified": null,
+    "appNormallyQuitAfterFinalPrivateCheck": null,
+    "evidence": "mac-installed-tests.json",
+    "privateProfileAndSyntheticTestsDistinguished": true,
+    "installedBinaryProbeFinalSourceVerified": false,
+    "installedBinaryProbeTiming": "기록된 설치본 도구 검사는 최종 소스 고정 전 수행 / 최종 재설치와 개인 프로필 확인은 별도 진행",
+    "defaultLaunchVerificationPassed": null,
+    "defaultLaunchVerificationStatus": "자동화 실행에서 실제 기본 프로필 읽기는 확인 / 무인수 일반 실행의 창 생성 지연은 별도 진단 중"
+  },
+  "applicationCatalog": {
+    "helperEntriesInObservedCatalog": 0,
+    "canonicalAppRecordsInObservedCatalog": 1,
+    "existingTemporaryRecordsInObservedCatalog": 0,
+    "evidence": "flowrium-ls-records.json의 비식별 요약만 반영",
+    "finalPackageHelperStaticVerificationStatus": "완료",
+    "helperBackgroundFlagsVerified": true,
+    "globalDatabaseResetClaimed": false,
+    "packagedHelperCount": 4,
+    "packagedHelpersAllArm64": true
+  },
+  "privacy": {
+    "gitScan": {
+      "passed": true,
+      "checked": {
+        "git": 461,
+        "asar": 0,
+        "resources": 0,
+        "source": 0
+      },
+      "findings": {
+        "sensitivePaths": 0,
+        "markerPaths": 0,
+        "markerFiles": 0,
+        "markerMatches": 0,
+        "unsafeEntries": 0,
+        "unreadable": 0,
+        "buildPolicy": 0,
+        "archivePolicy": 0
+      },
+      "privateMarkerComparisonPassed": true,
+      "markerCount": 33
+    },
+    "finalPackageScanStatus": "통과",
+    "finalSourceArchiveScanStatus": "대기",
+    "personalConversationOrIdentifiersIncludedInReceipt": false,
+    "privateMarkerContentsIncluded": false,
+    "scope": "공개 문서에는 집계만 기록 / Git 소스 검사 결과와 최종 ASAR·리소스·소스 압축 검사를 구분",
+    "finalPackageScan": {
+      "passed": true,
+      "checked": {
+        "git": 0,
+        "asar": 1425,
+        "resources": 2305,
+        "source": 0
+      },
+      "findings": {
+        "sensitivePaths": 0,
+        "markerPaths": 0,
+        "markerFiles": 0,
+        "markerMatches": 0,
+        "unsafeEntries": 0,
+        "unreadable": 0,
+        "buildPolicy": 0,
+        "archivePolicy": 0
+      },
+      "privateMarkerComparisonPassed": true,
+      "markerCount": 33,
+      "skippedVendorBinaryBodies": 11,
+      "scope": "최종 Mac ZIP에서 추출한 ASAR와 리소스 / 표식 값은 공개하지 않음"
+    }
+  },
+  "validationScope": {
+    "isolatedProfiles": true,
+    "actualLocalInstalledBinaryExecuted": true,
+    "allExternalAccountsAndDevicePermissionsVerified": false,
+    "paidModelRequestsInRecordedSyntheticChecks": false,
+    "googleOAuthOrDataApiIntegrationClaimed": false,
+    "dotsAuthenticatedConversationVerified": false,
+    "dotsCurrentReleaseAnonymousPageCheckRecorded": false,
+    "note": "개발 중 화면 회귀 / 격리 설치본 검사 / 실제 개인 프로필 읽기 확인을 구분하며 미수신 결과를 완료로 기록하지 않음"
+  },
+  "recoveryLimits": [
+    "이관하거나 연결한 첨부는 원본 파일의 실제 보존과 접근 가능 여부에 영향을 받습니다.",
+    "로컬 원본이 없는 첨부나 외부 서비스의 미수집 기록을 자동으로 재생성하거나 완전 복원한다고 보장하지 않습니다."
+  ],
+  "pendingMetadata": [
+    "최종 DMG 무결성 / ZIP·DMG 제품 일치 / 남은 패키지 검사",
+    "무인수 일반 실행의 창 생성 지연 진단 / 최종 개인 프로필과 아이콘 읽기 확인 및 정상 종료 결과",
+    "최종 소스 압축 SHA-256과 소스 압축 개인정보 검사",
+    "공개 태그와 릴리스 자산 검증 / 게시 상태"
+  ],
+  "windowsIndependentInstallationStatus": "별도 Windows 검증 문서에서 기록"
+}

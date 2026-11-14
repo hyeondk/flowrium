@@ -78,7 +78,8 @@
 .conversation-dock .composer .model-select .small-codex-icon{display:none}
 .conversation-dock .chat-run-controls{gap:6px;flex:none;align-items:center}
 .app-shell .conversation-dock .composer .send-button{width:36px;height:36px;min-width:36px;min-height:36px;padding:0;border-radius:12px;display:grid;place-items:center;background:var(--primary-gradient);color:var(--on-primary);border:0}
-.conversation-dock .composer-footnote{max-width:1120px;margin:0 auto;font-size:10px;line-height:18px;padding:6px 2px 0;gap:8px;min-height:0}
+.app-shell .conversation-dock .composer-area>.chat-continuation{padding-block:4px}
+.conversation-dock .composer-footnote{max-width:1120px;margin:0 auto;font-size:10px;line-height:18px;padding:4px 2px 0;gap:8px;min-height:0}
 .conversation-dock .composer-footnote>span{font-size:10px;line-height:18px}
 .conversation-dock .composer-footnote>span:first-child{gap:5px;min-width:0;display:flex;align-items:center}
 .conversation-dock .composer-footnote>span:first-child>svg{flex:none}
@@ -92,4 +93,5 @@
 @media(max-width:760px){.conversation-dock[data-chat-active=true]>.dock-status-tabs{left:82px;right:82px;gap:2px}.conversation-dock[data-chat-active=true]>.dock-status-tabs>button{font-size:10px;gap:4px;padding:3px 4px}.conversation-dock[data-chat-active=true]>.dock-heading>div:first-child>div{display:none}}
 @media(max-width:360px){.conversation-dock[data-chat-active=true]>.dock-status-tabs{left:78px;right:78px;gap:0}.conversation-dock[data-chat-active=true]>.dock-status-tabs>button{font-size:9px;gap:3px;padding:3px}.conversation-dock[data-chat-active=true]>.dock-status-tabs strong{font-size:10px}.conversation-dock[data-chat-active=true]>.dock-status-tabs i{width:4px;height:4px}}
 @media(max-width:760px) and (max-height:650px){.conversation-dock[data-chat-active=true]>.dock-heading{height:44px;min-height:44px;padding-block:4px}.conversation-dock[data-chat-active=true] .session-heading{min-height:44px;padding-block:6px}.conversation-dock[data-chat-active=true] .session-heading>div:first-child{flex:1;min-width:0}.conversation-dock[data-chat-active=true] .session-heading h2{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.conversation-dock .has-session .composer-footnote{display:none}.app-shell .conversation-dock .has-session .composer-area{padding-block:8px}.conversation-dock .codex-link-bar{padding-block:2px}}
+@media(max-width:360px) and (max-height:650px){.app-shell .conversation-dock .has-session .composer-area{padding-block:6px}.app-shell .conversation-dock .composer{padding:4px 10px}.app-shell .conversation-dock .composer textarea{height:42px;min-height:42px}.conversation-dock .composer-toolbar{padding-top:0}}
 @media(prefers-reduced-motion:reduce){.app-shell[data-chat-focus=true]>.conversation-dock{animation:none!important}}

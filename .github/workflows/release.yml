@@ -61,7 +61,7 @@ jobs:
       - name: 신규 기능별 실제 앱 검사
         run: |
           result=0
-          for feature in migration voice-servers project-ports portfolio-reports-popup codex-transfer settings-layout long-conversation chat-layout navigation-layout feature-surfaces message-content workspace-interactions external-integrations dots-view dock-layout-modes trash-ui project-shortcuts repository-completion external-repositories decision-continuation trash-purge dock-resize-motion
+          for feature in migration voice-servers project-ports portfolio-reports-popup codex-transfer settings-layout long-conversation chat-layout navigation-layout feature-surfaces message-content workspace-interactions external-integrations dots-view dock-layout-modes trash-ui project-shortcuts repository-completion external-repositories decision-continuation trash-purge dock-resize-motion decision-notice-layout window-lifecycle
           do
             if ! node "tests/${feature}-e2e.cjs"
             then
@@ -377,6 +377,14 @@ jobs:
         id: verify_37
         continue-on-error: true
         run: node tests/chat-continuation-native-e2e.cjs
+      - name: 결정 알림과 헤더 포인터 접근
+        id: verify_38
+        continue-on-error: true
+        run: node tests/decision-notice-layout-e2e.cjs
+      - name: 앱 창 닫힘과 재실행
+        id: verify_39
+        continue-on-error: true
+        run: node tests/window-lifecycle-e2e.cjs
       - name: 모든 검증 결과 확인
         if: ${{ !cancelled() }}
         env:
