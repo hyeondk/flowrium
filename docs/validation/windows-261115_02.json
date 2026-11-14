@@ -298,5 +298,7 @@
   "releaseAssetsVerified": 9,
   "publicSourceSha256": "0c326215a675461ba3c71aebebcfe61c47e180e74445236f449c4e89280b51fa",
   "sourceFollowupPending": false,
-  "sourceProductFilesUnchangedSinceBuild": true
+  "sourceProductFilesUnchangedSinceBuild": true,
+  "downloadPageVerificationPassed": true,
+  "downloadPage": "https://hyeondk.github.io/flowrium/"
 }

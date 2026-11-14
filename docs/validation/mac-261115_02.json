@@ -252,5 +252,7 @@
     "finderApplicationsViewChecked": true,
     "globalDatabaseReset": false
   },
-  "sourceProductFilesUnchangedSinceBuild": true
+  "sourceProductFilesUnchangedSinceBuild": true,
+  "downloadPageVerificationPassed": true,
+  "downloadPage": "https://hyeondk.github.io/flowrium/"
 }
