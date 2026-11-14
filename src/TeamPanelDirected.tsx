@@ -79,7 +79,7 @@ export function TeamRunOptions({
               결정이 필요한 사항
               <textarea
                 rows={2}
-                placeholder="예산 변경 / 화면 변경 / 외부 공개"
+                placeholder="예산 변경, 화면 변경, 외부 공개 등"
                 value={(options.decideOn || []).join("\n")}
                 onChange={(e) => set({ decideOn: e.target.value.split("\n") })}
               />
@@ -135,13 +135,13 @@ export function TeamRunOptions({
               />
               모든 담당자가 마치면 팀장에게 종합 보고 요청
             </label>
-            <fieldset><legend>선택한 범위의 자동 운영</legend><p>켜기 전에는 자동 배부와 보완을 진행하지 않습니다. 설정한 횟수와 시간 / 토큰 한도 안에서 실제 AI 대화를 실행합니다.</p>
+            <fieldset><legend>선택한 범위의 자동 운영</legend><p>켜기 전에는 자동 배부와 보완을 진행하지 않습니다. 설정한 횟수와 시간, 토큰 한도 안에서 실제 AI 대화를 실행합니다.</p>
               {strategy==="plan"&&<label className="team-check"><AnimatedSwitch checked={!!options.autoDispatch} onChange={e=>set({autoDispatch:e.target.checked})}/>팀장 배정안이 나오면 등록한 역할에 자동 배부</label>}
               <label className="team-check"><AnimatedSwitch checked={!!options.autoPM} onChange={e=>set({autoPM:e.target.checked})}/>결과를 팀장이 검토하고 필요한 과업 추가 배정</label>
               <label>추가 배정 한도<select value={options.maxPMRounds||2} onChange={e=>set({maxPMRounds:Number(e.target.value)})}>{[1,2,3,5,10].map(n=><option key={n} value={n}>{n}회</option>)}</select></label>
               <label className="team-check"><AnimatedSwitch checked={!!options.autoQA} onChange={e=>set({autoQA:e.target.checked})}/>검수 반려 사항을 구현 담당자에게 보내 보완 후 재검수</label>
               <label>자동 보완 한도<select value={options.maxQaRounds||3} onChange={e=>set({maxQaRounds:Number(e.target.value)})}>{[1,2,3,5,10].map(n=><option key={n} value={n}>{n}회</option>)}</select></label>
-              {options.isolate&&<><label className="team-check"><AnimatedSwitch checked={!!options.autoIntegrate} onChange={e=>set({autoIntegrate:e.target.checked})}/>역할의 변경을 커밋하고 통합 브랜치에 병합 / 충돌 시 결정 요청</label>
+              {options.isolate&&<><label className="team-check"><AnimatedSwitch checked={!!options.autoIntegrate} onChange={e=>set({autoIntegrate:e.target.checked})}/>역할의 변경을 커밋하고 통합 브랜치에 병합 (충돌 시 결정 요청)</label>
                 <label>통합 보완 담당<select value={options.integrationRoleIndex??""} onChange={e=>set({integrationRoleIndex:e.target.value===""?null:Number(e.target.value)})}>
                   <option value="">통합 후 사용자가 검토</option>{roles.map((role,index)=>role.mode==="build"&&<option key={index} value={index}>{role.name}</option>)}
                 </select></label></>}
@@ -318,7 +318,7 @@ function Worker({
           {n.steps.length > 0 && (
             <details>
               <summary>
-                진행 단계 {n.stepsDone} / {n.steps.length}
+                진행 단계 {n.stepsDone}개 (전체 {n.steps.length}개)
               </summary>
               <ol>
                 {n.steps.map((step, i) => (
@@ -477,7 +477,7 @@ function Decision({
       <strong>{q.question}</strong>
       {q.why && <p>{q.why}</p>}
       {q.answer ? (
-        <p>선택한 답 / {q.answer}</p>
+        <p>선택한 답: {q.answer}</p>
       ) : (
         <>
           <div className="team-node-actions">
@@ -548,8 +548,8 @@ export function DirectedBoard({
         <p>{run.prompt}</p>
         <small>
           {d.tokens.toLocaleString("ko-KR")} 토큰
-          {d.budget > 0 ? " / 한도 " + d.budget.toLocaleString("ko-KR") : ""}
-          {d.minutes > 0 ? " / " + d.minutes + "분" : ""}
+          {d.budget > 0 ? " (한도 " + d.budget.toLocaleString("ko-KR") + ")" : ""}
+          {d.minutes > 0 ? " (" + d.minutes + "분)" : ""}
         </small>
       </header>
       <div className="team-node-actions">
@@ -609,7 +609,7 @@ export function DirectedBoard({
         )}
       </div>
       {d.attachments.length > 0 && (
-        <p>참고 자료 / {d.attachments.join(" / ")}</p>
+        <p>참고 자료: {d.attachments.join(", ")}</p>
       )}
       {d.decisions.length > 0 && (
         <div>
@@ -668,7 +668,7 @@ export function DirectedBoard({
           {[...d.notes].reverse().map((m, i) => (
             <div className="team-log" key={i}>
               <b>
-                {m.from} → {m.to} / {m.type}
+                {m.from} → {m.to} ({m.type})
               </b>
               <p>{m.text}</p>
             </div>

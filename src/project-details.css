@@ -11,3 +11,18 @@
 .pd-add input { flex: 1; } .pd-body button:hover:enabled { background: var(--panel-alt); }
 .pd-error { margin-top: 8px; color: var(--danger); font-size: 13px; word-break: keep-all; }
 @media(max-width: 580px) { .pd-fields { grid-template-columns: 1fr; } }
+
+/* 프로젝트의 요약 / 목표 / 체크리스트를 안정된 간격으로 정리합니다. */
+.project-details.project-details { margin:20px 0; padding:20px; border-color:var(--line-soft); border-radius:12px; background:var(--panel); font-size:13px; line-height:22px; }
+.project-details > summary { font-size:14px; line-height:24px; font-weight:700; }
+.project-details > summary span { display:inline-block; font-size:12px; line-height:20px; margin-left:12px; }
+.project-details .pd-body { margin-top:20px; gap:20px; }.project-details .pd-body form { gap:16px; }.project-details .pd-body label { gap:8px; font-size:13px; line-height:22px; }
+.project-details .pd-fields { grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); gap:16px; }
+.project-details .pd-body :is(input:not([type=checkbox]),textarea) { min-height:40px; padding:8px 12px; border-radius:10px; border-color:var(--line); font-size:13px; line-height:22px; background:var(--input); }
+.project-details .pd-body form > button { justify-self:end; min-height:40px; border-radius:10px; border-color:transparent; background:var(--primary-gradient); color:var(--on-primary); padding:8px 14px; }
+.project-details .pd-checklist { gap:8px; }.project-details .pd-checklist h3 { margin:0 0 8px; font-size:15px; line-height:24px; }
+.project-details .pd-check { gap:12px; min-height:44px; padding:8px 0; border-bottom:1px solid var(--line-soft); }
+.project-details .pd-check > label { min-width:0; line-height:22px; gap:10px; }.project-details .pd-check .ui-checkbox-control { flex:none; }
+.project-details .pd-check > button { margin-left:auto; flex:none; min-height:32px; padding:4px 8px; border-color:transparent; background:transparent; }
+.project-details .pd-add { margin-top:8px; gap:8px; }.project-details .pd-add > button { min-height:40px; padding:8px 12px; border-radius:10px; flex:none; }
+@media(max-width:600px) { .project-details.project-details { padding:16px; }.project-details > summary span { margin-left:0; display:block; padding-left:18px; } }

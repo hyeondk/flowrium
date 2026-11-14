@@ -40,7 +40,7 @@ export default function MessageHistory({messages,scrollRef,stickToBottom,renderM
  }
  return <>
   {messages.length>PAGE&&<div className="message-history-controls" ref={controls} role="region" aria-label="대화 표시 범위">
-   <p role="status">전체 {messages.length.toLocaleString('ko-KR')}개 / 이전 {first.toLocaleString('ko-KR')}개 남음</p>
+   <p role="status">대화 {messages.length.toLocaleString('ko-KR')}개 (이전 {first.toLocaleString('ko-KR')}개)</p>
    <div>{first>0&&<button type="button" className="button subtle" onClick={previous}><History size={14}/>이전 메시지 {Math.min(PAGE,first)}개 더 보기</button>}<button type="button" className="button subtle" onClick={recent}><ArrowDown size={14}/>최근 메시지로</button></div>
   </div>}
   <div className="message-history-items" ref={content}>{messages.slice(first).map(renderMessage)}</div>

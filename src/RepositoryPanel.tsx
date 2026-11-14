@@ -23,8 +23,8 @@ export default function RepositoryPanel({project}:{project:Project}) {
   }
   useEffect(()=>{ void action({action:"changes"}); },[project.id,repositoryId]);
   const review=(label:string,action:RepoAction)=>setConfirm({label,action});
-  return <div className="page-scroll"><div className="page-inner repo-actions"><h1>형상관리</h1><p>{project.name}</p>
-    <label>작업할 저장소<select aria-label="형상관리 저장소" value={repositoryId} onChange={e=>setRepository(e.target.value)}>{repositories.filter(r=>!r.hidden).map(r=><option value={r.id} key={r.id}>{r.name} / {r.path}</option>)}</select></label>
+  return <div className="page-scroll"><div className="page-inner repo-actions repo-page"><header className="repo-page-heading ui-title-stagger"><h1>형상관리</h1><p>{project.name}</p></header>
+    <label>작업할 저장소<select aria-label="형상관리 저장소" value={repositoryId} onChange={e=>setRepository(e.target.value)}>{repositories.filter(r=>!r.hidden).map(r=><option value={r.id} key={r.id}>{r.name} ({r.path})</option>)}</select></label>
     <RepositoryFlowPanel project={project}/><RepositoryInspection key={project.id+repositoryId} id={project.id} repositoryId={repositoryId}/><fieldset disabled={busy}><div className="wb-tools"><button className="wb-secondary" onClick={()=>action({action:"terminal"})}>프로젝트 터미널 열기</button><button className="wb-secondary" onClick={()=>action({action:"changes"})}>변경 파일 새로 고침</button></div>
     <h2>변경 파일</h2>{files.length===0 && <p>선택할 변경 파일이 없습니다.</p>}
     {files.map(f=><label className="repo-file" key={f.file}><AnimatedCheckbox checked={selected.includes(f.file)} onChange={e=>select(e.target.checked?[...selected,f.file]:selected.filter(v=>v!==f.file))}/><code>{f.code}</code>{f.file}</label>)}
@@ -32,7 +32,7 @@ export default function RepositoryPanel({project}:{project:Project}) {
     <div className="wb-tools"><button className="wb-secondary" disabled={!selected.length} onClick={()=>action({action:"diff",files:selected})}>차이 보기</button><button className="wb-secondary" disabled={!selected.length||!title.trim()} onClick={()=>review(`파일 ${selected.length}개 커밋`,{action:"commit",files:selected,message:title})}>선택한 파일 커밋</button>
     <button className="wb-secondary" onClick={()=>review("현재 브랜치를 origin으로 푸시",{action:"push"})}>브랜치 푸시</button></div>
     <h2>GitHub 변경 요청</h2><button className="wb-secondary" onClick={()=>action({action:"prs"})}>열린 요청 조회</button>
-    {prs.map(pr=><div className="repo-pr" key={pr.number}><span>#{pr.number} / {pr.title} / {pr.headRefName} → {pr.baseRefName}</span><button className="wb-secondary" onClick={()=>review(`#${pr.number} 요청을 ${pr.baseRefName}에 병합`,{action:"merge",number:pr.number,head:pr.headRefOid})}>병합</button></div>)}
+    {prs.map(pr=><div className="repo-pr" key={pr.number}><span>#{pr.number} {pr.title} ({pr.headRefName} → {pr.baseRefName})</span><button className="wb-secondary" onClick={()=>review(`#${pr.number} 요청을 ${pr.baseRefName}에 병합`,{action:"merge",number:pr.number,head:pr.headRefOid})}>병합</button></div>)}
     <label>대상 브랜치<input value={base} onChange={e=>setBase(e.target.value)}/></label><label>변경 요청 설명<textarea value={body} onChange={e=>setBody(e.target.value)}/></label>
     <button className="wb-secondary" disabled={!base.trim()||!body.trim()||!title.trim()} onClick={()=>review(`${base} 브랜치로 변경 요청 생성`,{action:"createPR",base,body,title})}>변경 요청 만들기</button>
     {confirm && <section role="alert"><strong>{confirm.label}</strong><div className="wb-tools"><button className="wb-primary" onClick={()=>action(confirm.action)}>확인하고 실행</button><button className="wb-secondary" onClick={()=>setConfirm(undefined)}>취소</button></div></section>}

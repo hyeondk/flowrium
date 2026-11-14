@@ -1,6 +1,6 @@
 {
   "name": "flowrium",
-  "version": "26.11.1401",
+  "version": "26.11.1402",
   "private": true,
   "description": "프로젝트마다 독립된 AI 업무 대화를 운영하는 데스크톱 앱",
   "author": "hyeondk",
@@ -50,7 +50,7 @@
     "appId": "io.github.hyeondk.flowrium",
     "productName": "Flowrium",
     "beforePack": "./scripts/build-native.cjs",
-    "artifactName": "Flowrium-261114_01-${os}-${arch}.${ext}",
+    "artifactName": "Flowrium-261114_02-${os}-${arch}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "assets"
@@ -136,11 +136,11 @@
       }
     ],
     "extraMetadata": {
-      "flowriumVersion": "261114_01"
+      "flowriumVersion": "261114_02"
     }
   },
   "overrides": {
     "image-size": "2.0.4"
   },
-  "flowriumVersion": "261114_01"
+  "flowriumVersion": "261114_02"
 }

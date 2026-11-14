@@ -1,1 +1,128 @@
-.integration-panel,.integration-panel p,.integration-panel label,.integration-panel button{word-break:keep-all;overflow-wrap:break-word}.integration-panel fieldset{border:0;padding:0;min-width:0;display:grid;gap:12px}.integration-panel h4{margin:12px 0}.integration-period{display:flex;gap:12px;flex-wrap:wrap}.integration-period label{flex:1;min-width:150px}.integration-event,.integration-review,.integration-body{padding:16px;border:1px solid var(--line,#64748b55);border-radius:12px;margin:14px 0;background:var(--panel,transparent)}.integration-event input,.integration-event textarea,.integration-event select{max-width:100%;min-width:0}.integration-body pre{white-space:pre-wrap;word-break:keep-all;overflow-wrap:break-word;max-height:400px;overflow:auto}.integration-event button{margin-right:8px}.integration-search{flex-wrap:wrap}
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel,
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel {
+  min-width: 0;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  font-size: 13px;
+  line-height: 22px;
+}
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel :is(h3, h4, p),
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel :is(h3, h4, p) { margin: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel h3,
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel h3 { font-size: 15px; line-height: 24px; font-weight: 700; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel h4,
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel h4 { font-size: 14px; line-height: 24px; font-weight: 700; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel > p,
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel > p { margin-top: 6px; color: var(--muted); }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel label,
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel > label {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 0;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 22px;
+}
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel :is(input:not([type=checkbox]):not([type=radio]), select, textarea),
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel :is(input:not([type=checkbox]), select, textarea) { width: 100%; min-width: 0; box-sizing: border-box; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel fieldset { display: grid; gap: 16px; min-width: 0; padding: 0; border: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel fieldset > label { margin: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel :is(details, .integration-event, .integration-review, .integration-body),
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel .settings-card {
+  margin: 20px 0 0;
+  padding: 20px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--card-subtle);
+  min-width: 0;
+}
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel summary { cursor: pointer; font-weight: 700; line-height: 24px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel details > p { margin-top: 10px; color: var(--muted); }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel details > button { display: flex; margin: 16px 0 0 auto; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel :is(.settings-buttons, .button-row, .integration-actions),
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel .settings-buttons {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel :is(.integration-tabs, .native-pim-tabs) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 20px 0 16px;
+  padding: 4px;
+  background: var(--panel-alt);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  width: fit-content;
+  max-width: 100%;
+}
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel :is(.integration-tabs, .native-pim-tabs) > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13px;
+  line-height: 22px;
+}
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel :is(.integration-tabs, .native-pim-tabs) > button[aria-pressed=true] {
+  color: var(--accent-bright);
+  background: var(--panel);
+  box-shadow: 0 1px 3px #081f480a;
+}
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-search,
+:is(.app-shell,.settings-modal,.motion-overlay) .native-pim-search { display: flex; align-items: flex-end; gap: 8px; margin: 16px 0; min-width: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-search > input,
+:is(.app-shell,.settings-modal,.motion-overlay) .native-pim-search > label { flex: 1; min-width: 0; margin: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-search > button,
+:is(.app-shell,.settings-modal,.motion-overlay) .native-pim-search > button { flex: none; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin: 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--line-soft);
+}
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-item > div:first-child { flex: 1; min-width: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-item strong { font-size: 13px; line-height: 22px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-item small { display: block; font-size: 12px; line-height: 20px; color: var(--muted); margin: 4px 0 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-item p { font-size: 13px; line-height: 22px; color: var(--muted); margin-top: 6px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-item .integration-item-actions { display: flex; align-items: center; justify-content: flex-end; gap: 4px; flex-wrap: wrap; flex: 0 1 240px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-item :is(a, button) { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 6px 10px; min-height: 36px; font-size: 12px; line-height: 22px; border-radius: 8px; color: var(--muted); text-decoration: none; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-item a:hover { background: var(--panel-alt); color: var(--text); }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-period { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-period > label { min-width: 0; margin: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-event > h4 { margin-bottom: 16px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-event fieldset > button { justify-self: end; }
+:is(.app-shell,.settings-modal,.motion-overlay) .native-pim-toggle { display: flex; margin: 16px 0 0 auto; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-review { background: var(--panel); }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-review > p { margin: 6px 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-review .integration-actions { margin-top: 16px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-body pre { max-height: 400px; overflow: auto; white-space: pre-wrap; word-break: keep-all; overflow-wrap: normal; margin: 12px 0 0; font-family: inherit; font-size: 13px; line-height: 22px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .integration-panel .empty-hint { padding: 16px; margin-top: 16px; border-radius: 10px; background: var(--card-subtle); }
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel .mobile-device-settings { border-top: 1px solid var(--line-soft); padding-top: 20px; margin-top: 24px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel .mobile-device-settings > p { margin-top: 6px; color: var(--muted); }
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel .device-preferences { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 20px; margin-top: 12px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel .device-preferences > label { padding: 10px 0; border-bottom: 1px solid var(--line-soft); min-width: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .remote-panel > label > button { justify-self: end; }
+@media (max-width: 600px) {
+  :is(.app-shell,.settings-modal,.motion-overlay) .integration-panel :is(details, .integration-event, .integration-review, .integration-body),
+  :is(.app-shell,.settings-modal,.motion-overlay) .remote-panel .settings-card { padding: 16px; }
+  :is(.app-shell,.settings-modal,.motion-overlay) .integration-item { flex-direction: column; gap: 12px; }
+  :is(.app-shell,.settings-modal,.motion-overlay) .integration-item .integration-item-actions { flex: none; width: 100%; }
+  :is(.app-shell,.settings-modal,.motion-overlay) .integration-period,
+  :is(.app-shell,.settings-modal,.motion-overlay) .remote-panel .device-preferences { grid-template-columns: minmax(0,1fr); }
+  :is(.app-shell,.settings-modal,.motion-overlay) .native-pim-search { flex-wrap: wrap; }
+  :is(.app-shell,.settings-modal,.motion-overlay) .native-pim-search > label { flex-basis: 100%; }
+  :is(.app-shell,.settings-modal,.motion-overlay) .native-pim-search > button { margin-left: auto; }
+}

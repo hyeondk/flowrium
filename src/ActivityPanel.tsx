@@ -100,7 +100,7 @@ export function ActivityPanel({ projects, sessions, activities, approvals, propo
       {system && <><dl className="activity-metrics">
         <div><dt>전체 CPU 사용률</dt><dd>{system.cpuPercent === null ? "측정 대기" : system.cpuPercent + "%"}</dd></div>
         <div><dt>논리 코어</dt><dd>{system.logicalCores}개</dd></div>
-        <div><dt>여유 메모리 / 전체</dt><dd>{gigabytes(system.freeMemoryBytes)} / {gigabytes(system.totalMemoryBytes)}</dd></div>
+        <div><dt>여유 메모리 (전체 용량)</dt><dd>{gigabytes(system.freeMemoryBytes)} ({gigabytes(system.totalMemoryBytes)})</dd></div>
       </dl><small>최근 측정 {clock(system.measuredAt)}</small></>}
       {!system && !systemError && <p>{api ? "시스템 정보를 읽고 있습니다." : "데스크톱 앱에서 확인할 수 있습니다."}</p>}
       {systemError && <p role="alert">{systemError}</p>}
@@ -119,7 +119,7 @@ export function ActivityPanel({ projects, sessions, activities, approvals, propo
         const request = latestRequest(session);
         const project = projects.find(value=>value.id===session.projectId);
         return <li key={session.id}><div>
-          <small>{session.scope==='general'?'일반 대화':session.scope==='integrated'?'통합 채팅':project?.name || "프로젝트"} / <ExecutionBadge state={state}/></small>
+          <small>{session.scope==='general'?'일반 대화':session.scope==='integrated'?'통합 채팅':project?.name || "프로젝트"} <ExecutionBadge state={state}/></small>
           <h3>{session.title}</h3>{request && <p className="activity-request">{request.slice(0,300)}</p>}
         </div><div className="activity-buttons">
           <button className="button subtle" onClick={()=>onOpen(session)}><MessageSquare size={14}/>대화 열기</button>

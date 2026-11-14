@@ -32,3 +32,34 @@
 .team-node-head span, .team-directed small {color:var(--muted);font-size:12px;}
 .team-node-actions button {font-size:12px;} .team-log {padding:10px 0;border-bottom:1px solid var(--line-soft); font-size:12px;}
 .team-report p {overflow-wrap:anywhere;} .team-decision {margin-bottom:8px;display:grid;gap:7px;}
+
+/* 팀 설정 / 배정 / 실행 결과를 일정한 폼과 카드로 표시합니다. */
+.team-panel.team-panel { margin:20px 0; padding:20px; border-color:var(--line-soft); border-radius:12px; background:var(--panel); font-size:13px; line-height:22px; }
+.team-panel .team-head { align-items:flex-start; gap:16px; }.team-panel h2 { font-size:18px; line-height:28px; }.team-panel h3 { font-size:15px; line-height:24px; }
+.team-panel :is(.team-form,.team-history) { margin-top:20px; gap:16px; }
+.team-panel label { gap:8px; font-size:13px; line-height:22px; }
+.team-panel :is(input:not([type=checkbox]),select,textarea) { min-height:40px; padding:8px 12px; border-color:var(--line); border-radius:10px; background:var(--input); font-size:13px; line-height:22px; }
+.team-panel .team-role { padding:16px; gap:16px; border-color:var(--line-soft); border-radius:10px; background:var(--card-subtle); }
+.team-panel .team-role legend { padding:0 6px; font-size:12px; line-height:20px; color:var(--muted); }
+.team-panel .team-role > button { justify-self:end; border-color:transparent; background:transparent; }
+.team-panel .team-actions { justify-content:flex-end; gap:8px; }
+.team-panel :is(.team-actions,.team-node-actions,.team-head) > button { min-height:36px; padding:6px 10px; border-color:transparent; border-radius:8px; background:transparent; font-size:12px; line-height:22px; }
+.team-panel button.team-primary { min-height:40px; padding:8px 14px; border-color:transparent; border-radius:10px; background:var(--primary-gradient); color:var(--on-primary); font-size:13px; line-height:22px; font-weight:700; }
+.team-panel button.team-primary:hover:not(:disabled) { background:var(--primary-gradient); filter:brightness(1.06); }
+.team-panel .team-history > article { padding-top:16px; border-color:var(--line-soft); }
+.team-panel button.team-entry { padding:8px 0; min-height:44px; gap:10px; line-height:22px; }
+.team-panel .team-results { padding:12px 0; gap:16px; }
+.team-panel .team-result { gap:8px; padding-left:16px; border-color:var(--line); }
+.team-panel .team-result p { font-size:13px; line-height:22px; }
+.team-panel :is(.team-assignment fieldset,.team-node,.team-decision,.team-report) { padding:16px; border-color:var(--line-soft); border-radius:10px; background:var(--card-subtle); }
+.team-panel :is(.team-directed,.team-assignment) { gap:16px; margin:20px 0; }
+.team-panel .team-options { padding:16px; border:1px solid var(--line-soft); border-radius:10px; background:var(--card-subtle); }
+.team-panel .team-options > summary { font-size:13px; line-height:24px; font-weight:700; }
+.team-panel .team-check { min-height:40px; font-size:13px; line-height:22px; }
+.team-panel .team-assignment > button { justify-self:end; }
+.team-panel .team-node { gap:12px; }.team-panel .team-node-actions { justify-content:flex-end; gap:8px; }
+.team-panel .team-node-head { gap:8px 12px; }.team-panel .team-log { padding:12px 0; line-height:22px; }
+@media(max-width:600px) { .team-panel.team-panel { padding:16px; }.team-panel .team-head { flex-wrap:wrap; }.team-panel .team-head > button { margin-left:auto; }.team-panel .team-selector { gap:8px; }.team-panel .team-selector label { flex-basis:100%; } }
+
+.team-panel .team-directed p,.team-panel .team-report p { overflow-wrap:normal; }
+.team-panel :is(code,a) { overflow-wrap:anywhere; }

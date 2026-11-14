@@ -1,0 +1,53 @@
+/* 배경 / 작업 면 / 떠 있는 면을 서로 다른 깊이로 구분합니다. */
+:root{--surface-low:color-mix(in srgb,var(--panel) 76%,transparent);--surface-high:color-mix(in srgb,var(--panel) 94%,transparent);--surface-edge:color-mix(in srgb,var(--panel) 92%,var(--blue-200));--surface-shadow:0 10px 28px -18px #16386942;--surface-float-shadow:0 20px 60px -24px #081f4842;--surface-blur:blur(20px) saturate(125%)}
+:root[data-theme=dark]{--surface-edge:color-mix(in srgb,var(--blue-200) 28%,var(--panel));--surface-shadow:0 12px 32px -18px #0008;--surface-float-shadow:0 24px 64px -22px #000a}
+.app-shell{background:radial-gradient(ellipse at 4% 3%,#86b9da40,transparent 48%),radial-gradient(ellipse at 96% 20%,#a4bad324,transparent 52%),radial-gradient(ellipse at 40% 100%,#c0d4e733,transparent 60%),var(--bg)}
+.app-shell .workspace-side{background:transparent;border-right:0}
+.app-shell .sidebar-surface{background:linear-gradient(155deg,color-mix(in srgb,var(--blue-200) 24%,var(--panel)),var(--sidebar) 72%);border-color:var(--surface-edge);box-shadow:inset 0 1px 0 #ffffffa6,0 8px 26px -18px #16386940;backdrop-filter:var(--surface-blur);-webkit-backdrop-filter:var(--surface-blur)}
+.app-shell .workspace-side[data-expanded=true] .sidebar-surface{box-shadow:inset 0 1px 0 #ffffffa6,12px 12px 36px -16px #16386940}
+.app-shell .topbar{border-color:var(--surface-edge);background:var(--surface-low);box-shadow:inset 0 1px 0 #ffffffa6,var(--surface-shadow);backdrop-filter:var(--surface-blur);-webkit-backdrop-filter:var(--surface-blur)}
+.app-shell .main-shell>:is(.pf-page,.page-scroll,.home-page,.history-page,.library-page,.workbench,.flow-activity){background:var(--surface-low);border:1px solid var(--surface-edge);box-shadow:inset 0 1px 0 #ffffff80,var(--surface-shadow);border-radius:16px;animation:surface-page-enter 280ms var(--ease-enter) both}
+.app-shell .pf-page .pf-content :is(.pf-card,.pf-panel,.pf-kpi,.pf-stat,.di-panel,.pf-today),.app-shell .workbench :is(.wb-panel,.wb-summary,.wb-stat),.app-shell .workflow-hub>:is(section,article){background:linear-gradient(165deg,var(--surface-high),color-mix(in srgb,var(--panel) 88%,var(--card-subtle)));border-color:var(--line-soft);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--panel) 80%,transparent),0 5px 18px -15px #16386938}
+.app-shell .pf-card{position:relative;isolation:isolate;transition:transform 280ms var(--ease-enter),box-shadow 280ms var(--ease-enter),border-color 280ms var(--ease-enter)}
+.app-shell .pf-card::after{content:'';position:absolute;inset:0;border-radius:inherit;z-index:-1;pointer-events:none;opacity:0;background:radial-gradient(280px circle at var(--surface-x,50%) var(--surface-y,0%),color-mix(in srgb,var(--blue-400) 17%,transparent),transparent 72%);transition:opacity 280ms var(--ease-enter)}
+.app-shell .pf-card:hover{transform:translateY(-2px);border-color:var(--blue-400);box-shadow:0 10px 28px -18px #255a925e,inset 0 1px 0 var(--panel)}
+.app-shell .pf-card:hover::after{opacity:1}
+.app-shell .pf-page .pf-hero{background:linear-gradient(115deg,color-mix(in srgb,var(--blue-200) 24%,var(--panel)),color-mix(in srgb,var(--panel) 96%,var(--blue-400)));border:1px solid var(--surface-edge);box-shadow:inset 0 1px 0 var(--panel),var(--surface-shadow);border-radius:16px}
+.app-shell .conversation-dock{background:var(--surface-high);border-color:var(--surface-edge);box-shadow:var(--surface-float-shadow);backdrop-filter:var(--surface-blur);-webkit-backdrop-filter:var(--surface-blur)}
+.app-shell[data-chat-focus=true]>.conversation-dock{box-shadow:inset 0 1px 0 var(--panel),var(--surface-shadow)}
+.conversation-dock[data-chat-active=true]>.dock-heading{background:linear-gradient(115deg,color-mix(in srgb,var(--blue-200) 18%,var(--panel)),var(--panel))}
+.app-shell .conversation-dock .composer:focus-within{border-color:var(--blue-400);box-shadow:0 0 0 3px color-mix(in srgb,var(--blue-200) 26%,transparent),0 6px 20px -18px #255a9280}
+:is(.app-shell,.motion-overlay,.modal-backdrop,dialog) :is(.button.primary,.pf-primary,.wb-primary,.team-primary,.report-primary,.pp-primary,.dock-primary){background:linear-gradient(125deg,#163869,#276594);color:#fff;border:1px solid #ffffff26;box-shadow:inset 0 1px 0 #ffffff24,0 6px 18px -12px #16386980}
+:is(.app-shell,.motion-overlay,.modal-backdrop,dialog) :is(.button.primary,.pf-primary,.wb-primary,.team-primary,.report-primary,.pp-primary,.dock-primary):hover:not(:disabled){box-shadow:inset 0 1px 0 #ffffff38,0 8px 22px -12px #16386990;filter:brightness(1.05)}
+:is(.app-shell,.motion-overlay,.modal-backdrop,dialog) button:not(.sidebar-backdrop):not(.dock-mobile-scrim):not(:disabled){transition:background-color 240ms var(--ease-enter),border-color 240ms var(--ease-enter),color 240ms var(--ease-enter),box-shadow 240ms var(--ease-enter),scale 200ms var(--ease-check)}
+:is(.app-shell,.motion-overlay,.modal-backdrop,dialog) button:not(.sidebar-backdrop):not(.dock-mobile-scrim):not(:disabled):active{scale:.98}
+.app-shell .pf-page .pf-content .pf-cards .pf-card{transition:background-color 280ms var(--ease-enter),border-color 280ms var(--ease-enter),box-shadow 280ms var(--ease-enter),transform 280ms var(--ease-enter),scale 200ms var(--ease-check)}
+.app-shell .pf-page .pf-content .pf-cards .pf-card:hover{transform:translateY(-2px);border-color:var(--blue-400);box-shadow:0 10px 28px -18px #255a925e,inset 0 1px 0 var(--panel)}
+:is(.motion-overlay,.modal-backdrop,.command-scrim)>:is(.motion-surface,.settings-modal,.confirm-modal){border:1px solid var(--surface-edge);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--panel) 80%,transparent),var(--surface-float-shadow)}
+.app-shell .page-inner{width:100%;max-width:1280px;padding:28px;min-width:0}
+.app-shell .page-inner>h1,.app-shell .page-inner>.section-heading h1{font-size:24px;line-height:32px;font-weight:800;letter-spacing:-.025em;margin:0}
+.app-shell .page-inner>.eyebrow{font-size:11px;line-height:20px;margin:0 0 8px}
+.app-shell .page-inner .page-description{font-size:13px;line-height:22px;margin:8px 0 0}
+.app-shell .page-inner.inbox-page{display:grid;gap:20px}
+.app-shell .inbox-page>.approval-card{margin:0;padding:20px;border:1px solid var(--line-soft);border-radius:12px;background:var(--panel)}
+.app-shell .inbox-page>.approval-card>h3{font-size:15px;line-height:24px;margin:0}
+.app-shell .inbox-page>.approval-card>p{font-size:13px;line-height:22px;margin:8px 0 16px}
+.app-shell .inbox-page>.approval-card>div{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.app-shell .history-list{margin-top:20px;padding:0 16px;border:1px solid var(--line-soft);border-radius:12px;background:var(--panel);overflow:hidden}
+.app-shell .history-row{padding:8px 0;gap:8px;min-width:0}
+.app-shell .history-row:last-child{border-bottom:0}
+.app-shell .history-open{padding:8px 0;gap:12px;min-height:64px;text-align:left}
+.app-shell .history-open strong{font-size:14px;line-height:22px;font-weight:700}
+.app-shell .history-open small{font-size:11px;line-height:20px;margin-top:4px;white-space:normal}
+.app-shell .history-open>svg{flex:none;margin:0}
+.app-shell .template-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:16px;margin-top:24px}
+.app-shell .template-grid .template-card{padding:20px;border:1px solid var(--line-soft);border-radius:12px;text-align:left;background:var(--panel);min-width:0;min-height:180px;display:flex;flex-direction:column;align-items:flex-start}
+.app-shell .template-card h3{font-size:16px;line-height:26px;margin:12px 0 6px}
+.app-shell .template-card p{font-size:13px;line-height:22px;margin:0 0 16px;color:var(--muted)}
+.app-shell .template-card .template-use{margin-top:auto;font-size:12px;line-height:20px;color:var(--accent)}
+.app-shell .template-card:hover{border-color:var(--blue-400);box-shadow:var(--surface-shadow)}
+.app-shell .main-shell>:is(.pf-page,.page-scroll,.workbench) :is(.pf-heading,.wb-project-head,.page-heading)>:is(h1,div>h1){animation:ui-title-in 280ms var(--ease-enter) both}
+.app-shell .main-shell>:is(.pf-page,.page-scroll,.workbench) :is(.pf-heading,.wb-project-head,.page-heading)>:is(p,div>p){animation:ui-title-in 280ms var(--ease-enter) 60ms both}
+@keyframes surface-page-enter{from{opacity:0;translate:0 6px}to{opacity:1;translate:0 0}}
+@media(max-width:760px){.app-shell .page-inner{padding:16px}.app-shell .template-grid{gap:12px;margin-top:20px}.app-shell .template-grid .template-card{padding:16px}.app-shell .history-list{padding:0 12px}.app-shell .inbox-page>.approval-card{padding:16px}.app-shell .history-open{gap:8px}.app-shell .history-open strong{white-space:normal}.app-shell .main-shell>:is(.pf-page,.page-scroll,.workbench,.flow-activity){border-radius:12px}}
+@media(prefers-reduced-motion:reduce){.app-shell .main-shell>:is(.pf-page,.page-scroll,.workbench,.flow-activity),.app-shell .pf-card,.app-shell .pf-card::after{animation:none!important;transition:none!important;transform:none!important}:is(.app-shell,.motion-overlay,.modal-backdrop,dialog) button:active{scale:1!important}}

@@ -1,1 +1,50 @@
 .portfolio-tools{margin:16px 0;padding:16px;background:var(--surface-2,#e6eaf0);border:1px solid var(--border,#c9d1db);border-radius:12px;word-break:keep-all;overflow-wrap:break-word}.pt-actions,.pt-metrics{display:flex;flex-wrap:wrap;gap:10px}.portfolio-tools button,.portfolio-tools select{border:1px solid var(--border,#c3ccd8);border-radius:7px;padding:7px 10px;background:var(--panel,#f8f9fb);color:inherit}.pt-board{display:grid;grid-template-columns:repeat(5,minmax(140px,1fr));gap:10px;margin-top:16px;overflow:auto}.pt-column{background:var(--surface,#f0f2f5);padding:10px;border-radius:9px;min-width:0}.pt-column header{display:flex;justify-content:space-between;align-items:center;gap:5px}.pt-column h3{font-size:14px}.pt-project{background:var(--panel,#fff);padding:8px;margin:10px 0;border:1px solid var(--border,#d1d6de);border-radius:8px}.pt-project>button{border:0;text-align:left;width:100%;display:grid;gap:8px}.pt-project span{font-size:12px;line-height:1.5}.pt-project select{width:100%;margin-top:8px}.pt-import{padding:15px;margin:12px 0;border:1px solid var(--border,#c4ccd6);border-radius:10px}.pt-import label{display:flex;align-items:center;gap:8px;margin:9px 0}.pt-chart{display:grid;grid-template-columns:140px 1fr;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--border,#ccd2dc)}.pt-bars{display:flex;align-items:flex-end;gap:5px;min-height:120px}.pt-bars>div{display:flex;flex:1;flex-direction:column;align-items:center;justify-content:flex-end}.pt-bars span{display:block;background:#69889c;width:100%;min-width:4px;border-radius:3px 3px 0 0}.pt-bars small{font-size:10px;margin-top:4px}.pt-chart p{grid-column:1/-1}.project-repositories label,.advanced-goals label{display:grid;gap:7px;margin:10px 0}.project-repositories input,.advanced-goals input,.advanced-goals select{min-width:0;padding:8px;border-radius:6px;border:1px solid var(--border,#cbd1db);background:var(--panel,#fff);color:inherit}.project-repositories article{padding:12px;border:1px solid var(--border,#d0d6de);border-radius:9px;margin:12px 0}.pr-grid,.ag-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.ag-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--border,#ccd3dc)}.ag-row>label{display:flex;align-items:center;flex:1}.ag-row input[inputmode]{width:100px}.ag-schedule{margin-top:18px;border-top:1px solid var(--border,#ccd3dc);padding-top:14px}@media(max-width:760px){.pt-board{grid-template-columns:repeat(5,minmax(190px,1fr))}.pt-chart{grid-template-columns:1fr}.pr-grid,.ag-grid{grid-template-columns:1fr}}[data-theme="dark"] .portfolio-tools{background:#252d38}[data-theme="dark"] .pt-column{background:#1f2630}[data-theme="dark"] .pt-project,[data-theme="dark"] .portfolio-tools button,[data-theme="dark"] .portfolio-tools select{background:#303a47}
+
+/* 보드와 가져오기, 프로젝트의 추가 도구를 같은 면으로 정리합니다. */
+.pf-content .portfolio-tools { margin:20px 0; padding:20px; border-radius:12px; border-color:var(--line-soft); background:var(--panel); line-height:24px; }
+.portfolio-tools .pt-actions { justify-content:flex-end; gap:8px; }
+.portfolio-tools .pt-actions > button { min-height:36px; padding:6px 10px; border:1px solid transparent; border-radius:8px; font-size:12px; line-height:22px; background:transparent; box-shadow:none; color:var(--muted); }
+.portfolio-tools .pt-actions > button[aria-pressed=true] { background:var(--accent-bg); color:var(--accent-bright); }
+.portfolio-tools .pt-actions > button:hover:not(:disabled) { background:var(--panel-alt); }
+.portfolio-tools .pt-board { gap:12px; margin-top:20px; padding-bottom:8px; scrollbar-width:thin; }
+.portfolio-tools .pt-column { padding:12px; border:1px solid var(--line-soft); border-radius:10px; background:var(--card-subtle); }
+.portfolio-tools .pt-column h3 { margin:0; font-size:13px; line-height:24px; }
+.portfolio-tools .pt-column header > button { padding:2px 8px; min-height:28px; border-color:transparent; background:transparent; }
+.portfolio-tools .pt-project { padding:12px; margin:12px 0 0; border-radius:10px; border-color:var(--line-soft); background:var(--panel); }
+.portfolio-tools .pt-project > button { padding:0; min-height:44px; border:0; background:transparent; line-height:22px; }
+.portfolio-tools .pt-project select { min-height:36px; border-radius:8px; padding:6px 8px; border-color:var(--line); background:var(--input); font-size:12px; }
+.portfolio-tools .pt-import { display:flex; flex-direction:column; align-items:stretch; gap:12px; padding:20px; margin:20px 0 0; border-color:var(--line-soft); border-radius:10px; background:var(--card-subtle); }
+.portfolio-tools .pt-import :is(h3,p) { margin:0; }
+.portfolio-tools .pt-import label { margin:0; min-height:32px; font-size:13px; line-height:22px; }
+.portfolio-tools .pt-import > button { align-self:flex-end; border-color:transparent; background:transparent; }
+.portfolio-tools .pt-chart { grid-template-columns:minmax(0,160px) minmax(0,1fr); padding:20px 0; gap:16px; border-color:var(--line-soft); }
+.portfolio-tools .pt-metrics { gap:12px; margin:20px 0; }
+.portfolio-tools .pt-metrics > strong { padding:12px 16px; font-size:13px; line-height:22px; border-radius:10px; background:var(--card-subtle); }
+.pf-content :is(.project-repositories,.advanced-goals) { min-width:0; padding:20px; margin:20px 0; border:1px solid var(--line-soft); border-radius:12px; background:var(--panel); }
+.pf-content :is(.project-repositories,.advanced-goals) > h3 { margin:0 0 12px; }
+.pf-content :is(.project-repositories,.advanced-goals) label { gap:8px; margin:12px 0; font-size:13px; line-height:22px; }
+.pf-content :is(.project-repositories,.advanced-goals) :is(input,select) { min-height:40px; border-radius:10px; padding:8px 12px; border-color:var(--line); background:var(--input); font-size:13px; }
+.project-repositories .pr-grid,.advanced-goals .ag-grid { grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:16px; }
+.pf-content .project-repositories article { margin:16px 0; padding:16px; border-color:var(--line-soft); border-radius:10px; background:var(--card-subtle); }
+.advanced-goals .ag-row { gap:12px; min-height:56px; padding:12px 0; border-color:var(--line-soft); }
+.advanced-goals .ag-row > label { min-width:0; }
+.advanced-goals .ag-row input[inputmode] { width:92px; }
+@media(max-width:600px) { .pf-content :is(.portfolio-tools,.project-repositories,.advanced-goals),.portfolio-tools .pt-import { padding:16px; }.portfolio-tools .pt-chart { grid-template-columns:minmax(0,1fr); } }
+
+.advanced-goals > form { padding-top:16px; margin-top:16px; border-top:1px solid var(--line-soft); }
+.advanced-goals > form > button,.advanced-goals .ag-schedule > button { display:inline-flex; align-items:center; justify-content:center; min-height:40px; padding:8px 12px; border-radius:10px; font-size:13px; line-height:22px; margin:12px 0 0 8px; }
+.advanced-goals > form > button { display:flex; margin-left:auto; background:var(--primary-gradient); color:var(--on-primary); border-color:transparent; }
+.advanced-goals .ag-schedule { padding-top:20px; margin-top:20px; border-color:var(--line-soft); }
+.advanced-goals .ag-schedule > p { font-size:13px; line-height:22px; color:var(--muted); margin-top:6px; }
+.advanced-goals .ag-row > button { min-height:32px; padding:4px 8px; font-size:12px; line-height:22px; border-color:transparent; background:transparent; border-radius:8px; margin-left:auto; }
+
+.portfolio-tools.portfolio-tools { overflow-wrap:normal; }
+.portfolio-tools :is(code,a),.project-repositories code { overflow-wrap:anywhere; }
+
+.project-repositories .pr-actions,.advanced-goals .ag-actions,.portfolio-tools .pt-import-actions { display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:8px; margin-top:20px; }
+.project-repositories .pr-actions > button,.advanced-goals .ag-actions > button,.portfolio-tools .pt-import-actions > button { margin:0; min-height:36px; padding:6px 10px; border:1px solid transparent; border-radius:8px; background:transparent; box-shadow:none; color:var(--muted); font-size:12px; line-height:22px; }
+.project-repositories .pr-actions > button.primary { min-height:40px; padding:8px 14px; border-radius:10px; background:var(--primary-gradient); color:var(--on-primary); border-color:transparent; font-size:13px; }
+.project-repositories :is(article,section) > button { display:flex; margin-left:auto; min-height:36px; padding:6px 10px; border-color:transparent; border-radius:8px; background:transparent; color:var(--muted); font-size:12px; line-height:22px; }
+.project-repositories > section { margin-top:24px; padding-top:20px; border-top:1px solid var(--line-soft); }
+
+.advanced-goals .ag-row > label > span > small { display:block; margin-top:4px; color:var(--muted); font-size:12px; line-height:20px; }

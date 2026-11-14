@@ -403,7 +403,7 @@ export default function MusicPanel({
               aria-pressed={tab === "lyrics"}
               onClick={() => setTab("lyrics")}
             >
-              가사 / 메모
+              가사와 메모
             </button>
           </nav>
           {tab === "queue" ? (
@@ -414,7 +414,7 @@ export default function MusicPanel({
                     onClick={() => command("at", i)}
                     aria-pressed={i === track.index}
                   >
-                    {i + 1} / {id}
+                    {i + 1}. {id}
                   </button>
                 </li>
               ))}
@@ -422,7 +422,7 @@ export default function MusicPanel({
           ) : entry ? (
             <section className="music-lyrics-panel">
             <button disabled={!track.title || lyricsBusy || locked} onClick={()=>void lookupLyrics()}>{lyricsBusy?'가사 검색 중':'현재 곡 가사 자동 검색'}</button>
-            {lyrics && <section ref={lyricContainer} className="synced-lyrics" aria-label="자동 검색 가사"><p>{lyrics.artist} / {lyrics.track} / {lyrics.source}</p>
+            {lyrics && <section ref={lyricContainer} className="synced-lyrics" aria-label="자동 검색 가사"><p>{lyrics.track}<br/>{lyrics.artist} ({lyrics.source})</p>
               {lyrics.instrumental?<p>연주곡입니다.</p>:lyrics.lines.length?<ol>{lyrics.lines.map((line,i)=><li key={line.time+':'+i} aria-current={i===lyricIndex?'true':undefined}><button onClick={()=>command('seek',line.time)}>{line.text||'♪'}</button></li>)}</ol>:<pre>{lyrics.plain}</pre>}</section>}
             {lyricsNotice&&<p role="status">{lyricsNotice}</p>}
             <label className="music-lyrics">

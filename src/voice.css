@@ -1,10 +1,14 @@
-.voice-settings {word-break:keep-all;overflow-wrap:anywhere;}
-.voice-settings label {display:grid;gap:6px;min-width:0;}
-.voice-settings input:not([type=checkbox]),.voice-settings select,.voice-settings textarea {width:100%;box-sizing:border-box;min-width:0;}
-.voice-settings .voice-choice {display:flex;align-items:center;gap:8px;}
-.voice-settings .voice-choice input {flex:none;}
-.voice-settings-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
-.voice-read {display:inline-flex;align-items:center;gap:4px;max-width:100%;}
-.voice-read [role=status] {font-size:11px;color:var(--text-muted);word-break:keep-all;overflow-wrap:anywhere;}
-.voice-composer .voice-message {word-break:keep-all;overflow-wrap:anywhere;}
-@media(max-width:520px){.voice-settings-grid{grid-template-columns:minmax(0,1fr);}}
+:is(.app-shell,.settings-modal,.motion-overlay) .voice-settings { min-width: 0; word-break: keep-all; overflow-wrap: normal; font-size: 13px; line-height: 22px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .voice-settings h3 { font-size: 15px; line-height: 24px; margin: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .voice-settings > p { color: var(--muted); font-size: 13px; line-height: 22px; margin: 6px 0 16px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .voice-settings label { display: grid; gap: 8px; min-width: 0; font-size: 13px; line-height: 22px; margin-top: 16px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .voice-settings :is(input:not([type=checkbox]), select, textarea) { width: 100%; box-sizing: border-box; min-width: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .voice-settings .voice-choice { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-height: 48px; margin-top: 16px; padding: 12px 0; border-top: 1px solid var(--line-soft); }
+:is(.app-shell,.settings-modal,.motion-overlay) .voice-settings .voice-choice > span:first-child { min-width: 0; flex: 1; }
+:is(.app-shell,.settings-modal,.motion-overlay) .voice-settings .voice-choice input { flex: none; }
+:is(.app-shell,.settings-modal,.motion-overlay) .voice-settings-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .voice-settings > button { display: flex; margin: 20px 0 16px auto; }
+:is(.app-shell,.settings-modal,.motion-overlay) .voice-settings > [role=status] { border-radius: 10px; padding: 12px 14px; margin: 16px 0 0; background: var(--card-subtle); color: var(--muted); }
+.voice-read { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; }
+.voice-read [role=status], .voice-composer .voice-message { font-size: 11px; line-height: 18px; color: var(--muted); word-break: keep-all; overflow-wrap: normal; }
+@media(max-width:600px) { :is(.app-shell,.settings-modal,.motion-overlay) .voice-settings-grid { grid-template-columns: minmax(0,1fr); gap: 0; } }

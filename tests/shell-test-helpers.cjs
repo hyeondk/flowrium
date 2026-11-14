@@ -1,19 +1,20 @@
 const composer=page=>page.getByLabel('Codex에 보낼 작업 요청');
 async function dockHome(page){
  const dock=page.getByRole('complementary',{name:'통합 / 프로젝트 / 일반 대화'});
- const toggle=page.locator('.dock-toggle');await toggle.waitFor();
- if(await toggle.getAttribute('aria-expanded')!=='true')await toggle.click();
+ const toggle=page.locator('.dock-toggle');
+ if(!await dock.isVisible()){await toggle.waitFor();await toggle.click();}
  await dock.waitFor();
  const back=dock.getByRole('button',{name:'대화 목록으로',exact:true});if(await back.isVisible())await back.click();
  const home=dock.getByRole('button',{name:'대화 홈으로',exact:true});if(await home.isVisible())await home.click();
  await dock.locator('.dock-scope-card').first().waitFor();return dock;
 }
-async function openConversation(page,title){
+async function openConversation(page,title,{expanded=false}={}){
  const data=await page.evaluate(()=>window.flowrium.bootstrap()),session=data.sessions.find(s=>s.title===title);if(!session)throw Error('검증할 대화를 찾을 수 없습니다: '+title);
  const dock=await dockHome(page);
  if(session.scope)await dock.locator('.dock-scope-card[data-scope="'+session.scope+'"]').getByRole('button').first().click();
  else{const project=data.projects.find(p=>p.id===session.projectId);await dock.locator('.dock-project-row').filter({has:page.getByText(project.name,{exact:true})}).click();}
  await dock.locator('.dock-session').filter({has:page.getByText(title,{exact:true})}).click();await composer(page).waitFor();
+ if(!expanded){const split=page.getByRole('button',{name:'대시보드와 나란히 보기',exact:true});if(await split.isVisible())await split.click();}
 }
 async function newProjectConversation(page,projectId){
  const data=await page.evaluate(()=>window.flowrium.bootstrap()),project=data.projects.find(p=>p.id===projectId),dock=await dockHome(page);

@@ -485,7 +485,7 @@ export function ProjectOverview({
           <>
             <div className="pf-stats">
               <button onClick={() => onTabChange("work")}>
-                <span>진행 / 검토 업무</span>
+                <span>진행 및 검토 업무</span>
                 <strong>{incomplete.length}</strong>
               </button>
               <button onClick={() => onTabChange("work")}>

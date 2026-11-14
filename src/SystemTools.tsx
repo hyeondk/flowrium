@@ -1,6 +1,7 @@
 import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useState } from "react";
 import StoragePanel from "./StoragePanel";
+import "./system-tools.css";
 import type { Project } from "../shared/types";
 import type {
   ContainerInfo,
@@ -26,8 +27,8 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
   const [scriptLabels,setScriptLabels]=useState<Record<string,string>>({});
   useEffect(()=>{let active=true;void (async()=>{
     try{const labels:Record<string,string>={},repos=await api!.repositoryAction(projectId,{action:'repositories'}),details=await api!.readProjectDetails(projectId);
-    for(const repo of repos)for(const name of scripts.filter(s=>s.startsWith(repo.id+'::')))labels[name]=repo.name+' / '+name.split('::')[1];
-    for(const service of details.services||[])labels['service::'+service.id]=service.name+' / '+service.command;
+    for(const repo of repos)for(const name of scripts.filter(s=>s.startsWith(repo.id+'::')))labels[name]=repo.name+' ('+name.split('::')[1]+')';
+    for(const service of details.services||[])labels['service::'+service.id]=service.name+' ('+service.command+')';
     if(active)setScriptLabels(labels);}catch{}
   })();return()=>{active=false;};},[projectId,scripts]);
   async function perform(action: () => Promise<unknown>) {
@@ -90,7 +91,7 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
   }, [tab]);
   return (
     <section className="system-tools">
-      <h2>시스템 / 프로젝트 서비스</h2>
+      <h2>시스템과 프로젝트 서비스</h2>
       <nav className="wb-tabs">
         {[
           ["services", "프로젝트 서비스"],
@@ -111,7 +112,7 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
             onSubmit={(e) => {
               e.preventDefault();
               setConfirmation({
-                label: "선택한 프로젝트 명령을 실행합니다 / " + (scriptLabels[script]||script),
+                label: "선택한 프로젝트 명령을 실행합니다. " + (scriptLabels[script]||script),
                 run: async () => {
                   await api!.runService(projectId, script);
                   await refresh();
@@ -151,10 +152,10 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
           {services.map((s) => (
             <article className="system-service" key={s.id}>
               <strong>
-                {projects.find((p) => p.id === s.projectId)?.name} / {s.script}
+                {projects.find((p) => p.id === s.projectId)?.name} ({s.script})
               </strong>
               <span>
-                {s.state === "running" ? "실행 중" : "종료 / " + s.code}
+                {s.state === "running" ? "실행 중" : "종료 (코드 " + s.code + ")"}
               </span>
               {s.state === "running" && (
                 <button
@@ -176,8 +177,8 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
       )}
       {tab === "processes" && (
         <>
-          <button disabled={busy} onClick={()=>void perform(async()=>{setAnalysis(await api!.analyzeSystemProcesses());setAnalysisPids([]);})}>Codex로 종료 후보 분석</button>
-          {analysis&&<section aria-label="AI 프로세스 분석"><h3>종료 후보와 근거</h3><p>{analysis.summary}</p>{analysis.candidates.map((p:any)=><label key={p.pid} style={{display:'block',margin:'10px 0'}}><AnimatedCheckbox checked={analysisPids.includes(p.pid)} onChange={e=>setAnalysisPids(v=>e.target.checked?[...v,p.pid]:v.filter(id=>id!==p.pid))}/>{p.name} / {p.pid} / {p.reason}</label>)}<button disabled={busy||!analysisPids.length} onClick={()=>setConfirmation({label:'선택한 프로세스 '+analysisPids.length+'개를 종료합니다.',run:async()=>{await api!.stopSystemProcesses({token:analysis.token,pids:analysisPids});setAnalysis(undefined);await refresh();}})}>선택한 후보 종료 검토</button></section>}
+          <div className="system-actions"><button className="button secondary" disabled={busy} onClick={()=>void perform(async()=>{setAnalysis(await api!.analyzeSystemProcesses());setAnalysisPids([]);})}>Codex로 종료 후보 분석</button></div>
+          {analysis&&<section className="system-analysis" aria-label="AI 프로세스 분석"><h3>종료 후보와 근거</h3><p>{analysis.summary}</p>{analysis.candidates.map((p:any)=><label key={p.pid}><AnimatedCheckbox checked={analysisPids.includes(p.pid)} onChange={e=>setAnalysisPids(v=>e.target.checked?[...v,p.pid]:v.filter(id=>id!==p.pid))}/><span>{p.name} (프로세스 {p.pid})<small>{p.reason}</small></span></label>)}<div className="system-actions"><button className="button secondary" disabled={busy||!analysisPids.length} onClick={()=>setConfirmation({label:'선택한 프로세스 '+analysisPids.length+'개를 종료합니다.',run:async()=>{await api!.stopSystemProcesses({token:analysis.token,pids:analysisPids});setAnalysis(undefined);await refresh();}})}>선택한 후보 종료 검토</button></div></section>}
           <p>
             메모리 사용량 순서로 표시합니다. 개발 프로세스는 종료 버튼에서
             내용을 확인하고 중단할 수 있습니다.
@@ -185,16 +186,16 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
           {processes.map((p) => (
             <div className="system-process" key={p.pid}>
               <span>
-                {p.name} / {p.pid}
+                {p.name} (프로세스 {p.pid})
               </span>
               <small>
-                {Math.round(p.memoryBytes / 1024 / 1024)}MB / CPU {p.cpu === null ? "측정 중" : p.cpu + "%"}
+                메모리 {Math.round(p.memoryBytes / 1024 / 1024)}MB (CPU {p.cpu === null ? "측정 중" : p.cpu + "%"})
               </small>
               <button
                 disabled={busy}
                 onClick={() =>
                   setConfirmation({
-                    label: p.name + " 프로세스를 종료합니다 / " + p.pid,
+                    label: p.name + " 프로세스를 종료합니다. (프로세스 " + p.pid + ")",
                     run: () => api!.stopSystemProcess(p.pid),
                   })
                 }
@@ -211,7 +212,7 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
             <span>
               <strong>{c.name}</strong>
               <small>
-                {c.image} / {c.status}
+                {c.image} ({c.status})
               </small>
             </span>
             <div>
@@ -223,7 +224,7 @@ export default function SystemTools({ projects }: { projects: Project[] }) {
                     setConfirmation({
                       label:
                         c.name +
-                        " / " +
+                        " 명령: " +
                         { start: "시작", stop: "중지", restart: "재시작" }[
                           action
                         ],

@@ -20,3 +20,37 @@
 .memory-transfer{padding:12px;border:1px solid var(--border,#c5ced8);border-radius:10px;word-break:keep-all}
 .memory-transfer>summary{cursor:pointer}.memory-transfer>p{margin:10px 0}.memory-transfer input[type=file]{max-width:100%}
 @media(max-width:640px){.workflow-form{padding:12px}.workflow-hub .workflow-card{padding:12px}.workflow-hub header{align-items:flex-start}.workflow-hub nav button{flex:1 1 auto}}
+
+/* 결정 / 알림 / 전달 / 비서도 같은 행과 면으로 구성합니다. */
+.workflow-hub.workflow-hub { gap:20px; padding:20px; border:1px solid var(--line-soft); border-radius:12px; background:var(--panel); font-size:13px; line-height:22px; overflow-wrap:normal; }
+.workflow-hub > header { gap:16px; align-items:flex-start; }.workflow-hub > header h2 { font-size:18px; line-height:28px; }
+.workflow-hub > header button { margin-left:auto; flex:none; }
+.workflow-hub > nav { gap:4px; padding:4px; border:1px solid var(--line-soft); border-radius:10px; background:var(--card-subtle); flex-wrap:nowrap; overflow:auto; }
+.workflow-hub > nav button { min-height:36px; padding:6px 12px; border:0; border-radius:7px; background:transparent; color:var(--muted); font-size:13px; line-height:22px; white-space:nowrap; flex:none; }
+.workflow-hub > nav button[aria-pressed=true] { background:var(--accent-bg); color:var(--accent-bright); font-weight:700; }
+.workflow-hub .workflow-actions { justify-content:flex-end; gap:8px 16px; align-items:center; }
+.workflow-hub .workflow-actions > label { min-height:40px; font-size:13px; line-height:22px; }
+.workflow-hub .workflow-actions > button { min-height:36px; padding:6px 10px; border:1px solid transparent; border-radius:8px; background:transparent; box-shadow:none; color:var(--muted); font-size:12px; line-height:22px; }
+.workflow-hub .workflow-actions > button:hover:not(:disabled) { background:var(--panel-alt); }
+.workflow-hub .workflow-card { gap:12px; padding:20px; border-color:var(--line-soft); border-radius:12px; background:var(--card-subtle); }
+.workflow-hub .workflow-card > header { justify-content:space-between; align-items:flex-start; gap:12px; }
+.workflow-hub .workflow-card :is(h3,h4,strong) { font-size:14px; line-height:24px; font-weight:700; }
+.workflow-hub .workflow-card > p { font-size:13px; line-height:22px; }
+.workflow-hub .workflow-card > button { justify-self:end; min-height:36px; padding:6px 10px; border-color:transparent; border-radius:8px; background:transparent; }
+.workflow-hub .workflow-form { padding:20px; gap:16px; border-color:var(--line-soft); border-radius:12px; background:var(--card-subtle); }
+.workflow-hub .workflow-form h3 { font-size:15px; line-height:24px; }
+.workflow-hub .workflow-form > p { color:var(--muted); font-size:12px; line-height:20px; }
+.workflow-hub .workflow-form label { gap:8px; font-size:13px; line-height:22px; }
+.workflow-hub .workflow-form :is(input:not([type=checkbox]),select,textarea) { min-height:40px; padding:8px 12px; border-radius:10px; border-color:var(--line); background:var(--input); font-size:13px; line-height:22px; }
+.workflow-hub .workflow-form fieldset { min-width:0; padding:16px; margin:0; border:1px solid var(--line-soft); border-radius:10px; }
+.workflow-hub .workflow-form fieldset legend { padding:0 6px; font-size:12px; line-height:20px; color:var(--muted); }
+.workflow-hub .workflow-form > button { justify-self:end; min-height:40px; padding:8px 14px; border-radius:10px; background:var(--primary-gradient); color:var(--on-primary); border-color:transparent; }
+.workflow-hub > section > h3 { margin:4px 0 12px; font-size:14px; line-height:24px; }
+.workflow-hub > section > .workflow-card + .workflow-card { margin-top:12px; }
+.workflow-hub > details { padding:16px; border:1px solid var(--line-soft); border-radius:10px; background:var(--card-subtle); }
+.workflow-hub > details > summary { cursor:pointer; font-size:13px; line-height:24px; }
+.workflow-hub > details > article { padding:16px 0; border-top:1px solid var(--line-soft); margin-top:12px; }
+@media(max-width:600px) { .workflow-hub.workflow-hub,.workflow-hub .workflow-card,.workflow-hub .workflow-form { padding:16px; }.workflow-hub.workflow-hub { gap:16px; }.workflow-hub .workflow-actions { gap:8px; }.workflow-hub .workflow-actions > label { flex:1 1 100%; } }
+
+.workflow-hub :is(p,h2,h3,h4,strong) { overflow-wrap:normal; }
+.workflow-hub :is(a,code) { overflow-wrap:anywhere; }

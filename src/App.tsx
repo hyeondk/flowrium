@@ -34,7 +34,7 @@ import Workbench, { WorkSessionControls } from "./Workbench";
 import { UpdatePanel, useDesktopUpdate } from "./UpdatePanel";
 import { workKinds } from "../shared/workbench";
 import packageInfo from "../package.json";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   Bell,
@@ -222,6 +222,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [view, setView] = useState<View>("dashboard");
   const [reportDialog,setReportDialog]=useState<"weekly"|"pause">();
   const [dockOpen,setDockOpen]=useState(()=>window.innerWidth>=1050);
+  const [chatExpanded,setChatExpanded]=useState(true);
   const [chatActive,setChatActive]=useState(false);
   const [creatingConversation,setCreatingConversation]=useState(false);
   const [dockFilter,setDockFilter]=useState<ExecutionState|'all'>('all');
@@ -272,15 +273,30 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [historyItems, setHistoryItems] = useState<CodexHistoryItem[]>([]);
   const [historySelected, setHistorySelected] = useState<string[]>([]);
   const [historyError, setHistoryError] = useState("");
-  const settingsPresence=usePresence(settingsOpen),historyPresence=usePresence(historyOpen),deletePresence=usePresence(Boolean(pendingDelete)),sidebarPresence=usePresence(sidebarOpen,260);
+  const settingsPresence=usePresence(settingsOpen),historyPresence=usePresence(historyOpen),deletePresence=usePresence(Boolean(pendingDelete)),sidebarPresence=usePresence(sidebarOpen,260),dockPresence=usePresence(dockOpen,280);
   const [deciding, setDeciding] = useState<Record<string, boolean>>({});
   const [stopping, setStopping] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState("");
   const [reacting,setReacting]=useState<Record<string,boolean>>({});
   const [snackbar,setSnackbar]=useState("");
   const composer = useRef<HTMLTextAreaElement>(null);
+  useEffect(()=>{
+    let frame=0,target:HTMLElement|null=null,x=0,y=0;
+    const move=(event:PointerEvent)=>{if(event.pointerType==='touch')return;target=(event.target as Element)?.closest<HTMLElement>('.pf-card')||null;if(!target)return;x=event.clientX;y=event.clientY;cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(!target?.isConnected)return;const box=target.getBoundingClientRect();target.style.setProperty('--surface-x',(x-box.left)+'px');target.style.setProperty('--surface-y',(y-box.top)+'px');});};
+    document.addEventListener('pointermove',move,{passive:true});return()=>{document.removeEventListener('pointermove',move);cancelAnimationFrame(frame);};
+  },[]);
+  useEffect(()=>{setChatExpanded(false);},[view]);
+  useLayoutEffect(()=>{
+    const inputElement=composer.current;if(!inputElement||!chatActive)return;
+    let frame=0,lastWidth=-1;
+    const fit=()=>{inputElement.style.height='auto';inputElement.style.height=Math.min(132,Math.max(48,inputElement.scrollHeight+2))+'px';};
+    fit();const observer=new ResizeObserver(entries=>{const width=entries[0]?.contentRect.width;if(width===lastWidth)return;lastWidth=width;cancelAnimationFrame(frame);frame=requestAnimationFrame(fit);});observer.observe(inputElement);
+    return()=>{observer.disconnect();cancelAnimationFrame(frame);};
+  },[input,chatActive,chatExpanded,sessionId]);
   const messages = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
+  const messageGeometry=useRef<{width:number;height:number;content:number}|undefined>(undefined);
+  const messageScrollIntent=useRef(0);
   const currentDraftKey = useRef(draftKey);
   currentDraftKey.current = draftKey;
   const submittingRef = useRef(false);
@@ -582,7 +598,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   function selectSession(value: Session) {
     setSessionId(value.id);
     if(!value.scope)setProjectId(value.projectId);
-    setDockOpen(true);setChatActive(true);setDockFilter("all");
+    setDockOpen(true);setChatActive(true);setChatExpanded(true);setDockFilter("all");
     stickToBottom.current = true;
     setSidebarOpen(false);
   }
@@ -671,7 +687,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         mode: nextMode,
       },
     }));
-    setDockOpen(true);setChatActive(true);setDockFilter("all");
+    setDockOpen(true);setChatActive(true);setChatExpanded(true);setDockFilter("all");
     setSessionId(undefined);
     setTimeout(() => composer.current?.focus(), 0);
   }
@@ -955,17 +971,24 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     </div>
                   </div>
                   <CodexLinkBar key={session.id} session={session} running={running} onChange={rememberSession}/>
-                  {session.context&&<div className="chat-context">문맥 {session.context.percent}% / {session.context.used.toLocaleString("ko-KR")} / {session.context.max.toLocaleString("ko-KR")} 토큰 <progress max={100} value={session.context.percent}/>{session.compacting&&<span>문맥 압축 중</span>}</div>}
+                  {session.context&&<div className="chat-context">문맥 {session.context.percent}% ({session.context.used.toLocaleString("ko-KR")} / {session.context.max.toLocaleString("ko-KR")} 토큰) <progress max={100} value={session.context.percent}/>{session.compacting&&<span>문맥 압축 중</span>}</div>}
                   <ChatQueuePanel session={session} onCancel={id=>{void api!.cancelQueuedMessage(session.id,id).catch(fail);}} onResume={()=>{void api!.resumeQueuedMessages(session.id).catch(fail);}}/>
                   {session.workflow && <WorkSessionControls key={session.id} session={session} onSessionChange={rememberSession} running={running} />}
                   <div
                     className="messages"
                     ref={messages}
+                    onWheel={()=>{messageScrollIntent.current=Date.now();}}
+                    onTouchMove={()=>{messageScrollIntent.current=Date.now();}}
+                    onPointerDown={()=>{messageScrollIntent.current=Date.now();}}
                     onScroll={() => {
                       const el = messages.current;
-                      if (el)
+                      if (el) {
+                        const old=messageGeometry.current,next={width:el.clientWidth,height:el.clientHeight,content:el.scrollHeight};messageGeometry.current=next;
+                        const layoutChanged=old&&(old.width!==next.width||old.height!==next.height||old.content!==next.content);
+                        if(layoutChanged&&stickToBottom.current&&Date.now()-messageScrollIntent.current>250){el.scrollTop=el.scrollHeight;return;}
                         stickToBottom.current =
                           el.scrollHeight - el.clientHeight - el.scrollTop < 90;
+                      }
                     }}
                   >
                     <MessageHistory key={session.id} messages={session.messages} scrollRef={messages} stickToBottom={stickToBottom} renderMessage={(message) => (
@@ -1163,7 +1186,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </div>
                 ))}
                 {draftError && <p role="alert" className="composer-draft-error">{draftError} <button onClick={retryDrafts}>초안 다시 불러오기</button></p>}
-                <AttachmentComposer key={voiceContinuity.current.generation} projectId={project?.id} items={attachments} onChange={setAttachments} disabled={security.state.locked} report={notify}>
+                <AttachmentComposer key={voiceContinuity.current.generation} projectId={project?.id} items={attachments} onChange={setAttachments} disabled={security.state.locked} report={notify}>{attachmentControl=>(
                 <div className={`composer ${running ? "working" : ""}`}>
                   <div className="composer-topline">
                     <span>
@@ -1173,7 +1196,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       {running
                         ? activity?.status || "작업을 진행하고 있습니다"
                         : project
-                          ? `${project.name} / 작업 요청`
+                          ? `${project.name} 작업 요청`
                           : "작업 요청"}
                     </span>
                     {input && (
@@ -1209,6 +1232,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   />
                   <div className="composer-toolbar">
                     <div className="composer-options">
+                      {attachmentControl}
                       <VoiceComposer key={voiceContinuity.current.generation} suspend={settingsOpen||!dockOpen||!chatActive} disabled={running||security.state.locked} onText={text=>setDrafts(prev=>{
                         const draft=prev[draftKey];return {...prev,[draftKey]:{mode:draft?.mode||mode,text:[draft?.text,text].filter(Boolean).join("\n"),attachments:draft?.attachments}};
                       })} onSubmit={text=>void send([input,text].filter(Boolean).join("\n"))}/>
@@ -1266,14 +1290,14 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       </button>
                     )}</div>
                   </div>
-                </div>
+                </div>)}
                 </AttachmentComposer>
                 <div className="composer-footnote">
                   <span>
                     <ShieldCheck size={12} />
-                    {session?.scope ? (session.scope==='general'?'개인 대화 / 프로젝트 파일에 접근하지 않습니다':'프로젝트 현황 확인 / 업무 실행은 승인 후 진행') : mode === "build"
-                      ? "프로젝트 안에서 구현 / 필요한 작업은 승인 후 진행"
-                      : "읽기 전용 / 프로젝트 파일을 변경하지 않습니다"}
+                    {session?.scope ? (session.scope==='general'?'프로젝트 파일에 접근하지 않는 개인 대화입니다':'프로젝트 현황을 확인하고, 업무는 승인 후 실행합니다') : mode === "build"
+                      ? "프로젝트 안에서 구현합니다 (필요한 작업은 승인 후 실행)"
+                      : "읽기 전용 (프로젝트 파일은 변경하지 않습니다)"}
                   </span>
                   <span>줄바꿈 ⇧ ↵</span>
                 </div>
@@ -1314,7 +1338,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           </div>
   )}
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-chat-focus={dockPresence.present&&chatActive&&chatExpanded}>
       {sidebarPresence.present && (
         <button
           className="sidebar-backdrop" data-phase={sidebarPresence.phase}
@@ -1325,7 +1349,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       <WorkspaceSidebar current={reportDialog||view} mobileOpen={sidebarOpen} projects={data.projects.filter(p=>!archived[p.id])}
         selected={["overview","home","workspace","terminal"].includes(view)?projectId:undefined}
         counts={projectCounts} account={connection.authenticated?(connection.accountLabel||"ChatGPT 연결됨"):undefined}
-        onGo={value=>{if(value==='weekly'||value==='pause')setReportDialog(value);else setView(value);setSidebarOpen(false);}} onProject={selectProject}
+        onGo={value=>{if(value==='weekly'||value==='pause')setReportDialog(value);else {setView(value);setChatExpanded(false);}setSidebarOpen(false);}} onProject={selectProject}
         onSettings={()=>{setSettingsOpen(true);setSidebarOpen(false);}}
         onLock={()=>{setSidebarOpen(false);if(!security.state.hasPin){setSettingsOpen(true);notify("설정에서 잠금 번호를 정하세요.");return;}void security.lock().catch(fail);}}
         onLogout={()=>{setSidebarOpen(false);setLogoutOpen(true);}}/>
@@ -1391,7 +1415,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         ) : view === "repo" && project ? (
           <RepositoryPanel key={project.id} project={project}/>
         ) : view === "inbox" ? (
-          <div className="page-scroll"><div className="page-inner repo-actions"><h1>승인함</h1>
+          <div className="page-scroll"><div className="page-inner inbox-page"><h1>승인함</h1>
           {!approvals.length && <p>확인을 기다리는 요청이 없습니다.</p>}
           {approvals.map(event => {
             const owner=data.sessions.find(s=>s.id===event.sessionId);
@@ -1444,7 +1468,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     onClick={() => useTemplate(t.prompt, t.mode)}
                   >
                     <span className="template-category">
-                      0{i + 1} / {t.category}
+                      {t.category} (0{i + 1})
                     </span>
                     <h3>{t.title}</h3>
                     <p>{t.description}</p>
@@ -1482,7 +1506,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 <div>
                   <strong>
                     {project
-                      ? `선택한 프로젝트 / ${project.name}`
+                      ? `선택한 프로젝트: ${project.name}`
                       : "프로젝트를 먼저 선택하세요"}
                   </strong>
                   <p>
@@ -1534,8 +1558,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                               data.projects.find((p) => p.id === s.projectId)
                                 ?.name
                             }{" "}
-                            / {formatDate(s.updatedAt)} / 대화{" "}
-                            {s.messages.length}개
+                            {" "}({formatDate(s.updatedAt)}, 대화 {s.messages.length}개)
                           </small>
                         </span>
                         <ChevronRight size={17} />
@@ -1577,7 +1600,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         )}
         <footer className="statusbar"><span><span className={`status-dot ${connection.authenticated?'online':''}`}/>{connection.authenticated?'ChatGPT 연결됨':'ChatGPT 연결 전'}</span><ExecutionSummary counts={activeCounts} onSelect={showExecution}/></footer>
       </main>
-      <ConversationDock projectNavigation={projectNavigation} open={dockOpen} chatActive={chatActive} onClose={()=>setDockOpen(false)} onLeaveChat={()=>setChatActive(false)} projects={data.projects} sessions={data.sessions} projectId={projectId} sessionId={sessionId} activities={activities} requests={approvals} proposals={proposals} counts={activeCounts} filter={dockFilter} onFilter={setDockFilter} onOpen={selectSession} onProject={p=>setProjectId(p.id)} onCreate={(scope,id)=>void startDockConversation(scope,id)} onCreateProject={()=>setView('kickoff')} onDecisions={openDecisions} busy={creatingConversation}>{renderChat()}</ConversationDock>
+      <ConversationDock projectNavigation={projectNavigation} open={dockOpen} chatActive={chatActive} expanded={chatExpanded} onExpand={()=>setChatExpanded(v=>!v)} onMenu={()=>setSidebarOpen(true)} onSettings={()=>setSettingsOpen(true)} onClose={()=>setDockOpen(false)} onLeaveChat={()=>setChatActive(false)} projects={data.projects} sessions={data.sessions} projectId={projectId} sessionId={sessionId} activities={activities} requests={approvals} proposals={proposals} counts={activeCounts} filter={dockFilter} onFilter={setDockFilter} onOpen={selectSession} onProject={p=>setProjectId(p.id)} onCreate={(scope,id)=>void startDockConversation(scope,id)} onCreateProject={()=>setView('kickoff')} onDecisions={openDecisions} busy={creatingConversation}>{renderChat()}</ConversationDock>
       <MotionOverlay open={Boolean(reportDialog)} onClose={()=>setReportDialog(undefined)} label={reportDialog==='pause'?'업무 마감':'주간업무보고'} className="report-overlay">
         {reportDialog&&<PortfolioReports key={reportDialog} kind={reportDialog} projects={data.projects.filter(p=>!archived[p.id])} sessions={projectOnlySessions} authenticated={connection.authenticated}
           onClose={()=>setReportDialog(undefined)} onStart={(record,request,options)=>sendWorkRequest(record,request,workKinds[record.workflow!.kind].mode,options)} onOpen={record=>{setReportDialog(undefined);selectSession(record);}} onCreateProject={()=>{setReportDialog(undefined);setView('kickoff');}}/>}
@@ -1608,7 +1631,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             <div className="modal-header">
               <div>
                 <span className="eyebrow">
-                  선택한 프로젝트 / {historyProject?.name}
+                  선택한 프로젝트: {historyProject?.name}
                 </span>
                 <h2 id="codex-history-title">Codex 기록 가져오기</h2>
               </div>
@@ -1628,7 +1651,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 프로젝트의 .flowrium 폴더에 복사합니다.
               </p>
               <div className="path-note">
-                프로젝트 폴더 / {historyProject?.path}
+                프로젝트 폴더: {historyProject?.path}
               </div>
               {historyError && (
                 <p
@@ -1713,7 +1736,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                               {Number.isNaN(new Date(item.updatedAt).getTime())
                                 ? "날짜 정보 없음"
                                 : formatDate(item.updatedAt)}
-                              {item.imported ? " / 이미 가져옴" : ""}
+                              {item.imported ? " (이미 가져옴)" : ""}
                             </small>
                           </span>
                         </label>
@@ -1847,10 +1870,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </button>
                 </div>
                 <label className="field-label">
-                  Codex 실행 파일 경로<span>선택 사항 / 비우면 자동 검색</span>
+                  Codex 실행 파일 경로<span>선택 사항 (비우면 자동 검색)</span>
                   <input
                     className="text-input"
-                    placeholder="자동 검색 / 앱에 포함된 Codex 사용"
+                    placeholder="자동 검색 (앱에 포함된 Codex 사용)"
                     defaultValue={data.settings.codexPath || ""}
                     onBlur={async (e) => {
                       const value = e.target.value;
@@ -1869,7 +1892,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 </label>
                 {connection.cliPath && (
                   <div className="path-note">
-                    현재 경로 / {connection.cliPath}
+                    현재 경로: {connection.cliPath}
                   </div>
                 )}
               </div>

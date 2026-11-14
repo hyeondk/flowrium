@@ -110,7 +110,7 @@ export default function TeamPanel({ projectId, onOpen }: { projectId: string; on
         <button type="button" onClick={() => setConfirmDelete(false)}>취소</button><button type="button" disabled={busy} onClick={() => void perform(async () => {
           await api!.removeTeam(projectId, team.id, team.revision); if (alive.current) setConfirmDelete(false);
         })}>삭제</button></div>}
-      <p className="team-members">{team.roles.map((role) => role.name + " (" + modes[role.mode] + ")").join(" / ")}</p>
+      <p className="team-members">{team.roles.map((role) => role.name + " (" + modes[role.mode] + ")").join(", ")}</p>
       <TeamRunOptions strategy={strategy} setStrategy={setStrategy} options={options} setOptions={setOptions} roles={team.roles}/>
       <label>공동 요청<textarea value={prompt} rows={3} maxLength={12000} placeholder="팀에 맡길 업무와 완료 기준을 입력하세요." onChange={(e) => setPrompt(e.target.value)}/></label>
       <div className="team-actions"><button className="team-primary" type="submit" disabled={busy || !prompt.trim()}><Play size={13}/>{strategy==="manual"?"배정안 만들기":strategy==="plan"?"팀장에게 배정안 요청":"팀 실행"}</button></div>
@@ -119,7 +119,7 @@ export default function TeamPanel({ projectId, onOpen }: { projectId: string; on
       {board.runs.map((run) => <article key={run.id}>
         <button type="button" className="team-entry" aria-expanded={expanded === run.id} onClick={() => setExpanded(expanded === run.id ? "" : run.id)}>
           {expanded === run.id ? <ChevronDown size={15}/> : <ChevronRight size={15}/>}<strong>{run.name}</strong>
-          <span>{run.prompt}{run.directed?" / "+phaseName[run.directed.phase]:""}</span><time dateTime={run.createdAt}>{formatDate.format(new Date(run.createdAt))}</time>
+          <span>{run.prompt}{run.directed?" ("+phaseName[run.directed.phase]+")":""}</span><time dateTime={run.createdAt}>{formatDate.format(new Date(run.createdAt))}</time>
         </button>
         {expanded === run.id && run.directed && <DirectedBoard projectId={projectId} run={run} busy={busy} perform={perform} onOpen={onOpen}/>}
         {expanded === run.id && !run.directed && <div className="team-results"><p>{run.prompt}</p>

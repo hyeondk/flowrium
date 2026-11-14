@@ -23,7 +23,7 @@ const {Store}=require("../electron/store.cjs");
   await page.locator(".music-controls").getByText("시험 음악",{exact:true}).waitFor();
   await button("일시정지").click();await button("재생").waitFor();
   await page.getByRole("button",{name:"대시보드",exact:true}).click();await page.locator(".music-mini iframe").waitFor();
-  await button("뮤직").click();await page.getByRole("button",{name:"가사 / 메모",exact:true}).click();
+  await button("뮤직").click();await page.getByRole("button",{name:"가사와 메모",exact:true}).click();
   await button('현재 곡 가사 자동 검색').click();
   await page.locator('.synced-lyrics [aria-current=true]').getByText('첫 번째 시험 문장',{exact:true}).waitFor();
   await button('두 번째 시험 문장').click();

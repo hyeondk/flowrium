@@ -1,4 +1,4 @@
-import { AnimatedCheckbox, AnimatedSwitch, usePresence } from './ui-motion';
+import { AnimatedCheckbox, AnimatedSwitch, ModalPortal, usePresence } from './ui-motion';
 import { useEffect, useRef, useState } from "react";
 import { BookMarked, MessagesSquare, RotateCcw, X } from "lucide-react";
 import type { MemoryImportPlan, MemoryNote, MemoryScope } from "../shared/memory";
@@ -127,7 +127,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
         {importPlan&&<section aria-label="기억 가져오기 미리보기"><h3>적용할 메모 선택</h3>
           {importPlan.entries.map(note=><label className="memory-check" key={note.key}>
             <AnimatedCheckbox checked={picked.includes(note.key)} onChange={e=>setPicked(prev=>e.target.checked?[...prev,note.key]:prev.filter(k=>k!==note.key))}/>
-            {note.title} / {note.action==="update"?"기존 메모 갱신 / 이전 개정 보존":"새 메모"}
+            {note.title} ({note.action==="update"?"기존 메모 갱신, 이전 개정 보존":"새 메모"})
           </label>)}
           <button disabled={busy||!picked.length} onClick={()=>void run(async()=>{
             const result=await api.applyMemoryImport(projectId,importPlan.id,picked);setImportPlan(undefined);setReload(n=>n+1);
@@ -161,7 +161,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
                   : note.linked
                     ? "Codex 연결됨"
                     : "연결 해제"}
-                {note.role && " / " + note.role}
+                {note.role && " (" + note.role + ")"}
               </small>
             </button>
           ))}
@@ -212,10 +212,10 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
               onChange={(e) => change("scope", e.target.value as MemoryScope)}
             >
               <option value="project">
-                이 프로젝트 / 프로젝트 폴더에 보관
+                이 프로젝트 (프로젝트 폴더에 보관)
               </option>
               <option value="personal">
-                이 기기 전체 / 이 컴퓨터에만 보관
+                이 기기 전체 (이 컴퓨터에만 보관)
               </option>
             </select>
           </label>
@@ -274,7 +274,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
             Codex 요청에 연결
           </label>
           <div className="pf-actions">
-            {!selected?.deleted && <button disabled={busy}>메모 저장</button>}
+            {!selected?.deleted && <button className="primary" disabled={busy}>메모 저장</button>}
             {selected&&!selected.deleted&&<button type="button" disabled={busy} onClick={()=>void run(async()=>{
               const result=await api.moveMemory(projectId,{id:selected.id,scope:selected.scope,revision:selected.rev,to:selected.scope==="project"?"personal":"project"});
               setNotice(result.notice||"메모 범위를 옮겼습니다. 원본 개정은 보존됩니다.");setReload(n=>n+1);
@@ -333,7 +333,7 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
                     <option key={h.rev} value={h.rev}>
                       {new Date(h.at).toLocaleString("ko-KR")} /{" "}
                       {h.deleted ? "삭제됨" : h.title}
-                      {!i ? " / 현재" : ""}
+                      {!i ? " (현재)" : ""}
                     </option>
                   ))}
                 </select>
@@ -427,7 +427,7 @@ export function AssistantShortcut({
         <span>개인 비서</span>
       </button>
       {present && (
-        <dialog
+        <ModalPortal><dialog
           ref={dialog}
           className="assistant-dialog"
           data-phase={phase}
@@ -488,7 +488,7 @@ export function AssistantShortcut({
               )
             )}
           </div>
-        </dialog>
+        </dialog></ModalPortal>
       )}
     </>
   );

@@ -25,7 +25,7 @@ export default function GoogleEventEditor({ calendars, calendarId, item, onSaved
     finally { setBusy(false); }
   }
   return <section className="integration-event" aria-label="일정 편집">
-    <h4>{item ? '선택한 일정' : '새 일정'} / {selected?.title || calendarId}</h4>
+    <h4>{item ? '선택한 일정' : '새 일정'} ({selected?.title || calendarId})</h4>
     <fieldset disabled={busy || !selected?.writable}>
       <label>일정 작업<select aria-label="일정 작업" value={action} onChange={e => {setAction(e.target.value as GoogleEventInput['action']);dirty();}}><option value="create">새 일정 등록</option>{item && <><option value="update">선택한 일정 수정</option><option value="delete">선택한 일정 삭제</option></>}</select></label>
       {action !== 'delete' && <>
@@ -37,12 +37,12 @@ export default function GoogleEventEditor({ calendars, calendarId, item, onSaved
         <label>장소<input value={location} maxLength={2000} onChange={e => {setLocation(e.target.value);dirty();}}/></label>
         <label>설명<textarea value={description} maxLength={12000} onChange={e => {setDescription(e.target.value);dirty();}}/></label>
       </>}
-      {!preview && <button disabled={busy || (action !== 'delete' && (!title.trim() || !start || !end))} onClick={() => void prepare()}>변경할 일정 검토</button>}
+      {!preview && <button className="button secondary" disabled={busy || (action !== 'delete' && (!title.trim() || !start || !end))} onClick={() => void prepare()}>변경할 일정 검토</button>}
       {preview && <div className="integration-review" role="region" aria-label="일정 변경 검토">
-        <strong>{preview.calendarName} / {verbs[preview.action]}</strong>
-        {preview.previous && <p>현재 / {preview.previous.title} / {preview.previous.at} ~ {preview.previous.end}</p>}
-        {preview.event && <p>변경 / {preview.event.title} / {preview.event.at} ~ {preview.event.end}<br/>{preview.event.detail}</p>}
-        <button onClick={() => void commit()}>확인하고 일정 {verbs[preview.action]}</button><button onClick={() => setPreview(undefined)}>취소</button>
+        <strong>{preview.calendarName} ({verbs[preview.action]})</strong>
+        {preview.previous && <p><strong>현재 일정</strong><br/>{preview.previous.title}<br/>{preview.previous.at} ~ {preview.previous.end}</p>}
+        {preview.event && <p><strong>변경할 일정</strong><br/>{preview.event.title}<br/>{preview.event.at} ~ {preview.event.end}<br/>{preview.event.detail}</p>}
+        <div className="integration-actions"><button className="button subtle" onClick={() => setPreview(undefined)}>취소</button><button className="button primary" onClick={() => void commit()}>확인하고 일정 {verbs[preview.action]}</button></div>
       </div>}
     </fieldset>
     {!selected?.writable && <p>선택한 캘린더에는 쓰기 권한이 없습니다.</p>}

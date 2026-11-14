@@ -1,4 +1,4 @@
-.message-history-controls{position:sticky;top:-18px;z-index:2;display:grid;gap:6px;padding:10px 0 12px;margin:0 0 14px;background:var(--panel,#f8fbfe);border-bottom:1px solid var(--line-soft,#dce5ed);overflow-anchor:none;word-break:keep-all;overflow-wrap:break-word}
+.message-history-controls{position:relative;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px 16px;padding:8px 0;margin:0 0 24px;background:var(--panel,#f8fbfe);border-bottom:1px solid var(--line-soft,#dce5ed);overflow-anchor:none;word-break:keep-all;overflow-wrap:break-word}
 .message-history-controls p{margin:0;color:var(--muted);font-size:11px;line-height:20px}
 .message-history-controls>div{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .message-history-controls .button{min-height:32px;padding:5px 9px;font-size:11px;line-height:20px;border-radius:9px;transition:background-color 240ms ease-out,color 240ms ease-out}

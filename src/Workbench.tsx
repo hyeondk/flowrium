@@ -35,12 +35,12 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
   const [models,setModels]=useState<Model[]>([]),[authenticated,setAuthenticated]=useState(false);
   useEffect(()=>{let alive=true;window.flowrium?.connect().then(v=>{if(alive){setModels(v.models);setAuthenticated(v.status.authenticated);}}).catch(e=>{if(alive)setError(messageOf(e));});return()=>{alive=false;};},[]);
   const fields = {
-    research: ["조사 주제", "알고 싶은 점 / 참고할 출처", "보고서 독자 / 조사 깊이"],
-    briefing: ["브리핑 제목", "특히 확인할 사항", "보고 대상 / 형식"],
-    document: ["문서 제목", "담을 내용 / 참고할 파일이나 링크", "읽는 사람 / 문서 형식"],
-    weekly: ["보고서 제목", "강조할 사항", "보고 대상 / 형식"],
-    pause: ["마감 기록 제목", "중단한 이유 / 복귀할 때 기억할 내용", "인계받는 사람"],
-    task: ["업무 이름", "맡길 일 / 완료 기준", "결과를 받을 사람 / 형식"],
+    research: ["조사 주제", "알고 싶은 점과 참고할 출처", "보고서 독자와 조사 깊이"],
+    briefing: ["브리핑 제목", "특히 확인할 사항", "보고 대상과 형식"],
+    document: ["문서 제목", "담을 내용과 참고할 파일이나 링크", "읽는 사람과 문서 형식"],
+    weekly: ["보고서 제목", "강조할 사항", "보고 대상과 형식"],
+    pause: ["마감 기록 제목", "중단한 이유와 복귀할 때 기억할 내용", "인계받는 사람"],
+    task: ["업무 이름", "맡길 일과 완료 기준", "결과를 받을 사람과 형식"],
   }[kind];
   const set = (name: keyof WorkInput, value: string) => setForm((old) => ({ ...old, [name]: value }));
   async function submit(e: FormEvent) {
@@ -69,9 +69,9 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
       <div className="wb-field-pair"><label>담당 역할<input required maxLength={120} value={form.role} onChange={(e) => set("role", e.target.value)}/></label>
         <label>{fields[2]}<input maxLength={500} value={form.audience} onChange={(e) => set("audience", e.target.value)}/></label></div>
       {kind === "research" && <label>조사 자료<select value={form.searchMode} onChange={(e) => set("searchMode", e.target.value)}>
-        <option value="live">실시간 웹 검색 / 프로젝트 자료</option><option value="cached">저장된 검색 결과 / 프로젝트 자료</option><option value="disabled">프로젝트 자료만</option></select></label>}
+        <option value="live">실시간 웹 검색과 프로젝트 자료</option><option value="cached">저장된 검색 결과와 프로젝트 자료</option><option value="disabled">프로젝트 자료만</option></select></label>}
       {kind==='research'&&<label>조사 깊이<select aria-label="조사 깊이" value={form.researchDepth} onChange={e=>set('researchDepth',e.target.value)}><option value="quick">빠른 조사</option><option value="standard">일반 조사</option><option value="deep">심층 조사</option></select></label>}
-      {kind==='document'&&<div className="wb-field-pair"><label>결과 형식<select aria-label="문서 결과 형식" value={form.documentKind} onChange={e=>set('documentKind',e.target.value)}><option value="report">보고서 / HTML과 PDF</option><option value="slides">발표자료 / HTML과 PDF와 PPTX</option></select></label>{form.documentKind==='slides'&&<label>슬라이드 수<input aria-label="슬라이드 수" inputMode="numeric" value={String(form.slideCount??'')} onChange={e=>setForm(v=>({...v,slideCount:e.target.value?Number(e.target.value):undefined}))} pattern="[0-9]+" required/></label>}</div>}
+      {kind==='document'&&<div className="wb-field-pair"><label>결과 형식<select aria-label="문서 결과 형식" value={form.documentKind} onChange={e=>set('documentKind',e.target.value)}><option value="report">보고서 (HTML과 PDF)</option><option value="slides">발표자료 (HTML, PDF, PPTX)</option></select></label>{form.documentKind==='slides'&&<label>슬라이드 수<input aria-label="슬라이드 수" inputMode="numeric" value={String(form.slideCount??'')} onChange={e=>setForm(v=>({...v,slideCount:e.target.value?Number(e.target.value):undefined}))} pattern="[0-9]+" required/></label>}</div>}
       {ranged && <div className="wb-field-pair"><label>조회 시작일<input type="date" required max={form.to} value={form.from} onChange={(e) => set("from", e.target.value)}/></label>
         <label>조회 종료일<input type="date" required min={form.from} value={form.to} onChange={(e) => set("to", e.target.value)}/></label></div>}
       {sessions.length > 0 && <label>인계받을 대화<select value={form.sourceSessionId || ""} onChange={(e) => set("sourceSessionId", e.target.value)}>
@@ -101,7 +101,7 @@ export function ArtifactPanel({ overview, project, sessions, onOpen, refresh }: 
         throw new Error("한 번에 20개, 문서당 16MB와 합계 32MB까지 추가할 수 있습니다.");
       const payload = await Promise.all(files.map(async (f) => ({ name: f.name, body: new Uint8Array(await f.arrayBuffer()) })));
       const result = await getAPI().importWorkFiles(project.id, payload);
-      setImportNotice(["문서 " + result.added.length + "개 추가", ...result.skipped.map((f) => f.name + " (" + f.reason + ")")].join(" / "));
+      setImportNotice("문서 " + result.added.length + "개 추가" + (result.skipped.length ? " (제외: " + result.skipped.map((f) => f.name + " (" + f.reason + ")").join(", ") + ")" : ""));
       refresh();
     } catch (e) { setError(messageOf(e)); }
     finally { setImporting(false); if (picker.current) picker.current.value = ""; }
@@ -136,7 +136,7 @@ export function ArtifactPanel({ overview, project, sessions, onOpen, refresh }: 
     </div>
     {importNotice && <p className="wb-caption" role="status">{importNotice}</p>}{error && <p className="wb-error" role="alert">{error}</p>}
     <div className="wb-section-head"><h2>프로젝트 산출물</h2><input className="wb-filter" aria-label="산출물 검색" placeholder="파일 검색" value={filter} onChange={(e) => setFilter(e.target.value)}/></div>
-    <p className="wb-caption">산출물 / docs / outputs 폴더에서 문서를 찾습니다.</p>
+    <p className="wb-caption">산출물, docs, outputs 폴더에서 문서를 찾습니다.</p>
     {overview?.truncated && <p>표시 가능한 범위의 문서만 불러왔습니다.</p>}
     {items.map((a) => <button className="wb-line-item" key={a.path} onClick={() => { setBody(""); setLoading(a.preview); setError(""); setSelected(a); }}><FileText size={17}/><span>
       <strong>{sessions.find((s) => s.id === a.sessionId)?.title || fileName(a.path)}</strong><small className="wb-path">{a.path}</small></span><time>{date(a.modifiedAt)}</time><ChevronRight size={14}/></button>)}
@@ -148,7 +148,7 @@ function RepoPanel({ overview }: { overview?: WorkOverview }) {
   if (!git) return null;
   if (!git.available) return <p className="wb-empty">{git.reason}</p>;
   return <section><div className="wb-section-head"><h2>저장소</h2><span className="wb-status"><GitBranch size={14}/>{git.branch || "첫 커밋 전"}</span></div>
-    {git.reason && <p>{git.reason}</p>}{git.limited && <p className="wb-caption">변경 파일 120개 / 최근 커밋 30개까지 표시합니다.</p>}
+    {git.reason && <p>{git.reason}</p>}{git.limited && <p className="wb-caption">변경 파일 120개와 최근 커밋 30개까지 표시합니다.</p>}
     <h3>변경 파일</h3>{git.changes.length ? git.changes.map((c) => <div key={c.path} className="wb-file-row"><code>{c.code}</code><span className="wb-path">{c.path}</span></div>) : <p className="wb-empty">작업 폴더가 깨끗합니다.</p>}
     <h3>최근 커밋</h3>{git.commits.length ? git.commits.map((c) => <div key={c.hash} className="wb-file-row"><GitCommitHorizontal size={15}/><code>{c.hash}</code><span>{c.subject}</span><time>{date(c.at)}</time></div>) : <p className="wb-empty">표시할 커밋이 없습니다.</p>}
   </section>;
@@ -191,7 +191,7 @@ function ProjectWorkbench(props: Props & { project: Project }) {
         <section><div className="wb-section-head"><h2>업무 대화</h2><input aria-label="업무 대화 검색" className="wb-filter" placeholder="이름 또는 역할 검색" value={query} onChange={(e) => setQuery(e.target.value)}/></div>
           <div className="wb-status-filters">{statuses.map((st) => <button key={st} aria-pressed={status === st} onClick={() => setStatus(st)}>{statusLabels[st]} <span>{sessions.filter((s) => workState(s) === st).length}</span></button>)}</div>
           {shown.map((s) => <button key={s.id} className="wb-line-item" onClick={() => onOpen(s, workKinds[s.workflow?.kind || "task"].mode)}>
-            <MessageSquare size={17}/><span><strong>{s.title}</strong><small>{workKinds[s.workflow?.kind || "task"].label} / {s.workflow?.role || "프로젝트 대화"}{s.workflow?.checklist.length ? " / 체크 " + s.workflow.checklist.filter((c) => c.done).length + " / " + s.workflow.checklist.length : ""}</small></span><time>{date(s.updatedAt)}</time><ChevronRight size={14}/></button>)}
+            <MessageSquare size={17}/><span><strong>{s.title}</strong><small>{workKinds[s.workflow?.kind || "task"].label} ({s.workflow?.role || "프로젝트 대화"}){s.workflow?.checklist.length ? " (체크 " + s.workflow.checklist.filter((c) => c.done).length + "/" + s.workflow.checklist.length + ")" : ""}</small></span><time>{date(s.updatedAt)}</time><ChevronRight size={14}/></button>)}
           {!shown.length && <p className="wb-empty">{query ? "조건에 맞는 대화가 없습니다." : status === "active" ? "새 업무에서 역할을 고르면 전용 대화가 열립니다." : statusLabels[status] + " 상태의 업무가 없습니다."}</p>}
         </section>
       </>}
@@ -239,7 +239,7 @@ function SessionTools({ session, onSessionChange, running }: { session: Session;
     setBusy(true); setError(""); setNotice("");
     try {
       const file = await getAPI().saveWorkArtifact(session.id, picked.id, format);
-      if (mounted.current) setNotice((file.existing ? "이미 보관된 산출물 / " : "저장 완료 / ") + file.path);
+      if (mounted.current) setNotice((file.existing ? "이미 보관된 산출물: " : "저장 완료: ") + file.path);
     } catch (e) { if (mounted.current) setError(messageOf(e)); }
     finally { if (mounted.current) setBusy(false); }
   }
@@ -255,9 +255,9 @@ function SessionTools({ session, onSessionChange, running }: { session: Session;
       {picked && <button disabled={busy || running} onClick={save}><FileText size={14}/>답변을 산출물로 저장</button>}
     </div>
     {expanded && <div className="wb-session-body">
-      <div className="wb-role"><strong>{w?.role || "프로젝트 실무 담당자"}</strong>{w?.brief && <p>{w.brief}</p>}{w?.audience && <small>대상 / {w.audience}</small>}{w?.from && <small>조회 기간 / {w.from} ~ {w.to}</small>}{w?.source && <small>인계받은 대화 / {w.source.title}</small>}</div>
+      <div className="wb-role"><strong>{w?.role || "프로젝트 실무 담당자"}</strong>{w?.brief && <p>{w.brief}</p>}{w?.audience && <small>대상: {w.audience}</small>}{w?.from && <small>조회 기간: {w.from} ~ {w.to}</small>}{w?.source && <small>인계받은 대화: {w.source.title}</small>}</div>
       {!!answers.length && <label className="wb-answer-select">저장할 답변<select value={picked?.id || ""} onChange={(e) => setMessageId(e.target.value)}>{answers.map((m, i) =>
-        <option value={m.id} key={m.id}>{i + 1}번째 답변 / {m.text.replace(/\s+/g, " ").slice(0, 38)}</option>)}</select></label>}
+        <option value={m.id} key={m.id}>{i + 1}번째 답변: {m.text.replace(/\s+/g, " ").slice(0, 38)}</option>)}</select></label>}
       <h3>체크리스트</h3>
       {w?.checklist.map((item) => <div key={item.id} className="wb-check"><label><AnimatedCheckbox checked={item.done} disabled={busy || status === "done"} onChange={() => update({ action: "toggle", id: item.id })}/><span>{item.text}</span></label>
         {status !== "done" && <button disabled={busy} aria-label={item.text + " 제외"} onClick={() => update({ action: "remove", id: item.id })}><Trash2 size={13}/></button>}</div>)}
@@ -266,7 +266,7 @@ function SessionTools({ session, onSessionChange, running }: { session: Session;
         <button className="wb-secondary" disabled={!task.trim() || busy}><Plus size={14}/> 추가</button></form>}
       {w?.completion && <div className="wb-completion"><strong><CheckCheck size={15}/> {date(w.completion.at)} 완료 기록</strong>
         {w.completion.summary && <p>{w.completion.summary}</p>}
-        {w.completion.commits.map((c) => <small key={c.hash}>{c.hash} / {c.subject}</small>)}</div>}
+        {w.completion.commits.map((c) => <small key={c.hash}>{c.hash} ({c.subject})</small>)}</div>}
     </div>}
     {error && <p className="wb-error" role="alert">{error}</p>}
     {notice && <div className="wb-notice" role="status"><span className="wb-path">{notice}</span><button aria-label="저장 안내 닫기" onClick={() => setNotice("")}><X size={13}/></button></div>}

@@ -52,24 +52,24 @@ function RunWorktrees({ projectId, runId }: Props) {
   function tab(t:TeamWorktree){return <button type="button" key={t.index} aria-pressed={index===t.index} onClick={()=>choose(t.index)}>{t.name}</button>;}
   return <section className="team-trees" aria-label="격리 작업 폴더"><header><h4>격리 작업 폴더</h4>
     <button type="button" disabled={busy} onClick={()=>void perform(refresh)}>변경 새로고침</button></header>
-    {board&&tree&&<><p>기준 브랜치 {board.baseBranch} / {board.base.slice(0,8)}</p><nav aria-label="역할 작업 폴더">{board.roles.map(tab)}{tab(board.integration)}</nav>
-      <p className="tree-path">{tree.branch}{tree.directory&&' / '+tree.directory}</p>
+    {board&&tree&&<><p>기준 브랜치 {board.baseBranch} ({board.base.slice(0,8)})</p><nav aria-label="역할 작업 폴더">{board.roles.map(tab)}{tab(board.integration)}</nav>
+      <p className="tree-path">{tree.branch}{tree.directory&&' ('+tree.directory+')'}</p>
       {!tree.directory?<button type="button" disabled={busy} onClick={()=>run({action:'restore',index})}>{tree.archived?'보존된 커밋에서 다시 열기':'작업 폴더 열기'}</button>:<>
         {tree.owner!==tree.index&&<p>읽기 전용 검토 역할입니다. 변경 작업은 담당 역할 탭에서 진행하세요.</p>}
         <button type="button" disabled={busy} onClick={()=>run({action:'diff',index})}>기준과 커밋 차이 보기</button>
         {tree.files.length>0&&<div className="tree-files">{tree.files.map(f=><div key={f.file}>
-          <label><AnimatedCheckbox disabled={busy||!!tree.mergeHead||tree.owner!==index} checked={chosen.includes(f.file)} onChange={e=>setChosen(old=>e.target.checked?[...old,f.file]:old.filter(p=>p!==f.file))}/>{f.code} / {f.file}</label>
+          <label><AnimatedCheckbox disabled={busy||!!tree.mergeHead||tree.owner!==index} checked={chosen.includes(f.file)} onChange={e=>setChosen(old=>e.target.checked?[...old,f.file]:old.filter(p=>p!==f.file))}/>{f.code} ({f.file})</label>
           <button type="button" disabled={busy} onClick={()=>run({action:'diff',index,file:f.file})}>차이</button></div>)}</div>}
         {tree.owner===index&&!tree.mergeHead&&tree.files.length>0&&<div className="tree-actions"><label>커밋 제목<input value={message} maxLength={240} onChange={e=>setMessage(e.target.value)}/></label>
           <button type="button" disabled={busy||!chosen.length||!message.trim()} onClick={()=>run({action:'commit',index,head:tree.head,files:chosen,message})}>선택 파일 커밋</button></div>}
         {index!==-1&&tree.owner===index&&<button type="button" disabled={busy} onClick={reviewMerge}>검토한 커밋 통합</button>}
         {tree.mergeHead&&<div className="tree-conflicts"><h5>병합 충돌</h5>{tree.conflicts.map(f=><div key={f}><code>{f}</code>
-          {(['ours','theirs','manual'] as const).map((side,i)=><button type="button" key={side} disabled={busy} onClick={()=>setConfirm({label:['통합본 선택','역할본 선택','직접 수정한 파일 사용'][i]+' / '+f,input:{action:'resolve',index,head:tree.head,file:f,side}})}>{['통합본 선택','역할본 선택','직접 수정한 파일 사용'][i]}</button>)}</div>)}
+          {(['ours','theirs','manual'] as const).map((side,i)=><button type="button" key={side} disabled={busy} onClick={()=>setConfirm({label:['통합본 선택','역할본 선택','직접 수정한 파일 사용'][i]+' ('+f+')',input:{action:'resolve',index,head:tree.head,file:f,side}})}>{['통합본 선택','역할본 선택','직접 수정한 파일 사용'][i]}</button>)}</div>)}
           {tree.conflicts.length===0&&button('충돌 해결 후 통합 완료',{action:'finish',index,head:tree.head})}
           {button('진행 중인 병합 취소',{action:'abort',index,head:tree.head})}</div>}
         {index===-1&&!tree.mergeHead&&<div className="tree-remote"><button type="button" disabled={busy} onClick={remoteInfo}>GitHub 변경 요청 조회</button>
           {button('통합 브랜치 푸시',{action:'publish',index,head:tree.head})}
-          {remote&&<><p>{remote.repository} / {remote.pr?'#'+remote.pr.number+' '+remote.pr.title+' / '+remote.pr.state:'열린 변경 요청 없음'}</p>
+          {remote&&<><p>{remote.repository} ({remote.pr?'#'+remote.pr.number+' '+remote.pr.title+', '+remote.pr.state:'열린 변경 요청 없음'})</p>
             {remote.pr?.state==='OPEN'?button('검토한 변경 요청 병합',{action:'mergePR',index,head:tree.head,number:remote.pr.number}):<>
               <label>변경 요청 제목<input value={title} maxLength={250} onChange={e=>setTitle(e.target.value)}/></label>
               <label>변경 요청 설명<textarea value={body} maxLength={10000} onChange={e=>setBody(e.target.value)}/></label>

@@ -27,3 +27,19 @@
   .flow-activity li { flex-direction: column; }
   .activity-buttons { justify-content: start; }
 }
+
+/* 작업 기록은 요약 수치 / 목록 / 보조 행동의 순서로 읽게 합니다. */
+.flow-activity.flow-activity { padding:28px; background:var(--bg); font-size:13px; line-height:22px; }
+.flow-activity > header { margin-bottom:24px; gap:16px; }.flow-activity h1 { font-size:28px; line-height:36px; letter-spacing:-.025em; }.flow-activity h2 { font-size:17px; line-height:26px; }.flow-activity h3 { font-size:15px; line-height:24px; }
+.flow-activity > :is(section,details) { padding:20px; margin-bottom:20px; border-color:var(--line-soft); border-radius:12px; background:var(--panel); min-width:0; }
+.flow-activity .activity-section-title { gap:12px 16px; margin-bottom:16px; }
+.flow-activity .activity-metrics { gap:16px; margin:16px 0; }.flow-activity .activity-metrics > div { min-width:120px; padding:12px 16px; border-radius:10px; background:var(--card-subtle); }.flow-activity .activity-metrics dd { font-size:24px; line-height:32px; font-variant-numeric:tabular-nums; }
+.flow-activity .activity-filter { gap:4px; padding:4px; border-radius:10px; background:var(--panel-alt); }
+.flow-activity .activity-filter button { min-height:32px; padding:4px 10px; border:0; border-radius:7px; background:transparent; color:var(--muted); font-size:12px; line-height:22px; }
+.flow-activity .activity-filter button[aria-pressed=true] { color:var(--accent-bright); background:var(--panel); }
+.flow-activity li { padding:16px 0; gap:16px; align-items:center; min-width:0; }.flow-activity li > div:first-child { flex:1; }.flow-activity li strong { font-size:14px; line-height:24px; }
+.flow-activity .activity-buttons { gap:8px; justify-content:flex-end; flex-wrap:wrap; }.flow-activity .activity-buttons button { min-height:36px; padding:6px 10px; border-color:transparent; border-radius:8px; background:transparent; box-shadow:none; font-size:12px; line-height:22px; }
+.flow-activity .activity-request { font-size:12px; line-height:20px; margin-top:6px; }
+.flow-activity .activity-shortcuts { gap:0; margin-top:16px; }.flow-activity .activity-shortcuts > div { min-height:44px; padding:10px 0; border-bottom:1px solid var(--line-soft); gap:16px; }
+@media(max-width:700px) { .flow-activity.flow-activity { padding:20px; }.flow-activity h1 { font-size:24px; line-height:32px; } }
+@media(max-width:460px) { .flow-activity.flow-activity { padding:16px; }.flow-activity > :is(section,details) { padding:16px; margin-bottom:16px; }.flow-activity li { align-items:stretch; }.flow-activity .activity-buttons { width:100%; }.flow-activity .activity-shortcuts > div { flex-wrap:wrap; gap:4px; } }

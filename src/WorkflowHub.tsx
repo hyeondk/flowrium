@@ -11,18 +11,18 @@ const dayNames=["일","월","화","수","목","금","토"];
 const describe=(e:unknown)=>e instanceof Error?e.message:String(e);
 function EventPreview({proposal}:{proposal:WorkflowProposal}){
   const value=proposal.preview;if(!value)return null;
-  if(value.kind==="repository"&&value.rows)return <section aria-label="저장소 변경 검토"><h4>저장소 변경 검토 / {value.projectName}</h4>{value.rows.map((row,index)=><div key={index}>
-    <strong>{row.name}</strong><p>작업 브랜치 / {row.expected?.branch}</p><p>커밋 메시지 / {row.message}</p>
-    <p>실행할 마지막 단계 / {({commit:"로컬 커밋",push:"원격 푸시",pr:"변경 요청 생성",merge:"변경 요청 병합",done:"업무 완료"} as Record<string,string>)[row.through]||row.through}</p>
+  if(value.kind==="repository"&&value.rows)return <section aria-label="저장소 변경 검토"><h4>저장소 변경 검토 ({value.projectName})</h4>{value.rows.map((row,index)=><div key={index}>
+    <strong>{row.name}</strong><p>작업 브랜치: {row.expected?.branch}</p><p>커밋 메시지: {row.message}</p>
+    <p>실행할 마지막 단계: {({commit:"로컬 커밋",push:"원격 푸시",pr:"변경 요청 생성",merge:"변경 요청 병합",done:"업무 완료"} as Record<string,string>)[row.through]||row.through}</p>
     <p>{row.through==="commit"?"선택한 변경을 현재 로컬 브랜치에 커밋합니다.":"선택한 변경을 커밋한 뒤 연결된 원격 저장소에 반영합니다. 표시한 마지막 단계까지 진행합니다."}</p>
-    <details><summary>선택한 파일 {row.files.length}개와 기준 커밋 확인</summary><p>기준 커밋 / {row.expected?.head}</p><pre>{row.files.join("\n")}</pre></details>
+    <details><summary>선택한 파일 {row.files.length}개와 기준 커밋 확인</summary><p>기준 커밋: {row.expected?.head}</p><pre>{row.files.join("\n")}</pre></details>
   </div>)}<p>승인하면 표시한 단계까지 실행합니다. 파일이나 기준 커밋이 달라지면 실행을 거절합니다.</p></section>;
-  return <section aria-label="외부 변경 검토"><h4>외부 변경 검토 / {value.calendarName||"일정"}</h4>
+  return <section aria-label="외부 변경 검토"><h4>외부 변경 검토 ({value.calendarName||"일정"})</h4>
     {([ ["변경 전",value.previous],["적용할 내용",value.event] ] as const).map(([title,event])=>event&&<div key={title}><strong>{title}</strong>
       <dl><dt>제목</dt><dd>{event.title||"제목 없음"}</dd><dt>시작</dt><dd>{event.at?new Date(event.at).toLocaleString("ko-KR"):"확인 필요"}</dd>
         <dt>종료</dt><dd>{event.end?new Date(event.end).toLocaleString("ko-KR"):"확인 필요"}</dd><dt>장소</dt><dd>{event.location||"없음"}</dd><dt>본문</dt><dd>{event.description||"없음"}</dd></dl></div>)}
     <p>{value.action==="delete"?"승인하면 위 일정을 삭제합니다.":"승인하면 위 내용을 외부 일정에 적용합니다."}</p>
-    {value.expiresAt&&<p>확인 유효 시각 / {new Date(value.expiresAt).toLocaleString("ko-KR")}</p>}
+    {value.expiresAt&&<p>확인 유효 시각: {new Date(value.expiresAt).toLocaleString("ko-KR")}</p>}
   </section>;
 }
 
@@ -85,7 +85,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
   const pending=(data?.proposals||[]).filter(p=>(showHidden||!p.hidden)&&(showHistory||p.status==="pending"||p.status==="running"||p.status==="held")&&(showHidden||!p.snoozedUntil||p.snoozedUntil<=Date.now()));
   const unread=data?.notifications.filter(n=>!n.readAt).length||0;
   return <section className="workflow-hub" aria-label="업무 연결과 비서">
-    <header><div><h2>업무 연결과 비서</h2><p>대화 사이의 요청과 결과, 필요한 결정과 알림을 한곳에서 확인합니다.</p></div>
+    <header><div className="ui-title-stagger"><h2>업무 연결과 비서</h2><p>대화 사이의 요청과 결과, 필요한 결정과 알림을 한곳에서 확인합니다.</p></div>
       <button disabled={busy} onClick={()=>void refresh().catch(e=>setError(describe(e)))}>새로고침</button></header>
     <nav aria-label="업무 연결 화면">{([
       ["decisions","결정과 보고"],["notifications",`알림 ${unread}`],["messages","대화에 전달"],["assistant","비서와 예약"]
@@ -98,7 +98,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
         <button disabled={busy||!data.proposals.some(p=>p.status==="pending")} onClick={()=>void act({action:"recommend"},"결정 묶음을 검토하는 대화를 시작했습니다. 승인 전에는 업무를 실행하지 않습니다.")}>AI로 결정 묶음 추천</button>
         {onOpenInbox&&<button onClick={onOpenInbox}>실행 승인함 열기</button>}</div>
       {data.pending.map(event=>event.questions?<InputRequestPanel key={event.requestId} event={event} title={data.sessions.find(s=>s.id===event.sessionId)?.title} onOpen={()=>void open(event.sessionId||null)}/>:
-        <article className="workflow-card" key={event.requestId}><h3>실행 승인 / {data.sessions.find(s=>s.id===event.sessionId)?.title}</h3><pre>{event.details||event.text}</pre>
+        <article className="workflow-card" key={event.requestId}><h3>실행 승인 ({data.sessions.find(s=>s.id===event.sessionId)?.title})</h3><pre>{event.details||event.text}</pre>
           <button disabled={busy} onClick={()=>void api.approval({requestId:event.requestId!,decision:"accept"}).then(refresh).catch(e=>setError(describe(e)))}>허용</button>
           <button disabled={busy} onClick={()=>void api.approval({requestId:event.requestId!,decision:"decline"}).then(refresh).catch(e=>setError(describe(e)))}>거절</button></article>)}
       {selected.length>0&&<div className="workflow-actions" aria-label="선택한 결정 처리">
@@ -117,9 +117,9 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
           {["failed","held"].includes(p.status)&&p.method==="repositoryFlow"&&<button disabled={busy} onClick={()=>void act({action:"resumeExternal",id:p.id,revision:p.revision})}>기록 확인 후 실패 위치에서 재개</button>}
           {p.sourceId&&<button onClick={()=>void open(p.sourceId)}>요청 대화</button>}{p.targetId&&<button onClick={()=>void open(p.targetId)}>담당 대화</button>}
         </div></article>)}
-      {data.reports.length>0&&<details><summary>프로젝트 보고 기록 {data.reports.length}개</summary>{data.reports.map(r=><article key={r.id}><h3>{new Date(r.at).toLocaleString("ko-KR")} / {r.reason}</h3>
+      {data.reports.length>0&&<details><summary>프로젝트 보고 기록 {data.reports.length}개</summary>{data.reports.map(r=><article key={r.id}><h3>{new Date(r.at).toLocaleString("ko-KR")} ({r.reason})</h3>
         <p>{r.status==="queued"?"AI 보고 대기":r.status==="writing"?"AI 보고 작성 중":r.status==="failed"?"작성 확인 필요":"보고 완료"}</p>
-        {r.body&&<pre>{r.body}</pre>}{r.artifactPath&&<p>저장한 산출물 / {r.artifactPath}</p>}{r.error&&<p>{r.error}</p>}{r.sessionId&&<button onClick={()=>void open(r.sessionId||null)}>보고 대화 열기</button>}</article>)}</details>}
+        {r.body&&<pre>{r.body}</pre>}{r.artifactPath&&<p>저장한 산출물: {r.artifactPath}</p>}{r.error&&<p>{r.error}</p>}{r.sessionId&&<button onClick={()=>void open(r.sessionId||null)}>보고 대화 열기</button>}</article>)}</details>}
     </>}
     {data&&tab==="notifications"&&<>
       <div className="workflow-actions"><label><AnimatedSwitch checked={unreadOnly} onChange={e=>setUnreadOnly(e.target.checked)}/>미확인 알림만</label>
@@ -127,7 +127,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
         <button disabled={busy} onClick={()=>void act({action:"clearNotifications",readOnly:true})}>읽은 알림 정리</button></div>
       {[...new Set(data.notifications.map(n=>n.group))].map(group=><section key={group}><h3>{data.sessions.find(s=>s.id===group)?.title||(/^[a-f0-9-]{36}$/i.test(group)?"팀 업무 보고":group)}</h3>
         {data.notifications.filter(n=>n.group===group&&(!unreadOnly||!n.readAt)).map(n=><article className="workflow-card" key={n.id}>
-          <h4>{!n.readAt&&"미확인 / "}{n.title}</h4><time>{new Date(n.createdAt).toLocaleString("ko-KR")}</time><p>{n.body}</p>
+          <h4>{n.title}{!n.readAt&&" (미확인)"}</h4><time>{new Date(n.createdAt).toLocaleString("ko-KR")}</time><p>{n.body}</p>
           <div className="workflow-actions">{!n.readAt&&<button onClick={()=>void act({action:"read",ids:[n.id]})}>읽음 표시</button>}{n.sessionId&&<button onClick={()=>void open(n.sessionId)}>대화 열기</button>}</div>
         </article>)}</section>)}
       {!data.notifications.length&&<p>도착한 알림이 없습니다.</p>}
@@ -135,7 +135,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
     {data&&tab==="messages"&&<>
       <form onSubmit={event=>void send(event,false)} className="workflow-form"><h3>대화에 메시지 또는 조사 요청 전달</h3>
         <label>보내는 대화<select aria-label="보내는 대화" value={source} onChange={e=>setSource(e.target.value)}><option value="">사용자가 직접 전달</option>{data.sessions.map(s=><option key={s.id} value={s.id}>{s.title}</option>)}</select></label>
-        <label>받는 대화<select aria-label="받는 대화" value={target} onChange={e=>setTarget(e.target.value)}><option value="">새 대화에 조사 요청</option>{data.sessions.filter(s=>s.id!==source).map(s=><option key={s.id} value={s.id}>{s.title}{s.running?" / 실행 중":""}</option>)}</select></label>
+        <label>받는 대화<select aria-label="받는 대화" value={target} onChange={e=>setTarget(e.target.value)}><option value="">새 대화에 조사 요청</option>{data.sessions.filter(s=>s.id!==source).map(s=><option key={s.id} value={s.id}>{s.title}{s.running?" (실행 중)":""}</option>)}</select></label>
         {!target&&<label>새 대화를 보관할 프로젝트<select aria-label="새 대화를 보관할 프로젝트" value={project} onChange={e=>setProject(e.target.value)}><option value="">선택하세요</option>{data.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
         <label>조사 요청 제목<input maxLength={180} value={title} onChange={e=>setTitle(e.target.value)}/></label>
         <label>전할 내용<textarea aria-label="전할 내용" rows={5} maxLength={12000} value={message} onChange={e=>setMessage(e.target.value)}/></label>
@@ -143,7 +143,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
         <div className="workflow-actions"><button disabled={busy||!target||!message.trim()}>메시지 전달</button>
           <button type="button" disabled={busy||!title.trim()||!message.trim()||(!target&&!project&&!source)} onClick={event=>void send(event,true)}>승인할 조사 요청 만들기</button></div>
       </form>
-      <h3>전달 기록</h3>{data.deliveries.map(d=><article className="workflow-card" key={d.id}><strong>{deliveryState[d.status]} / {data.sessions.find(s=>s.id===d.targetId)?.title||"대화"}</strong><p>{d.text}</p>{d.error&&<p>{d.error}</p>}
+      <h3>전달 기록</h3>{data.deliveries.map(d=><article className="workflow-card" key={d.id}><strong>{data.sessions.find(s=>s.id===d.targetId)?.title||"대화"} ({deliveryState[d.status]})</strong><p>{d.text}</p>{d.error&&<p>{d.error}</p>}
         {["held","failed"].includes(d.status)&&<button disabled={busy} onClick={()=>void act({action:"retryDelivery",id:d.id})}>대화 확인 후 다시 전달</button>}</article>)}
     </>}
     {data&&prefs&&tab==="assistant"&&<>
@@ -167,7 +167,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
         <label>반복<select aria-label="반복" value={repeatDays} onChange={e=>setRepeatDays(Number(e.target.value))}><option value={0}>한 번</option><option value={1}>매일</option><option value={7}>매주</option><option value={30}>30일마다</option></select></label>
         <p>앱이 켜져 있고 잠금이 해제됐을 때 전달합니다. 놓친 알림은 다음 실행에서 한 번 전달합니다.</p><button disabled={busy||!when||!reminder.trim()}>예약 알림 등록</button>
       </form>
-      {data.reminders.filter(r=>!r.cancelled).map(r=><article className="workflow-card" key={r.id}><h4>{r.text}</h4><p>{new Date(r.nextAt).toLocaleString("ko-KR")} / {r.repeatDays?`${r.repeatDays}일마다 반복`:r.firedAt?"전달 완료":"한 번"}</p><button disabled={busy} onClick={()=>void act({action:"reminderCancel",id:r.id})}>알림 취소</button></article>)}
+      {data.reminders.filter(r=>!r.cancelled).map(r=><article className="workflow-card" key={r.id}><h4>{r.text}</h4><p>{new Date(r.nextAt).toLocaleString("ko-KR")} ({r.repeatDays?`${r.repeatDays}일마다 반복`:r.firedAt?"전달 완료":"한 번"})</p><button disabled={busy} onClick={()=>void act({action:"reminderCancel",id:r.id})}>알림 취소</button></article>)}
     </>}
   </section>;
 }

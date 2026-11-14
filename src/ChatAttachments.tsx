@@ -1,4 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
+import {LoaderCircle,Paperclip} from 'lucide-react';
 import type {ChatAttachment} from '../shared/types';
 import './chat-attachments.css';
 export function ChatAttachmentList({projectId,items,onRemove}:{projectId:string;items:ChatAttachment[];onRemove?:(id:string)=>void}) {
@@ -10,7 +11,7 @@ export function ChatAttachmentList({projectId,items,onRemove}:{projectId:string;
   {onRemove&&<button type="button" aria-label={a.name+' 첨부 제거'} onClick={()=>onRemove(a.id)}>제거</button>}
  </li>)}</ul>;
 }
-export function AttachmentComposer({projectId,items,onChange,disabled,report,children}:{projectId?:string;items:ChatAttachment[];onChange:(items:ChatAttachment[])=>void;disabled:boolean;report:(text:string)=>void;children:React.ReactNode}) {
+export function AttachmentComposer({projectId,items,onChange,disabled,report,children}:{projectId?:string;items:ChatAttachment[];onChange:(items:ChatAttachment[])=>void;disabled:boolean;report:(text:string)=>void;children:React.ReactNode|((control:React.ReactNode)=>React.ReactNode)}) {
  const picker=useRef<HTMLInputElement>(null),alive=useRef(true),currentItems=useRef(items),pending=useRef(Promise.resolve()),count=useRef(0);
  currentItems.current=items;
  const [uploading,setUploading]=useState(false),[drag,setDrag]=useState(false);
@@ -34,16 +35,16 @@ export function AttachmentComposer({projectId,items,onChange,disabled,report,chi
   onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setDrag(true);}}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node))setDrag(false);}}
   onDrop={e=>{if(e.dataTransfer.files.length){e.preventDefault();setDrag(false);void upload(e.dataTransfer.files);}}}>
   {projectId&&items.length>0&&<ChatAttachmentList projectId={projectId} items={items} onRemove={id=>onChange(items.filter(a=>a.id!==id))}/>}
-  {children}
-  <div className="attachment-controls"><input ref={picker} type="file" multiple hidden aria-label="채팅에 첨부할 파일" onChange={e=>{if(e.currentTarget.files)void upload(e.currentTarget.files);e.currentTarget.value='';}}/>
-   <button type="button" disabled={!projectId||disabled||uploading} onClick={()=>picker.current?.click()}>{uploading?'파일 보관 중':'파일 첨부'}</button><small>이미지 붙여넣기 / 파일 끌어놓기 / 파일당 20MB</small>
-  </div>
+  <input ref={picker} type="file" multiple hidden aria-label="채팅에 첨부할 파일" onChange={e=>{if(e.currentTarget.files)void upload(e.currentTarget.files);e.currentTarget.value='';}}/>
+  {typeof children==='function'?children(<button type="button" className="composer-attach" aria-label="파일 첨부" title="파일 첨부 (파일당 20MB, 붙여넣기와 끌어놓기 지원)" disabled={!projectId||disabled||uploading} onClick={()=>picker.current?.click()}>{uploading?<LoaderCircle size={18} className="spin"/>:<Paperclip size={18}/>}</button>):<>{children}<div className="attachment-controls">
+   <button type="button" disabled={!projectId||disabled||uploading} onClick={()=>picker.current?.click()}>{uploading?'파일 보관 중':'파일 첨부'}</button><small>붙여넣기와 끌어놓기 지원 (파일당 20MB)</small>
+  </div></>}
  </div>;
 }
 export function ChatQueuePanel({session,onCancel,onResume}:{session:import('../shared/types').Session;onCancel:(id:string)=>void;onResume:()=>void}) {
  const rows=session.queuedMessages||[],pending=rows.filter(q=>['queued','sending'].includes(q.status));
  if(!rows.length)return null;
- return <details className="chat-queue-panel" open={pending.length>0}><summary>추가 지시 / 대기 {pending.length}개</summary>
+ return <details className="chat-queue-panel" open={pending.length>0}><summary>추가 지시 (대기 {pending.length}개)</summary>
   {pending.some(q=>q.error)&&<button onClick={onResume}>대기 지시 다시 시작</button>}
   {rows.slice().reverse().map(q=><div key={q.id}><span>{q.status==='queued'?'대기 중':q.status==='sending'?'전달 중':q.status==='sent'?'전달함':'취소함'}</span><p>{q.text}</p>{q.attachments.length>0&&<small>첨부 {q.attachments.length}개</small>}{q.error&&<p role="alert">{q.error}</p>}{q.status==='queued'&&<><button onClick={()=>onCancel(q.id)}>대기 취소</button><button onClick={onResume}>지금 전달 재개</button></>}</div>)}
  </details>;

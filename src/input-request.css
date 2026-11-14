@@ -1,56 +1,31 @@
-.input-request {
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request {
   display: grid;
-  gap: 8px;
-  margin: 8px 0;
-  padding: 13px;
-  border: 1px solid var(--border, #777);
-  border-radius: 8px;
-  word-break: keep-all;
-}
-.input-request header,
-.input-request h3,
-.input-request .input-option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.input-request header {
-  justify-content: space-between;
-}
-.input-request h3,
-.input-request p {
-  margin: 0;
-}
-.input-request fieldset {
-  display: grid;
-  gap: 8px;
+  gap: 16px;
+  margin: 12px 0;
+  padding: 20px;
   min-width: 0;
-  padding: 9px;
-  border: 1px solid var(--border, #777);
-  border-radius: 6px;
-}
-.input-request .input-option span,
-.input-free {
-  display: grid;
-  gap: 2px;
-}
-.input-option small {
-  color: var(--muted);
-}
-.input-request .button.primary {
-  justify-self: start;
-}
-.input-free textarea,
-.input-free input {
-  width: 100%;
-  font: inherit;
-  border: 1px solid var(--border, #777);
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
   background: var(--panel);
-  color: inherit;
-  border-radius: 5px;
-  padding: 7px;
+  word-break: keep-all;
+  overflow-wrap: normal;
+  font-size: 13px;
+  line-height: 22px;
 }
-.composer-area:has(.input-request) {
-  max-height: 72vh;
-  overflow-y: auto;
-}
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request :is(header,h3,.input-option) { display: flex; align-items: center; gap: 8px; min-width: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request header { justify-content: space-between; align-items: flex-start; gap: 16px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request :is(h3,p) { margin: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request h3 { font-size: 15px; line-height: 24px; }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request > p { color: var(--muted); }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request fieldset { display: grid; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--card-subtle); }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request legend { padding: 0 6px; font-size: 12px; line-height: 20px; font-weight: 700; }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option { padding: 10px 12px; border: 1px solid transparent; border-radius: 8px; background: var(--panel); cursor: pointer; }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option:has(input:checked) { border-color: var(--blue-400); background: var(--accent-bg); }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option > input { flex: none; margin: 0; accent-color: var(--accent-bright); }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option span,
+:is(.app-shell,.settings-modal,.motion-overlay) .input-free { display: grid; gap: 4px; min-width: 0; }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-option small { font-size: 12px; line-height: 20px; color: var(--muted); }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request > .button.primary { justify-self: end; }
+:is(.app-shell,.settings-modal,.motion-overlay) .input-free :is(textarea,input) { width: 100%; box-sizing: border-box; font: inherit; border: 1px solid var(--line); background: var(--input); color: inherit; border-radius: 8px; padding: 10px 12px; }
+.composer-area:has(.input-request) { max-height: 72vh; overflow-y: auto; }
+@media(max-width:600px) { :is(.app-shell,.settings-modal,.motion-overlay) .input-request { padding: 16px; } :is(.app-shell,.settings-modal,.motion-overlay) .input-request header { flex-wrap: wrap; } :is(.app-shell,.settings-modal,.motion-overlay) .input-request header > button { margin-left: auto; } :is(.app-shell,.settings-modal,.motion-overlay) .input-request fieldset { padding: 12px; } }

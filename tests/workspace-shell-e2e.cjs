@@ -19,7 +19,7 @@ async function run(){
  const check=(value,label,detail)=>{if(!value)failures.push({label,detail});};
  const sameBox=(a,b)=>['x','y','width','height'].every(key=>Math.abs(a[key]-b[key])<1);
  const button=name=>page.getByRole('button',{name,exact:true});
- async function dashboard(){assert.equal(await page.locator('.main-shell').getAttribute('data-view'),'dashboard');assert.equal(await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).isVisible(),true);}
+ async function dashboard(){assert.equal(await page.locator('.main-shell').getAttribute('data-view'),'dashboard');if(await page.locator('.app-shell').getAttribute('data-chat-focus')==='true'){assert(await page.locator('.conversation-dock').evaluate(e=>e.getBoundingClientRect().width>innerWidth*.75),'대화 중에는 넓은 화면이 기본');}else assert.equal(await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).isVisible(),true);}
  async function dockHome(){
   const back=button('대화 목록으로');if(await back.isVisible()){await back.click();await page.locator('.dock-chat').waitFor({state:'detached'});}
   const home=button('대화 홈으로');if(await home.isVisible())await home.click();
@@ -51,11 +51,12 @@ async function run(){
   snapshot=await page.evaluate(()=>window.flowrium.bootstrap());check(snapshot.sessions.some(s=>s.scope==='general'),'일반 대화 생성과 저장');
   await projectList();await page.locator('.dock-new-conversation').click();await page.locator('.dock-chat .session-heading h2').filter({hasText:'새로운 작업'}).waitFor();await dashboard();
   snapshot=await page.evaluate(()=>window.flowrium.bootstrap());check(snapshot.sessions.length===before+3&&snapshot.sessions.filter(s=>!s.scope).length===4,'세 범위 대화의 독립 생성',snapshot.sessions.map(s=>({scope:s.scope||'project',title:s.title})));check(snapshot.projects.length===1,'개인 대화가 프로젝트 목록을 늘리지 않음');
-  await projectList();await page.locator('.dock-session').filter({has:page.locator('strong',{hasText:running.title})}).click();await page.getByLabel('Codex에 보낼 작업 요청').fill('대기검증');await button('작업 보내기').click();await page.locator('.execution-summary [data-state=running] strong').filter({hasText:'1'}).waitFor();await dashboard();
-  await projectList();await page.locator('.dock-session').filter({has:page.locator('strong',{hasText:decision.title})}).click();await page.getByLabel('작업 모드',{exact:true}).selectOption('build');await page.getByLabel('Codex에 보낼 작업 요청').fill('승인검증');await button('작업 보내기').click();await page.locator('.execution-summary [data-state=decision] strong').filter({hasText:'1'}).waitFor();await dashboard();
+  await projectList();await page.locator('.dock-session').filter({has:page.locator('strong',{hasText:running.title})}).click();await page.getByLabel('Codex에 보낼 작업 요청').fill('대기검증');await button('작업 보내기').click();await page.locator('.dock-status-tabs [data-state=running] strong').filter({hasText:'1'}).waitFor();await dashboard();
+  await projectList();await page.locator('.dock-session').filter({has:page.locator('strong',{hasText:decision.title})}).click();await page.getByLabel('작업 모드',{exact:true}).selectOption('build');await page.getByLabel('Codex에 보낼 작업 요청').fill('승인검증');await button('작업 보내기').click();await page.locator('.dock-status-tabs [data-state=decision] strong').filter({hasText:'1'}).waitFor();await dashboard();
   const counts=await page.locator('.execution-summary>button').evaluateAll(nodes=>nodes.map(e=>({state:e.dataset.state,text:e.innerText.replace(/\s+/g,' ').trim(),count:Number(e.querySelector('strong').textContent)})));
   check(counts.length===3&&counts.every(e=>e.count===1),'작업중 / 대기 / 결정 집계',counts);
   for(const [state,title]of [['running','대기검증'],['waiting',waiting.title],['decision','승인검증']]){
+   const back=button('대화 목록으로');if(await back.isVisible())await back.click();
    await page.locator('.dock-status-tabs [data-state='+state+']').click();await page.locator('.dock-session-list').waitFor();
    const titles=await page.locator('.dock-session strong').allTextContents();check(titles.length===1&&titles[0]===title,'진행 상태 필터 '+state,titles);
    check(await page.locator('.dock-session .execution-badge').getAttribute('data-state')===state,'대화 카드 상태 표시 '+state);await dashboard();

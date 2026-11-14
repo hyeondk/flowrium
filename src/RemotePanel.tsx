@@ -8,7 +8,7 @@ export default function RemotePanel() {
     [message, setMessage] = useState("");
   const [push,setPush]=useState<WebPushState>();
   const [deviceKinds,setDeviceKinds]=useState<Record<string,PushKind[]>>({});
-  const pushLabels:Record<PushKind,string>={decision:"결정 / 승인",done:"작업 완료",error:"오류",report:"보고서",reminder:"예약 알림",message:"업무 메시지"};
+  const pushLabels:Record<PushKind,string>={decision:"결정과 승인",done:"작업 완료",error:"오류",report:"보고서",reminder:"예약 알림",message:"업무 메시지"};
   async function refreshPush(){const next=await api?.webPushState();setPush(next);setDeviceKinds(Object.fromEntries((next?.devices||[]).map(d=>[d.id,d.kinds])));}
   async function pushAction(action:()=>Promise<unknown>){setBusy(true);try{await action();await refreshPush()}catch(e){setMessage(e instanceof Error?e.message:String(e))}finally{setBusy(false)}}
   const api = window.flowrium;
@@ -45,7 +45,7 @@ export default function RemotePanel() {
       </h3>
       <p>
         이 컴퓨터를 켜 둔 상태에서 연결 주소를 휴대폰에 열면
-        프로젝트 / 첨부 대화 / 팀 업무 배정과 중단 / 결정 / 비서 / 사용량을 확인하고 작업을 이어갈 수 있습니다.
+        프로젝트와 첨부 대화를 확인하고 팀 업무를 배정하거나 중단할 수 있습니다. 결정과 비서 메시지, 사용량도 확인하며 작업을 이어갑니다.
       </p>
       <div className="settings-buttons">
         {state.enabled ? (
@@ -95,12 +95,12 @@ export default function RemotePanel() {
       )}
       {state.enabled&&<div className="mobile-device-settings">
         <h4>휴대폰 알림 기기</h4>
-        <p>휴대폰의 설정에서 알림을 켜세요. 연결 종료 / 계정 변경 후에는 새 연결에서 다시 등록합니다.</p>
+        <p>휴대폰의 설정에서 알림을 켜세요. 연결을 종료하거나 계정을 바꾸면 새 연결에서 다시 등록합니다.</p>
         {push?.available===false&&<p>{push.message}</p>}
         {!push?.devices.length&&<p>현재 연결에 등록된 기기가 없습니다.</p>}
         {push?.devices.map(device=><div key={device.id} className="settings-card">
           <strong>{device.label}</strong>
-          <div className="settings-buttons">{(Object.keys(pushLabels) as PushKind[]).map(kind=><label key={kind} style={{display:"flex",alignItems:"center",gap:6}}><AnimatedSwitch style={{width:"auto"}} checked={(deviceKinds[device.id]||[]).includes(kind)} onChange={event=>setDeviceKinds(old=>({...old,[device.id]:event.target.checked?[...(old[device.id]||[]),kind]:(old[device.id]||[]).filter(k=>k!==kind)}))}/>{pushLabels[kind]}</label>)}</div>
+          <div className="device-preferences">{(Object.keys(pushLabels) as PushKind[]).map(kind=><label key={kind}><AnimatedSwitch style={{width:"auto"}} checked={(deviceKinds[device.id]||[]).includes(kind)} onChange={event=>setDeviceKinds(old=>({...old,[device.id]:event.target.checked?[...(old[device.id]||[]),kind]:(old[device.id]||[]).filter(k=>k!==kind)}))}/>{pushLabels[kind]}</label>)}</div>
           <div className="settings-buttons">
             <button className="button secondary" disabled={busy} onClick={()=>void pushAction(()=>api!.webPushAction({action:"preferences",id:device.id,kinds:deviceKinds[device.id]||[]}))}>알림 종류 저장</button>
             <button className="button secondary" disabled={busy} onClick={()=>void pushAction(async()=>{const result=await api!.webPushAction({action:"test",id:device.id});setMessage(result.sent?"알림 서버에 시험 알림을 보냈습니다.":"시험 알림 발송을 확인하지 못했습니다.");})}>기기에 시험 알림</button>

@@ -64,7 +64,7 @@ export default function IntegrationPanel({
   }
   return (
     <><section className="integration-panel settings-section">
-      <h3>메일 / 일정 / 드라이브</h3>
+      <h3>메일과 일정, 드라이브</h3>
       <p>본인의 Google 계정을 연결해 자료를 확인하고 프로젝트로 가져옵니다.</p>
       <div className="connection-state">
         <span className={"status-dot " + (status?.connected ? "online" : "")} />
@@ -81,7 +81,7 @@ export default function IntegrationPanel({
           <summary>Google 연결 설정</summary>
           <p>
             Google Cloud에서 만든 데스크톱 앱 OAuth 클라이언트를 입력합니다.
-            Calendar / Drive / Gmail API를 활성화해 주세요.
+            Calendar, Drive, Gmail API를 활성화해 주세요.
           </p>
           <label>
             클라이언트 ID
@@ -119,7 +119,7 @@ export default function IntegrationPanel({
         </details>
       )}
       <div className="settings-buttons">
-        {status?.connected && (!status.calendarWrite || !status.mailSend) && <button disabled={busy || status.authorizing} onClick={()=>void perform(()=>api!.connectGoogle())}>일정 / 메일 권한 다시 연결</button>}
+        {status?.connected && (!status.calendarWrite || !status.mailSend) && <button disabled={busy || status.authorizing} onClick={()=>void perform(()=>api!.connectGoogle())}>일정과 메일 권한 다시 연결</button>}
         {!status?.connected && (
           <button
             className="button secondary"
@@ -154,7 +154,7 @@ export default function IntegrationPanel({
       </div>
       {status?.connected && (
         <>
-          {kind === 'calendar' && <label>캘린더<select aria-label="조회할 캘린더" value={calendarId} disabled={busy} onChange={e=>{const id=e.target.value;setCalendarId(id);void perform(()=>read('calendar',id));}}><option value="primary">기본 캘린더</option>{calendars.map(c=><option value={c.id} key={c.id}>{c.title}{c.writable?'':' / 읽기 전용'}</option>)}</select></label>}
+          {kind === 'calendar' && <label>캘린더<select aria-label="조회할 캘린더" value={calendarId} disabled={busy} onChange={e=>{const id=e.target.value;setCalendarId(id);void perform(()=>read('calendar',id));}}><option value="primary">기본 캘린더</option>{calendars.map(c=><option value={c.id} key={c.id}>{c.title}{c.writable?'':' (읽기 전용)'}</option>)}</select></label>}
           <nav className="integration-tabs">
             {(
               [
@@ -212,7 +212,7 @@ export default function IntegrationPanel({
                 </small>
                 <p>{item.detail}</p>
               </div>
-              <div>
+              <div className="integration-item-actions">
                 {item.url && (
                   <a
                     href={item.url}
@@ -239,7 +239,7 @@ export default function IntegrationPanel({
                           projectId,
                           item.id,
                         );
-                        setNotice("프로젝트에 저장했습니다 / " + result.path);
+                        setNotice("프로젝트에 저장했습니다. " + result.path);
                       })
                     }
                   >

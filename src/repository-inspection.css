@@ -7,3 +7,39 @@
 .repo-inspection summary { cursor: pointer; }
 .repo-inspection small { opacity: .75; }
 .repo-inspection .repo-description { white-space: pre-wrap; max-height: 22rem; overflow: auto; }
+
+/* 페이지 전체를 행동 행으로 오인하지 않도록 형상관리의 면을 명시합니다. */
+.page-inner.repo-page { display:grid; align-content:start; justify-content:stretch; gap:20px; width:100%; max-width:1120px; padding:28px; margin:0 auto; font-size:13px; line-height:22px; min-width:0; }
+.page-inner.repo-page > h1 { font-size:28px; line-height:36px; margin:0; letter-spacing:-.025em; }.page-inner.repo-page > p { margin:-12px 0 0; color:var(--muted); }
+.page-inner.repo-page > label { display:grid; gap:8px; min-width:0; }
+.page-inner.repo-page > fieldset { display:grid; gap:16px; margin:0; padding:20px; border:1px solid var(--line-soft); border-radius:12px; min-width:0; background:var(--panel); }
+.page-inner.repo-page > fieldset h2 { font-size:16px; line-height:24px; margin:8px 0 0; }
+.page-inner.repo-page > fieldset > label:not(.repo-file),.page-inner.repo-page .repo-batch label:not(:has(input[type=checkbox])) { display:grid; gap:8px; min-width:0; }
+.page-inner.repo-page :is(input:not([type=checkbox]),select,textarea) { width:100%; min-height:40px; padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:var(--input); color:var(--text); font:inherit; font-size:13px; line-height:22px; min-width:0; }
+.page-inner.repo-page :is(.repo-file,.repo-pr) { min-height:44px; padding:10px 0; gap:12px; border-bottom:1px solid var(--line-soft); font-size:13px; line-height:22px; min-width:0; overflow-wrap:anywhere; }
+.page-inner.repo-page .repo-file { display:flex; align-items:flex-start; }.page-inner.repo-page .repo-file .ui-checkbox-control { flex:none; margin-top:2px; }
+.page-inner.repo-page .repo-pr { justify-content:space-between; flex-wrap:wrap; }.page-inner.repo-page .repo-pr > span { flex:1; min-width:0; }
+.page-inner.repo-page .wb-tools { justify-content:flex-end; flex-wrap:wrap; gap:8px; }
+.page-inner.repo-page .wb-tools > button,.page-inner.repo-page fieldset > button { min-height:36px; padding:6px 10px; border-color:transparent; border-radius:8px; background:transparent; box-shadow:none; font-size:12px; line-height:22px; }
+.page-inner.repo-page fieldset > button { justify-self:end; }.page-inner.repo-page fieldset > section[role=alert] { padding:16px; border:1px solid var(--line); border-radius:10px; background:var(--card-subtle); }.page-inner.repo-page fieldset > section[role=alert] .wb-tools { margin-top:12px; }
+.page-inner.repo-page > pre { min-width:0; padding:20px; margin:0; border:1px solid var(--line-soft); border-radius:12px; background:var(--panel); font-size:13px; line-height:22px; }
+.page-inner.repo-page .repo-batch,.page-inner.repo-page .repo-inspection { padding:20px; margin:0; border:1px solid var(--line-soft); border-radius:12px; background:var(--panel); min-width:0; }
+.page-inner.repo-page .repo-batch > summary { font-size:15px; line-height:24px; font-weight:700; cursor:pointer; }.page-inner.repo-page .repo-batch > p { color:var(--muted); margin:12px 0; }
+.page-inner.repo-page .repo-batch > :is(section,aside) { padding:16px; margin:16px 0; border:1px solid var(--line-soft); border-radius:10px; background:var(--card-subtle); min-width:0; }
+.page-inner.repo-page .repo-batch :is(button,label) { margin-block:4px; }.page-inner.repo-page .repo-batch button { min-height:36px; padding:6px 10px; border:1px solid transparent; border-radius:8px; background:transparent; font-size:12px; line-height:22px; }
+.page-inner.repo-page .repo-batch .pr-grid { gap:16px; margin:16px 0; grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr)); }
+.repo-inspection.repo-inspection { gap:16px; font-size:13px; line-height:22px; overflow-wrap:normal; }
+.repo-inspection > header { align-items:center; gap:12px; }.repo-inspection :is(h2,h3) { font-size:16px; line-height:24px; }
+.repo-inspection .repo-read-actions { justify-content:flex-end; gap:8px; }.repo-inspection button { min-height:36px; padding:6px 10px; border:1px solid transparent; border-radius:8px; background:transparent; font-size:12px; line-height:22px; }
+.repo-inspection li { padding:12px 0; border-bottom:1px solid var(--line-soft); align-items:center; gap:12px; }.repo-inspection li > button { margin-left:auto; }
+.repo-inspection details { padding:16px; border:1px solid var(--line-soft); border-radius:10px; background:var(--card-subtle); }.repo-inspection summary { line-height:24px; }
+@media(max-width:700px) { .page-inner.repo-page { padding:20px; }.page-inner.repo-page > h1 { font-size:24px; line-height:32px; } }
+@media(max-width:460px) { .page-inner.repo-page { padding:16px; gap:16px; }.page-inner.repo-page > fieldset,.page-inner.repo-page .repo-batch,.page-inner.repo-page .repo-inspection { padding:16px; } }
+
+.page-inner.repo-page .wb-tools > .wb-primary { min-height:40px; padding:8px 14px; border-radius:10px; background:var(--primary-gradient); color:var(--on-primary); border-color:transparent; }
+
+.page-inner.repo-page .repo-page-heading h1 { font-size:28px; line-height:36px; margin:0; letter-spacing:-.025em; }
+.page-inner.repo-page .repo-page-heading p { margin:6px 0 0; color:var(--muted); font-size:13px; line-height:22px; }
+@media(max-width:700px) { .page-inner.repo-page .repo-page-heading h1 { font-size:24px; line-height:32px; } }
+.pf-native-pane .page-inner.repo-page { max-width:none; margin:0; padding:0; }
+.pf-native-pane .page-inner.repo-page .repo-page-heading h1 { font-size:20px; line-height:28px; }

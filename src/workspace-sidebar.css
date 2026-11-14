@@ -11,3 +11,34 @@
 @media(max-width:760px){.app-shell .workspace-side{position:fixed;inset:0 auto 0 0;width:252px;transform:translateX(-104%);transition:transform 260ms ease-in}.app-shell .workspace-side.is-open{transform:translateX(0);transition-timing-function:ease-out}.workspace-side .sidebar-surface{width:232px}.workspace-side .side-collapse{display:none}.workspace-side[data-expanded=false] :is(.side-row>span,.side-brand>span,.side-account>span,.side-project-list>p,.side-state){opacity:1;visibility:visible}.workspace-side[data-expanded=false] .side-project-list{display:block}.workspace-side[data-expanded=false] .side-project-head{justify-content:space-between}}
 @media(max-height:800px){.sidebar-surface{inset-block:8px;padding-top:8px}.workspace-side .side-row{height:40px;min-height:40px;margin-block:1px}.side-brand-row{margin-bottom:8px}.side-group,.side-projects{margin-top:8px}.workspace-side[data-expanded=false] :is(.side-group,.side-projects){margin-top:7px;padding-top:5px}}
 @media(prefers-reduced-motion:reduce){.sidebar-surface,.app-shell .workspace-side{transition:none!important}.workspace-side *{animation:none!important}}
+
+/* 프로젝트 목록은 배정된 높이 안에서 스크롤하며, 펼침 전후 그룹 위치를 유지합니다. */
+.workspace-side .sidebar-surface{min-height:0}
+.app-shell .workspace-side nav{flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior:contain;scroll-padding-block:8px;padding-right:2px}
+.app-shell .workspace-side nav::-webkit-scrollbar{display:block;width:4px}
+.app-shell .workspace-side nav::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+.app-shell .workspace-side nav>:is(.side-row,.side-group){flex:0 0 auto}
+.app-shell .workspace-side :is(.side-projects,.side-group){margin-top:16px;border-top:0;padding-top:0}
+.app-shell .workspace-side .side-projects{display:flex;flex-direction:column;flex:1 1 auto;min-height:128px}
+.app-shell .workspace-side .side-project-head{flex:0 0 36px;min-height:36px;margin-bottom:4px;justify-content:flex-start;gap:6px;padding-left:5px}
+.app-shell .workspace-side .side-project-head>h2{flex:1;min-width:0;padding:0}
+.app-shell .workspace-side .side-project-head>button{order:-1}
+.app-shell .workspace-side :is(.side-collapse,.side-project-head>button){width:32px;height:32px;min-width:32px;min-height:32px;flex:0 0 32px;padding:0;border-color:transparent;line-height:20px}
+.app-shell .workspace-side .side-project-list{display:block;flex:1 1 auto;max-height:clamp(144px,28dvh,280px);min-height:0;overflow:auto;overscroll-behavior:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent;scroll-padding-block:4px}
+.app-shell .workspace-side .side-group{display:flex;flex-direction:column;gap:2px;min-height:0}
+.app-shell .workspace-side .side-group>h2{height:24px;min-height:24px;flex:none;padding:3px 10px;line-height:18px;margin:0 0 4px}
+.app-shell .workspace-side nav .side-row{flex:0 0 44px;height:44px;min-height:44px;margin:0;gap:12px;line-height:22px;scroll-margin-block:6px}
+.app-shell .workspace-side .side-row>span{flex:1 1 auto}
+.app-shell .workspace-side .side-account{flex:0 0 36px;min-height:36px;overflow:hidden}
+.app-shell .workspace-side .side-account>span{overflow:hidden;text-overflow:ellipsis}
+/* 로고만 보정하고 메뉴 아이콘과 글자의 시작점은 그대로 둡니다. */
+.app-shell .workspace-side .side-brand-row>.side-brand{padding:0 0 0 5px}
+.app-shell .workspace-side[data-expanded=false] .side-brand-row>.side-brand{padding-left:4px}
+/* 보이지 않는 목록과 소제목도 같은 높이를 차지해 즉시 클릭 좌표가 바뀌지 않습니다. */
+.app-shell .workspace-side[data-expanded=false] .side-project-list{display:block;visibility:hidden;pointer-events:none}
+.app-shell .workspace-side[data-expanded=false] .side-group>h2{visibility:hidden}
+@media(max-height:640px){
+ .app-shell .workspace-side .side-brand-row{margin-bottom:8px}
+ .app-shell .workspace-side .side-project-list{max-height:176px}
+ .app-shell .workspace-side :is(.side-group,.side-projects){margin-top:12px}
+}

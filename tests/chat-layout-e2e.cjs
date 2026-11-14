@@ -1,0 +1,37 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs/promises');
+const path=require('node:path');
+const os=require('node:os');
+const {randomUUID}=require('node:crypto');
+const {_electron}=require('playwright');
+const {Store}=require('../electron/store.cjs');
+const {openConversation}=require('./shell-test-helpers.cjs');
+
+async function run(){
+ const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-chat-layout-'))),baseline=process.argv.includes('--baseline');let app,page;
+ const measurements=[],errors=[];
+ try{
+  const profile=path.join(temp,'profile'),folder=path.join(temp,'synthetic-project');await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await store.addProject(folder);
+  const messages=Array.from({length:302},(_,i)=>({id:randomUUID(),role:i%2?'assistant':'user',text:i===301?'넓은 대화 화면에서 확인할 마지막 답변입니다.\n\n한국어 문장은 단어 중간에서 끊지 않고 자연스럽게 이어서 읽습니다.\n\n```js\nconst longLine = "'+('검증'.repeat(100))+'";\n```':`합성 대화 ${i+1}\n\n화면 공간과 스크롤을 확인하기 위한 검증 기록입니다.`,createdAt:new Date(1700000000000+i*1000).toISOString()}));
+  const session=await store.createSession(project.id,{title:'넓은 채팅 배치 검증',threadId:'synthetic-layout-thread',messages,codexLink:{version:1,mode:'linked',sourceThreadId:'synthetic-layout-thread',ownerHash:'synthetic',deviceHash:'synthetic',importedAt:new Date().toISOString(),sourceUpdatedAt:new Date().toISOString(),snapshotHash:'synthetic',archivePath:'synthetic',activeAtImport:true,sourceMessageIds:[]}});
+  store.session(session.id).codexLink={version:1,mode:'linked',sourceThreadId:'synthetic-layout-thread',ownerHash:'a'.repeat(64),deviceHash:'b'.repeat(64),importedAt:new Date().toISOString(),sourceUpdatedAt:new Date().toISOString(),snapshotHash:'c'.repeat(64),archivePath:'.flowrium/codex-source/'+('a'.repeat(64))+'/'+('b'.repeat(64))+'.json',activeAtImport:true,sourceMessageIds:[]};await store.save();
+  const typing=await store.createSession(project.id,{title:'입력과 전송 확인'});
+  await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
+  app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(20000);page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:900});await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();await page.evaluate(()=>document.fonts.ready);await openConversation(page,session.title,{expanded:true});await page.waitForTimeout(400);
+  async function measure(){return page.evaluate(()=>{const rect=selector=>{const e=document.querySelector(selector),r=e?.getBoundingClientRect();return r?{x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom,right:r.right,client:e.clientWidth,scroll:e.scrollWidth,scrollTop:e.scrollTop,scrollHeight:e.scrollHeight}:null;};return{viewport:{width:innerWidth,height:innerHeight},dock:rect('.conversation-dock'),heading:rect('.dock-heading'),session:rect('.session-heading'),link:rect('.codex-link-bar'),messages:rect('.messages'),composer:rect('.composer-area'),history:rect('.message-history-controls'),documentOverflow:document.documentElement.scrollWidth-innerWidth,focus:document.querySelector('.app-shell').dataset.chatFocus,textarea:rect('.composer textarea')};});}
+  if(baseline){const m=await measure();measurements.push(m);assert(m.dock.width<=460,'기존 좁은 패널 재현');await page.screenshot({path:path.join(root,'.flowrium-tmp/qa-261114_02/chat-before.png')});console.log('기존 채팅 폭과 본문 높이 재현',JSON.stringify(m));return;}
+  for(const [width,height]of [[1440,900],[1280,800],[1024,768],[800,700],[390,844],[320,568]]){
+   await page.setViewportSize({width,height});await page.waitForTimeout(400);const m=await measure();measurements.push(m);assert.equal(m.focus,'true','대화는 넓게 열림');assert(m.dock.width>=width-(width>760?120:2),'가용 폭을 사용하는 채팅 '+width);assert(m.messages.height>=height*.48,'본문이 화면 절반 이상 '+width);assert(m.composer.height<=Math.max(185,height*.28),'입력 영역의 기본 높이 '+width);assert(m.messages.scroll<=m.messages.client+1,'본문 가로 넘침 없음 '+width);assert(m.dock.scroll<=m.dock.client+1&&m.documentOverflow<=1,'대화와 문서 가로 넘침 없음 '+width);assert(m.textarea.height>=42&&m.textarea.height<=90,'기본 입력 높이 '+width);
+   assert.equal(await page.locator('.messages [data-message-id]').count(),100);assert(await page.locator('.messages').evaluate(e=>e.scrollHeight-e.clientHeight-e.scrollTop<3),'넓이 변경 후 최신 위치 유지');
+  }
+  await page.setViewportSize({width:1440,height:900});await page.getByRole('button',{name:'대시보드와 나란히 보기',exact:true}).click();await page.waitForTimeout(320);let m=await measure();assert.equal(m.focus,'false');assert(m.dock.width>=500,'나란히 볼 때도 충분한 채팅 폭');assert(await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).isVisible());await page.getByRole('button',{name:'대화 크게 보기',exact:true}).click();await page.waitForTimeout(320);m=await measure();assert.equal(m.focus,'true');
+  // 고정 안내가 본문을 덮지 않고 과거 기록을 추가한 후에도 가시 위치가 유지되는지 확인합니다.
+  const body=page.locator('.messages');await body.evaluate(e=>{e.scrollTop=120;});await page.waitForTimeout(80);
+  const anchor=()=>body.evaluate(e=>{const b=e.getBoundingClientRect(),n=[...e.querySelectorAll('[data-message-id]')].find(n=>n.getBoundingClientRect().bottom>b.top+60);return{id:n?.dataset.messageId,y:n?.getBoundingClientRect().top,top:e.scrollTop,height:e.scrollHeight};});const before=await anchor();await page.getByRole('button',{name:'이전 메시지 100개 더 보기',exact:true}).evaluate(e=>e.click());
+  const immediate=await anchor();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));const frames=await anchor();await page.waitForTimeout(450);const settled=await anchor();for(const value of [immediate,frames,settled]){assert.equal(value.id,before.id);assert(Math.abs(value.y-before.y)<1.5);}
+  await page.getByRole('button',{name:'최근 메시지로',exact:true}).click();await page.screenshot({path:path.join(root,'.flowrium-tmp/qa-261114_02/chat-after.png')});
+  await openConversation(page,typing.title,{expanded:true});const input=page.getByLabel('Codex에 보낼 작업 요청');await input.fill('넓은 화면에서 Enter 전송 확인');await input.press('Enter');await page.locator('.message.assistant').first().waitFor();assert.equal((await page.evaluate(id=>window.flowrium.bootstrap().then(d=>d.sessions.find(s=>s.id===id)),typing.id)).messages.filter(m=>m.role==='user').length,1);
+  await page.getByRole('button',{name:'대화 목록으로',exact:true}).click();await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();assert.equal(await page.locator('.app-shell').getAttribute('data-chat-focus'),'false');assert.deepEqual(errors,[]);console.log('넓은 채팅 / 6개 화면 크기 / 충분한 본문과 간결한 입력 / 나란히 보기 / 과거 기록 위치 / 전체 대화 보존 / Enter 전송 통과');
+ }finally{await fs.mkdir(path.join(root,'.flowrium-tmp/qa-261114_02'),{recursive:true});await fs.writeFile(path.join(root,'.flowrium-tmp/qa-261114_02','chat-layout-'+(baseline?'before':'after')+'.json'),JSON.stringify({baseline,measurements,errors},null,2));if(app)await app.close().catch(()=>{});await fs.rm(temp,{recursive:true,force:true,maxRetries:8,retryDelay:150});}
+}
+run().catch(e=>{console.error(e);process.exitCode=1});

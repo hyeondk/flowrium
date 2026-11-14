@@ -45,7 +45,7 @@ jobs:
     if: inputs.test_scope == 'features'
     name: Windows 신규 기능 점검
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
         shell: bash
@@ -61,7 +61,7 @@ jobs:
       - name: 신규 기능별 실제 앱 검사
         run: |
           result=0
-          for feature in migration voice-servers project-ports portfolio-reports-popup codex-transfer settings-layout long-conversation
+          for feature in migration voice-servers project-ports portfolio-reports-popup codex-transfer settings-layout long-conversation chat-layout navigation-layout feature-surfaces
           do
             if ! node "tests/${feature}-e2e.cjs"
             then
@@ -315,6 +315,18 @@ jobs:
           node tests/codex-transfer-e2e.cjs
           node tests/settings-layout-e2e.cjs
           node tests/long-conversation-e2e.cjs
+      - name: 넓은 대화 / 본문 높이 / 입력 영역 / 스크롤 위치
+        id: verify_22
+        continue-on-error: true
+        run: node tests/chat-layout-e2e.cjs
+      - name: 긴 프로젝트 목록 / 메뉴 구획 / 화면 높이별 배치
+        id: verify_23
+        continue-on-error: true
+        run: node tests/navigation-layout-e2e.cjs
+      - name: 기능별 화면 / 여백 / 작은 화면 / 가로 넘침
+        id: verify_24
+        continue-on-error: true
+        run: node tests/feature-surfaces-e2e.cjs
       - name: 모든 검증 결과 확인
         if: ${{ !cancelled() }}
         env:

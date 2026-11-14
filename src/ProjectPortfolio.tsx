@@ -224,7 +224,7 @@ export function KickoffForm({
                   setValues((v) => ({ ...v, scaffold: e.target.checked }))
                 }
               />
-              규칙 / 디자인 / 회의록 폴더 만들기
+              규칙과 디자인, 회의록 폴더 만들기
             </label>
             {values.repository && (
               <label>
@@ -305,7 +305,7 @@ function OutputIndex({
         try {
           const result = await api!.readWorkbench(project.id);
           rows.push(...result.artifacts.map((file) => ({ ...file, project })));
-          if (result.truncated) failed.push(project.name + " / 일부만 표시");
+          if (result.truncated) failed.push(project.name + " (일부만 표시)");
         } catch {
           failed.push(project.name);
         }
@@ -344,7 +344,7 @@ function OutputIndex({
         <button onClick={() => setSelected(undefined)}>산출물 목록으로</button>
         <h2>{selected.path.split("/").pop()}</h2>
         <p className="pf-path">
-          {selected.project.name} / {selected.path}
+          {selected.project.name} ({selected.path})
         </p>
         <div className="pf-actions">
           <button
@@ -408,7 +408,7 @@ function OutputIndex({
       </div>
       {loading && <p role="status">프로젝트 문서를 불러오는 중입니다.</p>}
       {unread.length > 0 && (
-        <p role="status">확인이 필요한 폴더 / {unread.join(" / ")}</p>
+        <p role="status">확인이 필요한 폴더: {unread.join(", ")}</p>
       )}
       <div className="pf-list">
         {list.map((f) => (
@@ -421,7 +421,7 @@ function OutputIndex({
             <span>
               <strong>{f.path.split("/").pop()}</strong>
               <small className="pf-path">
-                {f.project.name} / {f.path}
+                {f.project.name} ({f.path})
               </small>
             </span>
             <time>{localDay(f.modifiedAt)}</time>
@@ -713,8 +713,8 @@ export function ProjectPortfolio({
                     </p>
                     <footer>
                       <span>
-                        {c.details?.owner || "담당자 미지정"} / 업무{" "}
-                        {own.length}
+                        {c.details?.owner || "담당자 미지정"} (업무{" "}
+                        {own.length}개)
                       </span>
                       <ArrowRight size={15} />
                     </footer>
@@ -874,7 +874,7 @@ export function ProjectPortfolio({
                   <CalendarDays size={16} />
                   <span>
                     <small>
-                      {row.location} / {row.label}
+                      {row.location} ({row.label})
                     </small>
                     <strong>{row.session.title}</strong>
                     <p>{row.text.slice(0, 160)}</p>

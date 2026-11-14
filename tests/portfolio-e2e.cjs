@@ -23,11 +23,21 @@ async function main() {
   const env = { ...process.env, FLOWRIUM_USER_DATA: profile };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.ELECTRON_RENDERER_URL;
-  let app;
+  let app, page;
   try {
     app = await electron.launch({ args: [root], env, timeout: 40000 });
-    const page = await app.firstWindow();await page.setViewportSize({width:1440,height:1000});
+    page = await app.firstWindow();await page.setViewportSize({width:1440,height:1000});
     page.setDefaultTimeout(10000);
+    await page.evaluate(() => {
+      window.flowriumTestClicks = [];
+      document.addEventListener('click', event => {
+        const button = event.target.closest?.('button');
+        if (!button) return;
+        const row = { label: button.getAttribute('aria-label') || button.textContent.trim().slice(0, 80), before: document.querySelector('.main-shell')?.dataset.view };
+        window.flowriumTestClicks.push(row);
+        setTimeout(() => { row.after = document.querySelector('.main-shell')?.dataset.view; row.focus = document.querySelector('.app-shell')?.dataset.chatFocus; }, 0);
+      }, true);
+    });
     const button = (name) => page.getByRole("button", { name, exact: true });
     const tab = (name) =>
       page
@@ -81,7 +91,7 @@ async function main() {
     await page
       .getByLabel("킥오프 메모")
       .fill("현장 답사 전 검토사항을 기록합니다.");
-    await page.getByLabel("규칙 / 디자인 / 회의록 폴더 만들기").check();
+    await page.getByLabel("규칙과 디자인, 회의록 폴더 만들기").check();
     await app.evaluate(({ dialog }, folder) => {
       dialog.showOpenDialog = async () => ({
         canceled: false,
@@ -272,6 +282,9 @@ async function main() {
     console.log(
       "포트폴리오 실제 앱 검증 / 빈 대시보드 / 네이티브 폴더 킥오프 / 아홉 탭 / 기간 목표 / 세 문서 유형 / 업무와 프로젝트 재개 / 날짜와 본문 검색 / 전체 산출물",
     );
+  } catch (error) {
+    if (page && !page.isClosed()) console.error('포트폴리오 화면 클릭과 상태', await page.evaluate(() => window.flowriumTestClicks?.slice(-15)));
+    throw error;
   } finally {
     if (app) await app.close();
     await fs.rm(temporary, {
