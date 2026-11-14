@@ -1,0 +1,120 @@
+{
+  "version": "261115_01",
+  "nativeVersion": "26.11.1501",
+  "source": "36383ef466605a8ad484d8d78c509892ce27d881",
+  "platform": "win32-x64",
+  "run": "https://github.com/hyeondk/flowrium/actions/runs/43608903360",
+  "jobs": {
+    "build": {
+      "id": 132489372466,
+      "conclusion": "success"
+    },
+    "installAndUpdate": {
+      "id": 132492782105,
+      "conclusion": "success"
+    }
+  },
+  "unit": {
+    "tests": 255,
+    "passed": 254,
+    "failed": 0,
+    "skipped": 1,
+    "skipReason": "Windows 심볼릭 링크 권한에 의존하는 기록 경계 검증"
+  },
+  "allRequiredGateChecksPassed": true,
+  "ui": {
+    "wideChatSixSizes": true,
+    "navigationManyProjectsAndShortWindows": true,
+    "functionSurfaceScenarios": 101
+  },
+  "installationTransition": {
+    "from": "0.6.0",
+    "to": "261115_01",
+    "manualInstallPassed": true,
+    "reinstallBackupPassed": true,
+    "restartAndDataAndDraftsPreserved": true
+  },
+  "dateVersionUpdate": {
+    "fromFixture": "261114_99",
+    "to": "261115_01",
+    "fixtureDescription": "최종 소스에 직전 날짜 버전 메타데이터를 적용한 격리 검사판",
+    "actualUpdateButton": true,
+    "downloadNsisExitZeroRestartReady": true,
+    "dataAndDraftsPreserved": true
+  },
+  "package": {
+    "installerSize": 323288095,
+    "installerSha256": "083cfe0519019d7a3994e177c1a200fb522855746acdc8241bb6d9c6531da2db",
+    "architecture": "x64",
+    "productFiles": 89,
+    "standardMatchingFiles": 88,
+    "htmlLineEndingDifferences": 1,
+    "frontendByteIdentical": 2,
+    "sourceMatch": true
+  },
+  "sourceMatch": {
+    "source": "36383ef466605a8ad484d8d78c509892ce27d881",
+    "publicVersion": "261115_01",
+    "internalVersion": "26.11.1501",
+    "architecture": "x64",
+    "compared": 89,
+    "identical": 11,
+    "crlfNormalized": 77,
+    "standardMatchingFiles": 88,
+    "htmlLineEndingDifferences": 1,
+    "strictCrlfSourceMatch": false,
+    "generatedWindowsHelper": 1,
+    "frontendAssets": [
+      {
+        "file": "dist/assets/index-Ca_vrzC3.css",
+        "byteEqual": true,
+        "crlfEqual": true
+      },
+      {
+        "file": "dist/assets/index-J9urAUIT.js",
+        "byteEqual": true,
+        "crlfEqual": true
+      }
+    ],
+    "nativePackages": [
+      "codex-win32-x64"
+    ],
+    "missing": [],
+    "unexpected": [],
+    "differences": [
+      {
+        "file": "dist/index.html",
+        "kind": "HTML 줄바꿈 표현 차이",
+        "normalizedMarkupEqual": true,
+        "tagsAttributesAndTextUnchanged": true,
+        "packagedRepeatedCR": 1
+      }
+    ],
+    "guiLaunched": false,
+    "executableRun": false,
+    "sourceMatch": true,
+    "ok": true
+  },
+  "privacy": {
+    "checked": {
+      "git": 385,
+      "asar": 1428,
+      "resources": 2321,
+      "source": 385
+    },
+    "findings": {
+      "sensitivePaths": 0,
+      "markerPaths": 0,
+      "markerFiles": 0,
+      "markerMatches": 0,
+      "unsafeEntries": 0,
+      "unreadable": 0,
+      "buildPolicy": 0,
+      "archivePolicy": 0
+    },
+    "privateMarkerComparisonPassed": true,
+    "skippedVendorBinaries": 17
+  },
+  "releaseStatus": "published",
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_01"
+}

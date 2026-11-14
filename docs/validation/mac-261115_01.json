@@ -1,0 +1,182 @@
+{
+  "version": "261115_01",
+  "nativeVersion": "26.11.1501",
+  "validatedDate": "2026-11-15",
+  "source": "36383ef466605a8ad484d8d78c509892ce27d881",
+  "buildSource": "2b9093dd8a8724ab7bd8e97780d42ae9ce371d5d",
+  "platform": "darwin-arm64",
+  "unit": {
+    "tests": 255,
+    "passed": 255,
+    "failed": 0,
+    "skipped": 0
+  },
+  "functionalRegression": {
+    "suiteCount": 38,
+    "passed": 38,
+    "failed": 0,
+    "surfaceScenarios": 101,
+    "latestChatRelatedRechecks": 8,
+    "finalVersionRechecks": [
+      {
+        "file": "desktop-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "chat-layout-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "navigation-layout-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "settings-layout-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "download-page-e2e.cjs",
+        "passed": true
+      }
+    ],
+    "syntheticProfilesOnly": true,
+    "controlledLocalNativeModels": true,
+    "realExternalAccountCoverageClaimed": false,
+    "themeCombinationCoverageClaimed": false
+  },
+  "layout": {
+    "chat": {
+      "defaultWide": true,
+      "explicitSplitPreservesBackground": true,
+      "viewportCount": 6,
+      "desktop": {
+        "viewport": [
+          1440,
+          900
+        ],
+        "panelWidth": 1346,
+        "messageHeight": 565,
+        "composerHeight": 153
+      },
+      "shortMobile": {
+        "viewport": [
+          320,
+          568
+        ],
+        "panelWidth": 320,
+        "messageHeight": 287,
+        "composerHeight": 153
+      },
+      "documentHorizontalOverflow": 0,
+      "codeOverflowContained": true,
+      "historyAndResizeScrollPassed": true,
+      "handoffAccessibleInWideChat": true,
+      "updateStatesAccessibleInWideChat": true
+    },
+    "navigation": {
+      "longSyntheticProjectList": true,
+      "desktopViewportCount": 4,
+      "mobileViewportCount": 2,
+      "overlapBeforePx": 128,
+      "overlapAfterPx": 0,
+      "logoCenterOffsetBeforePx": -5,
+      "logoCenterOffsetAfterPx": 0,
+      "actualWheelChecked": true,
+      "stabilityFrameDelaysMs": [
+        0,
+        32,
+        450
+      ],
+      "scrollPositionsStable": true,
+      "hoverRowPositionsStable": true,
+      "immediateCollapsedMenuClickPassed": true,
+      "pinAndRestorePassed": true
+    },
+    "surfaces": {
+      "widths": [
+        320,
+        390,
+        800,
+        1024,
+        1440
+      ],
+      "normalPanelPaddingPx": 20,
+      "narrowPanelPaddingPx": 16,
+      "minimumPanelPaddingPx": 16,
+      "documentAndPanelHorizontalOverflow": 0,
+      "repositoryPageGridPassed": true,
+      "newWorkSectionBlockPassed": true,
+      "numericWheelValueAndFocusPreserved": true,
+      "centeredDialogsPassed": true
+    }
+  },
+  "package": {
+    "architecture": "arm64",
+    "dmgIntegrityVerified": true,
+    "signatureIntegrityVerified": true,
+    "adHoc": true,
+    "developerIdSigned": false,
+    "appleNotarized": false,
+    "gatekeeperAccepted": false,
+    "gatekeeperExitCode": 3,
+    "zipAndDmgProductsIdentical": true,
+    "sourceFilesCompared": 89,
+    "sourceFilesByteIdentical": 89,
+    "missingSourceFiles": 0,
+    "unexpectedSourceFiles": 0,
+    "productCodeUnchangedSinceBuild": true,
+    "changesAfterBuild": "다운로드 페이지 검사 파일의 기대값 네 곳만 변경",
+    "freshProfileUnauthenticatedPassed": true,
+    "bundledToolsVerified": true,
+    "terminalDocumentsAndNativeHelperPassed": true,
+    "updateButtonUnsignedRejectPassed": true,
+    "manualDownloadPassed": true,
+    "helperReadinessAndRollbackPassed": true,
+    "wideChatMockUpdateStatesPassed": true,
+    "artifacts": [
+      {
+        "name": "Flowrium-261115_01-mac-arm64.dmg",
+        "size": 368146467,
+        "sha256": "25788276408fb43974f40a6f965bc9014417642e44b4e19ecbcb3031fa42788e"
+      },
+      {
+        "name": "Flowrium-261115_01-mac-arm64.zip",
+        "size": 356256281,
+        "sha256": "3781e6e624e2730a845672a809081d4cf506ce43edf30cd41edbd88341c9e5c4"
+      }
+    ]
+  },
+  "privacy": {
+    "checked": {
+      "git": 385,
+      "asar": 1418,
+      "resources": 2305,
+      "source": 385
+    },
+    "findings": {
+      "sensitivePaths": 0,
+      "markerPaths": 0,
+      "markerFiles": 0,
+      "markerMatches": 0,
+      "unsafeEntries": 0,
+      "unreadable": 0,
+      "buildPolicy": 0,
+      "archivePolicy": 0
+    },
+    "privateMarkerComparisonPassed": true,
+    "skippedVendorBinaryBodies": 11,
+    "scope": "배포 소스와 ASAR 및 리소스의 경로, 알려진 비공개 표식, 압축 경계와 빌드 포함 정책"
+  },
+  "testTemporaryProfilesCleaned": true,
+  "runningOwnedTestAppsAtCheck": 0,
+  "windowsIndependentInstallationStatus": "passed",
+  "releaseStatus": "published",
+  "published": true,
+  "validationScope": {
+    "isolatedProfiles": true,
+    "personalAccountsAndActualDevicePermissionsVerified": false,
+    "note": "격리 프로필의 패키지 검사와 개인 계정 및 실제 사용 기기의 설치와 권한 확인을 구분"
+  },
+  "releaseAssetsVerified": 9,
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_01"
+}
