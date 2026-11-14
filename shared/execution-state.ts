@@ -7,6 +7,7 @@ export function visibleProposals(rows:WorkflowProposal[],now=Date.now()){return 
 export function awaitsContinuation(session:Session){
  if(session.workflow?.status==='done')return false;
  if(session.queuedMessages?.some(q=>q.status==='queued'||q.status==='sending'))return true;
+ if(session.messages.at(-1)?.role!=='assistant')return false;
  const last=session.messages.filter(m=>m.role!=='system').at(-1);if(last?.role!=='assistant')return false;
  const ending=last.text.trim().split(/\n\s*\n/).at(-1)||'';
  return /(?:계속|진행|이어서|시작|다음|추가|원하|선택|알려)[\s\S]{0,180}(?:할까요|해드릴까요|될까요|원하시나요|주세요|하실까요|하겠습니까)[?？.!\s]*$|(?:would you like|shall I|should I)[\s\S]{0,150}\?\s*$/i.test(ending);

@@ -29,7 +29,7 @@ async function main() {
     assert.equal(await page.title(),'Flowrium');
     const document=await app.evaluate(async({app})=>{
       const req=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json');
-      const {exportHTML}=req('./electron/html-export.cjs'),{extract}=req('./electron/google-tools.cjs');
+      const {exportHTML}=req('./electron/html-export.cjs'),{extract}=req('./electron/document-tools.cjs');
       const source='<section class="slide"><h1>번들 문서 검증</h1><p>실제 패키지 본문 읽기</p></section>';
       const pdf=await exportHTML('pdf','번들 검증',source),pptx=await exportHTML('pptx','번들 검증',source);
       const result={pdf:await extract(pdf,'application/pdf'),pptx:await extract(pptx,'application/vnd.openxmlformats-officedocument.presentationml.presentation')};

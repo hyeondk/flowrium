@@ -9,16 +9,19 @@ export default function InputRequestPanel({
   event,
   title,
   onOpen,
+  onResolved,
 }: {
   event: FlowriumEvent;
   title?: string;
   onOpen?: () => void;
+  onResolved?: () => void;
 }) {
   const group = useId();
   const [drafts, setDrafts] = useState<Map<string, Draft>>(() => new Map());
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const sending = useRef(false);
+  const [answered,setAnswered]=useState(false);
   const questions = event.questions || [];
   function update(id: string, change: Draft) {
     setDrafts((prev) => new Map(prev).set(id, { ...prev.get(id), ...change }));
@@ -37,7 +40,7 @@ export default function InputRequestPanel({
       aria-label="Codex 질문"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (!valid || sending.current || !event.requestId) return;
+        if (!valid || sending.current || answered || !event.requestId) return;
         sending.current = true;
         setBusy(true);
         setError("");
@@ -49,7 +52,7 @@ export default function InputRequestPanel({
             requestId: event.requestId,
             answers,
           });
-          setDrafts(new Map());
+          setDrafts(new Map());setAnswered(true);onResolved?.();
         } catch (e) {
           setError(
             e instanceof Error ? e.message : "답변을 전송하지 못했습니다.",
@@ -80,7 +83,7 @@ export default function InputRequestPanel({
         const draft = drafts.get(q.id),
           direct = !q.options.length || draft?.choice === -1;
         return (
-          <fieldset key={q.id} disabled={busy}>
+          <fieldset key={q.id} disabled={busy||answered}>
             <legend>{q.header || "질문 " + (i + 1)}</legend>
             <p>{q.question}</p>
             {q.options.map((option, j) => (
@@ -133,8 +136,8 @@ export default function InputRequestPanel({
         );
       })}
       {error && <p role="alert">{error}</p>}
-      <button className="button primary" disabled={busy || !valid}>
-        답변 보내기
+      <button className="button primary" disabled={busy || answered || !valid}>
+        {answered?'답변을 전달했습니다':'답변 보내기'}
       </button>
     </form>
   );

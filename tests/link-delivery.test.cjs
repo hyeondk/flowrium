@@ -1,8 +1,8 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const {registerLinkDelivery,sender}=require('../electron/link-delivery.cjs');
-async function fixture(t){
- const dir=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-delivery-')),api={},urls=[],calls=[],sent=[],issued=[];let owner=1,now=Date.now(),mails=[],context={enabled:true,scopeId:'scope'};
- const runtime=registerLinkDelivery((n,f)=>api[n]=f,{directory:dir,callbackPort:0,accountRevision:()=>owner,now:()=>now,
+async function fixture(t,platform='darwin'){
+ const base=path.resolve(__dirname,'../.flowrium-tmp/qa-261115_03');await fs.mkdir(base,{recursive:true});const dir=await fs.mkdtemp(path.join(base,'delivery-')),api={},urls=[],calls=[],sent=[],issued=[];let owner=1,now=Date.now(),mails=[],context={enabled:true,scopeId:'scope'};
+ const runtime=registerLinkDelivery((n,f)=>api[n]=f,{directory:dir,platform,callbackPort:0,accountRevision:()=>owner,now:()=>now,
   secretStorage:{isEncryptionAvailable:()=>true,encryptString:v=>Buffer.from('sealed:'+v),decryptString:v=>v.toString().slice(7)},
   openExternal:async u=>urls.push(u),getContext:()=>context,ensureRemote:async()=>{context.enabled=true},
   issueLink:async input=>{issued.push(input);return{url:'https://test-work.trycloudflare.com/#handoff='+('a'.repeat(40)),scopeId:context.scopeId,expiresAt:now+input.ttlMinutes*60000}},
@@ -26,7 +26,7 @@ test('카카오 로그인은 상태·PKCE를 검증하고 비밀을 화면에 �
 });
 test('메일 연결 답장은 명시한 발신자·새 제목·시간·한 번 처리·일일 한도에만 적용',async t=>{
  const f=await fixture(t);assert.equal((await f.api.linkDeliveryState()).mail.enabled,false);
- await f.api.configureLinkDelivery({mail:{enabled:true,provider:'google',senders:['me@example.test'],phrase:'Flowrium 링크'}});
+ await f.api.configureLinkDelivery({mail:{enabled:true,provider:'mac',senders:['me@example.test'],phrase:'Flowrium 링크'}});
  f.setMails([
   {id:'foreign',from:'other@example.test',at:new Date(f.now+100).toISOString(),title:'Flowrium 링크'},
   {id:'old',from:'me@example.test',at:new Date(f.now-100).toISOString(),title:'Flowrium 링크'},
@@ -39,6 +39,13 @@ test('메일 연결 답장은 명시한 발신자·새 제목·시간·한 번 �
  assert.equal(sender('내 계정 <ME@example.test>'),'me@example.test');
 });
 test('메일 대기 중 계정이 바뀌면 늦은 요청으로 메일을 보내지 않는다',async t=>{
- const f=await fixture(t);await f.api.configureLinkDelivery({mail:{enabled:true,provider:'google',senders:['me@example.test'],phrase:'Flowrium 링크'}});
+ const f=await fixture(t);await f.api.configureLinkDelivery({mail:{enabled:true,provider:'mac',senders:['me@example.test'],phrase:'Flowrium 링크'}});
  f.setOwner(2);f.setMails([{id:'old-owner',from:'me@example.test',at:new Date(f.now+100).toISOString(),title:'Flowrium 링크'}]);await f.api.checkLinkMail();assert.equal(f.sent.length,0);
+});
+test('Windows에서는 기본 메일을 켜거나 Google 전달 설정으로 우회하지 못한다',async t=>{
+ const windows=await fixture(t,'win32');assert.equal((await windows.api.linkDeliveryState()).nativeAvailable,false);
+ await assert.rejects(windows.api.configureLinkDelivery({mail:{enabled:true,provider:'mac',senders:['me@example.test'],phrase:'Flowrium 링크'}}),/맥/);
+ const mac=await fixture(t);assert.equal((await mac.api.linkDeliveryState()).nativeAvailable,true);
+ await assert.rejects(mac.api.configureLinkDelivery({mail:{enabled:true,provider:'google',senders:['me@example.test'],phrase:'Flowrium 링크'}}),/메일 주소와 요청 제목/);
+ assert.equal(mac.sent.length+windows.sent.length,0);
 });

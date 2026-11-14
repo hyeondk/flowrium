@@ -99,8 +99,8 @@ async function run() {
     for(const [kind,label] of [['toast','토스트 표시'],['snackbar','스낵바 표시']]){
       await page.getByRole('button',{name:label}).click();const surface=page.locator('[data-motion='+kind+']');await surface.waitFor();
       assert.equal(await surface.evaluate(e=>getComputedStyle(e).animationName),kind==='toast'?'ui-fade-in':'ui-snackbar-in');
-      await page.evaluate(kind=>window.motion[kind==='toast'?'setToast':'setSnack'](''),kind);
-      assert.equal(await surface.evaluate(e=>getComputedStyle(e).animationName),kind==='toast'?'ui-fade-out':'ui-snackbar-out');await surface.waitFor({state:'detached'});
+      const exitName=await page.evaluate(async kind=>{window.motion[kind==='toast'?'setToast':'setSnack']('');await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return getComputedStyle(document.querySelector('[data-motion='+kind+']')).animationName;},kind);
+      assert.equal(exitName,kind==='toast'?'ui-fade-out':'ui-snackbar-out');await surface.waitFor({state:'detached'});
     }
     await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'하단 시트 열기'}).click();const sheet=page.locator('.motion-surface[aria-label="검증 시트"]');await sheet.waitFor();
     assert.equal(await sheet.evaluate(e=>getComputedStyle(e).animationName),'ui-sheet-in');

@@ -59,7 +59,7 @@ function registerMacPim(register,{directory,platform=process.platform,spawnImpl=
   if(previous&&input.etag&&input.etag!==previous.etag)throw Error('일정이 바뀌었습니다. 다시 검토해 주세요.');
   let event;
   if(input.action!=='delete'){
-   const fields=require('./google-tools.cjs').eventFields(input,input.action==='update');
+   const fields=require('./document-tools.cjs').eventFields(input,input.action==='update');
    const date=value=>value?.date?Date.parse(value.date+'T00:00:00'):Date.parse(value?.dateTime);
    const start=fields.start?date(fields.start):Date.parse(previous.at),end=fields.end?date(fields.end):Date.parse(previous.end);
    if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)throw Error('일정 시작과 종료를 확인해 주세요.');

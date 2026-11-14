@@ -72,7 +72,7 @@ function validateSender(event) {
 }
 async function invokeRegistered(name,handler,args){
   if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity','hideDotsView','readDotsState'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
-  if(codexTransfer?.isBusy()&&!/^(read|list)/.test(name)&&!['codexTransferAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','googleStatus','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('대화 연결을 처리 중입니다. 끝난 뒤 변경해 주세요.');
+  if(codexTransfer?.isBusy()&&!/^(read|list)/.test(name)&&!['codexTransferAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('대화 연결을 처리 중입니다. 끝난 뒤 변경해 주세요.');
   if(controller?.trashRuntime?.isBusy()&&!/^(read|list)/.test(name)&&!['trashAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','interrupt','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('삭제 또는 복원을 마친 뒤 변경해 주세요.');
   activeOperations++;
   try{return await security.guard(name,()=>handler(...args));}finally{activeOperations--;}
@@ -170,7 +170,6 @@ async function launch() {
   });
   voice = require("./voice.cjs").registerVoice(register, {
     directory: app.getPath("userData"), secretStorage: require("electron").safeStorage,
-    publicOAuthClient:require("./google-client.json"),
     canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling(),
     accountRevision:()=>security.accountRevision,
     accountOwner:()=>security.data.accountOwner || 'unverified:'+security.accountRevision,
@@ -182,12 +181,6 @@ async function launch() {
       return permitted;
     },
   });
-  const integrations = require("./integrations.cjs").registerIntegrations(register, store, {
-    directory: app.getPath("userData"), secretStorage: require("electron").safeStorage,
-    publicOAuthClient:require("./google-client.json"),
-    openExternal: url => shell.openExternal(url),
-  });
-  app.on("will-quit", () => integrations.shutdown());
   const macPim = require('./mac-pim.cjs').registerMacPim(register, {directory:app.getPath('userData'),accountRevision:()=>security.accountRevision,
     canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling()});
   const music = require("./music.cjs").registerMusic(register, app.getPath("userData"));
@@ -244,7 +237,7 @@ async function launch() {
   workflowRuntime = require("./workflow.cjs").registerWorkflow(register, store, controller, {
     canRun: () => !quitting && !migrationTransition && !importRestartRequired && !security.locked && !security.loggingOut && !updater?.isInstalling(),
     accountRevision: () => security.accountRevision,
-    externalMethods: ['commitGoogleEvent','commitMacEvent','repositoryFlow'],
+    externalMethods: ['commitMacEvent','repositoryFlow'],
     repositoryAction: (id,input) => apiHandlers.get('repositoryAction')(id,input),
     repositoryFlow: input => apiHandlers.get('repositoryFlow')(input),
     notify: event => webPush?.notify(event),
@@ -253,14 +246,14 @@ async function launch() {
     readProjectDetails: id => apiHandlers.get('readProjectDetails')(id),
     collectExternal: async preferences => {
       const result = {};
-      if (preferences.mail && (await apiHandlers.get('googleStatus')()).connected)
-        result.mail = await apiHandlers.get('readGoogle')({ kind: 'mail', query: 'newer_than:2d' }).catch(error => ({ error: error.message }));
+      if (preferences.mail && process.platform==='darwin' && (await apiHandlers.get('macPimStatus')()).enabled)
+        result.mail = await macPim.readMails({query:'',since:Date.now()-2*86400000,unread:true,limit:20}).catch(error => ({error:error.message}));
       if (preferences.github) result.github = await Promise.all(store.state.projects.slice(0, 30).map(async p => ({projectId:p.id,name:p.name,
         state: await apiHandlers.get('repositoryAction')(p.id,{action:'repoActivity'}).catch(error=>({error:error.message}))})));
       return result;
     },
     executeExternal: async ({method,args}) => {
-      if (!['commitGoogleEvent','commitMacEvent','repositoryFlow'].includes(method) || !Array.isArray(args) || args.length !== 1) throw Error('지원하지 않는 외부 변경입니다.');
+      if (!['commitMacEvent','repositoryFlow'].includes(method) || !Array.isArray(args) || args.length !== 1) throw Error('지원하지 않는 외부 변경입니다.');
       if (method === 'repositoryFlow' && (!args[0] || !['execute','resume'].includes(args[0].action) || typeof args[0].id !== 'string' || Object.keys(args[0]).some(key=>!['action','id'].includes(key)))) throw Error('검토한 저장소 작업만 실행할 수 있습니다.');
       const handler = apiHandlers.get(method); if (!handler) throw Error('이 기기에서 사용할 수 없는 외부 변경입니다.');
       return handler(...args);
@@ -310,13 +303,10 @@ async function launch() {
     accountRevision:()=>security.accountRevision,canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling(),
     issueLink:input=>remote.issueLink(input),getContext:()=>remote.pushContext(),
     ensureRemote:()=>apiHandlers.get('startRemoteAccess')(),openExternal:url=>shell.openExternal(url),
-    mailProvider:provider=>provider==='mac'?{
+    mailProvider:provider=>{if(provider!=='mac'||process.platform!=='darwin')throw Error('이 기기의 기본 메일 연결만 사용할 수 있습니다.');return {
       search:({phrase})=>macPim.readMails({query:phrase,since:Date.now()-3600000,unread:true,limit:20}),
       send:input=>macPim.sendMail(input),
-    }:{
-      search:({phrase})=>apiHandlers.get('readGoogle')({kind:'mail',query:'is:unread newer_than:1d subject:"'+phrase.replace(/["\\]/g,' ')+'"'}),
-      send:input=>integrations.sendMail(input),
-    },
+    }},
   });
   codexTransfer=require('./codex-transfer.cjs').registerCodexTransfer(register,store,controller,{
     accountRevision:()=>security.accountRevision,
@@ -358,7 +348,7 @@ async function launch() {
     onRestart:()=>{app.relaunch();setImmediate(()=>app.quit());return{restarting:true};},
   });
   let remoteAccountRevision = security.accountRevision;
-  security.on("state", state => { if (state.accountRevision !== remoteAccountRevision) { remoteAccountRevision = state.accountRevision; integrations.invalidate(); macPim.invalidate(); linkDelivery.invalidate(); webPush.invalidate(); voice?.cancel?.(); dotsRuntime?.invalidate(); void remote.stopAccess(); } });
+  security.on("state", state => { if (state.accountRevision !== remoteAccountRevision) { remoteAccountRevision = state.accountRevision; macPim.invalidate(); linkDelivery.invalidate(); webPush.invalidate(); voice?.cancel?.(); dotsRuntime?.invalidate(); void remote.stopAccess(); } });
   app.on("will-quit", () => { void remote.shutdown(); });
   security.on("state", (state) => {
     if (state.locked) { microphoneUntil = 0; voice?.cancel?.(); webPush.invalidate(); dotsRuntime?.hide(); }

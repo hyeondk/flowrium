@@ -4,14 +4,14 @@ import type { Project } from '../shared/types';
 import type { ProjectDetails, ProjectShortcut } from '../shared/project-details';
 import './project-shortcuts.css';
 
-const names = { operation: '운영 주소', local: '로컬 폴더', drive: 'Drive 폴더' };
+const names = { operation: '운영 주소', local: '로컬 폴더', drive: '외부 주소' };
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 export default function ProjectShortcuts({ project, data, editable = false, onChange, onManage }: {
   project: Project; data: ProjectDetails; editable?: boolean;
   onChange(data: ProjectDetails): void; onManage?(): void;
 }) {
   const [rows, setRows] = useState<ProjectShortcut[]>(data.shortcuts || []);
-  const [kind, setKind] = useState<'operation' | 'drive'>('operation');
+  const kind = 'operation' as const;
   const [label, setLabel] = useState(''), [target, setTarget] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
   useEffect(() => { setRows(data.shortcuts || []); }, [project.id, data.revision]);
@@ -46,9 +46,8 @@ export default function ProjectShortcuts({ project, data, editable = false, onCh
     </article>)}</div>
     {editable && <><div className="pf-actions"><button disabled={busy || rows.length >= 32} onClick={() => void run(() => choose())}><FolderOpen size={15}/>로컬 폴더 선택</button><button className="primary" disabled={busy || rows.some(row => !row.label.trim())} onClick={() => void run(() => save(rows))}>바로가기 이름 저장</button></div>
       <form className="project-shortcut-form" onSubmit={event => { event.preventDefault(); void run(async () => { await save([...rows, { id: crypto.randomUUID(), kind, label: label.trim(), target: target.trim() }]); setLabel(''); setTarget(''); }); }}>
-        <h3>주소 추가</h3><label>종류<select aria-label="바로가기 종류" disabled={busy} value={kind} onChange={event => setKind(event.target.value as typeof kind)}><option value="operation">운영 주소</option><option value="drive">Drive 폴더</option></select></label>
         <label>이름<input aria-label="새 바로가기 이름" disabled={busy} value={label} maxLength={100} onChange={event => setLabel(event.target.value)}/></label>
-        <label>{kind === 'drive' ? 'Drive 폴더 주소' : '운영 주소'}<input aria-label="새 바로가기 주소" type="url" required disabled={busy} value={target} maxLength={4096} placeholder={kind === 'drive' ? 'https://drive.google.com/drive/folders/…' : 'https://…'} onChange={event => setTarget(event.target.value)}/></label>
+        <label>외부 주소<input aria-label="새 바로가기 주소" type="url" required disabled={busy} value={target} maxLength={4096} placeholder="https://…" onChange={event => setTarget(event.target.value)}/></label>
         <button className="primary" disabled={busy || rows.length >= 32 || !label.trim() || !target.trim()}><Plus size={15}/>주소 추가</button>
       </form><p className="pf-muted">내부 폴더는 프로젝트와 함께 이동합니다. 외부 폴더는 이관 후 다시 선택해야 합니다. 바로가기를 제거해도 실제 폴더와 자료는 남습니다.</p></>}
     {error && <p role="alert" className="pf-error">{error}</p>}{notice && <p role="status">{notice}</p>}

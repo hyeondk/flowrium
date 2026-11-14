@@ -4,11 +4,11 @@ const DAY=86400000,MAX_SENT=20,BRIDGE='https://hyeondk.github.io/flowrium/connec
 const email=value=>String(value||'').trim().toLowerCase();
 const sender=value=>email(/<([^<>]+)>/.exec(String(value||''))?.[1]||value);
 const validEmail=value=>typeof value==='string'&&value.length<=254&&/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value)&&!/[\r\n]/.test(value);
-const blank=()=>({restKey:'',clientSecret:'',tokens:null,ttlMinutes:15,autoKakao:false,lastAuto:0,lastScope:'',sent:[],last:null,mail:{enabled:false,provider:'google',senders:[],phrase:'Flowrium 링크',enabledAt:0,handled:[]}});
-function registerLinkDelivery(register,{directory,secretStorage,accountRevision=()=>0,canRun=()=>true,issueLink,getContext,ensureRemote,openExternal,mailProvider,fetchImpl=fetch,now=Date.now,callbackPort=42839}){
+const blank=()=>({restKey:'',clientSecret:'',tokens:null,ttlMinutes:15,autoKakao:false,lastAuto:0,lastScope:'',sent:[],last:null,mail:{enabled:false,provider:'mac',senders:[],phrase:'Flowrium 링크',enabledAt:0,handled:[]}});
+function registerLinkDelivery(register,{directory,secretStorage,accountRevision=()=>0,canRun=()=>true,issueLink,getContext,ensureRemote,openExternal,mailProvider,fetchImpl=fetch,now=Date.now,callbackPort=42839,platform=process.platform}){
  const file=path.join(directory,'link-delivery.enc');let disk,queue=Promise.resolve(),auth,generation=0,busy=false,closed=false,lastPoll=0;
  async function load(){if(disk)return disk;try{disk=JSON.parse(secretStorage.decryptString(await fs.readFile(file)));if(disk.version!==1||!disk.owners||typeof disk.owners!=='object')throw Error();}catch(e){if(e.code!=='ENOENT')throw Error('연결 주소 전달 설정을 읽지 못했습니다.');disk={version:1,owners:{}};}return disk;}
- async function config(){return structuredClone((await load()).owners[String(accountRevision())]||blank());}
+ async function config(){const value=structuredClone((await load()).owners[String(accountRevision())]||blank());if(value.mail.provider!=='mac')value.mail={...value.mail,enabled:false,provider:'mac'};return value;}
  const stamp=()=>({owner:accountRevision(),generation});
  function current(s){if(closed||!canRun()||s.owner!==accountRevision()||s.generation!==generation)throw Error('계정이나 연결 설정이 바뀌었습니다. 다시 확인해 주세요.');}
  async function save(value,s){current(s);queue=queue.catch(()=>{}).then(async()=>{current(s);const next=structuredClone(await load());next.owners[String(s.owner)]=value;
@@ -17,7 +17,7 @@ function registerLinkDelivery(register,{directory,secretStorage,accountRevision=
  async function request(url,options={}){const response=await fetchImpl(url,{...options,signal:AbortSignal.timeout(20000),redirect:'error'});if(!response.ok)throw Error('연결 서비스가 요청을 처리하지 못했습니다. ('+response.status+')');return response;}
  const form=value=>new URLSearchParams(value);
  async function state(){const c=await config();return{configured:!!c.restKey,hasSecret:!!c.clientSecret,connected:!!c.tokens,authorizing:!!auth,redirectUri:'http://localhost:'+callbackPort+'/flowrium/kakao/callback',webDomain:'https://hyeondk.github.io',autoKakao:c.autoKakao,ttlMinutes:c.ttlMinutes,sentToday:c.sent.filter(t=>t>now()-DAY).length,dailyMax:MAX_SENT,last:c.last,
-  mail:{enabled:c.mail.enabled,provider:c.mail.provider,senders:c.mail.senders,phrase:c.mail.phrase},nativeAvailable:process.platform==='darwin'};}
+  mail:{enabled:c.mail.enabled,provider:c.mail.provider,senders:c.mail.senders,phrase:c.mail.phrase},nativeAvailable:platform==='darwin'};}
  function cancelAuth(){if(auth){clearTimeout(auth.timer);auth.server?.close();auth=null;}}
  register('linkDeliveryState',state);
  register('configureLinkDelivery',async input=>{
@@ -27,9 +27,9 @@ function registerLinkDelivery(register,{directory,secretStorage,accountRevision=
   if(input.clientSecret){if(typeof input.clientSecret!=='string'||input.clientSecret.length>500||/[\r\n\0]/.test(input.clientSecret))throw Error('카카오 보안 비밀을 확인해 주세요.');if(c.clientSecret!==input.clientSecret)c.tokens=null;c.clientSecret=input.clientSecret;}
   if(input.ttlMinutes!==undefined){if(![5,15,60].includes(input.ttlMinutes))throw Error('연결 유효 시간을 확인해 주세요.');c.ttlMinutes=input.ttlMinutes;}
   if(input.autoKakao!==undefined){if(typeof input.autoKakao!=='boolean')throw Error('자동 전달 설정을 확인해 주세요.');c.autoKakao=input.autoKakao;}
-  if(input.mail){const m=input.mail;if(typeof m.enabled!=='boolean'||!['google','mac'].includes(m.provider)||!Array.isArray(m.senders)||m.senders.length>5||m.senders.some(v=>!validEmail(v))||typeof m.phrase!=='string'||!m.phrase.trim()||m.phrase.length>80||/[\r\n\0]/.test(m.phrase))throw Error('허용 메일 주소와 요청 제목을 확인해 주세요.');
+  if(input.mail){const m=input.mail;if(typeof m.enabled!=='boolean'||m.provider!=='mac'||!Array.isArray(m.senders)||m.senders.length>5||m.senders.some(v=>!validEmail(v))||typeof m.phrase!=='string'||!m.phrase.trim()||m.phrase.length>80||/[\r\n\0]/.test(m.phrase))throw Error('허용 메일 주소와 요청 제목을 확인해 주세요.');
    if(m.enabled&&!m.senders.length)throw Error('답장할 메일 주소를 하나 이상 지정해 주세요.');
-   if(m.enabled&&m.provider==='mac'&&process.platform!=='darwin')throw Error('Windows에서는 Google 메일을 선택해 주세요.');
+   if(m.enabled&&platform!=='darwin')throw Error('메일 요청 연결은 맥의 기본 메일 앱에서 사용할 수 있습니다.');
    c.mail={...c.mail,enabled:m.enabled,provider:m.provider,senders:[...new Set(m.senders.map(email))],phrase:m.phrase.trim(),enabledAt:m.enabled&&!c.mail.enabled?now():c.mail.enabledAt};}
   await save(c,s);return state();
  });

@@ -1,18 +1,18 @@
 import { AnimatedSwitch } from './ui-motion';
 import { useState } from 'react';
-import type { GoogleCalendar, GoogleEventInput, GoogleEventPreview, RemoteItem } from '../shared/integrations';
+import type { CalendarEntry, CalendarEventInput, CalendarEventPreview, RemoteItem } from '../shared/integrations';
 const local = (value?: string) => { if (!value) return ''; if (value.length === 10) return value; const d = new Date(value); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 const verbs = { create: '등록', update: '수정', delete: '삭제' };
-export default function GoogleEventEditor({ calendars, calendarId, item, onSaved, provider = 'google' }: { calendars: GoogleCalendar[]; calendarId: string; item?: RemoteItem; onSaved: (message:string) => void; provider?: 'google' | 'mac' }) {
-  const [action, setAction] = useState<GoogleEventInput['action']>(item ? 'update' : 'create');
+export default function CalendarEventEditor({ calendars, calendarId, item, onSaved }: { calendars: CalendarEntry[]; calendarId: string; item?: RemoteItem; onSaved: (message:string) => void }) {
+  const [action, setAction] = useState<CalendarEventInput['action']>(item ? 'update' : 'create');
   const [title, setTitle] = useState(item?.title || ''), [start, setStart] = useState(item?.allDay?local(item.at).slice(0,10):local(item?.at)), [end, setEnd] = useState(item?.allDay?local(item.end).slice(0,10):local(item?.end));
   const [description, setDescription] = useState(item?.description || ''), [location, setLocation] = useState(item?.location || '');
-  const [allDay, setAllDay] = useState(item?.allDay ?? item?.at?.length === 10), [preview, setPreview] = useState<GoogleEventPreview>(), [busy, setBusy] = useState(false), [notice, setNotice] = useState('');
+  const [allDay, setAllDay] = useState(item?.allDay ?? item?.at?.length === 10), [preview, setPreview] = useState<CalendarEventPreview>(), [busy, setBusy] = useState(false), [notice, setNotice] = useState('');
   const selected = calendars.find(c => c.id === calendarId || (calendarId === 'primary' && c.primary));
   function dirty() { setPreview(undefined); setNotice(''); }
   async function prepare() {
     setBusy(true); setNotice('');
-    try { setPreview(await window.flowrium![provider==='mac'?'prepareMacEvent':'prepareGoogleEvent']({ action, calendarId, eventId: item?.id, etag: item?.etag,
+    try { setPreview(await window.flowrium!.prepareMacEvent({ action, calendarId, eventId: item?.id, etag: item?.etag,
       ...(action !== 'delete' && { summary: title, start: allDay ? start : new Date(start).toISOString(), end: allDay ? end : new Date(end).toISOString(), description, location }) })); }
     catch(e) { setNotice(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
@@ -20,14 +20,14 @@ export default function GoogleEventEditor({ calendars, calendarId, item, onSaved
   async function commit() {
     if (!preview || busy) return;
     setBusy(true); setNotice('');
-    try { await window.flowrium![provider==='mac'?'commitMacEvent':'commitGoogleEvent'](preview.id); setPreview(undefined); setNotice(''); onSaved('일정을 ' + verbs[action] + '했습니다.'); }
+    try { await window.flowrium!.commitMacEvent(preview.id); setPreview(undefined); setNotice(''); onSaved('일정을 ' + verbs[action] + '했습니다.'); }
     catch(e) { setPreview(undefined); setNotice(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
   return <section className="integration-event" aria-label="일정 편집">
     <h4>{item ? '선택한 일정' : '새 일정'} ({selected?.title || calendarId})</h4>
     <fieldset disabled={busy || !selected?.writable}>
-      <label>일정 작업<select aria-label="일정 작업" value={action} onChange={e => {setAction(e.target.value as GoogleEventInput['action']);dirty();}}><option value="create">새 일정 등록</option>{item && <><option value="update">선택한 일정 수정</option><option value="delete">선택한 일정 삭제</option></>}</select></label>
+      <label>일정 작업<select aria-label="일정 작업" value={action} onChange={e => {setAction(e.target.value as CalendarEventInput['action']);dirty();}}><option value="create">새 일정 등록</option>{item && <><option value="update">선택한 일정 수정</option><option value="delete">선택한 일정 삭제</option></>}</select></label>
       {action !== 'delete' && <>
         <label>일정 제목<input value={title} maxLength={500} onChange={e => {setTitle(e.target.value);dirty();}}/></label>
         <label><AnimatedSwitch checked={!!allDay} onChange={e => {setAllDay(e.target.checked);setStart('');setEnd('');dirty();}}/>하루 종일</label>

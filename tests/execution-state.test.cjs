@@ -21,3 +21,6 @@ test('보류 / 숨김 / 처리된 제안은 결정 건수와 대화에서 제외
  assert.equal(sessionExecution(session(),null,[],[{...proposal,status:'accepted'}]),null);
  assert.equal(visibleProposals([{...proposal,snoozedUntil:100}],101).length,1);
 });
+test('부분 답변 뒤 실패·중단이 있으면 후속 진행 대기로 표시하지 않는다',()=>{
+ for(const text of ['작업을 완료하지 못했습니다.','사용자의 요청으로 작업이 중지됐습니다.']){const s=session('계속 진행할까요?');s.messages.push({role:'system',text});assert.equal(awaitsContinuation(s),false);assert.equal(sessionExecution(s,null,[]),null);assert.equal(sessionExecution(s,null,[{sessionId:s.id,type:'approval'}]),'decision');}
+});

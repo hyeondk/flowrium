@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 async function child(){
- const {app}=require('electron'),{exportHTML}=require('../electron/html-export.cjs'),{extract}=require('../electron/google-tools.cjs');
+ const {app}=require('electron'),{exportHTML}=require('../electron/html-export.cjs'),{extract}=require('../electron/document-tools.cjs');
  assert(process.env.FLOWRIUM_HTML_TEST_PROFILE,'격리 검증 프로필이 없습니다.');app.setPath('userData',process.env.FLOWRIUM_HTML_TEST_PROFILE);app.disableHardwareAcceleration();app.on('window-all-closed',()=>{});
  await app.whenReady();
  try{

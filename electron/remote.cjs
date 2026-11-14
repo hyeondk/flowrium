@@ -171,7 +171,7 @@ function registerRemote(
     if (method === "mobileSettings") {
       const connection = await handlers.get("connect")?.();
       return {model:store.state.settings.model,effort:store.state.settings.effort,chatDefaults:store.state.settings.chatDefaults,
-        models:(connection?.models || []).map(({id,displayName,supportedReasoningEfforts,defaultReasoningEffort}) => ({id,displayName,supportedReasoningEfforts,defaultReasoningEffort}))};
+        models:(connection?.models || []).map(({id,displayName,isDefault,supportedReasoningEfforts,defaultReasoningEffort}) => ({id,displayName,isDefault,supportedReasoningEfforts,defaultReasoningEffort}))};
     }
     if (method === "saveMobileSettings") {
       const input = args[0];
@@ -466,6 +466,7 @@ function registerRemote(
     const files = {
       "/": "index.html",
       "/app.js": "app.js",
+      "/model-display.js": "model-display.js",
       "/style.css": "style.css",
       "/fonts/NanumSquareRoundL.woff2": "fonts/NanumSquareRoundL.woff2",
       "/fonts/NanumSquareRoundR.woff2": "fonts/NanumSquareRoundR.woff2",

@@ -17,4 +17,16 @@
 .app-shell .workspace-side{width:72px;flex-basis:72px}.workspace-side .sidebar-surface{width:52px;padding-inline:6px}.workspace-side[data-expanded=true] .sidebar-surface{width:240px}.workspace-side .side-brand{padding-left:3px}.workspace-side .side-row{padding-inline:8px}.workspace-side .side-group .side-row{height:30px;min-height:30px}.workspace-side[data-pinned=true]{width:260px;flex-basis:260px}.side-usage-refresh{height:28px;min-height:28px}.side-usage-details{height:24px}.side-account{height:24px;min-height:24px}.workspace-side[data-expanded=false] .side-usage-details{height:21px}.workspace-side[data-expanded=false] .side-usage-refresh{height:31px}.workspace-side[data-expanded=false] .side-account{padding-left:10px}.workspace-side .side-project-head{padding-left:4px}
 @media(max-width:760px){.app-shell .workspace-side{width:260px;flex-basis:260px}.workspace-side .sidebar-surface{width:240px}}
 @media(max-height:700px){.workspace-side .side-group .side-row{height:28px;min-height:28px}}
-.side-account{height:36px;min-height:36px}.workspace-side[data-expanded=false] .side-account{padding:2px 0;flex-direction:column;justify-content:center;gap:0}.workspace-side[data-expanded=false] .side-account>.side-copyright-icon{font-size:12px;line-height:14px;height:14px}.workspace-side[data-expanded=false] .side-account>span:last-child{opacity:1;visibility:visible;font-size:8px;line-height:12px;text-align:center;overflow:visible}.workspace-side[data-expanded=false] .side-copyright-year{display:none}
+.workspace-side .side-account{height:20px;min-height:20px;font-size:10px;gap:7px}
+.workspace-side[data-expanded=false] .side-account{visibility:hidden;opacity:0;pointer-events:none}
+.workspace-side[data-expanded=true] .side-account{visibility:visible;opacity:1}
+.workspace-side .side-account>.side-copyright-icon{font-size:12px;line-height:16px;height:16px}
+/* 보관과 도구를 하단에 작게 모으고 확보한 높이는 프로젝트 목록에 배정합니다. */
+.workspace-side .side-group{margin-top:7px;padding-top:5px}
+.workspace-side .side-group h2{height:14px;min-height:14px;line-height:14px;font-size:9px;margin-bottom:1px}
+.workspace-side .side-group .side-row{height:26px;min-height:26px;border-radius:7px;font-size:11px}
+.workspace-side .side-group .side-row svg{width:17px;height:17px}
+.workspace-side .side-projects{margin-top:7px}
+.workspace-side .side-brand-row{margin-bottom:5px}
+@media(pointer:coarse){.workspace-side .side-group .side-row{height:32px;min-height:32px}}
+@media(max-height:700px) and (pointer:fine){.workspace-side .side-group .side-row{height:24px;min-height:24px}.workspace-side .side-group{margin-top:5px;padding-top:4px}.workspace-side .side-group h2{height:12px;min-height:12px;line-height:12px}.workspace-side .side-brand-row{margin-bottom:4px}}

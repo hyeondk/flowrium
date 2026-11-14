@@ -25,7 +25,7 @@ class TestController extends EventEmitter{
   }
 }
 async function setup(t,extra={}){
-  const temporary=await fs.mkdtemp(path.join(os.tmpdir(),"flowrium-workflow-"));
+  const base=path.resolve(__dirname,"../.flowrium-tmp/qa-261115_03");await fs.mkdir(base,{recursive:true});const temporary=await fs.mkdtemp(path.join(base,"workflow-"));
   const store=new Store(path.join(temporary,"설정"));await store.load();
   const folder=path.join(temporary,"프로젝트 & 기록");await fs.mkdir(folder);const project=await store.addProject(folder);
   const a=await store.createSession(project.id,{title:"원래 요청"}),b=await store.createSession(project.id,{title:"받는 대화"});
@@ -74,9 +74,9 @@ test("다른 대화 조사 요청은 사용자 승인 전 시작하지 않고 �
 });
 
 test("외부 변경은 검토 자료와 함께 보관하고 승인에만 한 번 실행하며 잠금·계정 변경은 과거 제안을 실행하지 않는다",async t=>{
-  const calls=[];const s=await setup(t,{externalMethods:["commitGoogleEvent"],executeExternal:async value=>{calls.push(value);return{saved:true};}});
+  const calls=[];const s=await setup(t,{externalMethods:["commitMacEvent"],executeExternal:async value=>{calls.push(value);return{saved:true};}});
   const preview={action:"update",calendarName:"검증 캘린더",previous:{title:"이전 제목",at:"2026-11-16T10:00:00+09:00"},event:{title:"새 제목",description:"검토할 본문"}};
-  const row=await s.workflow.proposeExternal({sessionId:s.a.id,title:"일정 수정",method:"commitGoogleEvent",args:["검토 티켓"],preview});
+  const row=await s.workflow.proposeExternal({sessionId:s.a.id,title:"일정 수정",method:"commitMacEvent",args:["검토 티켓"],preview});
   assert.deepEqual((await s.workflow.state()).proposals[0].preview,preview);assert.equal(calls.length,0);
   s.setAllowed(false);await assert.rejects(s.workflow.action({action:"approve",id:row.id,revision:row.revision}),/잠금/);await s.workflow.tick();assert.equal(calls.length,0);
   s.setAllowed(true);await s.workflow.action({action:"approve",id:row.id,revision:row.revision});assert.equal(calls.length,1);assert.deepEqual(calls[0].args,["검토 티켓"]);
@@ -86,11 +86,11 @@ test("외부 변경은 검토 자료와 함께 보관하고 승인에만 한 번
 });
 
 test('모델의 일정 제안 도구는 같은 호출을 한 제안으로 모으고 사용자 승인 뒤에만 정확히 한 번 적용한다',async t=>{
- const writes=[],s=await setup(t,{externalMethods:['commitGoogleEvent'],executeExternal:async value=>{writes.push(value);return{saved:true}}});
+ const writes=[],s=await setup(t,{externalMethods:['commitMacEvent'],executeExternal:async value=>{writes.push(value);return{saved:true}}});
  const {createExternalTools}=require('../electron/external-tools.cjs');let tickets=0;
- const tools=createExternalTools({store:s.store,workflow:s.workflow,handlers:new Map([['prepareGoogleEvent',async input=>({id:'ticket-'+(++tickets),action:input.action,calendarName:'시험 일정',event:{title:input.summary}})]])});
+ const tools=createExternalTools({store:s.store,workflow:s.workflow,handlers:new Map([['prepareMacEvent',async input=>({id:'ticket-'+(++tickets),action:input.action,calendarName:'시험 일정',event:{title:input.summary}})]])});
  assert(!tools.definitions.some(d=>/approve|commit/.test(d.name)));
- const input={sessionId:s.a.id,callId:'stable-call',name:'flowrium_google_calendar_propose',arguments:{action:'create',calendarId:'primary',eventId:'',etag:'',summary:'검토할 일정',start:'2026-11-16T10:00:00+09:00',end:'2026-11-16T11:00:00+09:00',description:'검토 본문',location:''}};
+ const input={sessionId:s.a.id,callId:'stable-call',name:'flowrium_mac_calendar_propose',arguments:{action:'create',calendarId:'primary',eventId:'',summary:'검토할 일정',start:'2026-11-16T10:00:00+09:00',end:'2026-11-16T11:00:00+09:00',description:'검토 본문',location:''}};
  const first=await tools.call(input),repeat=await tools.call(input);assert.equal(first.id,repeat.id);assert.equal(writes.length,0);
  const row=(await s.workflow.state()).proposals[0];assert.equal(row.preview.event.title,'검토할 일정');
  await s.workflow.action({action:'approve',id:row.id,revision:row.revision});assert.deepEqual(writes[0].args,['ticket-1']);assert.equal(writes.length,1);

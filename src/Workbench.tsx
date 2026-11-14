@@ -1,3 +1,4 @@
+import {modelDisplayName} from '../shared/model-display';
 import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import ArtifactViewer from "./ArtifactViewer";
@@ -62,7 +63,7 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
     <header className="wb-section-head"><button className="wb-back" onClick={onClose}><ArrowLeft size={15}/> 업무 목록</button><span>{project.name}</span></header>
     <h1>{spec.label}</h1><p>{spec.description} ChatGPT가 요청과 프로젝트 근거를 확인해 결과를 작성합니다.</p>
     <form onSubmit={submit}>
-      <label>사용할 ChatGPT 모델<select aria-label="업무 AI 모델" value={form.model||""} onChange={e=>set("model",e.target.value)}><option value="">계정 기본 모델</option>{models.map(m=><option key={m.id} value={m.id}>{m.displayName||m.id}</option>)}</select></label>
+      <label>사용할 ChatGPT 모델<select aria-label="업무 AI 모델" value={form.model||""} onChange={e=>set("model",e.target.value)}><option value="">계정 기본 모델</option>{models.map(m=><option key={m.id} value={m.id}>{modelDisplayName(m)}</option>)}</select></label>
       {!authenticated&&<p>ChatGPT 계정을 연결하면 AI가 이 업무를 수행합니다.</p>}
       <label>{fields[0]}<input autoFocus required maxLength={160} value={form.title} onChange={(e) => set("title", e.target.value)}/></label>
       <label>{fields[1]}<textarea rows={4} maxLength={12000} value={form.brief} onChange={(e) => set("brief", e.target.value)}/></label>

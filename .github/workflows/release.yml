@@ -61,7 +61,7 @@ jobs:
       - name: 신규 기능별 실제 앱 검사
         run: |
           result=0
-          for feature in migration voice-servers project-ports portfolio-reports-popup codex-transfer settings-layout long-conversation chat-layout navigation-layout feature-surfaces message-content workspace-interactions google-calendar-workspace dots-view dock-layout-modes trash-ui project-shortcuts repository-completion external-repositories
+          for feature in migration voice-servers project-ports portfolio-reports-popup codex-transfer settings-layout long-conversation chat-layout navigation-layout feature-surfaces message-content workspace-interactions external-integrations dots-view dock-layout-modes trash-ui project-shortcuts repository-completion external-repositories decision-continuation trash-purge dock-resize-motion
           do
             if ! node "tests/${feature}-e2e.cjs"
             then
@@ -69,6 +69,8 @@ jobs:
             fi
           done
           exit "$result"
+      - name: 후속 작업 실제 프로토콜 검사
+        run: node tests/chat-continuation-native-e2e.cjs
   build:
     if: inputs.test_scope != 'scopes' && inputs.test_scope != 'features'
     name: ${{ matrix.label }}
@@ -335,10 +337,6 @@ jobs:
         id: verify_26
         continue-on-error: true
         run: node tests/workspace-interactions-e2e.cjs
-      - name: Google 일정 작업 공간
-        id: verify_27
-        continue-on-error: true
-        run: node tests/google-calendar-workspace-e2e.cjs
       - name: 프로젝트 점 보기
         id: verify_28
         continue-on-error: true
@@ -363,6 +361,22 @@ jobs:
         id: verify_33
         continue-on-error: true
         run: node tests/external-repositories-e2e.cjs
+      - name: 결정 요청 / 명시 진행 / 모델 후속 추천
+        id: verify_34
+        continue-on-error: true
+        run: node tests/decision-continuation-e2e.cjs
+      - name: 휴지통 영구 삭제 / 비우기
+        id: verify_35
+        continue-on-error: true
+        run: node tests/trash-purge-e2e.cjs
+      - name: 대화 크기 조절 / 패널 동작
+        id: verify_36
+        continue-on-error: true
+        run: node tests/dock-resize-motion-e2e.cjs
+      - name: 후속 작업 실제 프로토콜 검사
+        id: verify_37
+        continue-on-error: true
+        run: node tests/chat-continuation-native-e2e.cjs
       - name: 모든 검증 결과 확인
         if: ${{ !cancelled() }}
         env:

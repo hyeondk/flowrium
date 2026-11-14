@@ -15,7 +15,7 @@ export default function DotsPanel({active=true,blocked=false}:{active?:boolean;b
   });
   const update=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{
    const el=host.current;if(stopped||epoch!==generation.current||!el)return;
-   if(document.hidden||modalOpen()||el.closest('[inert],[data-phase="exit"],[hidden],[aria-hidden="true"]')){last='';void api.hideDotsView().catch(()=>{});return;}
+   if(document.documentElement.dataset.dockResizing==='true'||document.hidden||modalOpen()||el.closest('[inert],[data-phase="exit"],[hidden],[aria-hidden="true"]')){last='';void api.hideDotsView().catch(()=>{});return;}
    const rect=el.getBoundingClientRect(),bounds={x:rect.x,y:rect.y,width:rect.width,height:rect.height};
    if(rect.width<120||rect.height<120){void api.hideDotsView().catch(()=>{});return;}
    const signature=JSON.stringify(bounds);if(signature===last)return;last=signature;
@@ -25,8 +25,8 @@ export default function DotsPanel({active=true,blocked=false}:{active?:boolean;b
   const mutations=new MutationObserver(update);mutations.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','hidden','open','inert','data-phase','aria-hidden','role']});
   const focus=()=>{last='';update()},visibility=()=>{if(document.hidden){void api.hideDotsView().catch(()=>{});last=''}else focus()};
   const geometry=setInterval(update,250);
-  window.addEventListener('resize',focus);window.addEventListener('focus',focus);document.addEventListener('visibilitychange',visibility);update();
-  return()=>{stopped=true;generation.current++;clearInterval(geometry);cancelAnimationFrame(frame);observer.disconnect();mutations.disconnect();window.removeEventListener('resize',focus);window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',visibility);void api.hideDotsView().catch(()=>{});};
+  window.addEventListener('flowrium-dock-resize-end',focus);window.addEventListener('resize',focus);window.addEventListener('focus',focus);document.addEventListener('visibilitychange',visibility);update();
+  return()=>{stopped=true;generation.current++;clearInterval(geometry);cancelAnimationFrame(frame);observer.disconnect();mutations.disconnect();window.removeEventListener('flowrium-dock-resize-end',focus);window.removeEventListener('resize',focus);window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',visibility);void api.hideDotsView().catch(()=>{});};
  },[api,active,blocked]);
  useEffect(()=>{
   if(!api||!active||blocked)return;let alive=true;
@@ -34,7 +34,7 @@ export default function DotsPanel({active=true,blocked=false}:{active?:boolean;b
  },[api,active,blocked]);
  async function perform(action:()=>Promise<unknown>){try{await action();setError('');if(api)setState(await api.readDotsState())}catch(e){setError(e instanceof Error?e.message:String(e))}}
  return <section className="dots-panel" aria-label="Dots 공식 화면">
-  <header className="dots-toolbar"><div><strong>Dots</strong><small>ChatGPT 공식 웹 화면</small></div><button className="dock-icon" aria-label="Dots 새로고침" disabled={!api||blocked||!active} onClick={()=>void perform(()=>api!.reloadDotsView())}><RefreshCw size={15}/></button><button className="dock-icon" aria-label="Dots 외부 브라우저에서 열기" disabled={!api||blocked||!active} onClick={()=>void perform(()=>api!.openDotsExternal())}><ExternalLink size={15}/></button></header>
+  <header className="dots-toolbar"><div><strong>개인 비서</strong><small>Dots 공식 화면</small></div><button className="dock-icon" aria-label="Dots 새로고침" disabled={!api||blocked||!active} onClick={()=>void perform(()=>api!.reloadDotsView())}><RefreshCw size={15}/></button><button className="dock-icon" aria-label="Dots 외부 브라우저에서 열기" disabled={!api||blocked||!active} onClick={()=>void perform(()=>api!.openDotsExternal())}><ExternalLink size={15}/></button></header>
   <p className="dots-caption">공식 텍스트 웹 화면에서 별도로 로그인합니다. 통화 기능과 Flowrium 대화 자동 동기화는 지원하지 않습니다.</p>
   {state?.externalHost&&<div className="dots-external-request"><span>{state.externalHost}에서 외부 페이지를 열려고 합니다.</span><button type="button" className="button subtle" disabled={blocked||!active} onClick={()=>void perform(()=>api!.openDotsExternal())}>외부 브라우저에서 열기</button></div>}
   {(error||state?.error)&&<p className="dots-error" role="status">{error||state?.error}</p>}

@@ -27,7 +27,7 @@ const accountCommands = new Set([
   "addChatAttachments", "readChatAttachment", "listQueuedMessages", "cancelQueuedMessage", "resumeQueuedMessages",
   "workflowAction", "exportMemory", "previewMemoryImport", "applyMemoryImport", "moveMemory",
   "portfolioAction", "repositoryFlow", "artifactAction", "storageAction", "analyzeSystemProcesses", "stopSystemProcesses",
-  "configureMacPim", "prepareMacEvent", "commitMacEvent", "prepareGoogleEvent", "commitGoogleEvent", "importGoogleFile",
+  "configureMacPim", "prepareMacEvent", "commitMacEvent",
   "configureLinkDelivery", "connectKakao", "disconnectKakao", "sendKakaoLink", "sendLinkMail", "checkLinkMail", "webPushAction",
   "configureVoicePreferences", "configureVoice", "allowVoiceCapture", "transcribeVoice", "cancelVoiceCapture", "speakVoice",
   "connect",

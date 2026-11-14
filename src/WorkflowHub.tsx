@@ -1,6 +1,6 @@
 import { AnimatedCheckbox, AnimatedSwitch } from './ui-motion';
 import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
-import InputRequestPanel from "./InputRequestPanel";
+import DecisionRequestPanel from "./DecisionRequestPanel";
 import type {FlowriumAPI,Session} from "../shared/types";
 import type {WorkflowAction,WorkflowAPI,WorkflowPreferences,WorkflowProposal,WorkflowState} from "../shared/workflow";
 import "./workflow.css";
@@ -97,10 +97,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
         <label><AnimatedSwitch checked={showHistory} onChange={e=>setShowHistory(e.target.checked)}/>처리한 기록</label>
         <button disabled={busy||!data.proposals.some(p=>p.status==="pending")} onClick={()=>void act({action:"recommend"},"결정 묶음을 검토하는 대화를 시작했습니다. 승인 전에는 업무를 실행하지 않습니다.")}>AI로 결정 묶음 추천</button>
         {onOpenInbox&&<button onClick={onOpenInbox}>실행 승인함 열기</button>}</div>
-      {data.pending.map(event=>event.questions?<InputRequestPanel key={event.requestId} event={event} title={data.sessions.find(s=>s.id===event.sessionId)?.title} onOpen={()=>void open(event.sessionId||null)}/>:
-        <article className="workflow-card" key={event.requestId}><h3>실행 승인 ({data.sessions.find(s=>s.id===event.sessionId)?.title})</h3><pre>{event.details||event.text}</pre>
-          <button disabled={busy} onClick={()=>void api.approval({requestId:event.requestId!,decision:"accept"}).then(refresh).catch(e=>setError(describe(e)))}>허용</button>
-          <button disabled={busy} onClick={()=>void api.approval({requestId:event.requestId!,decision:"decline"}).then(refresh).catch(e=>setError(describe(e)))}>거절</button></article>)}
+      {data.pending.map(event=><DecisionRequestPanel key={event.requestId} event={event} title={data.sessions.find(s=>s.id===event.sessionId)?.title} onOpen={()=>void open(event.sessionId||null)} onResolved={()=>void refresh().catch(()=>{})}/>)}
       {selected.length>0&&<div className="workflow-actions" aria-label="선택한 결정 처리">
         <button disabled={busy} onClick={()=>void act({action:"bulk",operation:"approve",items:chosen().filter(v=>data.proposals.find(p=>p.id===v.id)?.status==="pending")})}>선택한 항목 승인</button>
         <button disabled={busy} onClick={()=>void act({action:"bulk",operation:"reject",items:chosen()})}>선택한 항목 거절</button>

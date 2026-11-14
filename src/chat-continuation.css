@@ -1,0 +1,7 @@
+.chat-continuation{display:grid;gap:8px;padding:12px 0;min-width:0;word-break:keep-all;overflow-wrap:normal;font-size:12px;line-height:1.6}
+.chat-continuation-actions,.decision-response-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chat-continuation-actions>span,.chat-continuation-help{color:var(--muted)}
+.chat-continuation p{margin:0}.chat-continuation .followup-suggestion{display:grid;gap:4px;text-align:left;padding:12px;border:1px solid var(--line-soft);border-radius:10px;background:var(--card-subtle);color:inherit;font:inherit;white-space:normal;word-break:keep-all}
+.followup-suggestion strong{font-size:13px}.followup-suggestion span{color:var(--muted)}.followup-suggestion small{color:var(--accent-bright)}
+.decision-arrival{position:fixed;z-index:1050;top:18px;left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--line-soft);border-radius:14px;box-shadow:0 10px 30px #0002;background:var(--panel);color:var(--text);word-break:keep-all;font-size:13px}
+.decision-arrival button{flex:none}.decision-arrival span{min-width:0}.attention-decision-cards{display:grid;gap:12px;padding:0 0 12px;min-height:0;overflow:auto;flex:1 1 auto}.attention-popup:has(.attention-decision-cards) .attention-list{max-height:160px;flex:0 1 auto}.decision-request{min-width:0;word-break:keep-all}.decision-request pre{max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.decision-request details{margin-bottom:12px}

@@ -1,3 +1,4 @@
+import {modelDisplayName} from '../shared/model-display';
 import { AnimatedSwitch } from './ui-motion';
 import TeamWorktrees from "./TeamWorktrees";
 import { useState } from "react";
@@ -85,13 +86,14 @@ export function TeamRunOptions({
               />
             </label>
             <label>
-              팀장 모델
+              팀장 모델 ID
               <input
                 placeholder="계정 기본 모델"
                 maxLength={200}
                 value={options.leadModel || ""}
                 onChange={(e) => set({ leadModel: e.target.value })}
               />
+              {options.leadModel && <small className="field-hint">{modelDisplayName(options.leadModel)}</small>}
             </label>
             <div className="team-limits">
               <label>

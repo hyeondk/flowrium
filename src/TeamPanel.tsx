@@ -1,3 +1,4 @@
+import {modelDisplayName} from '../shared/model-display';
 import { DirectedBoard, TeamRunOptions, phaseName, type Strategy } from "./TeamPanelDirected";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, MessageSquare, Pencil, Play, Plus, Trash2, Users, X } from "lucide-react";
@@ -81,7 +82,7 @@ export default function TeamPanel({ projectId, onOpen }: { projectId: string; on
         <label>실행 모드<select value={role.mode} onChange={(e) => setRole(i, { mode: e.target.value as TeamRole["mode"] })}>
           {Object.entries(modes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label className="team-instruction">역할 지시<textarea rows={2} maxLength={2000} value={role.instruction} required onChange={(e) => setRole(i, { instruction: e.target.value })}/></label>
-        <label>역할 모델<input placeholder="계정 기본 모델" value={role.model||""} maxLength={200} onChange={e=>setRole(i,{model:e.target.value})}/></label>
+        <label>역할 모델 ID<input placeholder="계정 기본 모델" value={role.model||""} maxLength={200} onChange={e=>setRole(i,{model:e.target.value})}/>{role.model&&<small className="field-hint">{modelDisplayName(role.model)}</small>}</label>
         <label>담당 성향<input placeholder="예: 접근성을 우선하는 검토자" value={role.persona||""} maxLength={600} onChange={e=>setRole(i,{persona:e.target.value})}/></label>
         {editing.roles.length > 2 && <button type="button" onClick={() => setEditing({ ...editing, roles: editing.roles.filter((_, index) => i !== index) })}><X size={13}/>역할 제거</button>}
       </fieldset>)}

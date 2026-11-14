@@ -1,9 +1,9 @@
 import {useEffect,useState} from 'react';
-import type {GoogleCalendar,RemoteItem} from '../shared/integrations';
-import GoogleEventEditor from './GoogleEventEditor';
+import type {CalendarEntry,RemoteItem} from '../shared/integrations';
+import CalendarEventEditor from './CalendarEventEditor';
 export default function NativePimPanel(){
  const api=window.flowrium;
- const[status,setStatus]=useState<{available:boolean;enabled:boolean}>(),[calendars,setCalendars]=useState<GoogleCalendar[]>([]),[items,setItems]=useState<RemoteItem[]>([]);
+ const[status,setStatus]=useState<{available:boolean;enabled:boolean}>(),[calendars,setCalendars]=useState<CalendarEntry[]>([]),[items,setItems]=useState<RemoteItem[]>([]);
  const[kind,setKind]=useState<'events'|'mails'>('events'),[calendarId,setCalendar]=useState('primary'),[selected,setSelected]=useState<RemoteItem>(),[body,setBody]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[query,setQuery]=useState('');
  useEffect(()=>{let alive=true;api?.macPimStatus().then(v=>{if(alive)setStatus(v);}).catch(()=>{});return()=>{alive=false;};},[]);
  async function perform(fn:()=>Promise<void>){if(busy)return;setBusy(true);setNotice('');try{await fn();}catch(e){setNotice(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
@@ -16,6 +16,6 @@ export default function NativePimPanel(){
  <form className="native-pim-search" onSubmit={e=>{e.preventDefault();void perform(()=>read());}}><label>기본 앱 자료 검색<input value={query} onChange={e=>setQuery(e.target.value)}/></label><button disabled={busy}>검색</button></form>
  {items.map(item=><article className="integration-item" key={item.id}><div><strong>{item.title}</strong><small>{item.at}</small><p>{item.detail}</p></div><div className="integration-item-actions"><button disabled={busy} onClick={()=>kind==='events'?setSelected(item):void perform(async()=>{const result=await api!.macPim({action:'mail',id:item.id});setSelected(item);setBody(result.body);})}>{kind==='events'?'일정 상세와 수정':'메일 본문 읽기'}</button></div></article>)}
  {body&&<section className="integration-body"><h4>{selected?.title}</h4><pre>{body}</pre></section>}
- {kind==='events'&&<GoogleEventEditor provider="mac" key={calendarId+':'+(selected?.id||'new')} calendars={calendars} calendarId={calendarId} item={selected} onSaved={message=>void perform(async()=>{await read();setNotice(message);})}/>}</>}
+ {kind==='events'&&<CalendarEventEditor key={calendarId+':'+(selected?.id||'new')} calendars={calendars} calendarId={calendarId} item={selected} onSaved={message=>void perform(async()=>{await read();setNotice(message);})}/>}</>}
  {notice&&<p role="status">{notice}</p>}</section>;
 }

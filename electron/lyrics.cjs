@@ -27,7 +27,7 @@ function registerLyrics(register, { fetchImpl = fetch, now = Date.now } = {}) {
     async function search(params) {
       const response = await fetchImpl('https://lrclib.net/api/search?' + new URLSearchParams(params), { headers: { 'User-Agent': 'Flowrium (https://github.com/hyeondk/flowrium)' }, signal: AbortSignal.timeout(9000), redirect: 'error' });
       if (!response.ok) throw Error('가사 검색 서비스가 응답하지 않았습니다. 잠시 뒤 다시 확인해 주세요.');
-      const bytes = await require('./google-tools.cjs').bounded(response, 2 * 1024 * 1024);
+      const bytes = await require('./document-tools.cjs').bounded(response, 2 * 1024 * 1024);
       const values = JSON.parse(bytes.toString('utf8'));
       if (!Array.isArray(values)) throw Error('가사 응답 형식이 올바르지 않습니다.');
       return values.filter(v => typeof v.trackName === 'string' && Number.isFinite(v.duration) && (v.instrumental || typeof v.syncedLyrics === 'string' || typeof v.plainLyrics === 'string'));

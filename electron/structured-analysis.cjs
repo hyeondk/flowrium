@@ -1,5 +1,11 @@
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),{randomUUID}=require('node:crypto');
 const {CodexClient}=require('./codex.cjs');
+function analysisEffort(preferred,model,data){
+ if(!model||!Array.isArray(data))return undefined;
+ const row=data.find(row=>(row.model||row.id)===model),supported=row?.supportedReasoningEfforts?.map(value=>value.reasoningEffort).filter(value=>['none','minimal','low','medium','high','xhigh','max','ultra'].includes(value))||[];
+ if(!supported.length)return undefined;
+ return supported.includes(preferred)?preferred:supported.includes(row.defaultReasoningEffort)?row.defaultReasoningEffort:supported[0];
+}
 function disabledConnections(config){
  const overrides={'features.shell_tool':false,'features.unified_exec':false,'features.multi_agent':false,'features.default_mode_request_user_input':false,'features.sleep_tool':false,'features.skill_search':false,'web_search':'disabled','plugins._default.enabled':false,'apps._default.enabled':false,'project_doc_max_bytes':0};
  for(const group of ['mcp_servers','plugins','apps'])for(const name of Object.keys(config?.[group]||{}))if(name!=='_default'){
@@ -29,6 +35,10 @@ async function runStructuredAnalysis(controller,input){
   if(account.account?.type!=='chatgpt')throw Error('AI 분석에는 본인의 ChatGPT 계정 연결이 필요합니다.');
   if(owner!==(controller.options.queueOwner?.()??'local')||controller.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다.');
   const config=await controller.client.request('config/read',{includeLayers:false});
+  const selectedModel=input.model||controller.store.state.settings.model;
+  const modelData=await controller.client.request('model/list',{limit:100,includeHidden:false}).catch(()=>null);
+  const effort=analysisEffort(input.effort||controller.store.state.settings.effort,selectedModel,modelData?.data);
+  if(owner!==(controller.options.queueOwner?.()??'local')||controller.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다.');
   const overrides=disabledConnections(config.config);
   client=controller.options.analysisClientFactory?.(overrides)||new CodexClient({...controller.client.options,configOverrides:overrides});
   directory=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-analysis-')));
@@ -65,11 +75,12 @@ async function runStructuredAnalysis(controller,input){
    ...(input.model||controller.store.state.settings.model?{model:input.model||controller.store.state.settings.model}:{})});
   if(started.activePermissionProfile?.id!==profile)throw Error('분석용 파일 접근 제한을 확인하지 못했습니다.');
   threadId=started.thread?.id;if(!threadId)throw Error('AI 분석 대화를 시작하지 못했습니다.');
-  await client.request('turn/start',{threadId,input:[{type:'text',text:instructions+'\n\n분석할 자료:\n'+input.prompt}],outputSchema:input.schema,approvalPolicy:'never',permissions:profile,effort:'low'});
+  if(owner!==(controller.options.queueOwner?.()??'local')||controller.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다.');
+  await client.request('turn/start',{threadId,input:[{type:'text',text:instructions+'\n\n분석할 자료:\n'+input.prompt}],outputSchema:input.schema,approvalPolicy:'never',permissions:profile,...(effort?{effort}:{})});
   return await completion;
  }finally{
   clearTimeout(timer);client?.close();controller.analysisRuns.delete(id);controller.editingSessions.delete(id);
   try{if(directory)await fs.rm(directory,{recursive:true,force:true,maxRetries:4,retryDelay:100});}finally{finished();}
  }
 }
-module.exports={runStructuredAnalysis,disabledConnections};
+module.exports={runStructuredAnalysis,disabledConnections,analysisEffort};

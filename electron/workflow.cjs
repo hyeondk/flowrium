@@ -280,6 +280,9 @@ class WorkflowRuntime {
     p.revision++;await this.save();return copy(p);
   }
   async action(input){
+    if(input?.action==='followupSuggestions'||input?.action==='continueConversation'){
+      this.ready();return input.action==='followupSuggestions'?this.controller.followupSuggestions(input):this.controller.continueConversation(input);
+    }
     return this.serial(async()=>{
       this.ready();if(!input||typeof input!=="object")throw invalid();
       switch(input.action){

@@ -1,4 +1,4 @@
-import type { FlowriumEvent, Session } from "./types";
+import type { FlowriumEvent, Session, Mode, Effort } from "./types";
 
 export interface WorkflowPreferences {
   enabled:boolean;
@@ -39,6 +39,8 @@ export interface WorkflowState {
   sessions:{id:string;projectId:string;title:string;running:boolean}[];
 }
 export type WorkflowAction =
+  |{action:'followupSuggestions';sessionId:string;messageId:string}
+  |{action:'continueConversation';sessionId:string;messageId:string;text?:string;attachments?:string[];mode:Mode;model?:string;effort?:Effort}
   |{action:"preferences";value:Partial<WorkflowPreferences>}
   |{action:"send";sourceId?:string|null;targetId:string;text:string}
   |{action:"request";sourceId?:string;projectId?:string;targetId?:string;title:string;text:string}

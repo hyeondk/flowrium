@@ -2,6 +2,8 @@ import WorkflowHub from "./WorkflowHub";
 import CommandCenter from "./CommandCenter";
 import {AttachmentComposer,ChatAttachmentList,ChatQueuePanel} from "./ChatAttachments";
 import InputRequestPanel from "./InputRequestPanel";
+import DecisionRequestPanel from './DecisionRequestPanel';
+import ChatContinuation from './ChatContinuation';
 import { useWorkspaceDrafts } from "./useWorkspaceDrafts";
 import WorkspaceSidebar from "./WorkspaceSidebar";
 import ConversationDock from "./ConversationDock";
@@ -17,6 +19,7 @@ import IntegrationPanel from "./IntegrationPanel";
 import RemotePanel from "./RemotePanel";
 import { VoiceSettings, VoiceComposer, SpeakMessageButton } from "./VoiceTools";
 import {effortOptions,effortLabels} from "../shared/model-options";
+import {modelDisplayName} from '../shared/model-display';
 import SettingsLayout,{SettingsGroup} from "./SettingsLayout";
 import CodexTransferPanel,{CodexLinkBar} from "./CodexTransferPanel";
 import MessageHistory from "./MessageHistory";
@@ -24,7 +27,6 @@ import MessageContent from "./MessageContent";
 import IconTooltips from "./IconTooltips";
 import DotsPanel from "./DotsPanel";
 import AttentionCenter from "./AttentionCenter";
-import GoogleCalendarWorkspace from "./GoogleCalendarWorkspace";
 import AccountSetupCard from "./AccountSetupCard";
 import type {TrashResult} from "../shared/trash";
 import ContextMenu from "./ContextMenu";
@@ -96,7 +98,7 @@ import type {
   ChatAttachment,
 } from "../shared/types";
 
-type View = "calendar" | "workflow" | PortfolioView | "weekly" | "pause" | "music" | "overview" | "terminal" | "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
+type View = "workflow" | PortfolioView | "weekly" | "pause" | "music" | "overview" | "terminal" | "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
 type Activity = { text: string; status: string; error?: string };
 type CodexHistoryItem = {
   id: string;
@@ -242,6 +244,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [dockFilter,setDockFilter]=useState<ExecutionState|'all'>('all');
   const [proposals,setProposals]=useState<WorkflowProposal[]>([]);
   const [projectNavigation,setProjectNavigation]=useState<{id:string;nonce:number}>();
+  const [assistantNavigation,setAssistantNavigation]=useState<number>();
   const [projectTab,setProjectTab] = useState<ProjectTab>("home");
   const {drafts,setDrafts,error:draftError,retry:retryDrafts} = useWorkspaceDrafts(security.state.accountRevision);
   const draftKey = sessionId
@@ -291,6 +294,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const settingsPresence=usePresence(settingsOpen),historyPresence=usePresence(historyOpen),sidebarPresence=usePresence(sidebarOpen,260),dockPresence=usePresence(dockOpen,280);
   const isChatFocused=false;
   const [deciding, setDeciding] = useState<Record<string, boolean>>({});
+  const decisionFlights=useRef(new Set<string>());
   const [stopping, setStopping] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState("");
   const [reacting,setReacting]=useState<Record<string,boolean>>({});
@@ -633,10 +637,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       throw new Error("ChatGPT 계정 연결 후 AI 업무를 시작하세요.");
     }
     const chosenModel=overrides?.model||value.preferences?.model||data.settings.model;
-    const metadata=models.find(row=>row.id===chosenModel);
+    const metadata=models.find(row=>row.id===chosenModel)||(!chosenModel?models.find(row=>row.isDefault):undefined);
     const requested=overrides?.effort||value.preferences?.effort||data.settings.effort;
     const supported=effortOptions(metadata);
-    const chosenEffort=supported.some(row=>row.reasoningEffort===requested)?requested:metadata?.defaultReasoningEffort||supported[0].reasoningEffort;
+    const chosenEffort=supported.some(row=>row.reasoningEffort===requested)?requested:metadata?.defaultReasoningEffort||supported[0]?.reasoningEffort;
     await api.send({ sessionId: value.id, text: request, mode, model:chosenModel, effort:chosenEffort });
     setDrafts(prev => prev[key]?.text === request ? { ...prev, [key]: { text: "", mode } } : prev);
   }
@@ -821,8 +825,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     }
   }
   async function decide(event: FlowriumEvent, decision: "accept" | "decline") {
-    if (!api || !event.requestId || deciding[event.requestId]) return;
+    if (!api || !event.requestId || decisionFlights.current.has(event.requestId)) return;
     const requestId = event.requestId;
+    decisionFlights.current.add(requestId);
     setDeciding((prev) => ({ ...prev, [requestId]: true }));
     try {
       await api.approval({ requestId, decision });
@@ -830,12 +835,23 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     } catch (error) {
       fail(error);
     } finally {
+      decisionFlights.current.delete(requestId);
       setDeciding((prev) => {
         const next = { ...prev };
         delete next[requestId];
         return next;
       });
     }
+  }
+  async function continueWaitingSession(messageId:string){
+    if(!api||!session||submittingRef.current||running)return;
+    const originKey=draftKey,originalInput=input,originalAttachments=attachments;
+    submittingRef.current=true;setSubmitting(true);
+    try{
+      await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,text:originalInput,attachments:originalAttachments.map(a=>a.id),mode,model:data.settings.model||undefined,effort:data.settings.effort});
+      setDrafts(previous=>{const draft=previous[originKey];return {...previous,[originKey]:{...draft,mode:draft?.mode||mode,text:draft?.text===originalInput?'':draft?.text||'',attachments:(draft?.attachments||[]).filter(item=>!originalAttachments.some(sent=>sent.id===item.id))}}});
+      stickToBottom.current=true;
+    }finally{submittingRef.current=false;setSubmitting(false)}
   }
   async function interrupt() {
     if (!api || !sessionId || stopping[sessionId]) return;
@@ -1143,44 +1159,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 </div>
               )}
               <div className="composer-area">
-                {sessionApprovals.map((event) => event.type === "input" ? <InputRequestPanel key={event.requestId} event={event}/> : (
-                  <div
-                    className="approval-card"
-                    key={event.requestId}
-                    role="alert"
-                  >
-                    <div className="approval-title">
-                      <ShieldCheck size={17} />
-                      <strong>진행하려면 확인이 필요합니다</strong>
-                    </div>
-                    <p>
-                      {event.details ||
-                        event.method ||
-                        "Codex가 작업 승인을 요청했습니다."}
-                    </p>
-                    <div>
-                      <button
-                        className="button secondary"
-                        disabled={Boolean(
-                          event.requestId && deciding[event.requestId],
-                        )}
-                        onClick={() => decide(event, "decline")}
-                      >
-                        거절
-                      </button>
-                      <button
-                        className="button primary"
-                        disabled={Boolean(
-                          event.requestId && deciding[event.requestId],
-                        )}
-                        onClick={() => decide(event, "accept")}
-                      >
-                        이번 작업 승인
-                        <Check size={14} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                {sessionApprovals.map(event=><DecisionRequestPanel key={event.requestId} event={event}/>)}
                 {draftError && <p role="alert" className="composer-draft-error">{draftError} <button onClick={retryDrafts}>초안 다시 불러오기</button></p>}
                 <AttachmentComposer key={voiceContinuity.current.generation} projectId={project?.id} items={attachments} onChange={setAttachments} disabled={security.state.locked} report={notify}>{attachmentControl=>(
                 <div className={`composer ${running ? "working" : ""}`}>
@@ -1229,7 +1208,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   <div className="composer-toolbar">
                     <div className="composer-options">
                       {attachmentControl}
-                      <VoiceComposer key={voiceContinuity.current.generation} suspend={settingsOpen||!dockOpen||!chatActive} disabled={running||security.state.locked} onText={text=>setDrafts(prev=>{
+                      <VoiceComposer key={voiceContinuity.current.generation} suspend={settingsOpen||attentionOpen||!dockOpen||!chatActive} disabled={running||security.state.locked} onText={text=>setDrafts(prev=>{
                         const draft=prev[draftKey];return {...prev,[draftKey]:{mode:draft?.mode||mode,text:[draft?.text,text].filter(Boolean).join("\n"),attachments:draft?.attachments}};
                       })} onSubmit={text=>void send([input,text].filter(Boolean).join("\n"))}/>
                       {!session?.scope&&<label className="mode-select">
@@ -1256,7 +1235,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         <span className="small-codex-icon">
                           <Terminal size={12} />
                         </span>
-                        {session?.preferences?.model || data.settings.model || "Codex 기본 모델"}
+                        {modelDisplayName(session?.preferences?.model || data.settings.model) || "계정 기본 모델"}
                         <ChevronDown size={12} />
                       </button>
                     </div>
@@ -1288,6 +1267,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </div>
                 </div>)}
                 </AttachmentComposer>
+                {session&&<ChatContinuation key={session.id} session={session} running={running||sessionApprovals.length>0} authenticated={connection.authenticated} busy={submitting} onContinue={continueWaitingSession} onChoose={prompt=>{setInput(input.trim()?input+'\n\n'+prompt:prompt);composer.current?.focus()}}/>}
                 <div className="composer-footnote">
                   <span>
                     <ShieldCheck size={12} />
@@ -1362,13 +1342,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             <span>내 작업 공간</span>
             <ChevronRight size={13} />
             <strong>
-              {({dashboard:"대시보드",calendar:"일정",kickoff:"새 프로젝트",archive:"완료",outputs:"산출물",timeline:"날짜별 기록",workflow:"업무 연결 / 비서",weekly:"주간업무보고",pause:"업무 마감",music:"뮤직",history:"작업 기록",library:"프롬프트 보관함",activity:"작업 현황",inbox:"승인함",terminal:"터미널"} as Partial<Record<View,string>>)[view] || project?.name || "시작하기"}
+              {({dashboard:"대시보드",kickoff:"새 프로젝트",archive:"완료",outputs:"산출물",timeline:"날짜별 기록",workflow:"업무 연결 / 비서",weekly:"주간업무보고",pause:"업무 마감",music:"뮤직",history:"작업 기록",library:"프롬프트 보관함",activity:"작업 현황",inbox:"승인함",terminal:"터미널"} as Partial<Record<View,string>>)[view] || project?.name || "시작하기"}
             </strong>
             {!api && <span className="preview-badge">화면 미리보기</span>}
           </div>
           <div className="topbar-actions">
             <CommandCenter projects={data.projects} sessions={data.sessions} onProject={selectProject} onSession={selectSession} onView={value=>{if(value==="settings")setSettingsOpen(true);else if(value==="music")setMusicOpen(true);else setView(value as View);}} onNew={()=>{void newSession();}}/>
-            <AssistantShortcut projects={data.projects.filter(p=>!archived[p.id])} onOpen={openWork} onCreateProject={()=>setView("kickoff")}/>
+            <AssistantShortcut projects={data.projects.filter(p=>!archived[p.id])} onOpen={openWork} onCreateProject={()=>setView("kickoff")} onOpenPanel={()=>{setChatActive(false);setDockFilter('all');setDockOpen(true);setAssistantNavigation(Date.now())}}/>
             <button className="icon-button header-music" aria-label="뮤직 열기" title="뮤직" onClick={()=>setMusicOpen(true)}><Music2 size={18}/></button>
             <button className="icon-button header-decisions" aria-label={`알림 ${(attentionState?.notifications.filter(n=>!n.readAt).length||0)+activeCounts.decision}건`} title="알림과 검토 요청" onClick={openDecisions}><Bell size={18}/>{((attentionState?.notifications.filter(n=>!n.readAt).length||0)+activeCounts.decision)>0&&<span>{(attentionState?.notifications.filter(n=>!n.readAt).length||0)+activeCounts.decision}</span>}</button>
             <button className="icon-button dock-toggle" aria-label={dockOpen?'대화함 닫기':'대화함 열기'} aria-expanded={dockOpen} onClick={()=>setDockOpen(v=>!v)}><PanelRight size={19}/></button>
@@ -1386,13 +1366,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         </header>
 
         {!settingsOpen&&!isChatFocused && <UpdatePanel state={update} fail={fail} />}
-        {loaded&&view==="dashboard"&&!data.projects.length&&<AccountSetupCard chatConnected={connection.authenticated} onChat={()=>setSettingsOpen(true)} onCalendar={()=>setView("calendar")}/>}
+        {loaded&&view==="dashboard"&&!data.projects.length&&<AccountSetupCard chatConnected={connection.authenticated} onChat={()=>setSettingsOpen(true)}/>}
         {!loaded ? (
           <div className="loading-page">
             <LoaderCircle className="spin" />
             작업 공간을 불러오고 있습니다.
           </div>
-        ) : view === "calendar" ? <GoogleCalendarWorkspace onOpenSettings={()=>setSettingsOpen(true)}/> : view === "music" ? null : view === "workflow" ? (
+        ) : view === "music" ? null : view === "workflow" ? (
           <div className="page-scroll"><div className="page-inner"><WorkflowHub onOpen={openWork} onOpenInbox={()=>setView("inbox")}/></div></div>
         ) : view === "terminal" && !project ? (
           <div className="pf-page"><div className="pf-content"><h1>터미널</h1><section className="pf-welcome"><h2>터미널을 열 폴더를 연결하세요</h2><button onClick={()=>void chooseProjectFor("terminal")}>프로젝트 폴더 선택</button></section></div></div>
@@ -1601,8 +1581,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       <TrashPanel open={trashOpen} onClose={()=>setTrashOpen(false)} onRestored={reloadItems}/>
 
       <MotionOverlay open={musicOpen} persist onClose={()=>setMusicOpen(false)} label="뮤직" className="music-popup"><header className="utility-popup-heading"><div><Music2 size={20}/><h2>뮤직</h2></div><button className="icon-button" aria-label="뮤직 닫기" onClick={()=>setMusicOpen(false)}><X size={18}/></button></header><MusicPanel visible={musicPresence.present} locked={security.state.locked}/></MotionOverlay>
-      <AttentionCenter open={attentionOpen} onClose={()=>setAttentionOpen(false)} data={attentionState} sessions={data.sessions} requests={approvals} onOpen={selectSession} onDecisions={()=>{setAttentionOpen(false);setView(visibleProposals(proposals).length?'workflow':'inbox')}} onRefresh={refreshAttention}/>
-      <ConversationDock dotsContent={<DotsPanel active={dockOpen} blocked={settingsOpen||historyOpen||musicOpen||attentionOpen||Boolean(workPopup)||Boolean(deletionTarget)||trashOpen||Boolean(reportDialog)||sidebarOpen||logoutOpen}/>} projectNavigation={projectNavigation} open={dockOpen} chatActive={chatActive} expanded={chatExpanded} onExpand={()=>setChatExpanded(v=>!v)} onMenu={()=>setSidebarOpen(true)} onSettings={()=>setSettingsOpen(true)} onClose={()=>setDockOpen(false)} onLeaveChat={()=>setChatActive(false)} projects={data.projects} sessions={data.sessions} projectId={projectId} sessionId={sessionId} activities={activities} requests={approvals} proposals={proposals} counts={activeCounts} filter={dockFilter} onFilter={setDockFilter} onOpen={selectSession} onProject={()=>{}} onCreate={(scope,id)=>void startDockConversation(scope,id)} onCreateProject={()=>setView('kickoff')} onSessionMenu={(event,s)=>itemContext(event,{kind:"session",id:s.id,name:s.title})} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} attentionCount={attentionState?.notifications.filter(n=>!n.readAt).length||0} onDecisions={openDecisions} busy={creatingConversation}>{renderChat()}</ConversationDock>
+      <AttentionCenter open={attentionOpen} onShow={()=>setAttentionOpen(true)} onClose={()=>setAttentionOpen(false)} data={attentionState} sessions={data.sessions} requests={approvals} onOpen={selectSession} onDecisions={()=>{setAttentionOpen(false);setView(visibleProposals(proposals).length?'workflow':'inbox')}} onRefresh={refreshAttention}/>
+      <ConversationDock assistantNavigation={assistantNavigation} assistantContent={<DotsPanel active={dockOpen} blocked={settingsOpen||historyOpen||musicOpen||attentionOpen||Boolean(workPopup)||Boolean(deletionTarget)||trashOpen||Boolean(reportDialog)||sidebarOpen||logoutOpen}/>} projectNavigation={projectNavigation} open={dockOpen} chatActive={chatActive} expanded={chatExpanded} onExpand={()=>setChatExpanded(v=>!v)} onMenu={()=>setSidebarOpen(true)} onSettings={()=>setSettingsOpen(true)} onClose={()=>setDockOpen(false)} onLeaveChat={()=>setChatActive(false)} projects={data.projects} sessions={data.sessions} projectId={projectId} sessionId={sessionId} activities={activities} requests={approvals} proposals={proposals} counts={activeCounts} filter={dockFilter} onFilter={setDockFilter} onOpen={selectSession} onProject={()=>{}} onCreate={(scope,id)=>void startDockConversation(scope,id)} onCreateProject={()=>setView('kickoff')} onSessionMenu={(event,s)=>itemContext(event,{kind:"session",id:s.id,name:s.title})} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} attentionCount={attentionState?.notifications.filter(n=>!n.readAt).length||0} onDecisions={openDecisions} busy={creatingConversation}>{renderChat()}</ConversationDock>
       <WorkActionPopup kind={workPopup} projects={data.projects.filter(p=>!archived[p.id])} initialProject={view==="overview"?projectId:undefined} onClose={()=>setWorkPopup(null)} onStart={async(record,text,options)=>{await sendWorkRequest(record,text,record.workflow?.kind?workKinds[record.workflow.kind].mode:"plan",options)}} onOpen={selectSession}/>
       <MotionOverlay open={Boolean(reportDialog)} onClose={()=>setReportDialog(undefined)} label={reportDialog==='pause'?'업무 마감':'주간업무보고'} className="report-overlay">
         {reportDialog&&<PortfolioReports key={reportDialog} kind={reportDialog} projects={data.projects.filter(p=>!archived[p.id])} sessions={projectOnlySessions} authenticated={connection.authenticated}
@@ -1912,16 +1892,16 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     value={data.settings.model || ""}
                     onChange={(e) => saveSettings({ model: e.target.value })}
                   >
-                    <option value="">Codex 기본 모델</option>
+                    <option value="">계정 기본 모델</option>
                     {data.settings.model &&
                       !models.some((m) => m.id === data.settings.model) && (
                         <option value={data.settings.model}>
-                          {data.settings.model}
+                          {modelDisplayName(data.settings.model)}
                         </option>
                       )}
                     {models.map((m) => (
                       <option value={m.id} key={m.id}>
-                        {m.displayName || m.id}
+                        {modelDisplayName(m)}
                       </option>
                     ))}
                   </select>
@@ -1940,7 +1920,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       saveSettings({ effort: e.target.value as Effort })
                     }
                   >
-                    {effortOptions(models.find(row=>row.id===data.settings.model)).map(row=><option key={row.reasoningEffort} value={row.reasoningEffort}>{effortLabels[row.reasoningEffort]}</option>)}
+                    {effortOptions(models.find(row=>row.id===data.settings.model)||(!data.settings.model?models.find(row=>row.isDefault):undefined)).map(row=><option key={row.reasoningEffort} value={row.reasoningEffort}>{effortLabels[row.reasoningEffort]}</option>)}
                   </select>
                 </label>
               </div>

@@ -115,7 +115,7 @@ async function startScopedRun(controller,run,input,message,project){
  await controller.store.save();
  let attachmentText='',remaining=150000;
  for(const file of run.attachments.filter(a=>!a.image)){
-  const content=(await require('./google-tools.cjs').extract(await fs.readFile(file.path),file.type)).slice(0,remaining);remaining-=content.length;
+  const content=(await require('./document-tools.cjs').extract(await fs.readFile(file.path),file.type)).slice(0,remaining);remaining-=content.length;
   attachmentText+='\n\n첨부 자료 / '+file.name+'\n'+(content||'이 파일 형식의 본문은 읽지 못했습니다. 텍스트 또는 이미지로 다시 첨부해 주세요.');if(remaining<=0)break;
  }
  const context=session.scope==='integrated'?'\n\n현재 전체 업무 현황(참고 자료):\n'+JSON.stringify(await snapshot(controller)):'';

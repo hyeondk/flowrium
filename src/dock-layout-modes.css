@@ -1,4 +1,10 @@
 .dock-mode-picker{position:relative;display:inline-flex;align-items:center}
+.dock-resize-handle{position:absolute;z-index:240;left:-5px;top:0;bottom:0;width:10px;cursor:col-resize;touch-action:none;outline:none;display:flex;justify-content:center}
+.dock-resize-handle>span{width:3px;height:44px;align-self:center;border-radius:4px;background:var(--muted);opacity:0;transition:opacity 200ms ease-in-out}
+.dock-resize-handle:is(:hover,:focus-visible)>span,.conversation-dock[data-resizing=true]>.dock-resize-handle>span{opacity:.6;background:var(--accent)}
+html[data-dock-resizing=true],html[data-dock-resizing=true] *{cursor:col-resize!important;user-select:none!important}
+.conversation-dock[data-resizing=true]{transition:none!important}
+@media(max-width:760px){.dock-resize-handle{display:none}}
 .conversation-dock .dock-panel-menu.flow-context-menu{position:absolute;inset:38px 0 auto auto;transform:none;min-width:194px;max-width:calc(100vw - 24px);padding:5px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 12px 34px #17304c24;z-index:250;word-break:keep-all}
 .dock-panel-menu[role=menu]>button{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;min-height:35px;padding:7px 10px;border:0;border-radius:6px;background:transparent;text-align:left;color:var(--text);font-size:12px;line-height:20px}
 .dock-panel-menu[role=menu]>button:is(:hover,:focus-visible){background:var(--accent-bg);outline:none;color:var(--accent)}

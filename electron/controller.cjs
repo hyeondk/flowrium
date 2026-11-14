@@ -38,7 +38,7 @@ class Controller extends EventEmitter {
     });
     this.client.on("input", ({ requestId, params }) => {
       const run = this.findRun(params.threadId);
-      if (!run || (run.client&&run.client!==this.client) || run.cancelled || run.finalized || (run.turnId && run.turnId !== params.turnId)) {
+      if (!run || (run.client&&run.client!==this.client) || run.cancelled || run.finalized || (run.turnId && run.turnId !== params.turnId) || (this.options.queueOwner&&run.ownerRevision!==this.options.queueOwner())) {
         this.client.resolveInput(requestId,true);
         return;
       }
@@ -89,13 +89,17 @@ class Controller extends EventEmitter {
   requestClient(requestId,kind='approvals'){return this.clients().find(client=>client[kind]?.has(requestId));}
   decideApproval(requestId,decision){
     const client=this.requestClient(requestId),request=client?.approvals.get(requestId),run=request&&this.findRun(request.params?.threadId);
-    if(!client||!run||run.finalized||run.cancelled||(run.client&&run.client!==client)||this.options.canRun?.()===false||(this.options.queueOwner&&run.ownerRevision!==this.options.queueOwner()))throw Error('이 승인 요청은 이미 종료됐습니다.');
-    return client.decide(requestId,decision);
+    if(!client||!run||run.finalized||run.cancelled||(run.client&&run.client!==client)||(run.turnId&&request.params?.turnId&&run.turnId!==request.params.turnId)||this.options.canRun?.()===false||(this.options.queueOwner&&run.ownerRevision!==this.options.queueOwner()))throw Error('이 승인 요청은 이미 종료됐습니다.');
+    const result=client.decide(requestId,decision);
+    this.emitEvent({type:'inputResolved',sessionId:run.sessionId,requestId});
+    return result;
   }
   conversationClient(session){return session.scope?require('./conversation-scopes.cjs').scopeClient(this,session):Promise.resolve(this.client);}
   conversationThreadParams(session){return session.scope?require('./conversation-scopes.cjs').scopeThreadParams(this,session):Promise.resolve({});}
   cancelStructuredAnalyses(){for(const analysis of this.analysisRuns?.values()||[])analysis.cancel?.();}
   runStructuredAnalysis(input){return require("./structured-analysis.cjs").runStructuredAnalysis(this,input);}
+  followupSuggestions(input){return require('./chat-continuation.cjs').suggest(this,input);}
+  continueConversation(input){return require('./chat-continuation.cjs').continueConversation(this,input);}
   listQueuedMessages(id){return this.messageQueue.list(id);}
   cancelQueuedMessage(id,queueId){return this.messageQueue.cancel(id,queueId);}
   resumeQueuedMessages(id){return this.messageQueue.resume(id);}
@@ -222,6 +226,12 @@ class Controller extends EventEmitter {
       throw new Error("추론 강도를 확인해 주세요.");
     if (input.model) text(input.model, "모델", 300);
     const session = this.store.session(input.sessionId);
+    const checkContinuation=()=>{
+      const expected=internal.expectedContinuation;if(!expected)return;
+      const last=session.messages.at(-1);
+      if(!last||last.role!=='assistant'||last.id!==expected.messageId||last.text!==expected.text||ownerRevision!==expected.owner||ownerRevision!==(this.options.queueOwner?.()??'local')||this.runs.has(session.id)||this.editingSessions.has(session.id)||session.compacting||this.messageQueue.pending(session.id)||session.workflow?.status==='done')throw Error('대화나 계정 상태가 바뀌었습니다. 최신 답변을 확인하고 다시 선택해 주세요.');
+    };
+    checkContinuation();
     if (session.workflow?.status === "done") throw new Error("완료한 업무입니다. 다시 진행하려면 업무를 재개해 주세요.");
     if (this.editingSessions.has(session.id)) throw new Error("대화 편집을 마친 뒤 다시 보내 주세요.");
     if (!internal.fromQueue && (this.runs.has(session.id) || session.compacting || this.messageQueue.pending(session.id)))
@@ -235,6 +245,7 @@ class Controller extends EventEmitter {
       throw new Error("프로젝트 폴더를 찾을 수 없습니다.");
     const attachments = await require("./chat-attachments.cjs").resolveAttachments(this.store,session.projectId,attachmentIds);
     if(this.options.canRun?.()===false||ownerRevision!==(this.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.');
+    checkContinuation();
     const run = {
       ownerRevision,
       userMessageId: null,
@@ -583,7 +594,7 @@ class Controller extends EventEmitter {
   }
   forwardApproval({ requestId, method, params },client=this.client) {
     const run = this.findRun(params.threadId);
-    if (!run || (run.client&&run.client!==client) || run.finalized || run.cancelled || this.options.canRun?.()===false || (this.options.queueOwner&&run.ownerRevision!==this.options.queueOwner()) || (run.approvalsAllowed === false || (run.approvalsAllowed === undefined && run.mode !== "build"))) {
+    if (!run || (run.client&&run.client!==client) || run.finalized || run.cancelled || (run.turnId&&params.turnId&&run.turnId!==params.turnId) || this.options.canRun?.()===false || (this.options.queueOwner&&run.ownerRevision!==this.options.queueOwner()) || (run.approvalsAllowed === false || (run.approvalsAllowed === undefined && run.mode !== "build"))) {
       client.decide(requestId, "decline");
       return;
     }

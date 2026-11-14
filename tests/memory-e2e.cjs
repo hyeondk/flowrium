@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { _electron } = require("playwright");
 const { Store } = require("../electron/store.cjs");
+const {openConversation}=require('./shell-test-helpers.cjs');
 async function run() {
   const tmp = await fs.mkdtemp(
     path.join(os.tmpdir(), "flowrium-memory-screen-"),
@@ -66,10 +67,9 @@ async function run() {
       (await page.evaluate(() => window.flowrium.bootstrap())).sessions.length,
       0,
     );
-    await btn("개인 비서").click();
-    await page.getByLabel("비서 대화 보관 프로젝트").selectOption(project.id);
-    await btn("비서 대화 열기").click();
-    await page.getByRole('dialog',{name:'개인 비서 연결',exact:true}).waitFor({state:'hidden'});
+    const assistantRecord=await page.evaluate(id=>window.flowrium.openAssistant(id),project.id);
+    await page.reload();
+    await openConversation(page,assistantRecord.title);
     await page
       .getByLabel("Codex에 보낼 작업 요청")
       .fill("현재 규칙을 확인해 주세요.");
@@ -104,7 +104,7 @@ async function run() {
     await app.close();
     app = null;
     await launch();
-    await btn("개인 비서").click();
+    await openConversation(page,assistantRecord.title);
     await page
       .locator(".message.assistant")
       .filter({ hasText: "확인한 결과입니다." })

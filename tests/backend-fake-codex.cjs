@@ -108,7 +108,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       result: {
         data: [
           { id: "test-model", model: "test-model", displayName: "검증 모델" },
-        ],
+        ].map(model=>model.supportedReasoningEfforts?model:{...model,isDefault:true,defaultReasoningEffort:"medium",supportedReasoningEfforts:[{reasoningEffort:"low"},{reasoningEffort:"medium"},{reasoningEffort:"high"},{reasoningEffort:"xhigh"}]}),
       },
     });
     return;

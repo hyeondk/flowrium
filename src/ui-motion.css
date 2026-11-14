@@ -30,7 +30,12 @@ button:active:not(:disabled){transition-timing-function:var(--ease-exit)}
 @keyframes ui-fade-in{from{opacity:0}to{opacity:1}}
 @keyframes ui-fade-out{from{opacity:1}to{opacity:0}}
 @keyframes ui-popup-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
-@keyframes ui-popup-out{from{opacity:1;transform:scale(1)}to{opacity:0;transform:scale(.9)}}
+@keyframes ui-popup-out{
+  0%{opacity:1;transform:scale(1,1);filter:blur(0);clip-path:inset(0 round 14px)}
+  55%{opacity:.7;transform:scale(.96,.32);filter:blur(.3px);clip-path:inset(0 round 16px)}
+  82%{opacity:.22;transform:scale(.78,.035);filter:blur(.5px);clip-path:inset(0 round 20px)}
+  100%{opacity:0;transform:scale(.58,0);filter:blur(.8px);clip-path:inset(0 round 24px)}
+}
 @keyframes ui-sheet-in{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes ui-sheet-out{from{transform:translateY(0)}to{transform:translateY(100%)}}
 @keyframes ui-snackbar-in{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:translateY(0)}}

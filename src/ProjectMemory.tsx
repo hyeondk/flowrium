@@ -376,10 +376,12 @@ export function AssistantShortcut({
   projects,
   onOpen,
   onCreateProject,
+  onOpenPanel,
 }: {
   projects: Project[];
   onOpen(session: Session): unknown;
   onCreateProject?: () => void;
+  onOpenPanel?: () => void;
 }) {
   const [open, setOpen] = useState(false),
     [project, setProject] = useState("");
@@ -421,7 +423,7 @@ export function AssistantShortcut({
         className="button subtle assistant-entry"
         aria-label="개인 비서"
         disabled={busy}
-        onClick={() => void access()}
+        onClick={() => onOpenPanel ? onOpenPanel() : void access()}
       >
         <MessagesSquare size={16} />
         <span>개인 비서</span>

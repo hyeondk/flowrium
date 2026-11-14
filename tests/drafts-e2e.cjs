@@ -3,6 +3,7 @@ const assert = require("node:assert/strict"),
   os = require("node:os"),
   path = require("node:path");
 const { _electron } = require("playwright");
+const {openConversation}=require('./shell-test-helpers.cjs');
 const { Store } = require("../electron/store.cjs");
 const { registerMemory } = require("../electron/memory.cjs");
 async function run() {
@@ -79,7 +80,7 @@ async function run() {
     // 구버전 프로필을 재현한다. 방금 빈 임시 프로필로 만든 새 버전의 이관 표식만 제거한다.
     await fs.unlink(path.join(profile, "composer-drafts", "legacy.json"));
     await launch();
-    await button("개인 비서").click();
+    await openConversation(page, session.title);
     await page.locator('.conversation-dock').getByRole('heading',{name:session.title,exact:true}).waitFor();
     await until(
       async () => (await composer().inputValue()) === "이전 버전의 미전송 문장",
@@ -116,7 +117,7 @@ async function run() {
     await close();
     await launch();
     await unlock();
-    await button("개인 비서").click();
+    await openConversation(page, session.title);
     await until(
       async () => (await composer().inputValue()) === "새로 편집한 미전송 초안",
     );
@@ -129,7 +130,7 @@ async function run() {
     await button("로그아웃 확인").click();
     await page.getByRole("heading", { name: "화면 잠금" }).waitFor();
     await unlock();
-    await button("개인 비서").click();
+    await openConversation(page, session.title);
     await composer().waitFor();
     const revision = await page.evaluate(
       async () => (await window.flowrium.securityState()).accountRevision,
