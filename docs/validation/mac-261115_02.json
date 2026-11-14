@@ -1,0 +1,235 @@
+{
+  "version": "261115_02",
+  "nativeVersion": "26.11.1502",
+  "validatedDate": "2026-11-15",
+  "source": "6019b588eb6f8e52f0c24b50c95affc53f68f897",
+  "buildSource": "28655b06be72783635c9919d9b418a0bed7c4b2a",
+  "sourceFollowupPending": true,
+  "sourceFollowupScope": "터미널 설치기의 숨김 및 색인 제외 백업 처리 / 바이너리 내부 제품 파일 변경 없음",
+  "publicSourceSha256": null,
+  "platform": "darwin-arm64",
+  "unit": {
+    "tests": 300,
+    "passed": 300,
+    "failed": 0,
+    "skipped": 0
+  },
+  "functionalRegression": {
+    "suiteCount": 40,
+    "passed": 40,
+    "failed": 0,
+    "phase": "기준 전체 회귀",
+    "finalProductCommit": "28655b06be72783635c9919d9b418a0bed7c4b2a",
+    "finalProductRecheckCount": 13,
+    "finalProductRechecks": [
+      {
+        "file": "external-repositories-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "dots-view-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "google-calendar-workspace-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "message-content-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "trash-ui-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "dock-layout-modes-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "workspace-interactions-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "project-shortcuts-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "repository-completion-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "settings-layout-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "desktop-tools-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "feature-surfaces-e2e.cjs",
+        "passed": true
+      },
+      {
+        "file": "download-page-e2e.cjs",
+        "passed": true
+      }
+    ],
+    "distUnchanged": true,
+    "syntheticProfilesOnly": true,
+    "controlledLocalNativeModels": true,
+    "realExternalAccountCoverageClaimed": false,
+    "themeCombinationCoverageClaimed": false
+  },
+  "layout": {
+    "dock": {
+      "defaultMode": "docked",
+      "overlayPassed": true,
+      "inputOnlyPassed": true,
+      "draftAndInputDomPreserved": true,
+      "preferenceRestorationPassed": true
+    },
+    "messageContent": {
+      "gfmTablePassed": true,
+      "gfmTaskListPassed": true,
+      "gfmStrikethroughPassed": true,
+      "gfmFootnotePassed": true,
+      "wideTableScrollContained": true,
+      "unsafeLinksBlocked": true,
+      "originalStoredMessagesPreserved": true
+    },
+    "workspaceInteractionsPassed": true,
+    "settingsLayoutPassed": true,
+    "featureSurfacesPassed": true
+  },
+  "package": {
+    "architecture": "arm64",
+    "dmgIntegrityVerified": true,
+    "signatureIntegrityVerified": true,
+    "adHoc": true,
+    "developerIdSigned": false,
+    "appleNotarized": false,
+    "gatekeeperAccepted": false,
+    "gatekeeperExitCode": 3,
+    "zipAndDmgProductsIdentical": true,
+    "sourceFilesCompared": 97,
+    "sourceFilesByteIdentical": 97,
+    "missingSourceFiles": 0,
+    "unexpectedSourceFiles": 0,
+    "productCodeUnchangedSinceBuild": true,
+    "changesAfterBuild": "검사 대기 조건과 설치 스크립트 및 문서 갱신 / 제품 바이너리 변경 없음",
+    "freshProfileUnauthenticatedPassed": true,
+    "bundledToolsVerified": true,
+    "terminalDocumentsAndNativeHelperPassed": true,
+    "updateButtonUnsignedRejectPassed": true,
+    "manualDownloadPassed": true,
+    "helperReadinessAndRollbackPassed": true,
+    "gfmPackagedProofPassed": true,
+    "artifacts": [
+      {
+        "name": "Flowrium-261115_02-mac-arm64.dmg",
+        "size": 368531198,
+        "sha256": "879cc0546bd2808cff8c610fd28cc0370638d7eb1e751eae8895805cf1838304",
+        "sizeVerified": true,
+        "sha256Verified": true
+      },
+      {
+        "name": "Flowrium-261115_02-mac-arm64.zip",
+        "size": 356519702,
+        "sha256": "74c6d44446b2ad742d497f56bd30358ddc82e2e388c971f7f970ff7a20b8dc75",
+        "sizeVerified": true,
+        "sha256Verified": true
+      }
+    ]
+  },
+  "privacy": {
+    "checked": {
+      "git": 451,
+      "asar": 1426,
+      "resources": 2305,
+      "source": 451
+    },
+    "findings": {
+      "sensitivePaths": 0,
+      "markerPaths": 0,
+      "markerFiles": 0,
+      "markerMatches": 0,
+      "unsafeEntries": 0,
+      "unreadable": 0,
+      "buildPolicy": 0,
+      "archivePolicy": 0
+    },
+    "privateMarkerComparisonPassed": true,
+    "markerCount": 33,
+    "skippedVendorBinaryBodies": 11,
+    "scope": "배포 소스와 ASAR 및 리소스의 경로 / 제공한 비공개 표식 / 압축 경계 / 빌드 포함 정책",
+    "syntheticPublicCapturesOnly": true,
+    "personalContentsPublished": false
+  },
+  "testTemporaryProfilesCleaned": true,
+  "runningOwnedTestAppsAtCheck": 0,
+  "windowsIndependentInstallationStatus": "별도 Windows 검증 문서에서 기록",
+  "releaseStatus": "최종 소스 및 릴리스 메타데이터 갱신 대기",
+  "published": false,
+  "releaseAssetsVerified": null,
+  "release": null,
+  "validationScope": {
+    "isolatedProfiles": true,
+    "actualLocalInstallationAndReadCheckPassed": true,
+    "allExternalAccountsAndDevicePermissionsVerified": false,
+    "dotsOfficialAnonymousLoginPageLoaded": true,
+    "dotsAuthenticatedConversationVerified": false,
+    "note": "격리 프로필의 기능 검사와 실제 설치에서 기존 계정 및 자료의 읽기 확인을 구분 / Dots 로그인과 실계정 대화는 미검증"
+  },
+  "localInstallation": {
+    "existingAppNormallyQuit": true,
+    "userDataAndProjectRecordsBackedUp": true,
+    "installerCompleted": true,
+    "previousAppBackupPreserved": true,
+    "signatureIntegrityVerified": true,
+    "installedIconBytesMatch": true,
+    "actualProjectsAndImportedConversationOpened": true,
+    "actualAccountConnectionRetained": true,
+    "actualSidebarUsageRead": true,
+    "installedSettingsVersionConfirmed": true,
+    "mainDashboardWithRightConversationConfirmed": true,
+    "defaultToolLogsCollapsed": true,
+    "officialDotsAnonymousLoginPageLoaded": true,
+    "dotsAccountLoginCompleted": false,
+    "paidAIRequestSent": false,
+    "originalConversationDeleted": false,
+    "appNormallyQuitAfterCheck": true,
+    "runningInstalledAppProcessesAtCheck": 0,
+    "securitySettingsChanged": false
+  },
+  "pendingMetadata": [
+    "설치 스크립트 변경을 포함한 최종 source와 소스 압축 SHA-256",
+    "최종 릴리스 URL / 게시 상태 / 전체 배포 자산 검증 결과"
+  ],
+  "terminalInstaller": {
+    "passed": true,
+    "hiddenBackup": true,
+    "visibleAppOnly": true,
+    "backupSymlinkRejected": true,
+    "backupFileRejected": true,
+    "sameFilesystem": true,
+    "rollbackRestored": true,
+    "originalBackupPreserved": true,
+    "legacyBackupMigrated": true,
+    "legacyCollisionPreserved": true,
+    "unknownBackupsPreserved": true,
+    "registrationScopeChecked": true,
+    "registrationFailureNonfatal": true,
+    "registrationTool": "mocked-command",
+    "relatedUnitPassed": 6,
+    "actualFilesystemSignatureAndRollbackTested": true,
+    "lsCommandFixtureOnly": true
+  },
+  "applicationCatalog": {
+    "currentAppOnlyVerified": true,
+    "helperEntriesAfterCleanup": 0,
+    "existingBackupsPreserved": true,
+    "finderApplicationsViewChecked": true,
+    "globalDatabaseReset": false
+  }
+}

@@ -37,8 +37,54 @@ assert_stopped(){ if /usr/bin/pgrep -x Flowrium >/dev/null 2>&1 || /usr/bin/pgre
 assert_stopped
 work=$(mktemp -d "${TMPDIR:-/tmp}/flowrium-install.XXXXXXXX")
 work=$(cd -P "$work" && pwd)
-staged='' backup='' installed=0
-cleanup(){ result=$?; if [ "$result" -ne 0 ] && [ -n "$backup" ] && [ -e "$backup" ] && [ ! -e "$install_dir/Flowrium.app" ]; then mv "$backup" "$install_dir/Flowrium.app" || true; fi; [ -z "$staged" ] || rm -rf "$staged"; rm -rf "$work"; exit "$result"; }
+staged='' backup='' backup_root='' installed=0 registration_needed=0
+registration_backups="$work/registration-backups"
+: > "$registration_backups"
+lsregister='/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
+backup_directory_safe(){
+ [ -n "$backup_root" ] && [ -d "$backup_root" ] && [ ! -L "$backup_root" ] || return 1
+ [ "$(cd -P "$backup_root" && pwd)" = "$backup_root" ] || return 1
+ [ "$(/usr/bin/stat -f '%d' "$backup_root")" = "$(/usr/bin/stat -f '%d' "$install_dir")" ]
+}
+known_flowrium_bundle(){
+ local bundle="$1"
+ [ -d "$bundle" ] && [ ! -L "$bundle" ] && [ -d "$bundle/Contents" ] && [ ! -L "$bundle/Contents" ] && [ -f "$bundle/Contents/Info.plist" ] && [ ! -L "$bundle/Contents/Info.plist" ] || return 1
+ [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$bundle/Contents/Info.plist" 2>/dev/null)" = io.github.hyeondk.flowrium ] && [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Contents/Info.plist" 2>/dev/null)" = Flowrium ]
+}
+queue_backup_registration(){
+ local bundle="$1" helper identity
+ known_flowrium_bundle "$bundle" || return 0
+ printf '%s\0' "$bundle" >> "$registration_backups"; registration_needed=1
+ [ -d "$bundle/Contents/Frameworks" ] && [ ! -L "$bundle/Contents/Frameworks" ] || return 0
+ for helper in "$bundle/Contents/Frameworks"/Flowrium\ Helper*.app; do
+  [ -d "$helper" ] && [ ! -L "$helper" ] && [ -d "$helper/Contents" ] && [ ! -L "$helper/Contents" ] && [ -f "$helper/Contents/Info.plist" ] && [ ! -L "$helper/Contents/Info.plist" ] || continue
+  identity=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$helper/Contents/Info.plist" 2>/dev/null) || continue
+  [[ "$identity" = io.github.hyeondk.flowrium.helper || "$identity" = io.github.hyeondk.flowrium.helper.* ]] || continue
+  printf '%s\0' "$helper" >> "$registration_backups"
+ done
+}
+refresh_app_registration(){
+ local entry failed=0
+ [ "$registration_needed" -eq 1 ] && [ -x "$lsregister" ] || return 0
+ while IFS= read -r -d '' entry; do "$lsregister" -u "$entry" >/dev/null 2>&1 || failed=1; done < "$registration_backups"
+ if known_flowrium_bundle "$install_dir/Flowrium.app"; then "$lsregister" -f "$install_dir/Flowrium.app" >/dev/null 2>&1 || failed=1; fi
+ [ "$failed" -eq 0 ] || printf '앱 목록 갱신을 완료하지 못한 항목이 있습니다. 앱과 백업은 보존했습니다.\n' >&2
+ return 0
+}
+migrate_legacy_backups(){
+ local candidate name stamp normalized target suffix
+ for candidate in "$install_dir"/Flowrium.app.backup-*; do
+  name=$(basename "$candidate")
+  [[ "$name" =~ ^Flowrium[.]app[.]backup-([0-9]{8}-[0-9]{6})-([1-9][0-9]*)$ ]] || continue
+  stamp="${BASH_REMATCH[1]}"; normalized=$(/bin/date -j -f '%Y%m%d-%H%M%S' "$stamp" '+%Y%m%d-%H%M%S' 2>/dev/null) || continue
+  [ "$stamp" = "$normalized" ] && known_flowrium_bundle "$candidate" || continue
+  target="$backup_root/$name"; suffix=0
+  while [ -e "$target" ] || [ -L "$target" ]; do suffix=$((suffix+1)); target="$backup_root/$name-preserved-$$-$suffix"; done
+  backup_directory_safe || fail '백업 폴더의 실제 위치가 바뀌었습니다. 이전 백업은 보존했습니다.'
+  if mv "$candidate" "$target"; then queue_backup_registration "$target"; else printf '이전 백업을 이동하지 못해 원래 위치에 보존했습니다.\n' >&2; fi
+ done
+}
+cleanup(){ result=$?; if [ "$result" -ne 0 ] && [ -n "$backup" ] && [ -e "$backup" ] && [ ! -L "$backup" ] && [ ! -e "$install_dir/Flowrium.app" ] && [ ! -L "$install_dir/Flowrium.app" ] && backup_directory_safe; then mv "$backup" "$install_dir/Flowrium.app" || true; fi; refresh_app_registration || true; [ -z "$staged" ] || rm -rf "$staged"; rm -rf "$work"; exit "$result"; }
 trap cleanup EXIT
 base='https://github.com/hyeondk/flowrium/releases/latest/download'
 if [ -n "$requested" ]; then
@@ -96,14 +142,27 @@ while IFS= read -r -d '' link; do resolved=$(resolve_link "$link") || fail '앱 
 if [ "$verify_only" -eq 1 ]; then printf '앱 구조 / Apple Silicon / 서명 무결성 검증 완료 / 설치하지 않았습니다.\n'; exit 0; fi
 assert_stopped
 mkdir -p "$install_dir"; install_dir=$(cd -P "$install_dir" && pwd)
+[ "$install_dir" != / ] || fail '설치 폴더로 파일 시스템 루트를 사용할 수 없습니다.'
 [ ! -L "$install_dir/Flowrium.app" ] || fail '설치 위치의 앱이 다른 위치를 가리키고 있습니다.'
+backup_root="$install_dir/.flowrium-backups.noindex"
+[ ! -L "$backup_root" ] || fail '백업 폴더가 다른 위치를 가리키고 있습니다. 링크가 아닌 폴더를 사용하세요.'
+if [ -e "$backup_root" ]; then backup_directory_safe || fail '백업 위치는 설치 폴더 안의 같은 파일 시스템에 있는 실제 폴더여야 합니다.'; fi
 staged=$(mktemp -d "$install_dir/.flowrium-install.XXXXXXXX")
 /usr/bin/ditto "$app" "$staged/Flowrium.app" || fail '설치 위치에 앱을 복사하지 못했습니다.'
 /usr/bin/codesign --verify --deep --strict "$staged/Flowrium.app" || fail '복사한 앱의 무결성 검증에 실패했습니다.'
 assert_stopped
-if [ -e "$install_dir/Flowrium.app" ]; then backup="$install_dir/Flowrium.app.backup-$(date '+%Y%m%d-%H%M%S')-$$"; [ ! -e "$backup" ] || fail '같은 이름의 백업이 있습니다.'; mv "$install_dir/Flowrium.app" "$backup"; fi
+if [ ! -e "$backup_root" ]; then mkdir -m 700 "$backup_root" || fail '이전 앱을 보관할 백업 폴더를 만들지 못했습니다.'; fi
+backup_directory_safe || fail '백업 폴더의 실제 위치가 바뀌었습니다. 기존 앱은 유지했습니다.'
+migrate_legacy_backups
+if [ -e "$install_dir/Flowrium.app" ]; then
+ backup_directory_safe || fail '백업 폴더의 실제 위치가 바뀌었습니다. 기존 앱은 유지했습니다.'
+ backup="$backup_root/Flowrium.app.backup-$(date '+%Y%m%d-%H%M%S')-$$"
+ [ ! -e "$backup" ] && [ ! -L "$backup" ] || fail '같은 이름의 백업이 있습니다.'
+ mv "$install_dir/Flowrium.app" "$backup"
+ queue_backup_registration "$backup"
+fi
 mv "$staged/Flowrium.app" "$install_dir/Flowrium.app" || fail '새 앱을 설치하지 못했습니다. 기존 앱 복원을 시도합니다.'
-installed=1
+installed=1; registration_needed=1
 printf '설치 완료 / %s/Flowrium.app\n' "$install_dir"
 [ -z "$backup" ] || printf '이전 앱 백업 / %s\n' "$backup"
 printf '프로젝트와 대화 데이터는 보존했습니다. 설치한 앱을 직접 실행하세요.\n공개 다운로드본은 Apple 확인 경고가 표시될 수 있으며 이 설치기는 보안 정책을 변경하지 않습니다.\n'

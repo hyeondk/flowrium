@@ -1,0 +1,267 @@
+{
+  "version": "261115_02",
+  "nativeVersion": "26.11.1502",
+  "source": "6019b588eb6f8e52f0c24b50c95affc53f68f897",
+  "builtSource": "28655b06be72783635c9919d9b418a0bed7c4b2a",
+  "platform": "win32-x64",
+  "recordedAt": "2026-11-14T18:31:55Z",
+  "timestampFormat": "UTC",
+  "run": "https://github.com/hyeondk/flowrium/actions/runs/43624767979",
+  "attempt": 2,
+  "conclusion": "success",
+  "jobs": {
+    "build": {
+      "id": 132538049365,
+      "attempt": 1,
+      "conclusion": "success",
+      "startedAt": "2026-11-14T18:07:00Z",
+      "completedAt": "2026-11-14T18:20:35Z",
+      "url": "https://github.com/hyeondk/flowrium/actions/runs/43624767979/job/132538049365",
+      "reusedInAttempt2": true,
+      "rebuiltDuringRetry": false
+    },
+    "installAndUpdate": {
+      "id": 132542609569,
+      "attempt": 2,
+      "conclusion": "success",
+      "startedAt": "2026-11-14T18:22:40Z",
+      "completedAt": "2026-11-14T18:28:56Z",
+      "url": "https://github.com/hyeondk/flowrium/actions/runs/43624767979/job/132542609569",
+      "manualInstallStep": 10,
+      "updateStep": 11,
+      "finalGateStep": 12,
+      "installOutcome": "success",
+      "updateOutcome": "success"
+    }
+  },
+  "unit": {
+    "tests": 300,
+    "passed": 298,
+    "failed": 0,
+    "skipped": 2,
+    "skips": [
+      {
+        "file": "tests/backend-project-store.test.cjs",
+        "test": "기록 폴더가 선택 폴더 밖을 가리키는 링크면 외부 위치에 기록을 쓰지 않는다",
+        "reason": "Windows 심볼릭 링크 생성 권한에 의존하여 해당 운영체제에서는 명시적으로 건너뛴다."
+      },
+      {
+        "file": "tests/path-boundary.test.cjs",
+        "test": "Node에서 등록한 한글 프로젝트를 Electron 런타임으로 다시 열어 첫 작업 폴더와 상세 변경을 확인한다",
+        "reason": "macOS 파일 시스템의 한글 정규화 차이를 확인하는 운영체제 전용 검사이므로 Windows에서는 건너뛴다."
+      }
+    ],
+    "separateWindowsTerminal": {
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0,
+      "separateInvocation": true,
+      "countedAsAdditionalUniqueTests": false,
+      "countingNote": "같은 터미널 검사 세 개는 전체 단위 검사에서도 실행되므로, 별도 실행 결과를 서로 다른 검사 세 개로 추가 합산하지 않는다."
+    }
+  },
+  "allRequiredGateChecksPassed": true,
+  "featureChecks": {
+    "configuredGroups": 33,
+    "windowsPassedGroups": 30,
+    "macOnlySkippedGroups": 3,
+    "stepRange": [
+      22,
+      54
+    ],
+    "gateStep": 55,
+    "gateEvidence": "모든 필수 검증 통과",
+    "macOnlySkippedSteps": [
+      37,
+      39,
+      40
+    ],
+    "windowsInstallerAndUpdateCoverage": "Windows 설치·업데이트는 이 세 단계에서 중복 실행하지 않고 별도 새 러너의 installAndUpdate 작업에서 실제 검증했다.",
+    "coverage": [
+      "실제 업무 대화 / 탐색 레일 / 접근 범위 / 대시보드 / 프로젝트·보관·업무 도구",
+      "채팅 첨부 / 실행 중 지시 큐 / 번들 Codex의 실제 분기·되감기 / 산출물 / 모델 도구",
+      "대화 위임 / 비서 / 기억 / 동적 팀 / 외부 연동 / 팀 배정 / 독립 Git 작업 폴더와 통합",
+      "질문·비밀 입력 / 잠금·로그아웃 / 계정별 초안 / 음악·음성 / 모바일 화면·인증·확장 / 문서 내보내기",
+      "자료 이관 / 음성 서버 / 자동 포트표 / AI 보고 팝업 / Codex 대화 연결 / 긴 대화 / 설정·화면 배치",
+      "본문 서식 / 넓은 표·체크목록·각주·안전 링크 / 도구 결과 접힘 / 작업 공간 상호작용 / Google 일정 / Dots 모의 공식 화면",
+      "대화 패널 배치 / 휴지통 / 프로젝트 바로가기 / 저장소 작업 완료 / 외부 저장소 권한과 실제 로컬 Git"
+    ]
+  },
+  "additionalVerification": {
+    "run": "https://github.com/hyeondk/flowrium/actions/runs/43625298068",
+    "source": "6019b588eb6f8e52f0c24b50c95affc53f68f897",
+    "attempt": 1,
+    "jobId": 132539672680,
+    "conclusion": "success",
+    "startedAt": "2026-11-14T18:12:37Z",
+    "completedAt": "2026-11-14T18:16:06Z",
+    "url": "https://github.com/hyeondk/flowrium/actions/runs/43625298068/job/132539672680",
+    "testFiles": 19,
+    "tests": [
+      "migration",
+      "voice-servers",
+      "project-ports",
+      "portfolio-reports-popup",
+      "codex-transfer",
+      "settings-layout",
+      "long-conversation",
+      "chat-layout",
+      "navigation-layout",
+      "feature-surfaces",
+      "message-content",
+      "workspace-interactions",
+      "google-calendar-workspace",
+      "dots-view",
+      "dock-layout-modes",
+      "trash-ui",
+      "project-shortcuts",
+      "repository-completion",
+      "external-repositories"
+    ],
+    "countingNote": "각 항목은 tests/<이름>-e2e.cjs이다. 전체 실행에 포함된 기능을 최종 소스에서 다시 검증한 19개 파일이며, 서로 다른 신규 기능 19개를 추가 통과한 것으로 합산하지 않는다.",
+    "externalRepositoryRace": {
+      "forcedBackgroundStatusDelay": true,
+      "wrongFolderRejected": true,
+      "userFacingErrorSurvivesLateStatusResult": true,
+      "exactRegisteredRootGranted": true,
+      "restartPreservesGrant": true,
+      "revocationImmediatelyBlocksGit": true
+    }
+  },
+  "installationTransition": {
+    "from": "0.6.0",
+    "to": "261115_02",
+    "method": "install.ps1 / 실제 NSIS 설치 파일",
+    "manualInstallPassed": true,
+    "reinstallBackupPassed": true,
+    "restartAndDataAndDraftsPreserved": true,
+    "tamperedFileAndWrongArchitectureRejected": true,
+    "versionAndDataPathMismatchRejected": true,
+    "runningAppRejected": true,
+    "syntheticProjectAndMessages": true,
+    "startedAt": "2026-11-14T18:23:42Z",
+    "completedAt": "2026-11-14T18:27:15Z"
+  },
+  "dateVersionUpdate": {
+    "fromFixture": "261115_01",
+    "to": "261115_02",
+    "fixtureDescription": "검증할 제품 소스에 직전 날짜판 메타데이터를 적용해 별도 폴더에 실제 설치한 검사판이며, 이전 공개 261115_01 바이너리 자체를 사용한 시험은 아니다.",
+    "actualUpdateButton": true,
+    "downloadAndInstallerVerificationPassed": true,
+    "oldProcessClosed": true,
+    "actualNsisExitCode": 0,
+    "installedNativeVersion": "26.11.1502",
+    "newProcessAndWindowReady": true,
+    "dataAndDraftsPreserved": true,
+    "startedAt": "2026-11-14T18:27:15Z",
+    "completedAt": "2026-11-14T18:28:51Z"
+  },
+  "retryHistory": [
+    {
+      "attempt": 1,
+      "jobId": 132542001462,
+      "conclusion": "failure",
+      "startedAt": "2026-11-14T18:20:37Z",
+      "completedAt": "2026-11-14T18:21:39Z",
+      "phase": "실제 설치 전 독립 실행 도구 준비",
+      "error": "prepare-runtime.cjs가 도구 버전을 확인한 뒤 임시 실행 도구 폴더를 runtime으로 바꾸는 fs.rename에서 Windows EPERM을 받았다.",
+      "lockOwnerIdentified": false,
+      "manualInstallExecuted": false,
+      "updateExecuted": false,
+      "action": "동일 커밋에서 실패한 독립 작업만 재실행했다. 성공한 전체 빌드는 반복하지 않았고 제품 코드를 변경하지 않았다.",
+      "retryJobId": 132542609569,
+      "retryConclusion": "success"
+    }
+  ],
+  "verificationScope": {
+    "actualWindowsHostedRunner": true,
+    "actualElectronUi": true,
+    "actualPackagedAppAndNsis": true,
+    "syntheticProfilesAndProjects": true,
+    "chatgptAccountAndModelResponses": "모의 계정 / 모의 응답 및 로컬 모델 응답 서버",
+    "bundledCodexProtocolExercised": true,
+    "realWindowsUserChatGPTLoginVerified": false,
+    "realWindowsUserPaidModelCallVerified": false,
+    "realThirdPartyAccountIntegrationVerified": false,
+    "limitation": "Windows 사용자의 실제 ChatGPT 로그인, 실제 계정 모델 호출 및 외부 서비스 계정 연결 성공을 보장하는 검증이 아니다."
+  },
+  "package": {
+    "status": "verified",
+    "architecture": "x64",
+    "installerSize": 323441190,
+    "installerSha256": "03a127d87e8eaf4514d27fac211ac138d05bb3d4c1d3b81f06063e122739ef46",
+    "artifactHashVerification": "GitHub Actions에서 내려받은 최종 파일의 SHA-256 계산 완료",
+    "sourceMatch": "verified",
+    "authenticodeTablePresent": false,
+    "authenticodeTrustVerified": false,
+    "innerArchitecture": "x64",
+    "iconScope": "패키지 PNG는 현재 아이콘 소스와 바이트 일치 / PE 내 개별 아이콘 이미지 비교는 미수행"
+  },
+  "sourceMatch": {
+    "status": "verified",
+    "source": "6019b588eb6f8e52f0c24b50c95affc53f68f897",
+    "builtSource": "28655b06be72783635c9919d9b418a0bed7c4b2a",
+    "changedFilesBetweenCommits": [
+      "tests/external-repositories-e2e.cjs"
+    ],
+    "changeDescription": "외부 저장소 검증에서 backend 저장 완료를 기다리는 테스트 코드만 변경됐다.",
+    "productCodeChangedBetweenCommits": false,
+    "packageOrLockfileChangedBetweenCommits": false,
+    "packagedByteComparison": {
+      "compared": 97,
+      "byteIdentical": 11,
+      "crlfNormalized": 85,
+      "htmlLineEndingOnly": 1,
+      "frontendJsCssByteIdentical": true,
+      "missing": 0,
+      "unexpected": 0
+    },
+    "followupScope": "후속 설치 스크립트와 문서 및 테스트는 앱 바이너리에 포함하지 않음 / src와 electron 및 assets와 package는 빌드 이후 변경 없음"
+  },
+  "privacy": {
+    "status": "verified",
+    "checked": {
+      "git": 0,
+      "asar": 1436,
+      "resources": 2321,
+      "source": 0
+    },
+    "findings": {
+      "sensitivePaths": 0,
+      "markerPaths": 0,
+      "markerFiles": 0,
+      "markerMatches": 0,
+      "unsafeEntries": 0,
+      "unreadable": 0,
+      "buildPolicy": 0,
+      "archivePolicy": 0
+    },
+    "markers": 33,
+    "skippedVendorBinaryBodies": 17,
+    "privateMarkerComparisonPassed": true,
+    "publicSourceScanPending": true
+  },
+  "cleanup": {
+    "ciOwnedInstallerRegistrationRemoved": true,
+    "ciTemporaryInstallFoldersRemoved": true,
+    "artifactDownloadedByThisValidationWriter": false,
+    "localElectronStartedByThisValidationWriter": false
+  },
+  "releaseStatus": "pending",
+  "release": null,
+  "artifact": {
+    "digest": "sha256:ecc14f231786eb33c65b8a667dafc128af425d73866d54c1a4594d8ce3a1ba39",
+    "expired": false,
+    "id": 14125938941,
+    "name": "flowrium-win-x64",
+    "size_in_bytes": 323299183,
+    "workflow_run": {
+      "head_branch": "codex/flowrium-261115-02",
+      "head_repository_id": 1455266710,
+      "head_sha": "28655b06be72783635c9919d9b418a0bed7c4b2a",
+      "id": 43624767979,
+      "repository_id": 1455266710
+    }
+  }
+}
