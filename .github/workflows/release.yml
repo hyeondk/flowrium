@@ -271,6 +271,7 @@ jobs:
           node tests/mobile-extensions-e2e.cjs
       - name: 터미널 설치 파일의 검증과 백업
         id: verify_16
+        if: runner.os == 'macOS'
         continue-on-error: true
         shell: bash
         run: |
@@ -291,6 +292,7 @@ jobs:
         run: node tests/update-mac-click-e2e.cjs
       - name: 운영체제별 업데이트 검증
         id: verify_19
+        if: runner.os == 'macOS'
         continue-on-error: true
         run: node tests/update-native-e2e.cjs ${{ runner.os == 'macOS' && steps.signing.outputs.ready != 'true' && '--expect-unsigned' || '' }}
       - name: 전체 자료 이관 / 음성 서버 관리 / 자동 포트표 / 보고 팝업
@@ -331,10 +333,52 @@ jobs:
             release/Flowrium-*-${{ matrix.os }}-${{ matrix.arch }}.zip
             release/Flowrium-*-${{ matrix.os }}-${{ matrix.arch }}.exe
 
+  windows_install:
+    if: inputs.test_scope != 'scopes' && inputs.test_scope != 'features'
+    name: Windows 설치와 업데이트 독립 검증
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run prepare:runtime
+      - run: node scripts/build-win-updater.cjs
+      - run: npm run build
+      - uses: actions/download-artifact@v6
+        with:
+          name: flowrium-win-x64
+          path: release
+      - name: 검사할 설치 파일 체크섬
+        run: node scripts/create-checksums.mjs release
+      - name: 이전 버전에서 수동 설치 / 재설치 / 백업 / 초안 복원
+        id: install
+        continue-on-error: true
+        timeout-minutes: 18
+        run: node tests/installer-windows-e2e.cjs --installer "release/Flowrium-$(node -p '(require("./package.json").flowriumVersion || require("./package.json").version)')-win-x64.exe" --checksums release/SHA256SUMS.txt
+      - name: 날짜 버전 업데이트 버튼 / 실제 설치 / 재시작 / 초안 복원
+        id: update
+        continue-on-error: true
+        timeout-minutes: 12
+        run: node tests/update-native-e2e.cjs
+      - name: 설치와 업데이트 최종 결과 확인
+        if: ${{ !cancelled() }}
+        env:
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          UPDATE_OUTCOME: ${{ steps.update.outcome }}
+        run: node -e "if(process.env.INSTALL_OUTCOME!=='success'||process.env.UPDATE_OUTCOME!=='success')process.exit(1);console.log('Windows 실제 설치와 업데이트 모두 통과')"
+
   draft:
     if: startsWith(github.ref, 'refs/tags/') || (github.ref == 'refs/heads/main' && inputs.stage_release)
     name: 초안 릴리스 저장
-    needs: build
+    needs: [build, windows_install]
     runs-on: ubuntu-latest
     permissions:
       contents: write
