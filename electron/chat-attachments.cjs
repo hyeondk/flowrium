@@ -69,7 +69,7 @@ async function resolveAttachments(store,projectId,ids=[]) {
     const [record]=checkedAttachments([await readJSON(path.join(dir,'attachment.json'))]);
     if(record.id!==id) throw Error('첨부 파일 정보가 바뀌었습니다.');
     const file=path.join(dir,record.name), fileStat=await fs.lstat(file);
-    if(!fileStat.isFile()||fileStat.isSymbolicLink()||fileStat.size!==record.size||path.relative(dir,await fs.realpath(file))!==record.name) throw Error('첨부 파일 원본을 확인해 주세요.');
+    if(!fileStat.isFile()||fileStat.isSymbolicLink()||fileStat.size!==record.size||path.relative(dir,await fs.realpath(file)).normalize('NFC')!==record.name.normalize('NFC')) throw Error('첨부 파일 원본을 확인해 주세요.');
     total+=fileStat.size;if(total>MAX_TOTAL)throw Error('첨부 합계가 50MB를 넘었습니다.');
     const data=await fs.readFile(file);
     if(createHash('sha256').update(data).digest('hex')!==record.sha256) throw Error('첨부 파일 내용이 변경됐습니다. 다시 첨부해 주세요.');

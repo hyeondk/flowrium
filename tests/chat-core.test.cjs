@@ -53,3 +53,9 @@ test('대화별 문맥 사용량을 반영하고 설정한 기준에서만 자�
  await store.saveSettings({chatDefaults:{autoCompact:false,compactAt:50}});const completed=wait(c,e=>e.type==='done'&&e.sessionId===session.id);
  await c.send({sessionId:session.id,text:'문맥검증 다시',mode:'plan'});await completed;await new Promise(r=>setImmediate(r));assert.equal(compactions,1);assert.equal(store.session(session.id).context.percent,90);
 });
+test('한글 첨부의 정규화 형식이 다른 실제 경로도 같은 파일로 읽고 다른 이름은 거절한다',async t=>{
+ const {store,project}=await fixture(t),name='기록 사본.png',records=await addAttachments(store,project.id,[{name,type:'image/png',bytes:png}]),file=path.join(project.path,'.flowrium','attachments',records[0].id,name),realpath=fs.realpath;let outside=false;
+ try{fs.realpath=async(value,...args)=>{const result=await realpath(value,...args);if(path.resolve(String(value))!==path.resolve(file))return result;return path.join(path.dirname(result),outside?'다른 파일.png':name.normalize('NFD'));};
+  const [resolved]=await resolveAttachments(store,project.id,[records[0].id]);assert.equal(resolved.name,name);assert.equal(resolved.sha256,records[0].sha256);assert.match(resolved.dataUrl,/^data:image\/png;base64,/);outside=true;await assert.rejects(resolveAttachments(store,project.id,[records[0].id]),/첨부 파일 원본/);
+ }finally{fs.realpath=realpath;}
+});

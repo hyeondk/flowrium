@@ -28,10 +28,10 @@ test('번호 1~99로 다섯 서비스 포트를 계산하고 잘못된 번호는
 test('최초 조회는 번호를 자동 배정하고 다른 프로젝트 및 앱 재시작의 배정을 보존한다', async t => {
   const { project, api, store, profile } = await fixture(t), a = await project('첫 번째'), b = await project('두 번째');
   const [one, two] = await Promise.all([api.readProjectPorts(a.id), api.readProjectPorts(b.id)]);
-  assert.equal(one.number, 1); assert.equal(two.number, 2); assert.deepEqual(two.ports, formula(2));
+  assert.deepEqual([one.number,two.number].sort((a,b)=>a-b),[1,2],'동시 요청의 잠금 획득 순서와 무관하게 첫 두 번호를 중복 없이 배정');assert.deepEqual(one.ports,formula(one.number));assert.deepEqual(two.ports,formula(two.number));
   const again = await api.readProjectPorts(a.id); assert.equal(again.revision, one.revision); assert.deepEqual(again.ports, one.ports);
   const nextStore = new Store(profile); await nextStore.load(); const manager = new ProjectPorts(nextStore, { probe: free });
-  try { const restored = await manager.read(b.id); assert.equal(restored.number, 2); assert.equal(restored.revision, two.revision); }
+  try { const restored = await manager.read(b.id); assert.equal(restored.number,two.number); assert.equal(restored.revision, two.revision); }
   finally { await manager.shutdown(); }
   assert.equal(store.state.projects.length, 2);
 });
