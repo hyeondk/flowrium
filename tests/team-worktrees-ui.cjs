@@ -67,7 +67,7 @@ async function main() {
     await panel().waitFor();
     for (const name of ['첫째','둘째']) {
       await treeClick(name);
-      const dir = (await panel().locator('.tree-path').innerText()).split(' / ')[1];
+      const dir = (await panel().locator('.tree-path').innerText()).match(/ \((.*)\)$/)?.[1];
       assert.ok(dir && !path.relative(profile,dir).startsWith('..'), '격리된 프로필 작업 폴더');
       await fs.writeFile(path.join(dir, 'common.txt'), name+'의 변경\n');
       await treeClick('변경 새로고침');
@@ -83,7 +83,7 @@ async function main() {
     await treeClick('통합'); await panel().getByRole('heading',{name:'병합 충돌'}).waitFor();
     await change('역할본 선택'); await notice('충돌 해결을 기록');
     await change('충돌 해결 후 통합 완료'); await notice('통합 커밋을 만들었습니다');
-    const integration = (await panel().locator('.tree-path').innerText()).split(' / ')[1];
+    const integration = (await panel().locator('.tree-path').innerText()).match(/ \((.*)\)$/)?.[1];
     assert.equal((await fs.readFile(path.join(integration,'common.txt'),'utf8')).trim(),'둘째의 변경');
     assert.equal(await git('rev-parse','HEAD'),original);
     await treeClick('둘째'); await change('로컬 작업 폴더와 브랜치 정리');
