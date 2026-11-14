@@ -175,8 +175,24 @@
   "validationScope": {
     "isolatedProfiles": true,
     "personalAccountsAndActualDevicePermissionsVerified": false,
-    "note": "격리 프로필의 패키지 검사와 개인 계정 및 실제 사용 기기의 설치와 권한 확인을 구분"
+    "note": "격리 프로필의 전체 기능 검사와 기존 자료가 있는 맥의 교체 설치 및 읽기 확인을 구분하며, 모든 외부 계정과 기기 권한을 검증한 것은 아님"
   },
   "releaseAssetsVerified": 9,
-  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_01"
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_01",
+  "localInstallation": {
+    "version": "261115_01",
+    "nativeVersion": "26.11.1501",
+    "existingAppNormallyQuit": true,
+    "userDataBackupCreated": true,
+    "installerCompleted": true,
+    "previousAppBackupCreated": true,
+    "signatureIntegrityVerified": true,
+    "existingProjectsAndConversationOpened": true,
+    "existingChatGPTConnectionRetained": true,
+    "installedSettingsVersionConfirmed": true,
+    "wideConversationVisuallyConfirmed": true,
+    "paidAIRequestSent": false,
+    "appNormallyQuitAfterCheck": true,
+    "securitySettingsChanged": false
+  }
 }

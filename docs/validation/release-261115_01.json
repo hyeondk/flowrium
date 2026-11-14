@@ -35,5 +35,48 @@
     "sha256": "927b3ca85638654d4cd4736bb386532e77948ddef20294c0dab71ce7a8166550"
   },
   "downloadPage": "https://hyeondk.github.io/flowrium/",
-  "downloadPageVerificationPending": true
+  "downloadPageVerificationPending": false,
+  "downloadPageVerification": {
+    "checkedAt": "2026-11-14T15:42:43.026Z",
+    "target": "https://hyeondk.github.io/flowrium/",
+    "method": "격리한 헤드리스 브라우저와 비로그인 공개 HTTP 조회",
+    "mockedRequests": false,
+    "authenticated": false,
+    "downloads": [
+      {
+        "platform": "mac-arm64",
+        "url": "https://github.com/hyeondk/flowrium/releases/download/261115_01/Flowrium-261115_01-mac-arm64.dmg",
+        "disabled": "false",
+        "text": "다운로드\n↓"
+      },
+      {
+        "platform": "win-x64",
+        "url": "https://github.com/hyeondk/flowrium/releases/download/261115_01/Flowrium-261115_01-win-x64.exe",
+        "disabled": "false",
+        "text": "다운로드\n↓"
+      }
+    ],
+    "layouts": [
+      {
+        "width": 1440,
+        "height": 1000,
+        "documentWidth": 1440,
+        "horizontalOverflow": 0,
+        "heroWordBreak": "keep-all"
+      },
+      {
+        "width": 390,
+        "height": 844,
+        "documentWidth": 390,
+        "horizontalOverflow": 0,
+        "heroWordBreak": "keep-all"
+      }
+    ],
+    "javascriptErrors": [],
+    "failedRequests": [],
+    "passed": true,
+    "browserClosed": true,
+    "title": "Flowrium",
+    "disallowedIndicatorsFound": []
+  }
 }
