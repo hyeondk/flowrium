@@ -1282,6 +1282,7 @@ function render() {
   const active = document.activeElement,
     field = active?.dataset?.field,
     settingsGuide = route === 'settings' && active?.dataset?.settingsGuide,
+    confirmAction = active?.dataset?.confirmAction,
     anchor=visibleMessageAnchor();
   const fieldTop=field && renderedChatId===selectedSession && route==='chat' ? active.getBoundingClientRect().top : undefined;
   const fieldOffset=active?.scrollTop;
@@ -1340,8 +1341,9 @@ function render() {
   else if (route === "chat") chat(root);
   content.replaceChildren(root);
   reconcileConfirmation(Boolean(gate) || !data);
-  if (settingsGuide && !gate && !document.querySelector('dialog[open]')) {
-    content.querySelector('[data-settings-guide="' + CSS.escape(settingsGuide) + '"]')?.focus({preventScroll:true});
+  if ((settingsGuide || confirmAction) && !gate && !document.querySelector('dialog[open]')) {
+    const selector = confirmAction ? '[data-confirm-action="' + CSS.escape(confirmAction) + '"]' : '[data-settings-guide="' + CSS.escape(settingsGuide) + '"]';
+    content.querySelector(selector)?.focus({preventScroll:true});
   }
   renderedChatId=data && !gate && route==='chat' ? selectedSession : undefined;
   const restored=anchor && content.querySelector('[data-message-id="'+CSS.escape(anchor.id)+'"]');

@@ -392,7 +392,11 @@ async function run() {
     requests = [];
     await btn("실행 중").click();
     await page.getByRole("button", { name: /현장 조사/ }).click();
-    await verifyStopSheet(page, () => Boolean(interrupted));
+    await verifyStopSheet(page, () => Boolean(interrupted), () => {
+      const session = store.state.sessions[0];
+      session.updatedAt = new Date().toISOString();
+      return {id:session.id, updatedAt:session.updatedAt};
+    });
     await btn("요청 보내기").waitFor();
     assert.equal(interrupted, store.state.sessions[0].id);
     await page.getByLabel("요청", { exact: true }).fill("이어 쓸 내용");

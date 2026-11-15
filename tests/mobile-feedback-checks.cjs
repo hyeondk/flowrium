@@ -8,7 +8,7 @@ async function confirmAction(page, name) {
   await dialog.waitFor({state:'hidden'});
 }
 
-async function verifyStopSheet(page, isStopped) {
+async function verifyStopSheet(page, isStopped, updateSession) {
   const trigger = page.getByRole('button',{name:'작업 중단',exact:true});
   const dialog = page.getByRole('alertdialog');
   const cancel = dialog.getByRole('button',{name:'취소',exact:true});
@@ -37,6 +37,20 @@ async function verifyStopSheet(page, isStopped) {
     await dialog.waitFor({state:'hidden'});
     assert(!isStopped(),'취소 뒤에도 작업 유지');
     await page.waitForFunction(()=>document.activeElement?.textContent==='작업 중단');
+    if (width === 390) {
+      const before = await trigger.elementHandle();
+      const {id,updatedAt} = updateSession();
+      const refreshed = page.waitForResponse(async response => {
+        if (new URL(response.url()).pathname !== '/api/mobile/state' || !response.ok()) return false;
+        return (await response.json()).sessions.some(session => session.id===id && session.updatedAt===updatedAt);
+      });
+      try {
+        await refreshed;
+        await page.waitForFunction(previous => !previous.isConnected, before);
+        await page.waitForTimeout(350);
+        assert(await trigger.evaluate(button => document.activeElement===button),'취소 후 서버 갱신으로 버튼이 교체돼도 초점 유지');
+      } finally { await before.dispose(); }
+    }
   }
   await page.setViewportSize({width:originalWidth,height:844});
   await page.emulateMedia({reducedMotion:'reduce'});
