@@ -29,6 +29,7 @@ function sensitivePath(value) {
   const parts = value.replaceAll('\\', '/').toLowerCase().split('/');
   if (parts.some(part => SENSITIVE_SEGMENTS.has(part) || part === '.git')) return true;
   const name = parts.at(-1);
+  if (parts.slice(-3).join('/') === 'data/state/login.json') return true;
   if (/^(?:auth|credentials)\.json$/.test(name) || /^deploy_key(?:\..*)?$/.test(name)) return true;
   if (/^\.env(?:\..*)?$/.test(name) && name !== '.env.example') return true;
   if (/\.(?:sqlite(?:3)?|db)(?:-(?:wal|shm))?$/.test(name)) return true;
