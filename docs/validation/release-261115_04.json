@@ -1,0 +1,106 @@
+{
+  "version": "261115_04",
+  "nativeVersion": "26.11.1504",
+  "publishedAt": "2026-11-15T07:07:08Z",
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_04",
+  "tagCommit": "b695511b0bc2c45866622fc6f63573646d9b1edc",
+  "macBuildCommit": "28caeb2f804d1b712c31f15656290acf44f24853",
+  "windowsWorkflow": "https://github.com/hyeondk/flowrium/actions/runs/43686667612",
+  "windowsArtifactId": 14151370873,
+  "assetsCompared": 9,
+  "manifestEntries": 8,
+  "assets": [
+    {
+      "name": "Flowrium-261115_04-mac-arm64.dmg",
+      "bytes": 368536206,
+      "sha256": "24b5172adc975ca9224fbc827457a3b46d66fbb7a7fe5ea643fc36588499b0c8",
+      "githubDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "Flowrium-261115_04-mac-arm64.zip",
+      "bytes": 356519856,
+      "sha256": "1423e129585a3bc51e7a43b34d7d1dbe1b544f9f44e706a31beee5939a7773f4",
+      "githubDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "Flowrium-261115_04-source.tar.gz",
+      "bytes": 8216390,
+      "sha256": "66735ea86dfce91e20d1f17db336f4fa350e98d7d4b18289bc5cbbddcbfa73b7",
+      "githubDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "Flowrium-261115_04-win-x64.exe",
+      "bytes": 323441322,
+      "sha256": "bcda25a57c1f96118508cd48a10f175c5355dec3725d50ce033fb610e7753415",
+      "githubDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 728,
+      "sha256": "b4beccc74c87c8c3e38cf0498268f0df769cdf26d9c0b1b13ed7997499fe2bd4",
+      "githubDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "SOURCE-COMMIT.txt",
+      "bytes": 60,
+      "sha256": "c198dc81451273c4288dd4dbf1d6cfa41079da20bd75e4aa1e72b149e45570f1",
+      "githubDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "flowrium-install-support.cjs",
+      "bytes": 6783,
+      "sha256": "c466afcc9e1692159f9a1728b048784569ba00b1ac75f81d5bc73f5a1d715122",
+      "githubDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "install.ps1",
+      "bytes": 13794,
+      "sha256": "b181a71dd7a723285166f8921ca94ba9fb0cbd9abd7c2b8a9e67d36851f0c2f5",
+      "githubDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "install.sh",
+      "bytes": 15549,
+      "sha256": "d51ab1de56d47fff28cb5e8777ffd5b7e55581441ea3ccd07ee8235c4067ea1b",
+      "githubDigestMatch": true,
+      "anonymousHttpStatus": 200
+    }
+  ],
+  "verificationCompletedAt": "2026-11-15T07:07:27.523Z",
+  "releaseAssetsRedownloadedDuringVerification": false,
+  "macPackageTestsPassed": 4,
+  "macFunctionalTestsInitiallyPassed": 53,
+  "macFunctionalTestsPassedOnRetryWithCorrectedSelector": 1,
+  "macUnitTestsPassed": 345,
+  "desktopConversationSyntheticTurnsReadBack": 3,
+  "macNotarized": false,
+  "archiveContentsMatchGit": 476,
+  "privacy": {
+    "mac": {
+      "privateMarkersChecked": 21,
+      "markerMatches": 0,
+      "skippedVendorBinaries": 11
+    },
+    "windows": {
+      "privateMarkersChecked": 21,
+      "markerMatches": 0,
+      "skippedVendorBinaries": 17
+    }
+  },
+  "windowsUnitTestsPassed": 343,
+  "windowsUnitTestsSkipped": 2,
+  "windowsUnitTestsFailed": 0,
+  "windowsFunctionalScriptsPassed": 53,
+  "windowsFunctionalSteps": 37,
+  "windowsInstallationJob": 132732506858,
+  "windowsManualUpgradeFromPublished": "0.6.0",
+  "windowsAutomaticUpgradeFromSyntheticPreviousVersion": "261115_03"
+}
