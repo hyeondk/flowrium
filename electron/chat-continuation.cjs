@@ -2,8 +2,8 @@ const {UUID}=require('./project-store.cjs');
 const {asksToContinue}=require('./execution-state.js');
 function replyFollowupHint(session, message) {
  if (session.workflow || session.personalAssistant || session.codexLink || session.sourceThreadId || session.scope === 'integrated') return '';
- const formatOrArtifact = /보고서|산출물|제안서|발표문|이메일|메일 초안|번역|양식|서식|서류|문서|표로|표만|코드만|답만|(?:본문|결과|정답|한\s*줄|한\s*문장)만|\b(?:json|yaml|xml|csv|tsv|sql|html|pdf|docx?|xlsx?|pptx?|verbatim)\b|only (?:the )?(?:answer|code|text)|exact (?:format|wording)/i;
- const decline = /(?:후속|다음\s*(?:단계|작업)|추천|제안|질문)[^.!?\n]{0,32}(?:없이|제외|생략|말[아고]|말아|하지\s*마|마세요|필요\s*없|빼)|(?:do not|don't|no)\s+(?:ask|suggest|recommend|follow[ -]?up|next steps?)/i;
+ const formatOrArtifact = /보고서|산출물|제안서|발표문|이메일|메일 초안|번역|양식|형식|서식|서류|문서|표로|표만|코드만|답만|(?:본문|결과|정답|답변)만|(?:한|두|세|\d+)\s*(?:줄|문장|단어)(?:만|로|으로|\s*이내)|\b(?:json|yaml|xml|csv|tsv|sql|html|pdf|docx?|xlsx?|pptx?|verbatim)\b|only (?:the )?(?:answer|code|text)|exact (?:format|wording)/i;
+ const decline = /(?:후속|다음\s*(?:단계|작업)|추천|제안|질문)[^.!?\n]{0,32}(?:없이|제외|생략|말[아고]|지\s*마|마세요|금지|원하지\s*않|필요\s*없|빼)|(?:do not|don't|no)\s+(?:ask|suggest|recommend|follow[ -]?up|next steps?)/i;
  if (formatOrArtifact.test(message) || decline.test(message)) return '';
  return '\n이번 답변 한 번에만 적용하세요. 사용자가 요청한 작업을 먼저 수행하세요. 대화에서 확인한 구체적인 미완료 작업이 있고 이를 위해 사용자의 새 요청이 실제로 필요할 때만 마지막에 “다음 단계: …해 주세요.” 한 줄로 그 작업을 제안하세요. 사용자 요청을 그대로 마칠 수 있거나 이미 끝난 일, 단순한 질의, 다른 출력 형식이나 산출물을 요청한 경우, 추가 제안을 원하지 않는 경우에는 이 줄을 생략하세요.';
 }
