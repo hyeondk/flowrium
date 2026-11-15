@@ -1,6 +1,8 @@
 import {settingsGuides, reconnectForm} from './install.js';
+import {confirmationButton, reconcileConfirmation} from './confirmation.js';
 import {modelDisplayName,effortDisplayName,reasoningEffortOptions} from './model-display.js';
 const content = document.querySelector("#content");
+const loadingTemplate = content.querySelector('.mobile-skeleton').cloneNode(true);
 const navigation = document.querySelector("#nav");
 const connection = document.querySelector("#status");
 const notice = document.querySelector("#notice");
@@ -55,7 +57,7 @@ let data,
 let teamBoard,
   files,
   preview,
-  assetRequest = 0,
+  assetRequest = 0, pendingAssetRequest,
   polling = false,
   signature = "",
   errorTimer;
@@ -74,8 +76,11 @@ function resetHistory() {
 }
 const drafts = new Map();
 const questionDrafts = new Map();
+const selectedProposals = new Map();
 const attachedDrafts = new Map(), attachmentPreviews = new Map();
-let queueItems=[],workflowData,mobileSettings,usageData,pushData,extrasBusy=false,extrasEpoch=0;
+let queueItems=[],workflowData,mobileSettings,usageData,pushData,extrasEpoch=0;
+const pendingExtras = new Map();
+const loadErrors = new Map();
 let settingsDraft;
 let workflowTab='decisions',editingTeam=null;
 let teamDraft={name:'',roles:[{name:'',instruction:'',mode:'plan'},{name:'',instruction:'',mode:'review'}]};
@@ -93,6 +98,14 @@ const action = (text, callback, className) => {
   button.addEventListener("click", callback);
   return button;
 };
+function loadingRegion(name, layout = 'rows') {
+  const error = loadErrors.get(name);
+  if (error) return node('p', error, 'hint');
+  const region = loadingTemplate.cloneNode(true);
+  region.dataset.layout = layout;
+  region.setAttribute('aria-label', name + ' 불러오는 중');
+  return region;
+}
 let noticeExitTimer;
 const hideNotice = () => {
   clearTimeout(errorTimer);
@@ -186,20 +199,30 @@ async function request(path, body) {
 const call = (method, ...args) =>
   request("/api/mobile/call", { method, args }).then((r) => r.result);
 let dashboardFacts, dashboardFetched=0, dashboardRequest;
-async function loadDashboard(){
-  if(route!=='projects' || gate || !data || dashboardRequest || Date.now()-dashboardFetched<15000)return;
+async function loadDashboard(retry=false){
+  if(route!=='projects' || gate || !data || dashboardRequest || (!retry && Date.now()-dashboardFetched<15000))return;
   const epoch=accessEpoch;
+  if(retry && loadErrors.delete('오늘 할 일')) render();
   const work=request('/api/mobile/dashboard');dashboardRequest=work;
   try {
     const facts=await work;
     if(accessEpoch!==epoch)return;
-    const changed=JSON.stringify(facts)!==JSON.stringify(dashboardFacts);
+    const changed=loadErrors.delete('오늘 할 일') || JSON.stringify(facts)!==JSON.stringify(dashboardFacts);
     dashboardFacts=facts;
     if(changed && route==='projects')render();
-  } catch(error){if(epoch===accessEpoch && error.gate)clearPrivateState(error.gate);}
+  } catch(error){
+    if(epoch!==accessEpoch)return;
+    if(error.gate)clearPrivateState(error.gate);
+    else if(!dashboardFacts){
+      loadErrors.set('오늘 할 일','오늘 할 일을 불러오지 못했습니다.');
+      if(route==='projects')render();
+    }
+  }
   finally{if(dashboardRequest===work){dashboardRequest=undefined;dashboardFetched=Date.now();}}
 }
 function clearPrivateState(nextGate) {
+  loadErrors.clear();
+  pendingExtras.clear();
   dashboardFacts=undefined;dashboardRequest=undefined;dashboardFetched=0;
   accessEpoch++;
   resetHistory();
@@ -210,13 +233,17 @@ function clearPrivateState(nextGate) {
   signature = "";
   drafts.clear();
   questionDrafts.clear();
+  selectedProposals.clear();
   attachedDrafts.clear();attachmentPreviews.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;chatModels=chatModelRequest=undefined;extrasEpoch++;
   settingsDraft=undefined;
   selectedSession = selectedProject = "";
   statusFilter = "running";
   chatOriginStatus = "";
   route = "projects";
+  clearTimeout(errorTimer);
+  clearTimeout(noticeExitTimer);
   notice.hidden = true;
+  notice.textContent = '';
   if (gate === "expired") {
     key = null;
     try {
@@ -304,6 +331,7 @@ function go(view, id) {
   assetRequest++;
   if(view==='chat')chatOriginStatus=route==='status'?statusFilter:'';
   const previousRoute=route,previousSession=selectedSession;
+  if (previousRoute==='assistant' && view!=='assistant') selectedProposals.clear();
   if(previousRoute==='settings' && view!=='settings')settingsDraft=undefined;
   route = view;
   if(view==='status') statusFilter=id;
@@ -314,6 +342,7 @@ function go(view, id) {
     selectedProject = id;
     detailTab = "work";
     teamBoard = files = undefined;
+    loadErrors.delete('팀'); loadErrors.delete('문서');
   }
   if (view === "chat") {
     selectedSession = id;
@@ -328,6 +357,7 @@ function go(view, id) {
       {duration:240,easing:'cubic-bezier(.16,1,.3,1)'});
   }
   if (view === "chat") {void loadMessages();void loadQueue();void loadChatModels();}
+  if (view === "projects") void loadDashboard();
   if (["assistant","settings"].includes(view)) void loadExtras();
 }
 async function loadMessages(older = false) {
@@ -402,8 +432,11 @@ async function loadMessages(older = false) {
   }
 }
 async function loadAssets(announce = true) {
+  if (!announce && pendingAssetRequest === assetRequest) return;
   const id = ++assetRequest,
-    tab = detailTab;
+    tab = detailTab, label = tab === 'team' ? '팀' : '문서';
+  pendingAssetRequest = id;
+  if (announce && loadErrors.delete(label)) render();
   try {
     if (tab === "team") {
       const result = await call("readTeams", selectedProject);
@@ -418,14 +451,21 @@ async function loadAssets(announce = true) {
       if (id !== assetRequest) return;
       files = result;
     }
+    loadErrors.delete(label);
     render();
   } catch (error) {
     if (id !== assetRequest) return;
     if (error.gate) clearPrivateState(error.gate);
-    else if (announce) showNotice(error.message);
+    else if (tab === 'team' ? !teamBoard : !files) {
+      loadErrors.set(label, label + ' 정보를 불러오지 못했습니다.');
+      render();
+    } else if (announce) showNotice(error.message);
+  } finally {
+    if(pendingAssetRequest===id)pendingAssetRequest=undefined;
   }
 }
 function openTab(tab) {
+  assetRequest++;
   detailTab = tab;
   preview = undefined;
   render();
@@ -602,7 +642,10 @@ function projects(root) {
   for(const item of due.slice(0,3))if(project(item.projectId))tasks.append(row(project(item.projectId).name,item.due,()=>go('project',item.projectId),item.due===dashboardFacts.today?'오늘 기한':'기한 경과'));
   for(const item of goals.slice(0,5))if(project(item.projectId))tasks.append(row(item.text,project(item.projectId).name,()=>go('project',item.projectId),item.target!=null?(item.current||0)+' / '+item.target:'목표'));
   for(const s of todo.slice(0,3))tasks.append(row(s.workflow.nextTask||s.title,project(s.projectId)?.name,()=>go('chat',s.id),executionNames[s.executionState]));
-  if(!todo.length && !due.length && !goals.length)tasks.append(node('p','진행할 업무가 없습니다.','hint'));
+  if(!dashboardFacts){
+    tasks.append(loadingRegion('오늘 할 일'));
+    if(loadErrors.has('오늘 할 일'))tasks.append(action('오늘 할 일 다시 불러오기',()=>loadDashboard(true)));
+  }else if(!todo.length && !due.length && !goals.length)tasks.append(node('p','진행할 업무가 없습니다.','hint'));
   root.append(tasks,activityChart(),node("h2", "프로젝트 현황"));
   if(Object.keys(phases).length){
     const counts=node('p',undefined,'hint');
@@ -663,7 +706,7 @@ function statusPage(root){
 function team(root) {
   const reset = action("팀 상태 새로 고침", () => loadAssets());
   root.append(reset);
-  if (!teamBoard) return;
+  if (!teamBoard) { root.append(loadingRegion('팀')); return; }
   root.append(action('새 팀 만들기',()=>{editingTeam='new';teamDraft={name:'',roles:[{name:'',instruction:'',mode:'plan'},{name:'',instruction:'',mode:'review'}]};render()}));
   if(editingTeam) teamEditor(root);
   for (const t of teamBoard.teams){
@@ -717,16 +760,17 @@ function artifacts(root) {
   if (preview) {
     root.append(
       action("문서 목록으로", () => {
+        assetRequest++;
         preview = undefined;
         render();
       }),
       node("h2", preview.name),
-      node("pre", preview.body, "body box"),
+      preview.loading ? loadingRegion('문서 내용') : node("pre", preview.body, "body box"),
     );
     return;
   }
   root.append(action("문서 새로 고침", () => loadAssets()));
-  if (!files) return;
+  if (!files) { root.append(loadingRegion('문서')); return; }
   if (!files.artifacts.length)
     root.append(node("p", "아직 저장한 문서가 없습니다.", "hint"));
   for (const file of files.artifacts) {
@@ -735,9 +779,17 @@ function artifacts(root) {
       file.path,
       () =>
         run(async () => {
-          const id = ++assetRequest,
-            body = await call("readWorkArtifact", selectedProject, file.path);
-          if (id === assetRequest) preview = { name: file.path, body };
+          const id = ++assetRequest;
+          preview = {name:file.path, loading:true};
+          render();
+          try {
+            const body = await call("readWorkArtifact", selectedProject, file.path);
+            if (id === assetRequest) preview = {name:file.path, body};
+          } catch (error) {
+            if (id !== assetRequest) return;
+            preview = undefined;
+            throw error;
+          }
         }),
       file.preview ? "미리보기" : "데스크톱에서 열기",
     );
@@ -874,8 +926,8 @@ function chat(root) {
       node("p", historyError, "hint"),
       action("기록 다시 불러오기", () => loadMessages()),
     );
-  } else if (historyBusy && !historyPage)
-    root.append(node("p", "최근 메시지를 불러오는 중입니다.", "hint"));
+  } else if (!historyPage)
+    root.append(loadingRegion('최근 메시지', 'chat'));
   if (historyPage?.before) {
     const more = action("이전 메시지 더 보기", () => loadMessages(true));
     more.disabled = historyBusy;
@@ -896,11 +948,25 @@ function chat(root) {
     root.append(block);
   }
   if (running(s.id)) {
-    const stop = action("작업 중단", () => run(() => call("interrupt", s.id)));
+    const stop = confirmationButton('작업 중단', 'interrupt/' + s.id, '실행 중인 작업을 중단할까요?', s.title, () =>
+      run(async () => { await call('interrupt', s.id); showNotice('작업 중단을 요청했습니다.'); }));
     stop.disabled = busy;
     root.append(node("p", s.activity || "데스크톱에서 실행 중입니다.", "hint"), stop);
   }
-  if(queueItems.length){const queue=node("section",undefined,"box");queue.append(node("h2","추가 지시 대기열"));for(const item of queueItems){const line=node("div",undefined,"queue-line");line.append(node("p",item.text||"첨부 요청","body"),node("small",({queued:"대기",sending:"전송 중",sent:"전송 완료",cancelled:"취소"})[item.status]||item.status));if(item.error)line.append(node("p",item.error,"hint"));if(item.status==="queued")line.append(action("이 지시 취소",()=>run(async()=>{await call("cancelQueuedMessage",s.id,item.id);await loadQueue()})));queue.append(line)}queue.append(action("대기 지시 이어 보내기",()=>run(async()=>{await call("resumeQueuedMessages",s.id);await loadQueue()})));root.append(queue)}
+  if(queueItems.length){
+    const queue=node("section",undefined,"box");
+    queue.append(node("h2","추가 지시 대기열"));
+    for(const item of queueItems){
+      const line=node("div",undefined,"queue-line");
+      line.append(node("p",item.text||"첨부 요청","body"),node("small",({queued:"대기",sending:"전송 중",sent:"전송 완료",cancelled:"취소"})[item.status]||item.status));
+      if(item.error)line.append(node("p",item.error,"hint"));
+      if(item.status==="queued")line.append(confirmationButton('이 지시 취소','queue/'+item.id,'대기 중인 지시를 취소할까요?',item.text||'첨부 요청',()=>
+        run(async()=>{await call('cancelQueuedMessage',s.id,item.id);await loadQueue();showNotice('대기 중인 지시를 취소했습니다.');})));
+      queue.append(line);
+    }
+    queue.append(action("대기 지시 이어 보내기",()=>run(async()=>{await call("resumeQueuedMessages",s.id);await loadQueue()})));
+    root.append(queue);
+  }
   const form = node("form"),
     draftId = "chat/" + s.id,
     text = bindDraft(node("textarea"), draftId, "");
@@ -1022,7 +1088,15 @@ function teamEditor(root){
 function teamControls(card,entry){
   const d=entry.directed,buttons=node('div',undefined,'actions');
   const change=change=>run(async()=>{await call('changeTeamRun',selectedProject,entry.id,change,d.revision);await loadAssets()});
-  for(const [name,act]of (d.phase==='stopped'||d.phase==='done'?[['팀 다시 열기','reopen']]:d.phase==='paused'?[['다시 시작','resume'],['팀 중단','stop']]:[['일시 중지','pause'],['팀 중단','stop'],['결과 보고','report']])){const b=action(name,()=>change({action:act}));b.disabled=busy;buttons.append(b)}card.append(buttons);
+  const commands=d.phase==='stopped'||d.phase==='done'?[['팀 다시 열기','reopen']]:d.phase==='paused'?[['다시 시작','resume'],['팀 중단','stop']]:[['일시 중지','pause'],['팀 중단','stop'],['결과 보고','report']];
+  for(const [name,act] of commands){
+    const button=act==='stop'
+      ? confirmationButton(name,'team/'+entry.id+'/'+d.revision,'팀 작업을 중단할까요?',entry.name,()=>change({action:act}))
+      : action(name,()=>change({action:act}));
+    button.disabled=busy;
+    buttons.append(button);
+  }
+  card.append(buttons);
   if(d.phase==='draft'){
     const form=node('form'),assignments=[];card.append(node('h3','역할별 업무 배정'));
     for(const r of(d.nodes||[])){const index=r.index;
@@ -1038,29 +1112,63 @@ function teamControls(card,entry){
   form.append(label('지시할 역할',role),label('추가 지시 / 피드백',text));const send=node('button','역할에 지시 보내기');send.type='submit';send.disabled=busy;form.append(send);form.addEventListener('submit',e=>{e.preventDefault();void change({action:'instruct',index:Number(role.value),text:text.value})});card.append(form);
 }
 async function loadExtras(announce=true){
-  if(extrasBusy||gate||!['assistant','settings'].includes(route))return;
-  extrasBusy=true;const epoch=accessEpoch,settingsRevision=extrasEpoch,target=route;
+  const target=route, settingsRevision=extrasEpoch;
+  if(gate||!['assistant','settings'].includes(target)||(!announce && pendingExtras.has(target)))return;
+  if(target==='settings' && mobileSettings && !announce)return;
+  const label=target==='assistant'?'비서 상태':'계정 설정';
+  const epoch=accessEpoch, ticket=Symbol();
+  pendingExtras.set(target,ticket);
+  const current=()=>epoch===accessEpoch && target===route && pendingExtras.get(target)===ticket;
+  if(announce && loadErrors.delete(label))render();
   try{
     if(target==='assistant'){
-      const result=await call('mobileWorkflowState');if(epoch!==accessEpoch||target!==route)return;
-      if(JSON.stringify(result)!==JSON.stringify(workflowData)){workflowData=result;render()}
-    }else if(!mobileSettings||announce){
+      const result=await call('mobileWorkflowState');if(!current())return;
+      if(loadErrors.delete(label)||JSON.stringify(result)!==JSON.stringify(workflowData)){workflowData=result;render()}
+    }else{
       const [settings,usage,push]=await Promise.all([call('mobileSettings'),call('readAccountUsage').catch(()=>null),data.pushAvailable?call('webPushState').catch(()=>null):null]);
-      if(epoch!==accessEpoch||settingsRevision!==extrasEpoch||target!==route)return;mobileSettings=settings;usageData=usage;pushData=push;render();
+      if(!current()||settingsRevision!==extrasEpoch)return;
+      loadErrors.delete(label);mobileSettings=settings;usageData=usage;pushData=push;render();
     }
-  }catch(e){if(e.gate)clearPrivateState(e.gate);else if(announce)showNotice(e.message)}finally{extrasBusy=false;}
+  }catch(error){
+    if(!current())return;
+    if(error.gate)clearPrivateState(error.gate);
+    else if(target==='assistant' ? !workflowData : !mobileSettings){
+      loadErrors.set(label, label+' 정보를 불러오지 못했습니다.');
+      render();
+    }else if(announce) showNotice(error.message);
+  }finally{if(pendingExtras.get(target)===ticket)pendingExtras.delete(target);}
 }
 function workflowDo(input){return run(async()=>{await call('workflowAction',input);await loadExtras();showNotice('반영했습니다.')})}
 function assistantPage(root){
   root.append(node('h1','업무 연결 / 비서'),action('비서 상태 새로 고침',()=>loadExtras()));
-  if(!workflowData){root.append(node('p','비서 상태를 불러오는 중입니다.','hint'));return}
+  if(!workflowData){root.append(loadingRegion('비서 상태'));return}
   const tabs=node('div',undefined,'tabs');for(const [id,title]of [['decisions','결정'],['messages','대화 연결'],['reminders','예약 알림'],['reports','보고'],['preferences','비서 설정']]){const b=action(title,()=>{workflowTab=id;render()});if(workflowTab===id)b.setAttribute('aria-current','page');tabs.append(b)}root.append(tabs);
   if(workflowTab==='decisions'){
-    const visible=workflowData.proposals.filter(p=>!p.hidden),selected=new Set(),bulk=node('div',undefined,'actions');
-    bulk.append(action('선택 승인',()=>workflowDo({action:'bulk',operation:'approve',items:visible.filter(p=>selected.has(p.id)).map(p=>({id:p.id,revision:p.revision}))})),action('선택 거절',()=>workflowDo({action:'bulk',operation:'reject',items:visible.filter(p=>selected.has(p.id)).map(p=>({id:p.id,revision:p.revision}))})));root.append(bulk);
+    const visible=workflowData.proposals.filter(p=>!p.hidden),bulk=node('div',undefined,'actions');
+    const pending=new Map(visible.filter(p=>p.status==='pending').map(p=>[p.id,p]));
+    for(const [id,revision] of selectedProposals){
+      if(!pending.has(id) || pending.get(id).revision!==revision)selectedProposals.delete(id);
+    }
+    const chosen=()=>[...selectedProposals.keys()].map(id=>pending.get(id));
+    function updateSelection(){
+      const selection=JSON.stringify([...selectedProposals]);
+      for(const button of bulk.children){
+        button.disabled=busy || !selectedProposals.size;
+        button.dataset.confirmAction='bulk/'+button.dataset.operation+'/'+selection;
+      }
+    }
+    for(const [title,verb,operation] of [['선택 승인','승인','approve'],['선택 거절','거절','reject']]){
+      const button=confirmationButton(title,'bulk/'+operation,'선택한 결정을 '+verb+'할까요?',
+        ()=>chosen().map(p=>p.title).join(' / '),
+        ()=>workflowDo({action:'bulk',operation,items:chosen().map(p=>({id:p.id,revision:p.revision}))}));
+      button.dataset.operation=operation;
+      bulk.append(button);
+    }
+    updateSelection();
+    root.append(bulk);
     if(!visible.length)root.append(node('p','확인할 결정이 없습니다.','hint'));
     for(const p of visible){const card=node('section',undefined,'box');card.append(node('h2',p.title),node('p',p.body,'body'),node('small',p.status));if(p.preview)card.append(node('p',[p.preview.action,p.preview.calendarName,p.preview.event?.title,p.preview.event?.at].filter(Boolean).join(' / '),'hint'));
-      if(p.status==='pending'){const check=node('input');check.type='checkbox';check.addEventListener('change',()=>check.checked?selected.add(p.id):selected.delete(p.id));card.append(label(p.title+' 선택',check));const buttons=node('div',undefined,'actions');for(const [title,act]of [['승인','approve'],['거절','reject'],['숨기기','hide']])buttons.append(action(title,()=>workflowDo({action:act,id:p.id,revision:p.revision})));buttons.append(action('한 시간 뒤 확인',()=>workflowDo({action:'snooze',id:p.id,revision:p.revision,minutes:60})));card.append(buttons)}if(p.result)card.append(node('p',p.result,'body'));root.append(card)}
+      if(p.status==='pending'){const check=node('input');check.type='checkbox';check.checked=selectedProposals.has(p.id);check.addEventListener('change',()=>{if(check.checked)selectedProposals.set(p.id,p.revision);else selectedProposals.delete(p.id);updateSelection();});card.append(label(p.title+' 선택',check));const buttons=node('div',undefined,'actions');for(const [title,act]of [['승인','approve'],['거절','reject'],['숨기기','hide']])buttons.append(action(title,()=>workflowDo({action:act,id:p.id,revision:p.revision})));buttons.append(action('한 시간 뒤 확인',()=>workflowDo({action:'snooze',id:p.id,revision:p.revision,minutes:60})));card.append(buttons)}if(p.result)card.append(node('p',p.result,'body'));root.append(card)}
     const events=node('section',undefined,'box');events.append(node('h2','최근 알림'));
     for(const n of workflowData.notifications.slice(0,40)){const line=node('div',undefined,'queue-line');line.append(node('strong',n.title),node('p',n.body,'body'));if(!n.readAt)line.append(action('확인한 알림',()=>workflowDo({action:'read',ids:[n.id]})));if(n.sessionId&&session(n.sessionId))line.append(action('알림 대화 열기',()=>go('chat',n.sessionId)));events.append(line)}root.append(events);
   }else if(workflowTab==='messages'){
@@ -1069,7 +1177,7 @@ function assistantPage(root){
     for(const d of workflowData.deliveries.slice(0,30)){const card=node('section',undefined,'box');card.append(node('p',d.text,'body'),node('small',d.status));if(['failed','held'].includes(d.status))card.append(action('메시지 다시 전달',()=>workflowDo({action:'retryDelivery',id:d.id})));root.append(card)}
   }else if(workflowTab==='reminders'){
     const form=node('form'),text=bindDraft(node('textarea'),'reminder/text',''),at=bindDraft(node('input'),'reminder/at',''),repeat=select([['0','반복 안 함'],['1','매일'],['7','매주']],'0');text.required=at.required=true;at.type='datetime-local';form.append(label('예약 알림 내용',text),label('알림 시간',at),label('반복',repeat));const submit=node('button','예약 알림 추가','main-action');submit.type='submit';form.append(submit);form.addEventListener('submit',e=>{e.preventDefault();void workflowDo({action:'reminderAdd',text:text.value,when:new Date(at.value).toISOString(),repeatDays:Number(repeat.value)})});root.append(form);
-    for(const r of workflowData.reminders.filter(r=>!r.cancelled)){const card=node('section',undefined,'box');card.append(node('p',r.text),node('small',date(r.nextAt)),action('예약 취소',()=>workflowDo({action:'reminderCancel',id:r.id})));root.append(card)}
+    for(const r of workflowData.reminders.filter(r=>!r.cancelled)){const card=node('section',undefined,'box');card.append(node('p',r.text),node('small',date(r.nextAt)),confirmationButton('예약 취소','reminder/'+r.id,'예약 알림을 취소할까요?',r.text,()=>workflowDo({action:'reminderCancel',id:r.id})));root.append(card)}
   }else if(workflowTab==='reports'){
     root.append(action('AI 업무 보고 생성',()=>workflowDo({action:'reportNow'})),action('결정 추천 생성',()=>workflowDo({action:'recommend'})),action('프로젝트 현황 수집',()=>workflowDo({action:'collect'})));
     for(const report of workflowData.reports.slice(0,20)){const card=node('section',undefined,'box');card.append(node('h2',date(report.at)+' / '+(report.status||'보고')),node('p',report.body||report.error||'AI가 보고서를 작성하고 있습니다.','body'));if(report.sessionId&&session(report.sessionId))card.append(action('보고 대화 열기',()=>go('chat',report.sessionId)));root.append(card)}
@@ -1102,7 +1210,7 @@ function settingsPage(root){
   accountLine.append(node('p',data.connection.accountLabel||'ChatGPT','hint'),action('설정과 사용량 새로 고침',()=>loadExtras()));
   account.append(node('h2','계정과 모델'),accountLine);
   root.append(account);
-  if(!mobileSettings){account.append(node('p','설정을 불러오는 중입니다.','hint'));return}
+  if(!mobileSettings){account.append(loadingRegion('계정 설정'));return}
   const preferences=settingsDraft||mobileSettings;
   const form=node('form'),models=mobileSettings.models||[],model=select([['','계정 기본 모델'],...models.map(m=>[m.id,modelDisplayName(m)])],preferences.model||''),effort=select([],''),answer=select([['short','짧게'],['normal','보통'],['detailed','자세히']],preferences.chatDefaults?.answerLength||'normal');
   function refreshEfforts(preferred=''){
@@ -1150,7 +1258,7 @@ function pushSettings(root){
   }else{
     box.append(node('p',device.label));const chosen=new Set(device.kinds);
     for(const [kind,title]of Object.entries(pushLabels)){const check=node('input');check.type='checkbox';check.checked=chosen.has(kind);check.addEventListener('change',()=>check.checked?chosen.add(kind):chosen.delete(kind));box.append(settingsSwitch(title,check))}
-    box.append(action('알림 종류 저장',()=>run(async()=>{await call('webPushAction',{action:'preferences',id:device.id,kinds:[...chosen]});await loadExtras()})),action('이 기기에 시험 알림 보내기',()=>run(async()=>{const result=await call('webPushAction',{action:'test',id:device.id});showNotice(result.sent?'알림 서버에 발송했습니다.':'발송을 확인하지 못했습니다.');await loadExtras()})),action('이 기기 알림 해제',()=>run(async()=>{await call('webPushAction',{action:'unsubscribe',id:device.id});const registration=await navigator.serviceWorker.ready;await(await registration.pushManager.getSubscription())?.unsubscribe();sessionStorage.removeItem('flowrium.mobile.pushId');await loadExtras();showNotice('기기 알림을 해제했습니다.')})));
+    box.append(action('알림 종류 저장',()=>run(async()=>{await call('webPushAction',{action:'preferences',id:device.id,kinds:[...chosen]});await loadExtras()})),action('이 기기에 시험 알림 보내기',()=>run(async()=>{const result=await call('webPushAction',{action:'test',id:device.id});showNotice(result.sent?'알림 서버에 발송했습니다.':'발송을 확인하지 못했습니다.');await loadExtras()})),confirmationButton('이 기기 알림 해제','push/'+device.id,'이 기기 알림을 해제할까요?','이 기기로 보내는 작업 알림이 중지됩니다.',()=>run(async()=>{await call('webPushAction',{action:'unsubscribe',id:device.id});const registration=await navigator.serviceWorker.ready;await(await registration.pushManager.getSubscription())?.unsubscribe();sessionStorage.removeItem('flowrium.mobile.pushId');await loadExtras();showNotice('기기 알림을 해제했습니다.')})));
     if(device.lastError)box.append(node('p',device.lastError,'hint'));
   }
   box.append(node('p','연결을 종료하거나 계정을 바꾸면 알림도 중지됩니다. 새 연결 주소에서는 기기를 다시 등록하세요.','hint'));root.append(box);
@@ -1189,7 +1297,12 @@ function render() {
     if (current) btn.setAttribute("aria-current", "page");
     else btn.removeAttribute("aria-current");
   }
-  if (!data || gate) {
+  const connecting = !data && !gate && Boolean(key || handoff);
+  content.setAttribute('aria-busy', String(connecting));
+  if (connecting) {
+    connection.textContent = '연결 중';
+    root.append(loadingRegion('대시보드', 'dashboard'));
+  } else if (!data || gate) {
     const title =
       gate === "locked"
         ? "작업 공간이 잠겼습니다"
@@ -1205,7 +1318,7 @@ function render() {
           ? "데스크톱 설정에서 모바일 연결을 켜고 새 주소를 여세요."
           : "데스크톱의 모바일 연결과 네트워크를 확인하세요.";
     connection.textContent =
-      gate === "locked" ? "잠김" : !key ? "연결 필요" : "연결 중";
+      gate === "locked" ? "잠김" : !key ? "연결 필요" : gate === "offline" ? "연결 재시도 중" : "연결 중";
     root.append(node("h1", title), node("p", hint, "hint"));
     if (key) root.append(action("다시 확인", () => poll()));
     else if (!handoff) root.append(reconnectForm());
@@ -1226,6 +1339,7 @@ function render() {
   else if (route === "new") newWork(root);
   else if (route === "chat") chat(root);
   content.replaceChildren(root);
+  reconcileConfirmation(Boolean(gate) || !data);
   if (settingsGuide && !gate && !document.querySelector('dialog[open]')) {
     content.querySelector('[data-settings-guide="' + CSS.escape(settingsGuide) + '"]')?.focus({preventScroll:true});
   }
@@ -1257,7 +1371,7 @@ render();
 async function initialize(){
   if(handoff){
     try{
-      const response=await fetch('/api/mobile/handoff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({handoff}),credentials:'omit',referrerPolicy:'no-referrer'});
+      const response=await fetch('/api/mobile/handoff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({handoff}),credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(18000)});
       const result=await response.json();if(!response.ok)throw Error(result.error||'연결 주소가 만료됐습니다.');
       key=result.key;try{sessionStorage.setItem(keyStorage,key);if(rememberDevice)localStorage.setItem(rememberedKeyStorage,key)}catch{}
     }catch(e){key=null;showNotice(e.message)}finally{handoff=null;render();}

@@ -107,6 +107,11 @@ async function main() {
       await helpDialog.getByRole('heading',{name:title,exact:true}).waitFor();
     }
     assert.equal(await mobile.locator('dialog[open]').count(),1);
+    const centered = await helpDialog.evaluate(el=>{
+      const r=el.getBoundingClientRect();
+      return Math.abs((r.top+r.bottom)/2-innerHeight/2)<2 && Math.abs((r.left+r.right)/2-innerWidth/2)<2;
+    });
+    assert(centered,'도움말은 화면 중앙에 유지');
     assert.equal(await helpDialog.locator('[data-install-details]').isVisible(),false);
     await helpDialog.getByRole('button',{name:'도움말 닫기'}).click();
     await mobile.waitForFunction(()=>document.activeElement?.dataset.settingsGuide==='help');

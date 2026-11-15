@@ -1,3 +1,4 @@
+const {confirmAction}=require('./mobile-feedback-checks.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto'),{EventEmitter}=require('node:events');
 const {_electron}=require('playwright'),{Store}=require('../electron/store.cjs'),{Controller}=require('../electron/controller.cjs');
 const {registerRemote}=require('../electron/remote.cjs'),{registerWebPush}=require('../electron/web-push.cjs'),{png}=require('./chat-fixtures.cjs');
@@ -48,7 +49,7 @@ async function main(){
   const oneTime=remote.issueLink({ttlMinutes:15}),oneHash=new URL(oneTime.url).hash;await page.goto(origin+'/'+oneHash);await openProject();assert.equal(new URL(page.url()).hash,'');
   await page.getByRole('button',{name:/휴대폰 요청/}).click();await page.getByLabel('파일 첨부',{exact:true}).setInputFiles({name:'현장.png',mimeType:'image/png',buffer:png});await page.getByText('현장.png / 1KB',{exact:true}).waitFor();await btn('이미지 보기').click();await page.locator('.attachment img').waitFor();
   await page.getByLabel('요청',{exact:true}).fill('대기검증');await btn('요청 보내기').click();await btn('추가 지시 대기열에 넣기').waitFor();assert.equal(store.session(chat.id).messages.find(m=>m.role==='user').attachments[0].name,'현장.png');
-  await page.getByLabel('요청',{exact:true}).fill('휴대폰 후속 지시');await btn('추가 지시 대기열에 넣기').click();await page.getByText('휴대폰 후속 지시',{exact:true}).waitFor();await btn('이 지시 취소').click();assert.equal(store.session(chat.id).queuedMessages.at(-1).status,'cancelled');await btn('작업 중단').click();await btn('요청 보내기').waitFor();
+  await page.getByLabel('요청',{exact:true}).fill('휴대폰 후속 지시');await btn('추가 지시 대기열에 넣기').click();await page.getByText('휴대폰 후속 지시',{exact:true}).waitFor();await confirmAction(page,'이 지시 취소');assert.equal(store.session(chat.id).queuedMessages.at(-1).status,'cancelled');await confirmAction(page,'작업 중단');await btn('요청 보내기').waitFor();
   const picker=page.getByLabel('이 채팅의 모델',{exact:true});
   async function choose(value){
     await picker.locator('option[value="gpt-6.1-terra"]').waitFor({state:'attached'});
@@ -73,7 +74,7 @@ async function main(){
   }
   console.log('휴대폰 모델 선택 / 다른 대화와 기본값 보존 / 실제 전송 모델·추론 수준 / 기본값 복귀 / 구형 화면의 이전 값 제거 / 허용 범위 외 요청 차단 통과');
   await btn('프로젝트로').click();await btn('팀').click();await btn('새 팀 만들기').click();await page.getByLabel('팀 이름',{exact:true}).fill('모바일 운영팀');await page.getByLabel('역할 이름 1',{exact:true}).fill('조사');await page.getByLabel('역할 지시 1',{exact:true}).fill('근거를 확인하세요.');await page.getByLabel('역할 이름 2',{exact:true}).fill('검토');await page.getByLabel('역할 지시 2',{exact:true}).fill('결과를 검토하세요.');await btn('팀 저장').click();await page.getByText('모바일 운영팀 / 조사 / 검토',{exact:true}).waitFor();
-  await page.getByLabel('모바일 운영팀의 목표',{exact:true}).fill('대기검증');await page.getByLabel('배정 방식',{exact:true}).selectOption('manual');await btn('팀 업무 시작').click();await page.getByLabel('배정 업무 1',{exact:true}).waitFor();await btn('배정하고 실행').click();await btn('일시 중지').click();await btn('다시 시작').waitFor();await btn('다시 시작').click();await btn('팀 중단').click();await btn('팀 다시 열기').waitFor();
+  await page.getByLabel('모바일 운영팀의 목표',{exact:true}).fill('대기검증');await page.getByLabel('배정 방식',{exact:true}).selectOption('manual');await btn('팀 업무 시작').click();await page.getByLabel('배정 업무 1',{exact:true}).waitFor();await btn('배정하고 실행').click();await btn('일시 중지').click();await btn('다시 시작').waitFor();await btn('다시 시작').click();await confirmAction(page,'팀 중단');await btn('팀 다시 열기').waitFor();
   const board=await handlers.get('readTeams')(project.id);assert.equal(board.teams.length,1);assert.equal(board.runs[0].directed.phase,'stopped');
   await btn('설정').click();
   await btn('기본 설정 저장').waitFor();
@@ -110,8 +111,22 @@ async function main(){
   await page.waitForFunction(()=>navigator.serviceWorker.controller!==null);await page.getByLabel('알림 기기 이름',{exact:true}).fill('화면 검증 기기');await btn('이 기기에서 알림 켜기').click();await btn('이 기기에 시험 알림 보내기').waitFor();await page.getByLabel('작업 완료',{exact:true}).uncheck();await btn('알림 종류 저장').click();assert(!(await push.status()).devices[0].kinds.includes('done'));await btn('이 기기에 시험 알림 보내기').click();assert.equal(delivered.length,1);assert.equal(delivered[0].test,true);
   await btn('비서').click();await btn('대화 연결').click();await page.getByLabel('대상 대화',{exact:true}).selectOption(chat.id);await page.getByLabel('연결 방식',{exact:true}).selectOption('request');await page.getByLabel('요청 제목',{exact:true}).fill('현장 내용 확인');await page.getByLabel('보낼 내용',{exact:true}).fill('최종 근거를 확인하세요.');await btn('업무 연결 보내기').click();await btn('결정').click();await page.getByRole('heading',{name:'현장 내용 확인',exact:true}).waitFor();await btn('거절').click();
   const workflowState=await workflow.state();assert.equal(workflowState.proposals[0].status,'rejected');assert(delivered.some(d=>d.kind==='decision'));
-  await btn('예약 알림').click();await page.getByLabel('예약 알림 내용',{exact:true}).fill('회의 자료 확인');const future=new Date(Date.now()+3600000),local=new Date(future.getTime()-future.getTimezoneOffset()*60000).toISOString().slice(0,16);await page.getByLabel('알림 시간',{exact:true}).fill(local);await btn('예약 알림 추가').click();await page.getByText('회의 자료 확인',{exact:true}).waitFor();await btn('예약 취소').click();assert((await workflow.state()).reminders[0].cancelled);
-  await btn('설정').click();await btn('이 기기 알림 해제').click();assert.equal((await push.status()).devices.length,0);
+  // Both batch decisions require a second, explicit action. Review and cancel
+  // approval first, then reject the same selected item in the synthetic store.
+  const sample=await workflow.action({action:'propose',kind:'next',sourceId:chat.id,title:'선택 확인용 결정',text:'합성 작업 확인'});
+  await btn('비서 상태 새로 고침').click();
+  const checkbox=page.getByRole('checkbox',{name:'선택 확인용 결정 선택'});
+  await checkbox.check();
+  await btn('선택 승인').click();
+  const sheet=page.getByRole('alertdialog');
+  await sheet.getByRole('button',{name:'취소',exact:true}).click();
+  await sheet.waitFor({state:'hidden'});
+  assert.equal((await workflow.state()).proposals.find(item=>item.id===sample.id).status,'pending');
+  await checkbox.check();
+  await confirmAction(page,'선택 거절');
+  assert.equal((await workflow.state()).proposals.find(item=>item.id===sample.id).status,'rejected');
+  await btn('예약 알림').click();await page.getByLabel('예약 알림 내용',{exact:true}).fill('회의 자료 확인');const future=new Date(Date.now()+3600000),local=new Date(future.getTime()-future.getTimezoneOffset()*60000).toISOString().slice(0,16);await page.getByLabel('알림 시간',{exact:true}).fill(local);await btn('예약 알림 추가').click();await page.getByText('회의 자료 확인',{exact:true}).waitFor();await confirmAction(page,'예약 취소');assert((await workflow.state()).reminders[0].cancelled);
+  await btn('설정').click();await confirmAction(page,'이 기기 알림 해제');assert.equal((await push.status()).devices.length,0);
   locked=true;await page.getByRole('heading',{name:'작업 공간이 잠겼습니다'}).waitFor();assert.equal(await page.getByText('화면 검증 기기',{exact:true}).count(),0);locked=false;await btn('다시 확인').click();await openProject();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   const old=remote.issueLink({ttlMinutes:5});owner++;const invalid=await fetch(origin+'/api/mobile/handoff',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({handoff:new URLSearchParams(new URL(old.url).hash.slice(1)).get('handoff')})});assert.equal(invalid.status,400);
   console.log('모바일 확장 실제 화면 통과 / 단회 연결 주소 / 첨부 업로드·미리보기·전송 / 실행 중 지시 큐·취소 / 팀 생성·수동 배정·중지·재개·종료 / 비서 요청·결정·예약 / 모델 동작 설정·사용량 / 실제 서비스워커 등록과 모의 Push 구독·시험·해제 / 잠금·계정 격리');

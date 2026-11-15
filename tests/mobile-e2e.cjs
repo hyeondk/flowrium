@@ -8,6 +8,8 @@ const { _electron } = require("playwright");
 const { Store } = require("../electron/store.cjs");
 const { registerRemote } = require("../electron/remote.cjs");
 const { registerWorkbench } = require("../electron/workbench.cjs");
+const {verifyDashboardLoading, verifyChatLoading, verifyRefreshingChat} = require('./mobile-loading-checks.cjs');
+const {verifyStopSheet, observeToast, verifyToast} = require('./mobile-feedback-checks.cjs');
 
 async function run() {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "flowrium-mobile-e2e-"));
@@ -164,7 +166,7 @@ async function run() {
     const stateResponse = page.waitForResponse(
       (r) => new URL(r.url()).pathname === "/api/mobile/state",
     );
-    await page.goto(remote.localUrl);
+    await verifyDashboardLoading(page, remote.localUrl);
     const firstState = await (await stateResponse).json();
     assert.equal(firstState.sessions[0].messages.length, 0);
     assert.equal(firstState.sessions[0].messageCount, 121);
@@ -191,17 +193,19 @@ async function run() {
     await btn('대기 대화 1개').click();
     await page.getByRole('button',{name:/지난 현장 기록/}).click();
     await page.getByLabel('요청',{exact:true}).fill('후속 완료 전에 적은 초안');
+    await observeToast(page);
     await btn('완료').click();await btn('완료').waitFor({state:'detached'});
     assert.equal(await page.getByLabel('요청',{exact:true}).inputValue(),'후속 완료 전에 적은 초안');
     assert.equal(archivedSession.completedContinuationId,tail.id);assert.equal(archivedSession.messages.length,121);
-    await btn('대기 대화 목록으로').click();await page.getByText('대기 상태의 대화가 없습니다.',{exact:true}).waitFor();await btn('대시보드로').click();
+    await verifyToast(page,'후속 대기를 완료했습니다.',()=>btn('대기 대화 목록으로').click());
+    await page.getByText('대기 상태의 대화가 없습니다.',{exact:true}).waitFor();await btn('대시보드로').click();
     await btn('대기 대화 0개').waitFor();
     Object.assign(tail,savedTail);delete archivedSession.completedContinuationId;
     pages.length=0;
     await openProject();
     assert.equal(new URL(page.url()).hash, "");
     assert.equal(pages.length, 0);
-    await page.getByRole("button", { name: /지난 현장 기록/ }).click();
+    await verifyChatLoading(page, () => page.getByRole("button", {name:/지난 현장 기록/}).click(), archived.id);
     await page.getByText("답사 기록 121", { exact: true }).waitFor();
     assert.equal(await page.locator(".message").count(), 50);
     assert.equal(
@@ -220,8 +224,10 @@ async function run() {
     await anchor.evaluate(el=>el.scrollIntoView({block:'center'}));
     const anchorTop=()=>anchor.evaluate(el=>el.getBoundingClientRect().top);
     const beforeTop=await anchorTop();
-    archivedSession.messages.push(note(122));
-    archivedSession.updatedAt = new Date().toISOString();
+    await verifyRefreshingChat(page, archived.id, () => {
+      archivedSession.messages.push(note(122));
+      archivedSession.updatedAt = new Date().toISOString();
+    }, anchor);
     await page.getByText("답사 기록 122", { exact: true }).waitFor();
     const afterTop=await anchorTop();
     await page.waitForTimeout(350);
@@ -386,7 +392,7 @@ async function run() {
     requests = [];
     await btn("실행 중").click();
     await page.getByRole("button", { name: /현장 조사/ }).click();
-    await btn("작업 중단").click();
+    await verifyStopSheet(page, () => Boolean(interrupted));
     await btn("요청 보내기").waitFor();
     assert.equal(interrupted, store.state.sessions[0].id);
     await page.getByLabel("요청", { exact: true }).fill("이어 쓸 내용");

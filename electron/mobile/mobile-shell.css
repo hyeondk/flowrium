@@ -66,3 +66,39 @@ body{background:linear-gradient(150deg,var(--selected) -95%,var(--bg) 46%) fixed
 .message:is([data-role=user],[data-role=assistant]) > small::before{content:"";width:20px;height:20px;flex:none;background:center/contain no-repeat}
 .message[data-role=assistant] > small::before{background-image:url("/chatgpt.svg")}
 .message[data-role=user] > small::before{background:var(--soft);mask:center/16px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' stroke-linecap='round' fill='none'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 21a8 8 0 0 1 16 0'/%3E%3C/svg%3E")}
+
+/* 첫 데이터가 도착할 때까지 실제 화면과 같은 밀도를 유지한다. */
+.mobile-skeleton {
+  --skeleton-tone:color-mix(in srgb,var(--line) 68%,var(--row-tint));
+  --skeleton-light:color-mix(in srgb,var(--row-tint) 86%,transparent);
+  width:100%;min-width:0;margin:6px 0 12px;
+}
+.skeleton-art {display:grid;gap:10px}
+.skeleton-metrics {display:none}
+.skeleton-row {
+  display:grid;gap:8px;padding:14px;
+  border:1px solid var(--line);border-radius:14px;background:var(--panel);
+}
+.skeleton-row i,.skeleton-title,.skeleton-metrics i {
+  position:relative;display:block;overflow:hidden;
+  background:var(--skeleton-tone);border-radius:5px;
+}
+.skeleton-row i::after,.skeleton-title::after,.skeleton-metrics i::after {
+  position:absolute;inset:0;content:"";
+  background:linear-gradient(100deg,transparent 20%,var(--skeleton-light) 50%,transparent 80%);
+  transform:translateX(-100%);animation:mobile-skeleton-glow 1.35s linear infinite;
+}
+.skeleton-row i:first-child {height:12px;width:66%}
+.skeleton-row i:last-child {height:9px;width:40%}
+.skeleton-row:last-child i:first-child {width:51%}
+.skeleton-row:last-child i:last-child {width:75%}
+.skeleton-art .skeleton-title {display:none}
+.mobile-skeleton[data-layout=dashboard] .skeleton-title {display:block;width:38%;height:25px;margin:2px 0 6px}
+.mobile-skeleton[data-layout=dashboard] .skeleton-metrics {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:5px}
+.skeleton-metrics i {height:54px;border-radius:14px}
+.mobile-skeleton[data-layout=chat] .skeleton-metrics + .skeleton-row {width:84%;margin-inline-start:auto;background:var(--row-tint)}
+.mobile-skeleton[data-layout=chat] .skeleton-row {min-height:78px;align-content:center}
+@keyframes mobile-skeleton-glow {to{transform:translateX(100%)}}
+@media(prefers-reduced-motion:reduce) {
+  .skeleton-row i::after,.skeleton-title::after,.skeleton-metrics i::after {animation:none;content:none}
+}

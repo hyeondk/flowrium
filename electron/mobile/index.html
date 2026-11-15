@@ -44,9 +44,26 @@
         <footer><button type="button" data-install hidden>앱 설치</button></footer>
       </div>
     </dialog>
-    <main id="content" tabindex="-1"></main>
-    <p id="notice" role="status" hidden></p>
-    <nav id="nav" aria-label="모바일 메뉴">
+    <dialog id="confirmation-sheet" role="alertdialog" aria-modal="true" aria-labelledby="confirmation-heading" aria-describedby="confirmation-description">
+      <h2 id="confirmation-heading"></h2>
+      <p id="confirmation-description"></p>
+      <footer>
+        <button type="button" data-cancel autofocus>취소</button>
+        <button type="button" data-accept></button>
+      </footer>
+    </dialog>
+    <main id="content" tabindex="-1" aria-busy="true">
+      <div class="mobile-skeleton" data-layout="dashboard" role="status" aria-label="대시보드 불러오는 중">
+        <div class="skeleton-art" aria-hidden="true">
+          <span class="skeleton-title"></span>
+          <div class="skeleton-metrics"><i></i><i></i><i></i></div>
+          <div class="skeleton-row"><i></i><i></i></div>
+          <div class="skeleton-row"><i></i><i></i></div>
+        </div>
+      </div>
+    </main>
+    <p id="notice" role="status" aria-atomic="true" hidden></p>
+    <nav id="nav" aria-label="모바일 메뉴" hidden>
       <button type="button" data-view="projects"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span>홈</span></button>
       <button type="button" data-view="running"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12h4l3-8 6 16 3-8h4"/></svg><span>실행 중</span></button>
       <button type="button" data-view="approvals"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 5 5 8 8 9 3-1 8-4 8-9V6l-8-3Z"/><path d="m8.5 11.5 2.5 2.5 4.8-5"/></svg><span>승인함</span></button>

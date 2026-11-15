@@ -29,3 +29,41 @@
 .mobile-switch-control > input:checked + .mobile-switch-track::before {transform: translateX(16px);}
 .mobile-switch-control > input:focus-visible + .mobile-switch-track {outline: 2px solid var(--focus); outline-offset: 3px;}
 @media (prefers-reduced-motion:reduce) {.mobile-switch-track, .mobile-switch-track::before {transition: none;}}
+
+html:has(#confirmation-sheet[open]) {overflow:hidden;}
+#confirmation-sheet {
+  position:fixed;
+  inset:auto 0 0;
+  width:min(100%, 480px);
+  max-width:100%;
+  max-height:calc(100dvh - max(16px, env(safe-area-inset-top, 0px)));
+  margin:0 auto;
+  padding:12px max(20px, env(safe-area-inset-right, 0px)) max(18px, calc(env(safe-area-inset-bottom, 0px) + 10px)) max(20px, env(safe-area-inset-left, 0px));
+  overflow:auto;
+  overscroll-behavior:contain;
+  border:1px solid var(--line);
+  border-bottom:0;
+  border-radius:24px 24px 0 0;
+  background:var(--panel);
+  color:var(--text);
+  box-shadow:0 -8px 40px #14283b26;
+  word-break:keep-all;
+}
+#confirmation-sheet::before {content:'';display:block;width:36px;height:4px;margin:0 auto 18px;background:var(--line);border-radius:8px;}
+#confirmation-sheet h2 {margin:0 0 8px;font-size:19px;line-height:1.4;}
+#confirmation-sheet p {margin:0;max-block-size:36dvh;overflow:auto;overscroll-behavior:contain;color:var(--soft);line-height:1.6;overflow-wrap:break-word;}
+#confirmation-sheet footer {display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:22px;}
+#confirmation-sheet button {min-height:44px;padding:7px 18px;border-radius:13px;touch-action:manipulation;}
+#confirmation-sheet [data-accept] {background:var(--accent-fill);border-color:var(--accent-fill);color:var(--accent-text);}
+#confirmation-sheet::backdrop {background:rgb(15 36 52 / 45%);}
+@keyframes mobile-sheet-in {from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes mobile-sheet-out {from{transform:translateY(0)}to{transform:translateY(100%)}}
+@keyframes mobile-scrim-in {from{opacity:0}to{opacity:1}}
+@keyframes mobile-scrim-out {from{opacity:1}to{opacity:0}}
+#confirmation-sheet[open][data-phase=enter] {animation:mobile-sheet-in 240ms var(--ease-enter) both;}
+#confirmation-sheet[open][data-phase=enter]::backdrop {animation:mobile-scrim-in 240ms var(--ease-enter) both;}
+#confirmation-sheet[open][data-phase=exit] {animation:mobile-sheet-out 220ms var(--ease-exit) both;pointer-events:none;}
+#confirmation-sheet[open][data-phase=exit]::backdrop {animation:mobile-scrim-out 220ms var(--ease-exit) both;}
+@media(prefers-reduced-motion:reduce) {
+  #confirmation-sheet[open][data-phase], #confirmation-sheet[open][data-phase]::backdrop {animation:none;}
+}

@@ -217,11 +217,15 @@ h1 {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  width: min(94vw, 680px);
+  width: max-content;
+  max-width: min(calc(100% - 32px), 480px);
+  margin: 0;
+  box-shadow: 0 4px 18px #14283b26;
+  pointer-events: none;
   bottom: 62px;
   z-index: 5;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: 12px;
   background: var(--text);
   color: var(--bg);
   padding: 9px 13px;
@@ -306,10 +310,10 @@ button,input,select,textarea{line-height:24px}input:not([type=checkbox]):not([ty
 :is(h1,h2,h3,p,label,button,summary,.row,.box){word-break:keep-all;overflow-wrap:normal}
 .row{min-height:44px}h1{line-height:32px}h2{line-height:28px}h3{line-height:24px}
 button,select,a{transition:background-color 200ms var(--ease-enter),color 200ms var(--ease-enter),border-color 200ms var(--ease-enter)}
-@keyframes mobile-snackbar-in{from{opacity:0;transform:translate(-50%,28px)}to{opacity:1;transform:translate(-50%,0)}}
-@keyframes mobile-snackbar-out{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,28px)}}
-#notice[data-phase=enter]{animation:mobile-snackbar-in 240ms var(--ease-enter) both}
-#notice[data-phase=exit]{animation:mobile-snackbar-out 240ms var(--ease-exit) both;pointer-events:none}
+@keyframes mobile-toast-in{from{opacity:0}to{opacity:1}}
+@keyframes mobile-toast-out{from{opacity:1}to{opacity:0}}
+#notice[data-phase=enter]{animation:mobile-toast-in 240ms var(--ease-enter) both}
+#notice[data-phase=exit]{animation:mobile-toast-out 240ms var(--ease-exit) both;pointer-events:none}
 .ui-checkbox-control{position:relative;display:inline-grid;place-items:center;width:20px;height:20px;flex:0 0 20px;line-height:0}
 .ui-checkbox-control>input[type=checkbox]{position:absolute;inset:0;z-index:1;appearance:none;opacity:0;width:20px;height:20px;min-height:20px;margin:0;padding:0;cursor:pointer}
 .ui-checkbox-control>svg{width:20px;height:20px;overflow:visible;pointer-events:none}

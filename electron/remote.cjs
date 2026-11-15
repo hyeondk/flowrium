@@ -523,6 +523,7 @@ function registerRemote(
       "/": "index.html",
       "/app.js": "app.js",
       "/navigation.js": "navigation.js",
+      "/confirmation.js": "confirmation.js",
       "/chatgpt.svg": "chatgpt.svg",
       "/mobile-shell.css": "mobile-shell.css",
       "/model-display.js": "model-display.js",

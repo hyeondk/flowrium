@@ -4,7 +4,7 @@
 
 [다운로드](https://hyeondk.github.io/flowrium/), [릴리스와 설치 파일](https://github.com/hyeondk/flowrium/releases), [터미널 설치](docs/TERMINAL-INSTALL.md), [기능별 지원 범위](docs/FEATURES.md), [Codex 대화 연결](docs/CODEX-CHAT-LINK.md), [사용 범위와 전환 상태](docs/REPLACEMENT-STATUS.md)
 
-**261115_07**에서는 직전 답변에 제안된 다음 작업을 먼저 선택할 수 있습니다. 모델이 추가 추천을 작성하는 동안에도 초안을 편집할 수 있습니다. 휴대폰에서는 오늘 할 일과 작업 상태를 보고 해당 대화를 열 수 있습니다. [변경점](docs/release-notes.md) / [검증 기록](docs/VALIDATION-261115_07.md)
+**261115_08**에서는 휴대폰에서 자료를 처음 불러올 때 화면의 윤곽을 먼저 보여 줍니다. 작업 중단과 예약 취소는 화면 아래에서 확인하고, 처리 결과는 하단 메뉴 위에 잠시 나타납니다. [변경점](docs/release-notes.md) / [검증 기록](docs/VALIDATION-261115_08.md)
 
 ![예시 프로젝트로 촬영한 실제 대시보드. 오늘의 할 일과 목표 진척, 최근 7일 업무 그래프를 표시합니다.](docs/workspace.png)
 
