@@ -111,7 +111,7 @@ async function refreshNative(runtime, session, cwd, context, thread) {
     }
     guardSession(runtime, session, id, context);
     const merged=mergeNative(session.messages,incoming);
-    const title = snapshot.thread.name?.trim().slice(0,300) || session.title;
+    const title = session.pendingThreadName || snapshot.thread.name?.trim().slice(0,300) || session.title;
     if(title===session.title && JSON.stringify(merged)===JSON.stringify(session.messages))return {sync:'current'};
     const oldMessages = session.messages, oldDate = session.updatedAt, oldTitle = session.title;
     session.title = title;
@@ -302,15 +302,70 @@ async function listingTitles(runtime, context) {
   return Object.fromEntries(sessions.map(session=>[session.id,session.title]));
 }
 
-async function rename(runtime, session, name) {
-  if (!session.threadId || session.codexLink?.mode === 'copy' || !session.codexLink && !session.desktopThread) return;
-  if (!runtime) throw Error('Codex 연결을 확인한 뒤 대화 이름을 다시 저장해 주세요.');
-  const context = await runtime.ready(true), id = session.threadId;
-  const cwd = await connection(runtime,session,context);
-  await D.readThread(runtime.client,id,cwd);
-  guardSession(runtime,session,id,context);
-  await runtime.client.request('thread/name/set',{threadId:id,name});
-  guardSession(runtime,session,id,context);
+// Native startup titles and explicit edits must arrive at Codex in the same order.
+const titleWrites = new WeakMap();
+function writeTitle(session, action) {
+  const previous = titleWrites.get(session);
+  const next = (previous || Promise.resolve()).catch(() => {}).then(action);
+  titleWrites.set(session, next);
+  return next.finally(() => { if (titleWrites.get(session) === next) titleWrites.delete(session); });
 }
 
-module.exports = { liveTurn, liveView, probe, bindNative, sync, openDesktop, mergeNative, listingTitles, rename };
+function flushInitialTitle(session, client, threadId, allowed) {
+  return writeTitle(session, async () => {
+    const name = session.pendingThreadName;
+    if (!name || session.desktopThread?.threadId !== threadId || !allowed()) return;
+    await client.request('thread/name/set', {threadId, name});
+    if (session.pendingThreadName === name && allowed()) delete session.pendingThreadName;
+  });
+}
+
+function rename(controller, session, name) {
+  return writeTitle(session, async () => {
+    if (controller.store.session(session.id) !== session || controller.editingSessions.has(session.id))
+      throw Error('대화 편집을 마친 뒤 이름을 다시 저장해 주세요.');
+    const runtime = controller.codexTransfer;
+    const shared = session.codexLink?.mode !== 'copy';
+    const run = controller.runs?.get(session.id);
+    const starting = !session.codexLink && run?.creatingThread && !run.turnId;
+    if (starting && (run.ownerRevision !== (controller.options?.queueOwner?.() ?? 'local') ||
+        session.desktopThread && session.desktopThread.ownerHash !== runtime?.owner()))
+      throw Error('이 대화를 시작한 계정으로 로그인해 주세요.');
+    const linked = shared && !starting && Boolean(session.codexLink || session.desktopThread);
+    if (linked) {
+      if (!runtime) throw Error('Codex 연결을 확인한 뒤 대화 이름을 다시 저장해 주세요.');
+      const context = await runtime.ready(true);
+      if (!session.threadId && session.codexLink?.mode === 'linked') {
+        const link = session.codexLink;
+        require('./codex-transfer-link.cjs').validateLink(link);
+        if (link.ownerHash !== context.owner || link.deviceHash !== await runtime.device())
+          throw Error('이 대화를 연결한 계정과 기기를 확인해 주세요.');
+        await runtime.resolveLinkedThread(session, runtime.store.project(session.projectId), context);
+      }
+      const id = session.threadId;
+      const cwd = await connection(runtime, session, context);
+      await D.readThread(runtime.client, id, cwd);
+      guardSession(runtime, session, id, context);
+      await runtime.client.request('thread/name/set', {threadId:id, name});
+      guardSession(runtime, session, id, context);
+    }
+    const previous = session.title, pending = session.pendingThreadName;
+    session.title = name;
+    if (shared && !linked) session.pendingThreadName = name;
+    else delete session.pendingThreadName;
+    try {
+      await controller.store.save();
+    } catch (error) {
+      if (session.title === name) {
+        session.title = previous;
+        if (pending !== undefined) session.pendingThreadName = pending;
+        else delete session.pendingThreadName;
+      }
+      throw error;
+    }
+    controller.emitEvent?.({type:'session',sessionId:session.id,session:structuredClone(session)});
+    return structuredClone(session);
+  });
+}
+
+module.exports = { liveTurn, liveView, probe, bindNative, sync, openDesktop, mergeNative, listingTitles, rename, flushInitialTitle };

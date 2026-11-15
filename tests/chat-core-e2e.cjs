@@ -29,6 +29,12 @@ async function main(){
   await until(async()=>await button('작업 보내기').isVisible());
   await input().fill('대기검증');await input().press('Enter');await button('작업 중지').waitFor();
   await input().fill('후속 지시');await button('추가 지시 대기열에 넣기').click();await page.locator('.chat-queue-panel').getByText('후속 지시',{exact:true}).waitFor();
+  await button('대화 관리').click();
+  assert(await page.getByLabel('대화 이름',{exact:true}).isEnabled());
+  await page.getByLabel('대화 이름',{exact:true}).fill('실행 중 이름 입력');
+  assert(await button('이름 저장').isEnabled());
+  assert(await button('여기까지 새 대화로 분기').isDisabled());
+  await page.getByRole('dialog',{name:'대화 관리'}).getByRole('button',{name:'닫기',exact:true}).click();
   await input().fill('취소할 추가 지시');await button('추가 지시 대기열에 넣기').click();const row=page.locator('.chat-queue-panel > div').filter({hasText:'취소할 추가 지시'});await row.getByRole('button',{name:'대기 취소',exact:true}).click();
   await button('작업 중지').click();
   await until(async()=>{const s=(await snapshot()).sessions.find(s=>s.id===session.id);return s.queuedMessages.some(q=>q.text==='후속 지시'&&q.status==='sent')&&s.messages.filter(m=>m.role==='assistant').length===2;});

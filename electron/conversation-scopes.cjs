@@ -134,6 +134,7 @@ async function startScopedRun(controller,run,input,message,project){
  const guidance=instructions[session.scope]+(run.requestPages?'\n현재 긴 요청의 원문을 읽을 때는 전용 도구 flowrium_read_current_request를 사용하세요. 이 도구는 사용자가 이번에 입력한 글만 반환합니다.':'');
  const turn=await client.request('turn/start',{threadId:run.threadId,clientUserMessageId:run.userMessageId,approvalPolicy:'never',approvalsReviewer:'user',permissions:params.permissions,cwd:params.cwd,model,effort:input.effort,additionalContext:{flowrium_app:{kind:'application',value:'한국어로 답변해 주세요.\n'+guidance+'\n'+require('./chat-preferences.cjs').instructions(prefs)+(run.replyFollowupHint||'')},...((context||previous||attachmentText)&&{flowrium_work:{kind:'untrusted',value:[context,previous,attachmentText].filter(Boolean).join('\n\n')}})},input:[{type:'text',text:message},...run.attachments.filter(a=>a.image).map(a=>({type:'localImage',path:a.path}))]});
  if(!turn.turn?.id)throw Error('ChatGPT 응답을 시작하지 못했습니다.');run.turnId=turn.turn.id;
+ await controller.applyInitialTitle(run,session,client);
  const sent=session.messages.find(m=>m.id===run.userMessageId);if(sent)sent.turnId=run.turnId;await controller.store.save();
  if(run.cancelled&&!run.finalized)await client.request('turn/interrupt',{threadId:run.threadId,turnId:run.turnId});
 }

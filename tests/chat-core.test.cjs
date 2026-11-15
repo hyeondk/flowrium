@@ -90,3 +90,47 @@ test('같은 턴에서 추가한 지시마다 답변 조각을 합치고 자동 
   assert.equal(result[1].reaction,'like');assert.deepEqual(merge(result,remote),result);
  }
 });
+
+test('이름 저장 실패 시 그사이 도착한 답변과 대기 지시를 유지한다', async () => {
+  const {rename} = require('../electron/chat-sync.cjs');
+  const session = {id:'local', title:'이전 이름', messages:[], queuedMessages:[]};
+  const started = Promise.withResolvers(), done = Promise.withResolvers();
+  const controller = {
+    editingSessions:new Set(), store:{session:()=>session, save:()=>{started.resolve();return done.promise;}}
+  };
+  const change = rename(controller, session, '변경한 이름');
+  await started.promise;
+  session.messages.push({role:'assistant',text:'늦게 도착한 답변'});
+  session.queuedMessages.push({id:'queue',status:'queued'});
+  done.reject(Error('디스크 저장 실패'));
+  await assert.rejects(change, /저장 실패/);
+  assert.equal(session.title, '이전 이름');
+  assert.equal(session.pendingThreadName, undefined);
+  assert.equal(session.messages[0].text, '늦게 도착한 답변');
+  assert.equal(session.queuedMessages[0].status, 'queued');
+});
+
+test('첫 자동 이름의 전송이 지연되어도 사용자가 이어 저장한 마지막 이름이 로컬과 원본에 남는다', async t => {
+  const {flushInitialTitle,rename} = require('../electron/chat-sync.cjs');
+  const {store,project,session:copy} = await fixture(t), session=store.session(copy.id);
+  const threadId = require('node:crypto').randomUUID();
+  const owner = 'a'.repeat(64);
+  session.threadId=threadId; session.desktopThread={threadId,ownerHash:owner,cwd:project.path};
+  session.title='첫 요청'; session.pendingThreadName=session.title;
+  const started=Promise.withResolvers(), done=Promise.withResolvers(), writes=[];
+  const client={request:async(method,params)=>{
+    if(method==='thread/read')return {thread:{id:threadId,cwd:project.path}};
+    assert.equal(method,'thread/name/set');
+    if(params.name==='첫 요청'){started.resolve();await done.promise;}
+    writes.push(params.name);
+  }};
+  const controller={store,editingSessions:new Set(),codexTransfer:{store,client,ready:async()=>({owner}),guard:()=>{}}};
+  const automatic=flushInitialTitle(session,client,threadId,()=>true);
+  await started.promise;
+  const first=rename(controller,session,'새 이름'), latest=rename(controller,session,'마지막 이름');
+  done.resolve();
+  await Promise.all([automatic,first,latest]);
+  assert.deepEqual(writes,['첫 요청','새 이름','마지막 이름']);
+  assert.equal(session.title,'마지막 이름');
+  assert.equal(session.pendingThreadName,undefined);
+});

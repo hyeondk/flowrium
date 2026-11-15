@@ -71,6 +71,9 @@ async function main() {
     controller=new Controller(store,{client:primary,canRun:()=>true});
     runtime=new CodexTransfer(store,controller,{readClient:reader,accountOwner:()=> 'synthetic',canRun:()=>true});
     await controller.connect();
+    const operations = {};
+    const register=(name,method)=>{operations[name]=method;};
+    require('../electron/conversation-tools.cjs').registerConversationTools(register,controller);
     async function send(text) {
       const done=onceEvent(controller,'event',e=>e.type==='done'&&e.sessionId===session.id);
       await controller.send({sessionId:session.id,text,mode:'plan'});assert.equal((await done).status,'completed');
@@ -125,6 +128,9 @@ async function main() {
       await started.promise;
       const active=controller.runs.get(session.id);
       assert(active.turnId);
+      await operations.editConversation(session.id,{action:'rename',title:'실행 중 바꾼 제목'});
+      assert.equal((await reader.request('thread/read',{threadId:id,includeTurns:false})).thread.name,'실행 중 바꾼 제목');
+      assert.equal(controller.runs.get(session.id).turnId,active.turnId);
       const result=await controller.send({sessionId:session.id,mode:'plan',text:'현재 작업에 추가한 지시',delivery:'steer'});
       assert(result.steered && !result.queued);
       assert.equal(live.messages.at(-1).turnId,active.turnId);
@@ -134,9 +140,6 @@ async function main() {
     assert(updated.messages.some(m=>m.text==='현재 작업에 추가한 지시'));
     console.log('상대 앱 종료 상태 / 독립 내장 Codex 실행 / 현재 작업에 추가 지시 / 같은 원본 기록으로 수신 확인');
     await desktop.start();
-    const operations = {};
-    const register=(name,method)=>{operations[name]=method;};
-    require('../electron/conversation-tools.cjs').registerConversationTools(register,controller);
     const portfolio=require('../electron/portfolio.cjs').registerPortfolio(register,store,{getRuntime:()=>runtime});
     runtime.options.syncProjectNames=portfolio.syncProjectNames;
     await operations.editConversation(session.id,{action:'rename',title:'이름 변경 왕복'});
@@ -166,6 +169,24 @@ async function main() {
     assert.equal(desktopBlank.name,'첫 실행 전에 정한 제목');
     assert.equal(desktopBlank.projectId,firstRemote.id);
     assert.equal(named.title,'첫 실행 전에 정한 제목');
+    const startingSession=await store.createSession(project.id);
+    const opening=Promise.withResolvers(), advance=Promise.withResolvers();
+    const previousRequest=primary.request;
+    primary.request=async function(method,...args){
+      if(method==='turn/start'){opening.resolve();await advance.promise;}
+      return previousRequest.call(this,method,...args);
+    };
+    const openingDone=onceEvent(controller,'event',e=>e.type==='done'&&e.sessionId===startingSession.id);
+    try{
+      await controller.send({sessionId:startingSession.id,text:'처음 생성한 대화',mode:'plan'});
+      await opening.promise;
+      const namedEarly=await operations.editConversation(startingSession.id,{action:'rename',title:'첫 작업 시작 중 정한 제목'});
+      assert.equal(namedEarly.pendingThreadName,'첫 작업 시작 중 정한 제목');
+    }finally{primary.request=previousRequest;advance.resolve();}
+    assert.equal((await openingDone).status,'completed');
+    const latestStart=store.session(startingSession.id);
+    assert.equal((await desktop.request('thread/read',{threadId:latestStart.threadId,includeTurns:false})).thread.name,'첫 작업 시작 중 정한 제목');
+    assert.equal(latestStart.pendingThreadName,undefined);
     const moved=await operations.portfolioAction({action:'move',id:secondProject.id,target:project.id,sync:true});
     assert.deepEqual(moved.order,[secondProject.id,project.id]);
     assert.equal((await desktop.request('project/list',{sortKey:'position'})).data[0].id,secondRemote.id);
@@ -264,6 +285,10 @@ async function main() {
     assert(queued.queued && queued.waitingForWriter);
     assert(!controller.runs.has(shared.id));
     assert(!shared.messages.some(m=>m.text===draft.text));
+    await operations.editConversation(shared.id,{action:'rename',title:'대기 중 바꾼 제목'});
+    assert.equal((await desktop.request('thread/read',{threadId:source,includeTurns:false})).thread.name,'대기 중 바꾼 제목');
+    assert.equal(shared.queuedMessages.find(q=>q.id===queued.queueId).status,'queued');
+    assert.equal(requests,beforeCount);
     const cancelled=await controller.send({...draft,text:'취소한 요청'});
     await controller.cancelQueuedMessage(shared.id,cancelled.queueId);
     await controller.shutdown();await runtime.shutdown();

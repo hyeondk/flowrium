@@ -319,6 +319,7 @@ class Controller extends EventEmitter {
       attachments,
       sessionId: session.id,
       threadId: session.threadId,
+      creatingThread: !session.threadId,
       turnId: null,
       items: new Map(),
       itemOrder: [],
@@ -372,16 +373,17 @@ class Controller extends EventEmitter {
         .slice(0, 42)
         .join("");
     const generatedName=!!this.codexTransfer?.bindNative && !session.pendingThreadName && !session.threadId && !session.codexLink && !session.sourceThreadId && session.messages.filter(m=>m.role==='user').length===1;
-    if(generatedName)session.pendingThreadName=session.title;
+    const sentTitle=session.title;
+    if(generatedName)session.pendingThreadName=sentTitle;
     session.updatedAt = new Date().toISOString();
     try {
       await this.store.save();
     } catch (error) {
-      if(generatedName)delete session.pendingThreadName;
+      if(generatedName && session.pendingThreadName === sentTitle)delete session.pendingThreadName;
       session.messages = session.messages.filter(
         (item) => item.id !== userMessage.id,
       );
-      session.title = previous.title;
+      if(session.title===sentTitle && !session.pendingThreadName)session.title = previous.title;
       session.updatedAt = previous.updatedAt;
       this.runs.delete(session.id);
       await run.releaseClient?.();
@@ -422,6 +424,12 @@ class Controller extends EventEmitter {
       if(!run.turnId)throw Error("Codex가 대기 지시의 수신을 확인하기 전에 작업이 종료됐습니다.");
     }else void starting.catch(()=>{});
     return { accepted: true };
+  }
+  async applyInitialTitle(run,session,client) {
+    if (!session.pendingThreadName || session.desktopThread?.threadId !== run.threadId) return;
+    try {
+      await require('./chat-sync.cjs').flushInitialTitle(session,client,run.threadId,()=>run.ownerRevision===(this.options.queueOwner?.()??'local'));
+    } catch { /* The completion handler retries after the thread is persisted. */ }
   }
   async prepareProjectRun(run,input,project) {
     const linked=this.store.session(run.sessionId).codexLink?.mode==='linked';
@@ -503,12 +511,6 @@ class Controller extends EventEmitter {
     if (run.cancelled || run.finalized) return this.finish(run, "interrupted");
     const currentSession = this.store.session(run.sessionId);
     this.codexTransfer?.bindNative?.(currentSession, run.threadId, cwd);
-    if (currentSession.pendingThreadName && currentSession.desktopThread?.threadId === run.threadId) {
-      try {
-        await client.request('thread/name/set',{threadId:run.threadId,name:currentSession.pendingThreadName});
-        delete currentSession.pendingThreadName;
-      } catch { /* Retry after the first turn makes the thread persistent. */ }
-    }
     const memory = linked ? "" : await require("./memory.cjs").memoryContext(this.store, currentSession);
     const assistant = !linked && currentSession.personalAssistant ? "이 대화는 사용자가 지정한 개인 비서 대화입니다. 현재 요청에 직접 답하고 명시한 범위에서만 업무를 진행하세요.\n" : "";
     const workContext = !linked && currentSession.workflow
@@ -553,6 +555,7 @@ class Controller extends EventEmitter {
     });
     if (!turn.turn?.id) throw new Error("Codex 작업을 시작하지 못했습니다.");
     run.turnId = turn.turn.id;
+    await this.applyInitialTitle(run,currentSession,client);
     const sent=this.store.session(run.sessionId).messages.find(m=>m.id===run.userMessageId);
     if(sent)sent.turnId=run.turnId;
     await this.store.save();
@@ -828,8 +831,7 @@ class Controller extends EventEmitter {
         else if (session.desktopThread?.threadId === run.threadId && run.threadId && client.ready) {
           if (session.pendingThreadName && run.ownerRevision === (this.options.queueOwner?.() ?? 'local')) {
             try {
-              await client.request('thread/name/set',{threadId:run.threadId,name:session.pendingThreadName});
-              delete session.pendingThreadName;
+              await require('./chat-sync.cjs').flushInitialTitle(session,client,run.threadId,()=>run.ownerRevision===(this.options.queueOwner?.()??'local'));
               await this.store.save();
             } catch (error) { this.emitEvent({type:'error',sessionId:session.id,text:'Codex에서 대화 이름을 반영하지 못했습니다. 대화 관리에서 이름을 다시 저장해 주세요.'}); }
           }

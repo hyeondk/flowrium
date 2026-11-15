@@ -39,6 +39,7 @@ function registerConversationTools(register,controller) {
  register('editConversation',async(id,input)=>{
   if(controller.codexTransfer?.isBusy())throw Error('대화 연결 작업을 마친 뒤 대화를 편집해 주세요.');
   const session=store.session(text(id,'대화 식별자',100));
+  if (input?.action === 'rename') return require('./chat-sync.cjs').rename(controller,session,text(input.title,'대화 이름',300));
   if (input?.action === 'model') {
     if (editing.has(id)) throw Error('대화 설정을 저장하는 중입니다.');
     const model = input.model === '' ? undefined : text(input.model, '대화 모델', 300);
@@ -92,13 +93,6 @@ function registerConversationTools(register,controller) {
     return result;
    }
    if(input?.action==='preferences')session.preferences=require('./chat-preferences.cjs').preferences(input.preferences);
-   else if(input?.action==='rename'){
-    const name = text(input.title,'대화 이름',300);
-    await require('./chat-sync.cjs').rename(controller.codexTransfer,session,name);
-    session.title = name;
-    if (!session.codexLink && (!session.threadId || !session.desktopThread)) session.pendingThreadName = name;
-    else delete session.pendingThreadName;
-   }
    else if(input?.action==='rewind'&&index>=0&&session.messages[index].role==='user'){
     const {turns,client}=await prepare(controller,session),target=session.messages[index];
     const draftText=target.sourceOnly?(await require("./chat-long-request.cjs").readRequestSource(store,id,target.id,"full")).text:target.text;
