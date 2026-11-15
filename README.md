@@ -4,7 +4,7 @@
 
 [다운로드](https://hyeondk.github.io/flowrium/), [릴리스와 설치 파일](https://github.com/hyeondk/flowrium/releases), [터미널 설치](docs/TERMINAL-INSTALL.md), [기능별 지원 범위](docs/FEATURES.md), [Codex 대화 연결](docs/CODEX-CHAT-LINK.md), [사용 범위와 전환 상태](docs/REPLACEMENT-STATUS.md)
 
-**261116_02**에서는 긴 기존 대화를 이어 쓸 때 기록을 나눠 읽습니다. 입력창에서 작성 중인 서식을 바로 확인하고, 작업 과정 원문도 대화 폭에 맞춰 읽을 수 있습니다. [변경점](docs/release-notes.md)
+**261116_03**에서는 같은 기기의 Codex와 Flowrium에서 연결된 대화의 요청과 답변을 주고받습니다. Codex에서 열어 둔 대화에 짧은 글을 이어 보내려면 Flowrium에서 **추가 지시 → Codex 대화 설정으로 보내기**를 선택하세요. 원래 대화가 작업 중이면 끝난 뒤 한 번 실행합니다. [변경점](docs/release-notes.md)
 
 ![예시 프로젝트로 촬영한 실제 대시보드. 오늘의 할 일과 목표 진척, 최근 7일 업무 그래프를 표시합니다.](docs/workspace.png)
 
