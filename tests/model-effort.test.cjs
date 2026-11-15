@@ -2,6 +2,28 @@ const test=require('node:test'),assert=require('node:assert/strict'),{CodexClien
 const catalog=[{model:'model-none',supportedReasoningEfforts:[{reasoningEffort:'none'}],defaultReasoningEffort:'none'},{model:'model-deep',isDefault:true,supportedReasoningEfforts:[{reasoningEffort:'low'},{reasoningEffort:'high'}],defaultReasoningEffort:'low'},{model:'model-empty',supportedReasoningEfforts:[]},{model:'model-missing'}];
 test('서버 model과 id가 다르면 어느 식별자로 요청해도 같은 지원 정보를 찾는다',()=>{const rows=[null,{model:'runtime-name',id:'catalog-id',supportedReasoningEfforts:[{reasoningEffort:'none'}],defaultReasoningEffort:'none'}];assert.equal(supportedEffort('high','runtime-name',rows),'none');assert.equal(supportedEffort('high','catalog-id',rows),'none');});
 function client(options={}){const c=new CodexClient(options),wire=[];c._write=request=>{wire.push(request);setImmediate(()=>{const result=request.method==='model/list'?{data:catalog}:request.method.startsWith('thread/')?{thread:{id:request.params.threadId||'thread'},model:request.params.model||'model-deep'}:{turn:{id:'turn',status:'inProgress'}};c._message({id:request.id,result});});};return{c,wire};}
+test('추천은 같은 계정의 최근 모델 목록으로 최저 지원 강도를 선택하고 재조회하지 않는다',async()=>{
+ const {c,wire}=client({queueOwner:()=>4});
+ const fresh={modelCatalog:{owner:4,at:Date.now(),data:[{model:'selected',defaultReasoningEffort:'high',supportedReasoningEfforts:['high','low','minimal'].map(reasoningEffort=>({reasoningEffort}))}]}};
+ await c.prepareAnalysisCatalog(fresh);
+ await c.request('turn/start',{threadId:'analysis',model:'selected',effort:'lowest-supported'});
+ assert.deepEqual(wire.map(request=>request.method),['turn/start']);
+ assert.equal(wire[0].params.effort,'minimal');
+});
+test('만료되거나 다른 계정의 목록은 한 번 새로 조회하고 실패할 때는 서버 기본 강도로 시작한다',async()=>{
+ for(const [owner,at] of [[1,Date.now()],[2,Date.now()-600000]]){
+  const {c,wire}=client({queueOwner:()=>2});
+  const original=c._write;
+  c._write=req=>{
+   if(req.method!=='model/list')return original(req);
+   wire.push(req);setImmediate(()=>c._message({id:req.id,error:{message:'목록 조회 실패'}}));
+  };
+  await c.prepareAnalysisCatalog({modelCatalog:{owner,at,data:catalog}});
+  await c.request('turn/start',{threadId:'analysis',model:'model-deep',effort:'lowest-supported'});
+  assert.deepEqual(wire.map(request=>request.method),['model/list','turn/start']);
+  assert(!Object.hasOwn(wire[1].params,'effort'));
+ }
+});
 test('이전 강도는 실제 지원 목록과 기본값으로 정규화하고 none은 보존한다',()=>{assert.equal(supportedEffort('high','model-none',catalog),'none');assert.equal(supportedEffort('none','model-none',catalog),'none');assert.equal(supportedEffort('ultra','model-deep',catalog),'low');assert.equal(supportedEffort('high','model-deep',catalog),'high');for(const id of ['unknown','model-empty','model-missing'])assert.equal(supportedEffort('high',id,catalog),undefined);assert.equal(supportedEffort('ultra',undefined,catalog),'low');});
 test('연결 목록을 재사용하며 normal·scope·analysis 클라이언트 모두 실제 turn 경계에서 정규화한다',async()=>{for(const route of ['normal','scope','analysis']){const {c,wire}=client();await c.request('model/list',{limit:100});await c.request('thread/start',{model:'model-none'});await c.request('turn/start',{threadId:'thread',effort:'high',label:route});assert.equal(wire.find(row=>row.method==='turn/start').params.effort,'none');assert.equal(wire.filter(row=>row.method==='model/list').length,1);}});
 test('모델을 바꾸거나 기본 모델을 쓰더라도 오래된 강도를 그대로 보내지 않는다',async()=>{const {c,wire}=client();await c.request('thread/start',{model:'model-deep'});await c.request('turn/start',{threadId:'thread',model:'model-none',effort:'high'});await c.request('turn/start',{threadId:'thread',effort:'ultra'});await c.request('thread/start',{});await c.request('turn/start',{threadId:'thread',effort:'ultra'});const turns=wire.filter(row=>row.method==='turn/start');assert.equal(turns[0].params.effort,'none');assert.equal(turns[1].params.effort,'none');assert.equal(turns[2].params.effort,'low');});

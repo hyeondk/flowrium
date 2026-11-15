@@ -1,5 +1,12 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),{randomUUID}=require('node:crypto');
 const {Store}=require('../electron/store.cjs'),{suggest,continueConversation}=require('../electron/chat-continuation.cjs');
+test('새 답변의 선택적 후속 제안은 일반 대화와 프로젝트 대화에만 적용하고 원본·산출물·거부를 존중한다',()=>{
+ const {replyFollowupHint}=require('../electron/chat-continuation.cjs');
+ const text='기존 준비 결과와 남은 검토 항목을 살펴봐 주세요.';
+ for(const session of [{},{scope:'general'}])assert.match(replyFollowupHint(session,text),/미완료 작업/);
+ for(const session of [{scope:'integrated'},{workflow:{kind:'report'}},{codexLink:{mode:'linked'}},{sourceThreadId:'imported'},{personalAssistant:true}])assert.equal(replyFollowupHint(session,text),'');
+ for(const prompt of ['JSON만 써 주세요.','검토 보고서를 만들어 주세요.','이메일 초안을 작성해 주세요.','추가 질문 없이 정리해 주세요.','다음 작업은 묻지 말아 주세요.','결과만 주세요.'])assert.equal(replyFollowupHint({},prompt),'');
+});
 async function fixture(t){const base=path.resolve(__dirname,'../.flowrium-tmp/qa-261115_03');await fs.mkdir(base,{recursive:true});const dir=await fs.mkdtemp(path.join(base,'continuation-'));t.after(()=>fs.rm(dir,{recursive:true,force:true,maxRetries:6,retryDelay:100}));const folder=path.join(dir,'project');await fs.mkdir(folder);const store=new Store(path.join(dir,'profile'));await store.load();const project=await store.addProject(folder),session=store.session((await store.createSession(project.id)).id);session.messages=[{id:randomUUID(),role:'user',text:'검색 기능을 검증해 주세요.',createdAt:new Date().toISOString()},{id:randomUUID(),role:'assistant',text:'검색 결과를 확인했습니다. 회귀 검사도 이어서 진행할까요?',createdAt:new Date().toISOString()}];await store.save();let owner=1,allowed=true,calls=0;const controller={store,options:{queueOwner:()=>owner,canRun:()=>allowed},runs:new Map(),editingSessions:new Set(),messageQueue:{pending:()=>false},runStructuredAnalysis:async()=>({suggestions:[{title:'검색 회귀 검사',prompt:'빈 검색어와 한글 검색어의 회귀 검사를 작성하고 결과를 알려 주세요.',reason:'직전 검색 기능 검증에서 아직 확인하지 않은 입력 경계입니다.'}]}),send:async input=>{calls++;session.messages.push({id:randomUUID(),role:'user',text:input.text,createdAt:new Date().toISOString()});return {accepted:true}}};return {controller,session,input:{sessionId:session.id,messageId:session.messages.at(-1).id},owner:value=>owner=value,allowed:value=>allowed=value,calls:()=>calls};}
 test('실제 대화 근거를 모델에 보내 추천만 돌려주고 실행·저장하지 않는다',async t=>{const f=await fixture(t),before=JSON.stringify(f.session);let prompt;const model=f.controller.runStructuredAnalysis;f.controller.runStructuredAnalysis=async input=>{prompt=input;return model(input)};const result=await suggest(f.controller,f.input);assert.equal(result.source,'model');assert.match(prompt.prompt,/검색 기능/);assert.equal(prompt.schema.properties.suggestions.maxItems,3);assert.equal(result.suggestions.length,1);assert.equal(f.calls(),0);assert.equal(JSON.stringify(f.session),before);});
 test('추천 중복 요청과 늦은 계정 전환 결과는 거절한다',async t=>{const f=await fixture(t);let release;f.controller.runStructuredAnalysis=()=>new Promise(resolve=>release=resolve);const first=suggest(f.controller,f.input);await assert.rejects(suggest(f.controller,f.input),/이미 검토/);f.owner(2);release({suggestions:[]});await assert.rejects(first,/계정 상태/);assert.equal(f.calls(),0);});
@@ -23,7 +30,7 @@ test('추천은 선택한 대화 모델에 짧은 문맥과 가벼운 강도로 
  last.text='최근 답변 시작'+'가'.repeat(12000)+'마지막 남은 일';
  f.session.messages.unshift(...Array.from({length:30},(_,i)=>({role:i%2?'assistant':'user',text:'예전 기록'.repeat(2000)})));
  f.controller.runStructuredAnalysis=async request=>{
-  assert.equal(request.model,'chat-model');assert.equal(request.effort,'low');assert(request.prompt.length<7500);
+  assert.equal(request.model,'chat-model');assert.equal(request.effort,'lowest-supported');assert(request.prompt.length<4500);
   assert(request.prompt.includes('최근 답변 시작') && request.prompt.includes('마지막 남은 일'));
   return {suggestions:[]};
  };

@@ -28,13 +28,15 @@ test('일반 / 통합 대화의 계정별 영속 저장과 실행 범위 격리'
   assert.equal((await attachments.resolveAttachments(store,general.projectId,[attachment.id]))[0].name,'계정별.txt');
   store.session(work.id).messages.push({id:require('node:crypto').randomUUID(),role:'assistant',text:'프로젝트 현황 근거',createdAt:new Date().toISOString()});await store.save();
   const g=store.session(general.id);g.preferences={sandbox:'danger-full-access',networkAccess:true,approval:'on-request',testing:true};
-  await controller.send({sessionId:g.id,text:'일반 질문',mode:'build'});
+  await controller.send({sessionId:g.id,text:'일반 질문',mode:'build'},{fromComposer:true});
   for(let i=0;i<200&&!controller.runs.get(g.id)?.turnId;i++)await new Promise(r=>setTimeout(r,10));
   const run=controller.runs.get(g.id);assert(run?.turnId);assert.equal(externalCalls,0);assert.equal(scoped.length,1);
   client.emit('tool',{requestId:'다른 연결의 실행 도구',params:{threadId:run.threadId,turnId:run.turnId,tool:'danger',arguments:{}}});await new Promise(resolve=>setImmediate(resolve));assert.equal(client.lastToolAnswer.result.success,false);assert.equal(externalCalls,0);
   const start=scoped[0].calls.find(c=>c.method==='thread/start').params,turn=scoped[0].calls.find(c=>c.method==='turn/start').params;
   assert.equal(start.permissions,'flowrium_hub_general');assert.equal(start.approvalPolicy,'never');assert(!start.dynamicTools);assert(!start.sandbox);assert.equal(turn.permissions,start.permissions);assert(!turn.sandboxPolicy);assert.equal(start.config.permissions[start.permissions].network.enabled,false);assert.equal(start.config.permissions[start.permissions].filesystem[':root'],'deny');assert.equal(scoped[0].overrides['features.shell_tool'],false);assert.equal(scoped[0].overrides['mcp_servers."example".enabled'],false);
   assert(!JSON.stringify(turn.input).includes('프로젝트 현황 근거'));assert(!JSON.stringify(turn.input).includes(original));
+  assert.match(turn.additionalContext.flowrium_app.value,/미완료 작업/);
+  assert(!JSON.stringify(start).includes('미완료 작업'));assert(!JSON.stringify(turn.input).includes('미완료 작업'));
   await assert.rejects(callScopeTool(controller,run,{tool:'flowrium_hub_snapshot',arguments:{query:''}}),/일반 대화/);
   await controller.finish(run,'completed');
   const loaded=new Store(path.join(temp,'app'));await loaded.load();loaded.conversations.getOwner=()=>owner;await loaded.syncConversationOwner();assert.equal(loaded.session(g.id).threadId,g.threadId);assert.equal(loaded.session(g.id).messages[0].text,'일반 질문');

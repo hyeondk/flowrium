@@ -245,6 +245,23 @@ class CodexClient extends EventEmitter {
     return result;
   }
   clearModelCatalog(){this.catalogEpoch++;this.modelCatalog=null;this.modelCatalogFlight=null;this.threadModels.clear();}
+  async prepareAnalysisCatalog(source) {
+    const owner = this.options.queueOwner?.() ?? 'local';
+    const epoch = this.catalogEpoch;
+    const cached = source?.modelCatalog;
+    if (cached && cached.owner === owner && Date.now() - cached.at <= 300000) {
+      this.modelCatalog = cached;
+      return;
+    }
+    try {
+      await this.request('model/list', {limit:100, includeHidden:false}, 5000);
+    } catch {
+      // 이 클라이언트는 한 번만 쓴다. 조회가 실패하면 지원 강도의 결정은 서버에 맡긴다.
+      if (epoch === this.catalogEpoch && owner === (this.options.queueOwner?.() ?? 'local')) {
+        this.modelCatalog = {owner, at:Date.now(), data:[]};
+      }
+    }
+  }
   async normalizedTurn(params,timeout){
     const epoch=this.catalogEpoch,owner=this.options.queueOwner?.()??'local',current=this.options.captureTurnGuard?.(params)||(()=>true);
     if(this.options.canRun?.()===false||!current())throw Error('계정이나 작업 상태가 바뀌었습니다.');

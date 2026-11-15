@@ -5,6 +5,7 @@ import type {FollowupSuggestions} from '../shared/chat-continuation';
 import {awaitsContinuation} from '../shared/execution-state';
 import ResizableComposerInput from './ResizableComposerInput';
 import {MotionOverlay} from './ui-motion';
+import {followupFromAnswer, type DisplaySuggestion} from './answer-followup';
 import './chat-continuation.css';
 
 export type SuggestionCache = Map<string, Promise<FollowupSuggestions>>;
@@ -45,14 +46,15 @@ export default function ChatContinuation({
   const waiting = Boolean(session && awaitsContinuation(session));
   const [focused, setFocused] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const displayedPreview = useRef<FollowupSuggestions['suggestions'][number] | undefined>(undefined);
+  const displayedPreview = useRef<DisplaySuggestion | undefined>(undefined);
   useEffect(() => { if (!active) setPreviewOpen(false); }, [active]);
   const [loading, setLoading] = useState(false);
   const [action, setAction] = useState<'continue'|'complete'|null>(null);
   const [error, setError] = useState('');
-  const [rows, setRows] = useState<FollowupSuggestions['suggestions']>();
+  const [rows, setRows] = useState<DisplaySuggestion[]>();
   const [index, setIndex] = useState(0);
   const revision = useRef(0);
+  const suggestionAttempt = useRef(0);
   const flight = useRef(false);
   const continuingFlight = useRef(false);
   const attempted = useRef(false);
@@ -90,21 +92,41 @@ export default function ChatContinuation({
   const recommend = useCallback(async () => {
     if (!messageId || !sessionId || !authenticated || !active || busy || flight.current) return;
     const current = revision.current;
+    const attempt = ++suggestionAttempt.current;
+    const isCurrent = () => current === revision.current && attempt === suggestionAttempt.current;
     flight.current = true;
     attempted.current = true;
     setLoading(true); setError('');
+    const text = last?.text || '';
+    let quoted: DisplaySuggestion | undefined;
+    // Give an already-prepared model response priority. If it takes longer,
+    // keep the previous answer's own offer usable while the model is working.
+    const timer = window.setTimeout(() => {
+      if (!isCurrent()) return;
+      quoted = followupFromAnswer(text);
+      if (quoted) { setRows([quoted]); setIndex(0); }
+    }, 1000);
     try {
       const value = await requestSuggestions();
-      if (current !== revision.current) return;
+      if (!isCurrent()) return;
       if (value.source !== 'model' || value.sessionId !== sessionId || value.messageId !== messageId || !Array.isArray(value.suggestions))
         throw Error('추천 결과와 현재 대화가 일치하지 않습니다.');
-      setRows(value.suggestions); setIndex(0);
+      const generated = value.suggestions.map(row => ({...row, source:'model' as const}));
+      const first = quoted || (!generated.length ? followupFromAnswer(text) : undefined);
+      setRows(first ? [first, ...generated.filter(row => row.prompt !== first.prompt)] : generated);
     } catch (error) {
-      if (current === revision.current) setError(errorText(error));
+      if (isCurrent()) {
+        const message = errorText(error);
+        const unavailable = /계정|잠금|인증|최신 답변|현재 대화가 일치/.test(message);
+        const first = unavailable ? undefined : quoted || followupFromAnswer(text);
+        setRows(first ? [first] : undefined);
+        setError(first ? '모델의 추가 추천을 가져오지 못했습니다.' : message);
+      }
     } finally {
-      if (current === revision.current) { flight.current = false; setLoading(false); }
+      window.clearTimeout(timer);
+      if (isCurrent()) { flight.current = false; setLoading(false); }
     }
-  }, [messageId, sessionId, authenticated, active, busy, requestSuggestions]);
+  }, [messageId, sessionId, authenticated, active, busy, last?.text, requestSuggestions]);
 
   useEffect(() => {
     if (!focused || draft || attempted.current || !active || !authenticated || busy || !key) return;
@@ -113,7 +135,10 @@ export default function ChatContinuation({
 
   const candidate = rows?.[index];
   const preview = active && authenticated && !draft ? candidate?.prompt : undefined;
-  const dismiss = () => { setRows(undefined); setError(''); };
+  const dismiss = () => {
+    suggestionAttempt.current++; flight.current = false;
+    setRows(undefined); setError(''); setIndex(0); setLoading(false);
+  };
   function accept() {
     if (!candidate || !key || busy || !authenticated) return;
     onChoose(candidate.prompt);
@@ -152,8 +177,8 @@ export default function ChatContinuation({
       <div className="chat-continuation-actions">
         {candidate
           ? <>
-            <button type="button" className="followup-accept" onClick={accept} disabled={busy || !authenticated} title={candidate.reason}
-              aria-label={candidate.title + ' 입력창에 추가'}><Sparkles size={13}/><span>{candidate.title}</span>{preview && <kbd>Tab</kbd>}</button>
+            <button type="button" className="followup-accept" data-source={candidate.source} onClick={accept} disabled={busy || !authenticated} title={candidate.reason}
+              aria-label={candidate.title + ' 입력창에 추가'}><Sparkles size={13}/>{candidate.source==='conversation' && <small>직전 답변</small>}<span>{candidate.title}</span>{preview && <kbd>Tab</kbd>}</button>
             <button type="button" className="followup-preview" aria-label="추천 전문 보기" title="추천 전문 보기"
               aria-haspopup="dialog" onClick={() => {displayedPreview.current = candidate; setPreviewOpen(true);}}><Expand size={13}/></button>
             {rows && rows.length > 1 && <button type="button" className="followup-cycle" aria-label="다른 추천 보기"
@@ -177,6 +202,7 @@ export default function ChatContinuation({
     <MotionOverlay open={Boolean(previewOpen && candidate && active)} label="다음 작업 추천 전문"
       onClose={() => setPreviewOpen(false)} className="followup-preview-dialog">
       <header><h2>{displayedPreview.current?.title}</h2><button className="icon-button" type="button" aria-label="추천 전문 닫기" onClick={() => setPreviewOpen(false)}><X size={16}/></button></header>
+      {displayedPreview.current?.source==='conversation' && <small>직전 답변에서 제안한 작업</small>}
       <p>{displayedPreview.current?.prompt}</p>
       <footer><button type="button" className="button primary" disabled={busy || !authenticated} onClick={() => {setPreviewOpen(false); accept();}}>입력창에 추가</button></footer>
     </MotionOverlay>

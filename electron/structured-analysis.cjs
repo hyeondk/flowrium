@@ -58,11 +58,13 @@ async function runStructuredAnalysis(controller,input){
  try{
   await controller.client.start(controller.store.state.settings.codexPath);
   checkActive();
-  const account=await controller.client.request('account/read',{refreshToken:false});
+  const [account,config]=await Promise.all([
+   controller.client.request('account/read',{refreshToken:false}),
+   controller.client.request('config/read',{includeLayers:false}),
+  ]);
   if(await controller.accountObserved?.(account.account))throw Error('연결 계정이 바뀌었습니다. 분석을 다시 요청해 주세요.');
   if(account.account?.type!=='chatgpt')throw Error('AI 분석에는 본인의 ChatGPT 계정 연결이 필요합니다.');
   checkActive();
-  const config=await controller.client.request('config/read',{includeLayers:false});
   const effort=input.effort||controller.store.state.settings.effort;
   checkActive();
   const overrides=disabledConnections(config.config);
@@ -107,14 +109,16 @@ async function runStructuredAnalysis(controller,input){
     completion.resolve(result);
    }catch{completion.reject(Error('AI 분석 결과의 형식을 확인하지 못했습니다. 다시 요청해 주세요.'));}
   });
-  const started=await client.request('thread/start',{ephemeral:true,cwd:directory,approvalPolicy:'never',permissions:profile,baseInstructions:instructions,developerInstructions:instructions,
+  const thread=client.request('thread/start',{ephemeral:true,cwd:directory,approvalPolicy:'never',permissions:profile,baseInstructions:instructions,developerInstructions:instructions,
    config:{permissions:{[profile]:{filesystem:{':root':'deny',':minimal':'read',':tmpdir':'deny',':slash_tmp':'deny',[directory]:'read'},network:{enabled:false}}},project_doc_max_bytes:0,web_search:'disabled'},
    ...(input.model||controller.store.state.settings.model?{model:input.model||controller.store.state.settings.model}:{})});
+  const catalogSource=controller.options.analysisClientFactory?undefined:controller.client;
+  const [started]=await Promise.all([thread,client.prepareAnalysisCatalog?.(catalogSource)]);
   if(started.activePermissionProfile?.id!==profile)throw Error('분석용 파일 접근 제한을 확인하지 못했습니다.');
   threadId=started.thread?.id;if(!threadId)throw Error('AI 분석 대화를 시작하지 못했습니다.');
   checkActive();
   resetIdle();
-  await client.request('turn/start',{threadId,input:[{type:'text',text:instructions+'\n\n분석할 자료:\n'+input.prompt}],outputSchema:input.schema,approvalPolicy:'never',permissions:profile,...(effort?{effort}:{})});
+  await client.request('turn/start',{threadId,input:[{type:'text',text:input.prompt}],outputSchema:input.schema,approvalPolicy:'never',permissions:profile,...(effort?{effort}:{})});
   return await completion.promise;
  }catch(error){
   // close()가 보류 RPC도 거절하므로 최초 취소 사유를 보존한다.

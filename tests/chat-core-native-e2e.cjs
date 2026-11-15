@@ -35,8 +35,10 @@ async function main(){
   await controller.connect();const handlers=new Map();registerConversationTools((name,fn)=>handlers.set(name,fn),controller);const edit=handlers.get('editConversation');
   const png=require('./chat-fixtures.cjs').png;
   const attachments=await addAttachments(store,project.id,[{name:'검증화면.png',type:'image/png',bytes:png},{name:'근거.txt',type:'text/plain',bytes:Buffer.from('합성 근거')}]);
-  async function send(id,text,extra={}){const completed=done(controller,id);await controller.send({sessionId:id,text,mode:'plan',...extra});await completed;if(failure)throw failure;}
+  async function send(id,text,extra={}){const completed=done(controller,id);await controller.send({sessionId:id,text,mode:'plan',...extra},{fromComposer:true});await completed;if(failure)throw failure;}
   await send(session.id,'원본첫요청',{attachments:attachments.map(a=>a.id)});
+  assert(JSON.stringify(bodies[0].input).includes('미완료 작업'),'일반 프로젝트의 직접 입력 턴에만 후속 후보 작성을 안내합니다.');
+  assert.equal(store.session(session.id).messages.find(row=>row.role==='user').text,'원본첫요청');
   assert(toolCalled,'동적 도구 응답을 실제 Codex가 요청해야 합니다.');
   assert(/data:image\/[a-z]+;base64,/.test(JSON.stringify(bodies[0])),'localImage가 실제 모델의 이미지 입력으로 변환돼야 합니다. / '+JSON.stringify(bodies[0].input).slice(-1500));
   assert(bodies[1].input.some(i=>i.type==='function_call_output'&&JSON.stringify(i.output).includes('내부도구상태-A')),'앱 도구의 결과가 다음 모델 요청으로 반환돼야 합니다.');

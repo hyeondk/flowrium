@@ -77,4 +77,4 @@ async function main(){const root=path.resolve(__dirname,'..'),qa=path.join(root,
  console.log('후속 대기 완료 / 건수와 필터 즉시 갱신 / 전송 없음 / 중복 요청과 지난 답변 보호 / 재시작 후 초안과 대화 보존 / 같은 대화에 새 지시 전송 통과');
  console.log('실제 화면 / 대기 하단 진행 버튼과 기존 입력창 / 모델 추천 조회 후 초안 추가·수정·명시 전송 / 자동 실행 없음 / 지난 답변 재실행 거절 / 즉시 비밀 없는 알림 / 중앙 질문·승인 직접 응답 / 중복 응답 차단 / 다른 대화 초안·비밀 답변 비보관 / 세 화면 폭 통과');
  }finally{try{if(app)await closeInstalledApp(app,'결정과 후속 작업 검사 앱 종료');}finally{await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:150});}}}
-main().catch(error=>{console.error(error);process.exitCode=1});
+main().then(()=>require('./followup-timing-ui.cjs').verifyFollowupTiming()).catch(error=>{console.error(error);process.exitCode=1});

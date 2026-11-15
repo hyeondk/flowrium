@@ -440,7 +440,7 @@ async function launch() {
   });
   register("send", (input) => {
     if (updater.isInstalling()) throw new Error("업데이트가 진행 중입니다. 재시작 후 요청해 주세요.");
-    return controller.send(input);
+    return controller.send(input, {fromComposer:true});
   });
   register("interrupt", (id) =>
     controller.interrupt(text(id, "대화 식별자", 100)),
