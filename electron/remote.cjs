@@ -19,7 +19,7 @@ const allowed = new Set([
   "readWorkArtifact",
   "saveTeam", "directTeam", "changeTeamRun", "workflowAction", "mobileWorkflowState",
   "mobileSettings", "saveMobileSettings", "setMobileChatModel", "readAccountUsage", "readChatAttachment", "readRequestSource",
-  "listQueuedMessages", "cancelQueuedMessage", "resumeQueuedMessages", "webPushState", "webPushAction",
+  "listQueuedMessages", "cancelQueuedMessage", "resumeQueuedMessages", "sendQueuedToCodex", "clearUnconfirmedCodexQueue", "webPushState", "webPushAction",
   "checkMobileUpdate", "applyMobileUpdate",
 ]);
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -203,6 +203,14 @@ function registerRemote(
       pending:(value.pending || []).map(e => e.type === "input" ? mobileInput(e) : e).filter(e => e.type === "input" || e.type === "approval")};
   }
   async function mobileCall(method, args, requestScope, requestOwner) {
+    if(method==='sendQueuedToCodex'||method==='clearUnconfirmedCodexQueue'){
+      const [sessionId,queueId]=args;
+      if(args.length!==2 || typeof sessionId!=='string' || !uuid.test(sessionId) || typeof queueId!=='string' || !uuid.test(queueId) || !store.state.sessions.some(row=>row.id===sessionId&&!row.scope))
+        throw Error('연결된 프로젝트의 대기 요청을 선택해 주세요.');
+      const send=handlers.get(method);
+      if(!send)throw Error('원래 Codex 대화로 보내려면 데스크톱 Flowrium을 업데이트해 주세요.');
+      return send(sessionId,queueId);
+    }
     if (method === 'checkMobileUpdate' || method === 'applyMobileUpdate') {
       if (method === 'checkMobileUpdate' && args.length === 0) return mobileUpdater.check();
       if (method === 'applyMobileUpdate' && args.length === 1 && typeof args[0] === 'string')

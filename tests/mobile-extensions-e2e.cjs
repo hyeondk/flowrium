@@ -56,6 +56,7 @@ async function main(){
   assert.equal(await page.locator('article .mobile-photo-strip li').count(),7);
   assert(!(await page.locator('article .mobile-photo-strip').innerText()).includes('.png'));
   await page.getByLabel('요청',{exact:true}).fill('휴대폰 후속 지시');await btn('추가 지시 대기열에 넣기').click();await page.getByText('휴대폰 후속 지시',{exact:true}).waitFor();await confirmAction(page,'이 지시 취소');assert.equal(store.session(chat.id).queuedMessages.at(-1).status,'cancelled');await confirmAction(page,'작업 중단');await btn('요청 보내기').waitFor();
+  await require('./native-queue-ui-checks.cjs').mobile(page,handlers,chat);
   const picker=page.getByLabel('이 채팅의 모델',{exact:true});
   async function choose(value){
     await picker.locator('option[value="gpt-6.1-terra"]').waitFor({state:'attached'});

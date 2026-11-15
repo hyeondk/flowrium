@@ -1,4 +1,4 @@
-import {maxChatInput,exceedsChatSize,chatLengthError} from './chat-input.js';
+import {maxChatInput,exceedsChatSize,chatLengthError,nativeQueueAction,nativeQueueQuestion,nativeQueueExplanation,nativeQueueNotice,queuedInputView,clearQueueAction,clearQueueQuestion,clearQueueExplanation} from './chat-input.js';
 import {attachComposerMarkdown} from './composer-markdown.js';
 import {attachmentDisplayText} from './attachment-text.js';
 import {markdownBody,groupMobileHistory,progressButton,syncProgress} from './chat-reader.js';
@@ -1011,16 +1011,22 @@ function chat(root) {
   if(queueItems.length){
     const queue=node("section",undefined,"box");
     queue.append(node("h2","추가 지시 대기열"));
+    const firstPending=queueItems.find(row=>row.status==='queued'||row.status==='sending');
     for(const item of queueItems){
       const line=node("div",undefined,"queue-line");
-      line.append(node("p",item.text||"첨부 요청","body"),node("small",({queued:"대기",sending:"전송 중",sent:"전송 완료",cancelled:"취소"})[item.status]||item.status));
-      if(item.waitingForWriter&&item.status==="queued")line.append(node("p","원래 대화의 쓰기 권한 대기 / 권한이 반환되면 자동으로 보냅니다.","hint"));
+      const view=queuedInputView(item);
+      line.append(node("p",item.text||"첨부 요청","body"),node("small",view.status));
+      if(view.hint)line.append(node("p",view.hint,"hint"));
       if(item.error)line.append(node("p",item.error,"hint"));
-      if(item.status==="queued")line.append(confirmationButton('이 지시 취소','queue/'+item.id,'대기 중인 지시를 취소할까요?',item.text||'첨부 요청',()=>
+      if(view.canCancel)line.append(confirmationButton('이 지시 취소','queue/'+item.id,'대기 중인 지시를 취소할까요?',item.text||'첨부 요청',()=>
         run(async()=>{await call('cancelQueuedMessage',s.id,item.id);await loadQueue();showNotice('대기 중인 지시를 취소했습니다.');})));
+      if(view.canSendToCodex&&item.id===firstPending?.id)line.append(confirmationButton(nativeQueueAction,'send-to-codex/'+s.id+'/'+item.id,nativeQueueQuestion,nativeQueueExplanation,()=>
+        run(async()=>{const result=await call('sendQueuedToCodex',s.id,item.id);await loadQueue();if(result.accepted)showNotice(nativeQueueNotice(result));})));
+      if(view.canClear)line.append(confirmationButton(clearQueueAction,'clear-codex-queue/'+s.id+'/'+item.id,clearQueueQuestion,clearQueueExplanation,()=>
+        run(async()=>{await call('clearUnconfirmedCodexQueue',s.id,item.id);await loadQueue();})));
       queue.append(line);
     }
-    queue.append(action("대기 지시 이어 보내기",()=>run(async()=>{await call("resumeQueuedMessages",s.id);await loadQueue()})));
+    if(queueItems.some(item=>queuedInputView(item).canResume))queue.append(action("대기 지시 이어 보내기",()=>run(async()=>{await call("resumeQueuedMessages",s.id);await loadQueue()})));
     root.append(queue);
   }
   const form = node("form"),
@@ -1095,7 +1101,7 @@ function chat(root) {
         mode: mode.value,
       });
       submissionReceipts.delete(s.id);drafts.delete(draftId);attachedDrafts.delete(s.id);await loadQueue();
-      showNotice(result.steered ? "현재 작업에 추가 지시를 전달했습니다." : result.waitingForWriter ? "요청을 보관했습니다. 원래 대화의 쓰기 권한이 반환되면 자동으로 보냅니다." : result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
+      showNotice(result.steered ? "현재 작업에 추가 지시를 전달했습니다." : result.waitingForWriter ? "요청을 보관했습니다. 채팅의 추가 지시에서 전달 상태를 확인할 수 있습니다." : result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
     });
   });
   root.append(form);

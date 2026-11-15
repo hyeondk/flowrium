@@ -53,6 +53,7 @@ test("대화 본문은 선택한 프로젝트에만 저장하고 다른 경로�
   const saved = store.session(session.id);
   saved.messages.push(message("프로젝트에서만 보관할 작업 기록"));
   saved.threadId = "이컴퓨터에만있는Codex대화";
+  saved.requestReaderThreadId = saved.threadId;
   await store.save();
   const local = await fs.readFile(store.file, "utf8");
   assert.equal(local.includes("프로젝트에서만 보관할 작업 기록"), false);
@@ -81,12 +82,37 @@ test("대화 본문은 선택한 프로젝트에만 저장하고 다른 경로�
     "프로젝트에서만 보관할 작업 기록",
   );
   assert.equal(other.session(session.id).threadId, undefined);
+  assert.equal(other.session(session.id).requestReaderThreadId, undefined);
   const sameComputer = new Store(path.dirname(store.file));
   await sameComputer.load();
   assert.equal(
     sameComputer.session(session.id).threadId,
     "이컴퓨터에만있는Codex대화",
   );
+  assert.equal(sameComputer.session(session.id).requestReaderThreadId,saved.threadId);
+});
+
+test("이전 장문 읽기 표시는 이 컴퓨터의 원래 대화와 개정이 모두 일치할 때만 복구한다",async t=>{
+  const {root,store,directory,project,session}=await fixture(t);
+  const threadId=randomUUID(), live=store.session(session.id);
+  live.threadId=threadId;live.messages.push(message("예전 장문 대화"));await store.save();
+  const repo=store.repositories.get(project.id), revision=repo.heads.get(session.id);
+  const file=path.join(repo.history,session.id+"--"+revision+".json"),record=JSON.parse(await fs.readFile(file,"utf8"));
+  record.session.requestReaderThreadId=threadId;
+  const oldBytes=JSON.stringify(record);await fs.writeFile(file,oldBytes);
+  const source=JSON.parse(await fs.readFile(store.file,"utf8"));
+  assert.equal(source.localThreads[session.id].requestReader,undefined);
+  const same=new Store(path.dirname(store.file));await same.load();
+  assert.equal(same.session(session.id).requestReaderThreadId,threadId);
+  const otherFolder=path.join(root,"원본 복사");await fs.cp(directory,otherFolder,{recursive:true});
+  const other=new Store(path.join(root,"새 기기"));const otherProject=await other.addProject(otherFolder);
+  assert.equal(other.session(session.id).requestReaderThreadId,undefined);
+  assert.equal(other.repositories.get(otherProject.id).heads.get(session.id),revision,"읽기 표시를 제거하려고 새 개정을 쓰지 않는다");
+  const stale=new Store(path.join(root,"오래된 연결"));await fs.mkdir(path.dirname(stale.file));
+  source.localThreads[session.id].revision=randomUUID();await fs.writeFile(stale.file,JSON.stringify(source));
+  await stale.load();assert.equal(stale.session(session.id).requestReaderThreadId,undefined);
+  await same.save();assert.equal(JSON.parse(await fs.readFile(store.file,"utf8")).localThreads[session.id].requestReader,true);
+  assert.equal(await fs.readFile(file,"utf8"),oldBytes,"이전 개정 원본을 보존한다");
 });
 
 test("이름이 같은 다른 프로젝트는 식별자를 분리하고 동일 프로젝트 복사본은 중복 연결하지 않는다", async (t) => {

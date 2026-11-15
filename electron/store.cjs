@@ -5,6 +5,7 @@ const { randomUUID, createHash } = require("node:crypto");
 const { publicMessage } = require("./errors.cjs");
 const {
   ProjectStore,
+  portableSession,
   validateSession,
   validateDate,
   UUID,
@@ -152,16 +153,12 @@ class Store {
         if (legacy) {
           const imported = raw.sessions
             .filter((session) => session.projectId === project.id)
-            .map((session) => {
-              const value = { ...session, projectId: repository.id };
-              delete value.threadId;
-              return value;
-            });
+            .map((session) => ({...portableSession(session),projectId:repository.id}));
           for (const session of imported) {
             const existing = repository.saved.get(session.id);
             if (
               existing &&
-              JSON.stringify(existing) !== JSON.stringify(session)
+              JSON.stringify(portableSession(existing)) !== JSON.stringify(session)
             )
               throw new Error(
                 "기존 로컬 기록과 프로젝트 기록이 다릅니다. 원본을 덮어쓰지 않았습니다. 필요한 대화를 내보낸 뒤 기록을 확인해 주세요.",
@@ -176,7 +173,7 @@ class Store {
         next.projects.push(portableProject);
         for (const saved of repository.saved.values()) {
           if(saved.scope)throw Error('프로젝트 기록에 개인 대화가 섞여 있습니다. 원본은 보존했습니다.');
-          const session = structuredClone(saved);
+          const session = structuredClone(portableSession(saved));
           session.compacting=false;
           const binding = raw.localThreads?.[session.id];
           const legacySession = legacy
@@ -185,14 +182,19 @@ class Store {
                   item.id === session.id && item.projectId === project.id,
               )
             : null;
-          if (legacySession?.threadId)
+          if (legacySession?.threadId) {
             session.threadId = legacySession.threadId;
+            if(legacySession.requestReaderThreadId===session.threadId)session.requestReaderThreadId=session.threadId;
+          }
           else if (
             binding?.revision === repository.heads.get(session.id) &&
             typeof binding.threadId === "string"
           )
           {
             session.threadId = binding.threadId;
+            // Older project revisions stored the reader ID alongside the portable messages.
+            if(binding.requestReader===true || saved.requestReaderThreadId===binding.threadId)
+              session.requestReaderThreadId=binding.threadId;
             if(binding.desktopThread?.threadId===binding.threadId){
               session.desktopThread=binding.desktopThread;
               validateSession(session,session.projectId);
@@ -241,6 +243,7 @@ class Store {
           if (session.threadId)
             localThreads[session.id] = {
               threadId: session.threadId,
+              ...(session.requestReaderThreadId===session.threadId && {requestReader:true}),
               ...(session.desktopThread?.threadId===session.threadId && {desktopThread:session.desktopThread}),
               revision: repository.heads.get(session.id),
             };
@@ -302,7 +305,7 @@ class Store {
           this.repositories.set(repository.id, repository);
           this.state.sessions.push(
             ...[...repository.saved.values()].map((value) =>
-              structuredClone(value),
+              structuredClone(portableSession(value)),
             ),
           );
           await this.save();
@@ -327,7 +330,7 @@ class Store {
     this.repositories.set(project.id, repository);
     if (!existing) this.state.projects.push(project);
     const imported = [...repository.saved.values()].map((value) =>
-      structuredClone(value),
+      structuredClone(portableSession(value)),
     );
     this.state.sessions.push(...imported);
     try {

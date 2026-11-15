@@ -1,6 +1,6 @@
 import {withLiveTurn} from '../electron/mobile/live-turn.js';
 import {RequestSource} from './RequestSource';
-import {maxChatInput, exceedsChatSize, chatLengthError} from '../electron/mobile/chat-input.js';
+import {maxChatInput, exceedsChatSize, chatLengthError, nativeQueueNotice} from '../electron/mobile/chat-input.js';
 import ChatAccessHint from './ChatAccessHint';
 import {useModelCatalog} from './useModelCatalog';
 import chatgptAvatar from "../electron/mobile/chatgpt.svg?no-inline";
@@ -863,7 +863,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           if(prev[activeId!]?.status!=="Codex에 연결하고 있습니다")return prev;
           const next={...prev};delete next[activeId!];return next;
         });
-        notify(sent.waitingForWriter?"요청을 보관했습니다. 원래 대화의 쓰기 권한이 반환되면 자동으로 보냅니다.":"추가 지시를 보관했습니다. 현재 작업이 끝나면 차례로 전달합니다.");
+        notify(sent.waitingForWriter?"요청을 보관했습니다. 채팅의 추가 지시에서 전달 상태를 확인할 수 있습니다.":"추가 지시를 보관했습니다. 현재 작업이 끝나면 차례로 전달합니다.");
       }
     } catch (error) {
       if (activeId&&!wasRunning)
@@ -1091,7 +1091,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </div>
                   <CodexLinkBar key={session.id} session={session} running={running}/>
                   {session.context&&<div className="chat-context">문맥 {session.context.percent}% ({session.context.used.toLocaleString("ko-KR")} / {session.context.max.toLocaleString("ko-KR")} 토큰) <progress max={100} value={session.context.percent}/>{session.compacting&&<span>문맥 압축 중</span>}</div>}
-                  <ChatQueuePanel session={session} onCancel={id=>{void api!.cancelQueuedMessage(session.id,id).catch(fail);}} onResume={()=>{void api!.resumeQueuedMessages(session.id).catch(fail);}}/>
+                  <ChatQueuePanel session={session} onCancel={id=>{void api!.cancelQueuedMessage(session.id,id).catch(fail);}} onResume={()=>{void api!.resumeQueuedMessages(session.id).catch(fail);}}
+                    onSendToCodex={async id=>{try{const result=await api!.sendQueuedToCodex(session.id,id);if(result.accepted)notify(nativeQueueNotice(result));}catch(error){fail(error);}}}
+                    onClear={async id=>{try{await api!.clearUnconfirmedCodexQueue(session.id,id);}catch(error){fail(error);}}}/>
                   {session.workflow && <WorkSessionControls key={session.id} session={session} onSessionChange={rememberSession} running={running} />}
                   <div
                     className="messages"

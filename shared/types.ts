@@ -67,7 +67,7 @@ export interface Project {
   createdAt: string;
 }
 export interface ChatAttachment {id:string;name:string;type:string;size:number;sha256:string}
-export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;waitingForWriter?:boolean;error?:string}
+export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;waitingForWriter?:boolean;error?:string;nativeQueueAvailable?:boolean;nativeDelivery?:'submitting'|'queued'|'uncertain';nativeCleared?:boolean}
 export interface Message {
   workSteps?: WorkStep[];
   reaction?: 'like';
@@ -202,6 +202,8 @@ export interface FlowriumAPI
   readChatAttachment(projectId:string,id:string):Promise<{attachment:ChatAttachment;dataUrl?:string}>;
   listQueuedMessages(sessionId:string):Promise<QueuedMessage[]>;
   cancelQueuedMessage(sessionId:string,id:string):Promise<void>;
+  sendQueuedToCodex(sessionId:string,id:string):Promise<{accepted:boolean;queued:boolean;queueId:string;nativeDelivery?:QueuedMessage['nativeDelivery']}>;
+  clearUnconfirmedCodexQueue(sessionId:string,id:string):Promise<unknown>;
   resumeQueuedMessages(sessionId:string):Promise<void>;
   openSessionChatGPT(id: string): Promise<void>;
   editConversation(id: string, input: ConversationEdit): Promise<Session>;

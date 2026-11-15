@@ -25,9 +25,11 @@ test('기본 삭제는 로컬 휴지통으로만 이동하고 메시지와 실�
  const entries=await restoredRuntime.action({action:'list'});assert.equal(entries.length,1);const result=await restoredRuntime.action({action:'restore',id:removed.entry.id});assert.equal(result.restoredSessionId,previous.id);assert.deepEqual(restoredStore.session(previous.id).messages,previous.messages);assert.equal(restoredStore.session(previous.id).threadId,previous.threadId);assert.equal(restoredStore.session(previous.id).codexLink.mode,'linked');await assert.rejects(restoredRuntime.action({action:'restore',id:removed.entry.id}),/이미 복원/);await restoredController.shutdown();
 });
 test('프로젝트 삭제는 연결만 제거하고 원본 폴더의 모든 기록을 보존하며 중복 복원을 거절한다',async t=>{
- const s=await fixture(t);const directory=path.join(s.project.path,'.flowrium','sessions'),before=await fs.readdir(directory),p=await s.action({action:'preview',kind:'project',id:s.project.id});const removed=await s.action({action:'delete',token:p.token,native:'keep'});
+ const s=await fixture(t);s.store.session(s.session.id).requestReaderThreadId='root-synthetic';await s.store.save();
+ const directory=path.join(s.project.path,'.flowrium','sessions'),before=await fs.readdir(directory),p=await s.action({action:'preview',kind:'project',id:s.project.id});const removed=await s.action({action:'delete',token:p.token,native:'keep'});
  assert.equal(s.store.state.projects.length,0);assert.equal(s.store.state.sessions.length,0);assert.deepEqual(await fs.readdir(directory),before);assert.equal(await fs.readFile(path.join(s.project.path,'원본.txt'),'utf8'),'프로젝트 원본');
  const restored=await s.action({action:'restore',id:removed.entry.id});assert.equal(restored.restoredProjectId,s.project.id);assert.equal(s.store.session(s.session.id).threadId,'root-synthetic');await assert.rejects(s.action({action:'restore',id:removed.entry.id}),/이미 복원/);
+ assert.equal(s.store.session(s.session.id).requestReaderThreadId,'root-synthetic');
 });
 test('원래 Codex 보관은 하위 작업 목록을 확인하고 이번에 옮긴 대화만 보관 해제한다',async t=>{
  const s=await fixture(t);await s.linked();s.rows.set('child-new',{id:'child-new',parentThreadId:'root-synthetic',name:'새 하위 작업',archived:false});s.rows.set('child-old',{id:'child-old',parentThreadId:'root-synthetic',name:'기존 보관 하위 작업',archived:true});

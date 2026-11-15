@@ -341,6 +341,108 @@ async function main() {
     assert.equal(original.length,10);
     assert.equal(original.at(-1).text,'긴 원본을 이어 쓰는 요청');
     for(let i=0;i<6;i++)assert.equal(original[i+3].text,longText+i);
+    // Keep the original writer open for the entire native-queue test.
+    const queueThread=(await desktop.request('thread/start',{cwd,model:'gpt-5.5',approvalPolicy:'never',sandbox:'read-only'})).thread.id;
+    const seedDone=onceEvent(desktop,'notification',e=>e.method==='turn/completed'&&e.params.threadId===queueThread);
+    await desktop.request('turn/start',{threadId:queueThread,input:[{type:'text',text:'원본 큐 수신 시험'}]});await seedDone;
+    const queuePlan=await runtime.preview({projects:[{name:'큐 시험',path:cwd,threadIds:[queueThread]}]});
+    await runtime.apply({planId:queuePlan.id});
+    let queueSession=store.state.sessions.find(s=>s.codexLink?.sourceThreadId===queueThread);
+    const queueInput=text=>({sessionId:queueSession.id,mode:'plan',text,submissionId:require('node:crypto').randomUUID()});
+    const getQueue=async()=> (await desktop.request('thread/queue/list',{threadId:queueThread})).data;
+    const startedWork=Promise.withResolvers(),releaseWork=Promise.withResolvers();
+    hold={started:startedWork,release:releaseWork};
+    const originalDone=onceEvent(desktop,'notification',e=>e.method==='turn/completed'&&e.params.threadId===queueThread);
+    await desktop.request('turn/start',{threadId:queueThread,input:[{type:'text',text:'작업을 잠시 보류합니다'}]});
+    const handed=queueInput('원본 설정으로 실행할 지시');
+    let nativeAdds=0;
+    try {
+      await startedWork.promise;
+      const toCancel=queueInput('원본에서 취소할 지시');
+      const kept=await controller.send(toCancel);
+      assert(kept.nativeQueueAvailable && kept.waitingForWriter);
+      assert.equal((await getQueue()).length,0);
+      const account=runtime.options.accountOwner;
+      runtime.options.accountOwner=()=> 'different-synthetic-account';
+      try{await assert.rejects(controller.messageQueue.sendToCodex(queueSession.id,kept.queueId),/계정|기기/);}
+      finally{runtime.options.accountOwner=account;}
+      assert.equal((await getQueue()).length,0);
+      await controller.messageQueue.sendToCodex(queueSession.id,kept.queueId);
+      const [toRemove]=await getQueue();
+      assert.equal(toRemove.clientUserMessageId,toCancel.submissionId);
+      const unrelated=await desktop.request('thread/queue/add',{threadId:queueThread,input:[{type:'text',text:'원본 자체 대기'}],clientUserMessageId:require('node:crypto').randomUUID()});
+      await controller.cancelQueuedMessage(queueSession.id,kept.queueId);
+      assert.deepEqual((await getQueue()).map(q=>q.id),[unrelated.queuedSubmission.id]);
+      await desktop.request('thread/queue/delete',{threadId:queueThread,queuedSubmissionId:unrelated.queuedSubmission.id});
+      const neverSent=queueInput('접수 전에 끊겨 로컬 표시만 정리할 지시');
+      await controller.send(neverSent);
+      const nativeRequest=reader.request.bind(reader);
+      let interruptedAdds=0;
+      reader.request=(method,...args)=>{
+        if(method==='thread/queue/add'){interruptedAdds++;return Promise.reject(Error('요청 전 연결 종료'));}
+        return nativeRequest(method,...args);
+      };
+      assert.equal((await controller.messageQueue.sendToCodex(queueSession.id,neverSent.submissionId)).nativeDelivery,'uncertain');
+      await controller.messageQueue.sendToCodex(queueSession.id,neverSent.submissionId);
+      assert.equal(interruptedAdds,1);
+      assert.equal((await getQueue()).length,0);
+      await controller.messageQueue.clearUnconfirmed(queueSession.id,neverSent.submissionId);
+      const cleared=queueSession.queuedMessages.find(q=>q.id===neverSent.submissionId);
+      assert(cleared.nativeCleared && cleared.status==='cancelled');
+      reader.request=nativeRequest;
+      const waiting=await controller.send(handed);
+      // Simulate the previous release's already durable waiting request.
+      delete queueSession.queuedMessages.find(q=>q.id===waiting.queueId).nativeQueueAvailable;await store.save();
+      const realRequest=reader.request.bind(reader);
+      reader.request=async(method,...args)=>{
+        const result=await realRequest(method,...args);
+        if(method==='thread/queue/add'){nativeAdds++;throw Error('전송 성공 직후 연결 종료');}
+        return result;
+      };
+      const first=await controller.messageQueue.sendToCodex(queueSession.id,waiting.queueId);
+      assert.equal(first.nativeDelivery,'uncertain');assert.equal(nativeAdds,1);
+      const concurrent=await Promise.all([1,2].map(()=>controller.messageQueue.sendToCodex(queueSession.id,waiting.queueId)));
+      assert(concurrent.every(r=>r.nativeDelivery==='queued'));assert.equal(nativeAdds,1);
+      assert.deepEqual((await getQueue()).map(q=>q.clientUserMessageId),[handed.submissionId]);
+      // The consumer survives the whole Flowrium shutdown and restart.
+      await controller.shutdown();await runtime.shutdown();
+      store=new Store(path.join(root,'flowrium'));await store.load();queueSession=store.session(queueSession.id);
+      assert.equal(queueSession.queuedMessages.find(q=>q.id===handed.submissionId).nativeDelivery,'queued');
+      primary=makeClient();reader=makeClient();
+      controller=new Controller(store,{client:primary,canRun:()=>true,linkedClientFactory:makeClient});
+      runtime=new CodexTransfer(store,controller,{readClient:reader,accountOwner:()=> 'synthetic',canRun:()=>true});
+      await controller.connect();
+    } finally {releaseWork.resolve();}
+    await originalDone;
+    async function settle(request){
+      const deadline=Date.now()+45000;
+      while(Date.now()<deadline){
+        await controller.messageQueue.flush(queueSession.id);
+        if(queueSession.queuedMessages.find(q=>q.id===request.submissionId)?.status==='sent')break;
+        await new Promise(r=>setTimeout(r,200));
+      }
+      assert.equal(queueSession.queuedMessages.find(q=>q.id===request.submissionId)?.status,'sent');
+      const {data}=await desktop.request('thread/turns/list',{threadId:queueThread,itemsView:'summary',limit:20});
+      assert.equal(data.flatMap(t=>t.items||[]).filter(i=>i.type==='userMessage'&&i.clientId===request.submissionId).length,1);
+    }
+    await settle(handed);
+    const idleQueue=queueInput('원래 창이 대기 중일 때 보내기');
+    const idleResult=await controller.send(idleQueue);
+    assert(idleResult.waitingForWriter && idleResult.nativeQueueAvailable);
+    await controller.messageQueue.sendToCodex(queueSession.id,idleQueue.submissionId);
+    await settle(idleQueue);
+    await assert.rejects(controller.cancelQueuedMessage(queueSession.id,idleQueue.submissionId),/이미/);
+    let finished;
+    for(let i=0;i<80;i++){
+      finished=await D.snapshot(desktop,queueThread,cwd);
+      if(finished.messages.filter(m=>m.role==='assistant').length===4)break;
+      await new Promise(r=>setTimeout(r,100));
+    }
+    assert.deepEqual(finished.messages.filter(m=>m.role==='user').map(m=>m.text),['원본 큐 수신 시험','작업을 잠시 보류합니다',handed.text,idleQueue.text]);
+    assert.equal(finished.messages.filter(m=>m.role==='assistant').length,4);
+    await monitor.scan(runtime);
+    assert(queueSession.messages.some(m=>m.text===idleQueue.text));
+    console.log('원본 별도 설정 선택 / 기본 로컬 대기 / 실행·유휴 소유자 자동 인수 / 잘못된 계정 차단 / 주변 요청 보존 취소 / 응답 유실·동시 제출·재시작 뒤 1회 실행과 답변 동기화');
     console.log('18MiB가 넘는 원본 / 기존 방식 응답 한도 초과 재현 / 원본 전체 보존과 같은 대화 답변 통과');
     console.log('서로 다른 앱 서버의 대화 제목 왕복 / 미열람 대화 제목 수신 / 프로젝트 이름 왕복과 순서 이동 / 관련 없는 카드 및 파일 경로 보존 / 재실행 복원 통과');
     console.log('독립 Codex 앱 서버 두 개의 같은 대화 3회 왕복 / 원래 본문과 순서 보존 / 버튼 없는 수신 / 상대 프로세스를 종료하지 않고 재개 통과');

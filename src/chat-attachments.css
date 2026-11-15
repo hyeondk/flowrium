@@ -18,3 +18,8 @@
  background:var(--panel);color:var(--text);border-radius:50%;
 }
 .chat-file-list li {min-width:0}
+.queue-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:6px;margin-top:8px}
+.queue-confirm .motion-surface{width:min(390px,calc(100vw - 32px));padding:20px;color:var(--text);word-break:keep-all;overflow-wrap:anywhere}
+.queue-confirm h2{margin:0;font-size:17px;line-height:1.4}
+.queue-confirm p{margin:8px 0 16px;color:var(--muted);font-size:13px;line-height:1.55}
+.chat-queue-panel .queue-actions .button.primary{background:var(--accent);color:var(--on-accent,#fff);border-color:var(--accent)}

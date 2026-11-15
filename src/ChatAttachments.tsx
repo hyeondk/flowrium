@@ -1,6 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
 import {FileText,Image as ImageIcon,LoaderCircle,Paperclip,X} from 'lucide-react';
 import type {ChatAttachment} from '../shared/types';
+import {clearQueueAction, clearQueueExplanation, clearQueueQuestion, nativeQueueAction, nativeQueueExplanation, nativeQueueQuestion, queuedInputView} from '../electron/mobile/chat-input.js';
+import {MotionOverlay} from './ui-motion';
 import './chat-attachments.css';
 function ImageAttachment({item,projectId,onRemove}:{item:ChatAttachment;projectId:string;onRemove?:(id:string)=>void}) {
  const [source,setSource]=useState<string>(),[failed,setFailed]=useState(false);
@@ -62,11 +64,37 @@ export function AttachmentComposer({projectId,items,onChange,disabled,report,chi
   </div></>}
  </div>;
 }
-export function ChatQueuePanel({session,onCancel,onResume}:{session:import('../shared/types').Session;onCancel:(id:string)=>void;onResume:()=>void}) {
+export function ChatQueuePanel({session,onCancel,onResume,onSendToCodex,onClear}:{session:import('../shared/types').Session;onCancel:(id:string)=>void;onResume:()=>void;onSendToCodex:(id:string)=>Promise<void>;onClear:(id:string)=>Promise<void>}) {
+ const [selected,setSelected]=useState<{id:string;action:'send'|'clear'}>(),sending=useRef(false);
  const rows=session.queuedMessages||[],pending=rows.filter(q=>['queued','sending'].includes(q.status));
+ const clearing=selected?.action==='clear';
+ const confirmation=rows.find(q=>q.id===selected?.id&&(clearing?queuedInputView(q).canClear:q.id===pending[0]?.id&&queuedInputView(q).canSendToCodex));
+ const question=clearing?clearQueueQuestion:nativeQueueQuestion;
+ async function confirm() {
+   if(!confirmation||sending.current)return;
+   sending.current=true;
+   setSelected(undefined);
+   try {await (clearing?onClear(confirmation.id):onSendToCodex(confirmation.id));} finally {sending.current=false;}
+ }
  if(!rows.length)return null;
- return <details className="chat-queue-panel" open={pending.length>0}><summary>추가 지시 (대기 {pending.length}개)</summary>
-  {pending.some(q=>q.error)&&<button onClick={onResume}>대기 지시 다시 시작</button>}
-  {rows.slice().reverse().map(q=><div key={q.id}><span>{q.status==='queued'?(q.waitingForWriter?'원래 대화의 쓰기 권한 대기':'대기 중'):q.status==='sending'?'전달 중':q.status==='sent'?'전달함':'취소함'}</span><p>{q.text}</p>{q.attachments.length>0&&<small>첨부 {q.attachments.length}개</small>}{q.waitingForWriter&&q.status==='queued'&&<small>원래 앱에서 이 대화를 벗어나 권한을 반환하면 자동으로 보냅니다.</small>}{q.error&&<p role="alert">{q.error}</p>}{q.status==='queued'&&<><button onClick={()=>onCancel(q.id)}>대기 취소</button><button onClick={onResume}>지금 전달 재개</button></>}</div>)}
- </details>;
+ return <><details className="chat-queue-panel" open={pending.length>0}><summary>추가 지시 (대기 {pending.length}개)</summary>
+  {pending.some(q=>q.error&&queuedInputView(q).canResume)&&<button onClick={onResume}>대기 지시 다시 시작</button>}
+  {rows.slice().reverse().map(q=>{
+    const view=queuedInputView(q);
+    const canSend=view.canSendToCodex&&q.id===pending[0]?.id;
+    return <div key={q.id}><strong>{view.status}</strong><p>{q.text}</p>
+      {q.attachments.length>0&&<small>첨부 {q.attachments.length}개</small>}
+      {view.hint&&<small>{view.hint}</small>}{q.error&&<p role="alert">{q.error}</p>}
+      {(view.canCancel||view.canResume||canSend||view.canClear)&&<div className="queue-actions">
+        {view.canCancel&&<button onClick={()=>onCancel(q.id)}>대기 취소</button>}
+        {view.canResume&&<button onClick={onResume}>지금 전달 재개</button>}
+        {canSend&&<button className="button primary" aria-haspopup="dialog" onClick={()=>setSelected({id:q.id,action:'send'})}>{nativeQueueAction}</button>}
+        {view.canClear&&<button aria-haspopup="dialog" onClick={()=>setSelected({id:q.id,action:'clear'})}>{clearQueueAction}</button>}
+      </div>}</div>;
+  })}</details>
+  <MotionOverlay open={Boolean(confirmation)} onClose={()=>setSelected(undefined)} label={question} className="queue-confirm">
+    <h2>{question}</h2><p>{clearing?clearQueueExplanation:nativeQueueExplanation}</p>
+    <div className="queue-actions"><button className="button subtle" onClick={()=>setSelected(undefined)}>취소</button>
+    <button className="button primary" onClick={()=>void confirm()}>{clearing?clearQueueAction:nativeQueueAction}</button></div>
+  </MotionOverlay></>;
 }

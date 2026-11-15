@@ -262,7 +262,7 @@ class TrashSync {
     }else{
       try{await D.readThread(transfer.client,source.id,source.cwd);return;}catch(e){if(!missingThread(e,source.id))return;}
       t.guard(context);
-      delete session.threadId;delete session.desktopThread;if(session.codexLink)session.codexLink.mode='copy';
+      delete session.threadId;delete session.desktopThread;delete session.requestReaderThreadId;if(session.codexLink)session.codexLink.mode='copy';
       await t.store.save();
     }
     t.guard(context);delete entry.syncPending;await t.write(entry);

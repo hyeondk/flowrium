@@ -239,7 +239,8 @@ class Controller extends EventEmitter {
     const receipt=session.messages.find(row=>row.role==='user' && row.id===id);
     if(receipt)return {accepted:true};
     const queued=session.queuedMessages?.find(row=>row.id===id);
-    if(queued)return {accepted:true,queued:true,queueId:id,waitingForWriter:queued.waitingForWriter};
+    if(queued)return {accepted:true,queued:queued.status==='queued'||queued.status==='sending',queueId:id,
+      waitingForWriter:queued.waitingForWriter,nativeDelivery:queued.nativeDelivery,nativeQueueAvailable:queued.nativeQueueAvailable};
     const key=JSON.stringify([this.options.queueOwner?.()??'local',session.id,id]);
     this.pendingSubmissions ??=new Map();
     if(this.pendingSubmissions.has(key))return this.pendingSubmissions.get(key);
@@ -910,7 +911,7 @@ class Controller extends EventEmitter {
       }),
     );
     await this.messageQueue.tail;
-    await Promise.all([...this.messageQueue.flights]);
+    await Promise.allSettled([...this.messageQueue.flights]);
     this.client.close();
     for(const entry of this.scopeClients?.values()||[])entry.client?.close();
     this.scopeClients?.clear();

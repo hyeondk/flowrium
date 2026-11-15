@@ -45,6 +45,8 @@ async function main(){
   await until(async()=> (await snapshot()).sessions.find(s=>s.id===branched.id).messages.length===0);await until(async()=>await input().inputValue()==='첨부한 자료를 확인해 주세요.');assert.equal(await page.locator('.attachment-composer .chat-attachment-list li').count(),2);
   await button('대화 관리').click();await page.getByLabel('대화 동작은 앱 기본 설정 따르기').uncheck();await page.getByLabel('답변 길이',{exact:true}).selectOption('short');await page.getByLabel('실행 허용 범위').selectOption('read-only');await button('대화 연결 설정 저장').click();
   const saved=(await snapshot()).sessions.find(s=>s.id===branched.id);assert.equal(saved.preferences.answerLength,'short');assert.equal(saved.preferences.sandbox,'read-only');
+  await open('다른 프로젝트 대화');
+  await require('./native-queue-ui-checks.cjs').desktop(app,page,(await snapshot()).sessions.find(s=>s.title==='다른 프로젝트 대화'));
   console.log('실제 Electron 채팅 통과 / 파일 선택·캡처 붙여넣기·드롭 / 프로젝트별 첨부 초안과 재기동 복원 / 첨부만 전송 / 지시 큐·취소·순차 실행 / 내부 분기와 되감기 / 요청 초안 복원 / 대화 동작 설정');
  }catch(e){if(app)console.error('첨부 화면 진단',await page.locator('.attachment-composer').innerText().catch(()=>''),await page.getByRole('status').allTextContents().catch(()=>[]));throw e;}finally{if(app)await app.close();await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});}
 }

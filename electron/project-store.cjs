@@ -136,6 +136,10 @@ async function createJSON(file, value,options={}) {
   }
 }
 
+function portableSession(session) {
+  const {threadId, desktopThread, requestReaderThreadId, ...portable} = session;
+  return portable;
+}
 class ProjectStore {
   constructor(directory, metadata) {
     this.directory = directory;
@@ -293,15 +297,16 @@ class ProjectStore {
     const target = new Map(
       sessions.map((session) => {
         validateSession(session, this.id);
-        const portable = copy(session);
-        if (!options.local) { delete portable.threadId; delete portable.desktopThread; }
-        return [session.id, portable];
+        return [session.id, copy(options.local ? session : portableSession(session))];
       }),
     );
     const changes = [];
-    for (const [id, session] of target)
-      if (JSON.stringify(this.saved.get(id)) !== JSON.stringify(session))
+    for (const [id, session] of target) {
+      const saved=this.saved.get(id);
+      const previous=saved && !options.local ? portableSession(saved) : saved;
+      if (JSON.stringify(previous) !== JSON.stringify(session))
         changes.push({ id, session });
+    }
     for (const id of this.saved.keys())
       if (!target.has(id)) changes.push({ id, session: null });
     if (!changes.length) return;
@@ -349,4 +354,4 @@ async function projectDirectory(directory) {
     await fs.mkdir(directory, { recursive: true });
   }
 }
-module.exports = { ProjectStore, validateSession, validateDate, UUID, readJSON, createJSON, projectDirectory, DEFAULT_JSON_BYTES, SESSION_REVISION_BYTES };
+module.exports = { ProjectStore, portableSession, validateSession, validateDate, UUID, readJSON, createJSON, projectDirectory, DEFAULT_JSON_BYTES, SESSION_REVISION_BYTES };

@@ -260,6 +260,8 @@ async function launch() {
   require("./chat-attachments.cjs").registerChatAttachments(register, store);
   register("listQueuedMessages", id => controller.listQueuedMessages(id));
   register("cancelQueuedMessage", (id, queued) => controller.cancelQueuedMessage(id, queued));
+  register("sendQueuedToCodex", (id, queued) => controller.messageQueue.sendToCodex(id, queued));
+  register("clearUnconfirmedCodexQueue", (id, queued) => controller.messageQueue.clearUnconfirmed(id, queued));
   register("resumeQueuedMessages", id => controller.resumeQueuedMessages(id));
   const { Drafts, registerDrafts } = require("./drafts.cjs");
   drafts = new Drafts(app.getPath("userData"), security, controller);

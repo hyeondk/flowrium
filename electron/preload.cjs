@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld(
     readChatAttachment: (project, id) => invoke("readChatAttachment", project, id),
     listQueuedMessages: id => invoke("listQueuedMessages", id),
     cancelQueuedMessage: (id, queued) => invoke("cancelQueuedMessage", id, queued),
+    sendQueuedToCodex: (id, queued) => invoke("sendQueuedToCodex", id, queued),
+    clearUnconfirmedCodexQueue: (id, queued) => invoke("clearUnconfirmedCodexQueue", id, queued),
     resumeQueuedMessages: id => invoke("resumeQueuedMessages", id),
     portfolioAction: input => invoke("portfolioAction", input),
     repositoryFlow: input => invoke("repositoryFlow", input),
