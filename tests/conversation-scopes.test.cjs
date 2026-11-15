@@ -4,11 +4,13 @@ const {Store}=require('../electron/store.cjs'),{Controller}=require('../electron
 const {registerConversationScopes,callScopeTool,snapshot,toolDefinitions}=require('../electron/conversation-scopes.cjs');
 const {scopedRequest, readPage}=require('../electron/scoped-request.cjs');
 
-test('기존 일반 대화는 원본을 보존하고 긴 입력의 모든 부분을 격리 분석한 뒤 같은 대화에서 이어 쓴다',async t=>{
+for(const scope of ['일반','프로젝트'])test('기존 '+scope+' 대화는 원본을 보존하고 긴 입력의 모든 부분을 격리 분석한 뒤 같은 대화에서 이어 쓴다',async t=>{
  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-legacy-request-'));
  t.after(()=>fs.rm(temp,{recursive:true,force:true,maxRetries:5,retryDelay:100}));
  const store=new Store(path.join(temp,'app'));await store.load();
- const project=await store.conversations.ensure('general');
+ const folder=path.join(temp,'project');
+ await fs.mkdir(folder);
+ const project=scope==='일반'?await store.conversations.ensure('general'):await store.addProject(folder);
  const row=await store.createSession(project.id);const session=store.session(row.id);
  const message='  처음\n'+'가'.repeat(47994)+'🫧'+'나'.repeat(10_000)+'\n마지막  ';
  const user={id:require('node:crypto').randomUUID(),role:'user',text:message,createdAt:new Date().toISOString()};

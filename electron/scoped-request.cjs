@@ -23,7 +23,12 @@ function readPage(run, args) {
   const pages = run.requestPages;
   if (!pages || !args || Object.keys(args).length !== 1 || !Number.isInteger(args.page) || args.page < 1 || args.page > pages.length)
     throw Error('현재 요청에서 읽을 수 있는 부분 번호를 선택해 주세요.');
-  return { page: args.page, pages: pages.length, text: pages[args.page - 1] };
+  return { page: args.page, pages: pages.length, sha256:run.requestDigest, text: pages[args.page - 1] };
+}
+
+function projectPage(session, run, args) {
+  if (session.scope || session.requestReaderThreadId !== run.threadId) throw Error('이 작업의 요청 원문을 확인할 수 없습니다.');
+  return {contentItems:[{type:'inputText',text:JSON.stringify(readPage(run,args))}],success:true};
 }
 
 // Older threads have a fixed set of tools. Preserve their original thread and
@@ -71,10 +76,11 @@ async function scopedRequest(controller, run, session, message, model, guard) {
   const marker = '요청 원문 식별자 ' + source.sha256;
   if (session.requestReaderThreadId === run.threadId) {
     run.requestPages = pagesOf(text);
+    run.requestDigest = source.sha256;
     return marker + '\n사용자가 보낸 긴 요청은 ' + run.requestPages.length + '부분입니다. ' + reader.name +
       ' 도구로 1부터 마지막 부분까지 순서대로 읽고 사용자의 요청에 답하세요. 첫 부분과 마지막 부분에 서로 다른 조건이 있을 수 있습니다.';
   }
   const notes = await legacyNotes(controller, run, text, model, guard);
   return marker + '\n사용자가 보낸 긴 요청의 모든 부분에서 추출한 요청과 근거입니다. 이를 바탕으로 답하세요. 정확한 인용이 필요한데 근거가 부족하면 그 부분을 명시하세요.\n\n' + notes;
 }
-module.exports = { reader, readPage, scopedRequest, pagesOf };
+module.exports = { reader, readPage, projectPage, scopedRequest, pagesOf };

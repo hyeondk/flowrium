@@ -1,10 +1,42 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path'),{randomUUID}=require('node:crypto');
 const {chatInput,maxRequestBytes}=require('../electron/mobile/chat-input.js');
-const {prepareRequest,readRequestSource,projectInlineLimit}=require('../electron/chat-long-request.cjs');
+const {readRequestSource,projectInlineLimit}=require('../electron/chat-long-request.cjs');
+const {scopedRequest,reader}=require('../electron/scoped-request.cjs');
+const {storeRequestSource}=require('../electron/chat-attachments.cjs');
 const {validateQueue}=require('../electron/chat-queue.cjs');
 const {Store}=require('../electron/store.cjs');
 const {mergeMessages}=require('../electron/codex-transfer-merge.cjs');
+
+test('프로젝트 입력 도구는 현재 계정과 작업의 본문만 반환한다',()=>{
+  const {EventEmitter}=require('node:events');
+  const client=new EventEmitter(),session={id:'test',threadId:'thread',requestReaderThreadId:'thread'};
+  let owner='first',answer;
+  client.answerTool=(id,result)=>{answer=result;};
+  const controller=new(require('../electron/controller.cjs').Controller)({session:()=>session},{
+    client,queueOwner:()=>owner,applicationTools:()=>[],
+  });
+  const run={sessionId:session.id,threadId:session.threadId,turnId:'first-turn',ownerRevision:owner,requestPages:['첫 요청 원문']};
+  controller.runs.set(session.id,run);
+  const read=(changes={},args={page:1})=>{
+    answer=null;
+    client.emit('tool',{requestId:1,params:{threadId:run.threadId,turnId:run.turnId,tool:reader.name,arguments:args,...changes}});
+    assert(answer);
+    return answer;
+  };
+  assert.equal(JSON.parse(read().contentItems[0].text).text,'첫 요청 원문');
+  assert.equal(read({},{page:1,path:'../another.txt'}).success,false);
+  assert.equal(read({threadId:'another'}).success,false);
+  assert.equal(read({turnId:'prior-turn'}).success,false);
+  owner='second';
+  assert.equal(read().success,false);
+  owner='first';
+  Object.assign(run,{turnId:'second-turn',requestPages:['새 요청 원문']});
+  assert.equal(read({turnId:'first-turn'}).success,false);
+  assert.equal(JSON.parse(read().contentItems[0].text).text,'새 요청 원문');
+  controller.runs.delete(session.id);
+  assert.equal(read().success,false);
+});
 
 test('글자 수와 UTF-8 자동 첨부 경계가 공백과 복합 문자를 보존한다',()=>{
   const exact='가'.repeat(Math.floor(maxRequestBytes/3))+'a'.repeat(maxRequestBytes%3);
@@ -23,13 +55,20 @@ test('긴 프로젝트 요청은 재동기화 및 재기동해도 원문 하나�
   const store=new Store(path.join(directory,'profile'));await store.load();
   const dir=path.join(directory,'project');await fs.mkdir(dir);
   const project=await store.addProject(dir),session=await store.createSession(project.id);
-  const short='q'.repeat(projectInlineLimit);assert.deepEqual(await prepareRequest(store,session,short,dir),{text:short});
+  const threadId=randomUUID();
+  const run={sessionId:session.id,threadId,userMessageId:randomUUID()};
+  session.requestReaderThreadId=threadId;
+  const short='q'.repeat(projectInlineLimit);assert.equal(await scopedRequest({store},run,session,short,null,()=>{}),short);
   const text='🪴'.repeat(8191)+'가'+'🪴'+'긴 요청'.repeat(75112)+'\n\n    끝\n';
-  const [first,second]=await Promise.all([prepareRequest(store,session,text,dir),prepareRequest(store,session,text,dir)]);
-  assert.deepEqual(first,second);assert(!first.text.includes(dir));assert(!first.text.includes(text));
+  const [source,other]=await Promise.all([storeRequestSource(store,project.id,text),storeRequestSource(store,project.id,text)]);
+  assert.deepEqual(source,other);
   assert.equal((await fs.readdir(path.join(dir,'.flowrium','attachments'))).length,1);
-  const original={id:randomUUID(),role:'user',text,requestSource:first.source,turnId:randomUUID(),createdAt:new Date().toISOString()};
-  const remote={...original,id:randomUUID(),text:first.text};delete remote.requestSource;
+  const original={id:run.userMessageId,role:'user',text,turnId:randomUUID(),createdAt:new Date().toISOString()};
+  session.messages.push(original);
+  run.requestSource=source;
+  const prompt=await scopedRequest({store},run,session,text,null,()=>{});
+  assert(prompt.includes(reader.name));assert(!prompt.includes(dir));assert(!prompt.includes(text));
+  const remote={...original,id:randomUUID(),text:prompt};delete remote.requestSource;
   for(const id of [original.id,remote.id]){
     const [merged]=mergeMessages([original],[{...remote,id}]);assert.equal(merged.text,text);assert.equal(merged.id,original.id);
   }

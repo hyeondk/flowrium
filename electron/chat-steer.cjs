@@ -13,24 +13,18 @@ async function deliver(controller, session, run, input, text, owner) {
   };
   const client = run.client || controller.client;
   const files = await resolveAttachments(controller.store,session.projectId,input.attachments || []);
-  // Text attachments in isolated chats are extracted by startScopedRun; a
-  // subsequent turn preserves that boundary and can add new file permissions.
-  if (files.some(file => !file.image) || ((files.length || input.requestSourceId || text.length>require('./chat-long-request.cjs').projectInlineLimit) && session.scope)) return false;
-  guard();
-  if (!current()) return false;
-  const requests=require('./chat-long-request.cjs');
-  const source=input.requestSourceId && (await requests.sourceRecord(controller.store,session.projectId,input.requestSourceId));
-  const request=await requests.prepareRequest(controller.store,session,text,run.cwd,source && checkedAttachments([source])[0]);
+  // Each turn's paged reader stays bound to that turn's original submission.
+  if (input.requestSourceId || text.length>require('./chat-long-request.cjs').projectInlineLimit || files.some(file=>!file.image) || (session.scope && files.length)) return false;
   guard();
   if (!current()) return false;
   const anchor=session.messages.at(-1);
   const previousAnswer=run.assistant, previousItems=[...run.itemOrder];
   const id = input.submissionId || randomUUID(), createdAt = new Date().toISOString();
-  const message = {id,role:'user',turnId,text,createdAt,...(request.source && {requestSource:request.source}),...(source && {sourceOnly:true}),...(files.length ? {attachments:checkedAttachments(files)} : {})};
+  const message = {id,role:'user',turnId,text,createdAt,...(files.length ? {attachments:checkedAttachments(files)} : {})};
   try {
     const result = await client.request('turn/steer',{
       threadId,expectedTurnId:turnId,clientUserMessageId:id,
-      input:[{type:'text',text:request.text},...files.map(file=>({type:'localImage',path:file.path}))]
+      input:[{type:'text',text},...files.map(file=>({type:'localImage',path:file.path}))]
     });
     if (result.turnId !== turnId) throw Error('추가 지시의 수신 상태를 확인하지 못했습니다. 대화를 새로고침해 주세요.');
   } catch(error) {

@@ -101,12 +101,13 @@ async function run() {
     await page.locator(".wb-file-row, .wb-line-item").filter({hasText:"화면 검증 research"}).first().click();
     await btn("원본 대화").click();
     await btn("대화 관리").click();
+    const conversationDialog=page.getByRole("dialog",{name:"대화 관리",exact:true});
     await page.getByLabel("이 대화의 모델").selectOption("test-model");
     await page.getByLabel("이 대화의 추론 강도").selectOption("low");
     const chatAddress="https://chatgpt.com/c/11111111-2222-3333-4444-555555555555";
     await page.getByLabel("이어갈 ChatGPT 대화 주소").fill(chatAddress);
     await btn("대화 연결 설정 저장").click();
-    await page.locator(".conversation-popover").waitFor({state:"hidden"});
+    await conversationDialog.waitFor({state:"hidden"});
     await app.evaluate(({shell})=>{shell.openExternal=async value=>{globalThis.flowriumTestExternal=value;};});
     await page.locator(".dock-chatgpt-button").click();
     assert.equal(await app.evaluate(()=>globalThis.flowriumTestExternal),chatAddress);
@@ -117,7 +118,7 @@ async function run() {
     await page.getByLabel("대화 이름",{exact:true}).fill("되감기 시험");
     await btn("이름 저장").click();
     await page.getByRole("heading",{name:"되감기 시험",exact:true}).waitFor();
-    await page.locator(".conversation-popover").waitFor({state:"hidden"});
+    await conversationDialog.waitFor({state:"hidden"});
     await btn("대화 관리").click();
     await page.getByLabel("기준 요청").selectOption({index:1});
     await btn("이 요청 전으로 되감기").click();

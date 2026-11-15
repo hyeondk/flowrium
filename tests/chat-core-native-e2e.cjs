@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),http=require('node:http'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 const {CodexClient,resolveCodex}=require('../electron/codex.cjs'),{Controller}=require('../electron/controller.cjs'),{Store}=require('../electron/store.cjs');
 const {addAttachments}=require('../electron/chat-attachments.cjs'),{registerConversationTools,threadTurns}=require('../electron/conversation-tools.cjs');
-function done(c,id){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{c.off('event',handler);reject(Error('실제 Codex 작업 완료 대기 시간 초과'));},20000);function handler(e){if(e.type==='done'&&e.sessionId===id){clearTimeout(timer);c.off('event',handler);if(e.status==='completed')resolve(e);else reject(Error(e.text));}}c.on('event',handler);});}
+function done(c,id,timeout=20000){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{c.off('event',handler);reject(Error('실제 Codex 작업 완료 대기 시간 초과'));},timeout);function handler(e){if(e.type==='done'&&e.sessionId===id){clearTimeout(timer);c.off('event',handler);if(e.status==='completed')resolve(e);else reject(Error(e.text));}}c.on('event',handler);});}
 async function main(){
  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-native-chat-')),folder=path.join(temp,'project'),profile=path.join(temp,'codex');
  let server,controller,client,failure,workflow,memory;const bodies=[];let toolCalled=false,longProbe;
@@ -12,30 +12,48 @@ async function main(){
    if(req.method!=='POST'||!req.url.startsWith('/v1/responses')){res.writeHead(404).end();return;}
    const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=JSON.parse(Buffer.concat(chunks).toString());bodies.push(body);
    const number=bodies.length,id='resp_chat_'+number,itemId='item_'+number;
-   let item;
+   let item,batch;
    if(number===1){const namespace=(body.tools||[]).find(t=>t.type==='namespace'&&t.tools?.some(v=>v.name==='flowrium_memory_save'));
     assert(namespace||(body.tools||[]).some(t=>t.name==='flowrium_memory_save'),'실제 모델에 앱 도구가 제공돼야 합니다.');
     item={id:itemId,type:'function_call',call_id:'call_echo',name:'flowrium_memory_save',...(namespace?{namespace:namespace.name}:{}),arguments:JSON.stringify({scope:'project',id:'',revision:'',title:'시험기억',body:'내부도구상태-A',role:''})};
-   }else if(longProbe && longProbe.calls<2){
-    const all=(body.tools||[]).flatMap(t=>t.type==='namespace'?t.tools.map(tool=>({name:tool.name,namespace:t.name})): [{name:t.name}]);
-    const tool=all.find(t=>t.name==='exec_command') || all.find(t=>t.name==='shell_command') || all.find(t=>t.name==='shell');
-    assert(tool,'긴 요청 파일을 분할 읽을 명령 도구가 실제 프로젝트에서 제공돼야 합니다. '+all.map(x=>x.name));
-    const prompt=JSON.stringify(body.input);
-    const relative=prompt.match(/\.flowrium\/attachments\/[a-f0-9-]{36}\/request\.txt/)?.[0];
-    assert(relative);assert(prompt.includes('범위별'));
-    if(longProbe.calls===0)assert(!prompt.includes(longProbe.head));
-    const windows=process.platform==='win32';
-    const markers=longProbe.calls===0;
-    const command=windows
-     ? markers ? `Select-String -LiteralPath '${relative}' -Pattern '^(START|MIDDLE|END)_'` : `Get-FileHash -LiteralPath '${relative}' -Algorithm SHA256 | Select-Object -ExpandProperty Hash`
-     : markers ? `grep -E '^(START|MIDDLE|END)_' '${relative}'` : `shasum -a 256 '${relative}'`;
-    const args=tool.name==='exec_command'?{cmd:command}:tool.name==='shell_command'?{command}:{command:windows?['powershell','-NoProfile','-Command',command]:['sh','-c',command]};
-    longProbe.calls++;
-    item={id:itemId,type:'function_call',call_id:markers?'call_large_markers':'call_large_digest',name:tool.name,...(tool.namespace&&{namespace:tool.namespace}),arguments:JSON.stringify(args)};
+   }else if(longProbe){
+    const name='flowrium_read_current_request';
+    const namespace=(body.tools||[]).find(t=>t.type==='namespace' && t.tools.some(tool=>tool.name===name));
+    assert(namespace || body.tools.some(t=>t.name===name));
+    if(!longProbe.sent){
+     const prompt=JSON.stringify(body.input);
+     assert(!prompt.includes(longProbe.head) && !prompt.includes('.flowrium/attachments/'));
+    }
+    for(const receipt of body.input.filter(row=>row.type==='function_call_output' && row.call_id.startsWith('read_project_'))){
+     if(longProbe.seen.has(receipt.call_id))continue;
+     let content=typeof receipt.output==='string'?JSON.parse(receipt.output):receipt.output;
+     if(Array.isArray(content))content=JSON.parse(content[0].text);
+     assert.equal(content.pages,longProbe.pages);
+     assert.equal(content.sha256,longProbe.digest);
+     assert.equal(receipt.call_id,'read_project_'+content.page);
+     longProbe.parts[content.page-1]=content.text;
+     longProbe.seen.add(receipt.call_id);
+    }
+    if(longProbe.sent<longProbe.pages){
+     const count=Math.min(12,longProbe.pages-longProbe.sent);
+     batch=Array.from({length:count},()=>{
+      const page=++longProbe.sent;
+      return {id:itemId+'_'+page,type:'function_call',call_id:'read_project_'+page,name,...(namespace&&{namespace:namespace.name}),arguments:JSON.stringify({page})};
+     });
+    }else{
+     assert.equal(longProbe.seen.size,longProbe.pages);
+     item={id:itemId,type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'긴 입력 전체 검증 완료',annotations:[]}]};
+    }
    }else item={id:itemId,type:'message' ,role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify(body.input).includes('합성 프로세스 목록')?JSON.stringify({candidates:[{pid:12345,reason:'합성 실행 자료의 자원 사용 확인'}],summary:'합성 분석 결과'}):'합성 검증 응답 '+number,annotations:[]}]};
-   const events=[{type:'response.created',response:{id,status:'in_progress'}},{type:'response.output_item.added',output_index:0,item:{...item,...(item.type==='function_call'?{arguments:''}:{content:[]})}},{type:'response.output_item.done',output_index:0,item},{type:'response.completed',response:{id,status:'completed',output:[item],usage:{input_tokens:20,output_tokens:10,total_tokens:30}}}];
+   const output=batch||[item];
+   const events=[{type:'response.created',response:{id,status:'in_progress'}},
+    ...output.flatMap((entry,index)=>[
+     {type:'response.output_item.added',output_index:index,item:{...entry,...(entry.type==='function_call'?{arguments:''}:{content:[]})}},
+     {type:'response.output_item.done',output_index:index,item:entry}
+    ]),
+    {type:'response.completed',response:{id,status:'completed',output,usage:{input_tokens:20,output_tokens:10,total_tokens:30}}}];
    res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache'});res.end(events.map(e=>'data: '+JSON.stringify(e)+'\n\n').join(''));
-  }catch(e){failure=e;res.writeHead(500).end();}});
+  }catch(e){failure=e;res.writeHead(400).end();}});
   await new Promise((r,j)=>{server.once('error',j);server.listen(0,'127.0.0.1',r);});
   const base='http://127.0.0.1:'+server.address().port+'/v1';
   await fs.writeFile(path.join(profile,'config.toml'),['cli_auth_credentials_store = "file"','model = "gpt-5.5"','[model_providers.flowrium_test]','name = "Flowrium local test"','base_url = '+JSON.stringify(base),'wire_api = "responses"','env_key = "FLOWRIUM_OFFLINE_KEY"','supports_websockets = false','[analytics]','enabled = false',''].join('\n'));
@@ -51,7 +69,7 @@ async function main(){
   await controller.connect();const handlers=new Map();registerConversationTools((name,fn)=>handlers.set(name,fn),controller);const edit=handlers.get('editConversation');
   const png=require('./chat-fixtures.cjs').png;
   const attachments=await addAttachments(store,project.id,[{name:'검증화면.png',type:'image/png',bytes:png},{name:'근거.txt',type:'text/plain',bytes:Buffer.from('합성 근거')}]);
-  async function send(id,text,extra={}){const completed=done(controller,id);await controller.send({sessionId:id,text,mode:'plan',...extra},{fromComposer:true});await completed;if(failure)throw failure;}
+  async function send(id,text,extra={}){const completed=done(controller,id,longProbe?120000:20000);await controller.send({sessionId:id,text,mode:'plan',...extra},{fromComposer:true});await completed;if(failure)throw failure;}
   await send(session.id,'원본첫요청',{attachments:attachments.map(a=>a.id)});
   assert(JSON.stringify(bodies[0].input).includes('미완료 작업'),'일반 프로젝트의 직접 입력 턴에만 후속 후보 작성을 안내합니다.');
   assert.equal(store.session(session.id).messages.find(row=>row.role==='user').text,'원본첫요청');
@@ -74,25 +92,26 @@ async function main(){
   assert.equal(controller.analysisRuns.size,0);assert.equal(controller.editingSessions.size,0);
   const large=await store.createSession(project.id);
   const edge='START_REQUEST_LONG__',mid='MIDDLE_REQUEST____',end='END_REQUEST_________';
-  const source=[edge,'a'.repeat(1_070_000),mid,'b'.repeat(1_070_000),end].join('\n');
+  const source=[edge,' '.repeat(1_070_000),mid,' '.repeat(1_070_000),end].join('\n');
   assert.equal(source.indexOf(mid),(source.length-mid.length)/2);
   const digest=require('node:crypto').createHash('sha256').update(source).digest('hex');
-  longProbe={head:edge,calls:0};
+  longProbe={head:edge,pages:Math.ceil(source.length/12000),sent:0,seen:new Set(),parts:[],digest};
   const submissionId=require('node:crypto').randomUUID();
   await send(large.id,source,{submissionId});
-  assert.equal(longProbe.calls,2);
-  const resultFor=id=>JSON.stringify(bodies.at(-1).input.find(row=>row.type==='function_call_output' && row.call_id===id)?.output || '');
-  const markerResult=resultFor('call_large_markers');
-  for(const needle of [edge,mid,end])assert(markerResult.includes(needle),'원문의 앞/중간/끝이 모델로 반환되어야 합니다: '+markerResult);
-  const hashResult=resultFor('call_large_digest');
-  assert(hashResult.toLowerCase().includes(digest),'원문 전체의 SHA-256이 모델로 반환되어야 합니다: '+hashResult);
+  const received=longProbe.parts.join('');
+  assert.equal(received.length,source.length);
+  assert(received.startsWith(edge) && received.slice(source.indexOf(mid)).startsWith(mid) && received.endsWith(end));
+  assert.equal(require('node:crypto').createHash('sha256').update(received).digest('hex'),digest);
+  assert(received===source,'모델이 받은 모든 부분을 순서대로 합치면 사용자가 보낸 원문과 일치해야 합니다.');
+  console.log('합성 모델로 전달된 요청 원문 전체 / '+longProbe.pages+'부분 SHA-256 대조 통과');
+  longProbe=null;
   const row=store.session(large.id).messages.find(m=>m.id===submissionId);
   assert(row.sourceOnly && row.requestSource.sha256===digest);
   const repeat=await controller.send({sessionId:large.id,text:source,submissionId,mode:'plan'});assert(repeat.accepted);
   assert.equal(store.session(large.id).messages.filter(m=>m.role==='user').length,1);
   const reopened=new Store(path.dirname(store.file));await reopened.load();
   const saved=await require('../electron/chat-long-request.cjs').readRequestSource(reopened,large.id,row.id,'full');assert.equal(saved.text,source);
-  console.log('프로젝트 214만 자 단일 턴 / 번들 Codex 실제 로컬 파일 읽기 / 합성 모델에 앞·중간·끝과 전체 SHA-256 반환 / 동일 요청 재전송 억제 / 재기동 원문 전수 대조 통과');
+  console.log('프로젝트 214만 자 단일 턴 / 번들 Codex 실제 입력 페이지 읽기 / 합성 모델에 앞·중간·끝과 전체 SHA-256 반환 / 동일 요청 재전송 억제 / 재기동 원문 전수 대조 통과');
   console.log('번들 Codex 실제 RPC 통과 / 래스터 이미지 모델 입력 / 앱 도구 왕복 / 도구 상태를 포함한 선택 턴 분기 / 실제 revert / 원본 보존 / 재기동 기록 / 파일 읽기 제한 프로필의 구조화 AI 분석');
  }finally{
   await workflow?.shutdown();await controller?.shutdown();client?.close();if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}

@@ -5,6 +5,7 @@ const { CodexClient, resolveCodex } = require("./codex.cjs");
 const { text } = require("./store.cjs");
 const { publicMessage } = require("./errors.cjs");
 const { HistoryImporter } = require("./history.cjs");
+const currentRequest = require("./scoped-request.cjs");
 
 const stepNames = {
   commandExecution: "명령 실행", fileChange: "파일 변경", webSearch: "자료 검색",
@@ -60,9 +61,13 @@ class Controller extends EventEmitter {
     this.client.on("tool", async ({requestId,params}) => {
       const run=this.findRun(params.threadId,params.turnId);
       try {
-        if(!run || (run.client&&run.client!==this.client) || run.cancelled || run.finalized || (run.turnId&&run.turnId!==params.turnId) || this.options.canRun?.()===false) throw Error("이 작업의 도구 요청은 종료됐습니다.");
+        if(!run || !params.threadId || params.threadId!==run.threadId || (run.client&&run.client!==this.client) || run.cancelled || run.finalized || (run.turnId&&run.turnId!==params.turnId) || run.ownerRevision!==(this.options.queueOwner?.()??'local') || this.options.canRun?.()===false) throw Error("이 작업의 도구 요청은 종료됐습니다.");
         const session=this.store.session(run.sessionId);
         if(session.scope)throw Error('일반 대화와 통합 채팅은 프로젝트 실행 도구를 사용할 수 없습니다.');
+        if(params.tool===currentRequest.reader.name){
+          this.client.answerTool(requestId,currentRequest.projectPage(session,run,params.arguments));
+          return;
+        }
         const tools=await this.options.applicationTools?.(session)||[];
         if(!tools.some(t=>t.name===params.tool)) throw Error("허용되지 않은 앱 도구입니다.");
         const result=await this.options.callApplicationTool?.({sessionId:run.sessionId,name:params.tool,arguments:params.arguments,callId:params.callId});
@@ -498,13 +503,14 @@ class Controller extends EventEmitter {
       const result = await client.request("thread/start", {
         ...threadParams,
         ...(inRegisteredProject && {projectId:binding.id}),
-        ...(dynamicTools.length && {dynamicTools:dynamicTools.map(t=>({type:"function",...t}))}),
+        dynamicTools:[...dynamicTools,currentRequest.reader].map(t=>({type:"function",...t})),
       });
       if(dynamicTools.length)this.store.session(run.sessionId).applicationTools=true;
       if (!result.thread?.id)
         throw new Error("Codex 대화를 생성하지 못했습니다.");
       run.threadId = result.thread.id;
       this.store.session(run.sessionId).threadId = run.threadId;
+      this.store.session(run.sessionId).requestReaderThreadId = run.threadId;
       await this.store.save();
     }
     this.loadedThreads.add(run.threadId);
@@ -525,11 +531,10 @@ class Controller extends EventEmitter {
     }
     const files=run.attachments.filter(a=>!a.image);
     if(files.length)additionalContext.flowrium_files={kind:'untrusted',value:files.map(a=>a.name+' / '+a.path).join('\n')};
-    const request = await require("./chat-long-request.cjs").prepareRequest(this.store,currentSession,message,cwd,run.requestSource);
-    if (request.source) {
-      currentSession.messages.find(row=>row.id===run.userMessageId).requestSource=request.source;
-      await this.store.save();
-    }
+    const guardRequest=()=>{
+      if(this.runs.get(run.sessionId)!==run || run.cancelled || run.finalized || this.options.canRun?.()===false || run.ownerRevision!==(this.options.queueOwner?.()??'local'))throw Error("계정이나 작업 상태가 바뀌어 긴 요청 읽기를 멈췄습니다.");
+    };
+    const request = await currentRequest.scopedRequest(this,run,currentSession,message,model,guardRequest);
     if(run.cancelled || run.finalized) return this.finish(run,"interrupted");
     if(this.options.canRun?.()===false || run.ownerRevision!==(this.options.queueOwner?.()??'local')) throw Error("계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.");
     run.cwd=cwd;
@@ -538,7 +543,7 @@ class Controller extends EventEmitter {
       threadId: run.threadId,
       clientUserMessageId:run.userMessageId,
       ...(Object.keys(additionalContext).length && {additionalContext}),
-      input: [{type:"text",text:request.text}, ...run.attachments.filter(a=>a.image).map(a=>({type:"localImage",path:a.path}))],
+      input: [{type:"text",text:request}, ...run.attachments.filter(a=>a.image).map(a=>({type:"localImage",path:a.path}))],
       cwd,
       approvalPolicy,
       approvalsReviewer: "user",
