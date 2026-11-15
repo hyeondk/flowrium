@@ -36,15 +36,39 @@ async function run() {
       timeout: 45000,
     });
     page = await app.firstWindow();await page.setViewportSize({width:1440,height:1000});
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     page.setDefaultTimeout(15000);
+  }
+  async function closeWithMotion(layer, button, name, duration) {
+    const probe = await layer.evaluateHandle((element, name) => {
+      const result = { started: null };
+      element.addEventListener("animationstart", (event) => {
+        if (event.target !== element || event.animationName !== name) return;
+        const animation = element.getAnimations().find(item => item.animationName === name);
+        result.started = {
+          name: event.animationName,
+          duration: animation?.effect.getTiming().duration,
+          frames: animation?.effect.getKeyframes().map(frame => frame.transform),
+        };
+      });
+      return result;
+    }, name);
+    try {
+      await button.click();
+      await layer.waitFor({ state: "detached" });
+      const { started } = await probe.jsonValue();
+      assert.ok(started, name + " 시작 이벤트가 필요합니다.");
+      assert.equal(started.name, name);
+      assert.equal(started.duration, duration);
+      return started.frames;
+    } finally {
+      await probe.dispose();
+    }
   }
   async function unlock() {
     await page.getByLabel("잠금 번호", { exact: true }).fill("7904");
-    await btn("잠금 해제").click();
-    const layer=page.locator('.security-lock-layer[data-phase=exit]');await layer.waitFor({state:'attached'});
-    const frames=await layer.evaluate(e=>({name:getComputedStyle(e).animationName,duration:getComputedStyle(e).animationDuration,frames:e.getAnimations()[0]?.effect.getKeyframes().map(k=>k.transform)}));
-    assert.equal(frames.name,'ui-unlock');assert.equal(frames.duration,'0.36s');assert.deepEqual(frames.frames,['translateY(0px)','translateY(-100%)']);
-    await layer.waitFor({state:'detached'});
+    const frames = await closeWithMotion(page.locator('.security-lock-layer'), btn("잠금 해제"), "ui-unlock", 360);
+    assert.deepEqual(frames, ["translateY(0px)", "translateY(-100%)"]);
     await page
       .locator(".pf-card")
       .filter({ hasText: "잠금 검증 프로젝트" })
@@ -151,7 +175,8 @@ async function run() {
       session.id,
     );
     await btn("로그아웃").click();
-    await btn("취소").click();
+    const logoutFrames = await closeWithMotion(page.locator('.logout-overlay [role="dialog"]'), btn("취소"), "ui-popup-out", 240);
+    assert.ok(logoutFrames.length >= 2);
     assert(
       (await page.evaluate(() => window.flowrium.connectionStatus()))
         .authenticated,
