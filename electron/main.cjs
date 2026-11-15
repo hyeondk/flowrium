@@ -330,6 +330,7 @@ async function launch() {
     focus: ensureWindow,
   });
   const remote = require("./remote.cjs").registerRemote(register, {
+    mobileUpdateDirectory:app.getPath('userData'), mobileUpdateStorage:require('electron').safeStorage,
     store, controller, handlers: apiHandlers, isLocked: () => security.locked || security.loggingOut,
     readDecisionLinks: () => workflowRuntime.pendingDecisionLinks(),
     accountRevision: () => security.accountRevision,

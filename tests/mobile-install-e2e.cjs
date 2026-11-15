@@ -6,6 +6,7 @@ const {EventEmitter} = require('node:events');
 const {_electron} = require('playwright');
 const {Store} = require('../electron/store.cjs');
 const {registerRemote} = require('../electron/remote.cjs');
+const {checkMobileUpdate, productRelease, startingVersion} = require('./mobile-update-checks.cjs');
 
 function simulatedTunnel() {
   const child = new EventEmitter();
@@ -31,7 +32,9 @@ async function main() {
     register('securityPending',()=>[]);
     register('connect',async()=>({status:controller.status,models:[{id:'gpt-6.1-sol',isDefault:true,defaultReasoningEffort:'high',supportedReasoningEfforts:[{reasoningEffort:'high'}]}]}));
     register('readAccountUsage',async()=>({buckets:[{name:'Codex',plan:'Pro',windows:[{key:'primary',usedPercent:16,minutes:300,resetsAt:null}]}]}));
-    service=registerRemote(register,{store,controller,handlers,isLocked:()=>false,version:'테스트',tunnelFactory:simulatedTunnel});
+    const release=await productRelease();
+    service=registerRemote(register,{store,controller,handlers,isLocked:()=>false,version:startingVersion,
+      mobileUpdateDirectory:profile,mobileUpdateFetch:release.fetch,tunnelFactory:simulatedTunnel});
     const access=await handlers.get('startRemoteAccess')();
     const origin=new URL(access.localUrl).origin;
     const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};
@@ -165,6 +168,7 @@ async function main() {
     assert(await mobile.evaluate(()=>Boolean(localStorage.getItem('flowrium.mobile.rememberedKey'))));
     await mobile.evaluate(()=>sessionStorage.clear()); await mobile.reload();
     await settings.click(); assert.equal(await remember.isChecked(),true);
+    await checkMobileUpdate(mobile,release);
     await mobile.evaluate(()=>dispatchEvent(new Event('appinstalled')));
     const installed=mobile.getByRole('button',{name:/홈 화면에 설치.*설치됨/});
     await installed.click();

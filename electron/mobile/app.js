@@ -1,4 +1,5 @@
 import {settingsGuides, reconnectForm} from './install.js';
+import {mobileUpdateSection, resetUpdate, resumeUpdateSettings} from './mobile-update.js';
 import {confirmationButton, reconcileConfirmation} from './confirmation.js';
 import {modelDisplayName,effortDisplayName,reasoningEffortOptions} from './model-display.js';
 const content = document.querySelector("#content");
@@ -48,7 +49,7 @@ const phases = {
 };
 const executionNames = {running:'작업중',waiting:'대기',decision:'결정'};
 let data,
-  route = "projects",
+  route = resumeUpdateSettings() ? "settings" : "projects",
   statusFilter = "running",
   chatOriginStatus = "",
   selectedProject = "",
@@ -221,6 +222,8 @@ async function loadDashboard(retry=false){
   finally{if(dashboardRequest===work){dashboardRequest=undefined;dashboardFetched=Date.now();}}
 }
 function clearPrivateState(nextGate) {
+  resetUpdate();
+  connection.removeAttribute('data-connected');
   loadErrors.clear();
   pendingExtras.clear();
   dashboardFacts=undefined;dashboardRequest=undefined;dashboardFetched=0;
@@ -277,6 +280,7 @@ async function poll() {
     data = next;
     signature = fresh;
     gate = "";
+    connection.toggleAttribute('data-connected', Boolean(data.connection?.authenticated));
     connection.textContent = data.connection?.authenticated
       ? "데스크톱 연결됨"
       : "계정 연결 필요";
@@ -303,6 +307,7 @@ async function poll() {
     if (error.gate) clearPrivateState(error.gate);
     else {
       connection.textContent = "연결 재시도 중";
+      connection.removeAttribute('data-connected');
       if (!data) {
         gate = "offline";
         render();
@@ -624,7 +629,15 @@ function approvals(list, root) {
   }
 }
 function projects(root) {
-  root.append(node("h1", "대시보드"));
+  const today = new Date();
+  const header = node('header', undefined, 'page-heading');
+  const calendar = node('time', new Intl.DateTimeFormat('ko-KR', {month:'long',day:'numeric',weekday:'short'}).format(today));
+  header.append(node('h1','대시보드'), calendar);
+  root.append(header);
+  const overview = node('section', undefined, 'workspace-overview');
+  const projectCount = node('p', String(data.projects.length), 'overview-count');
+  projectCount.append(node('small','개'));
+  overview.append(node('h2','연결된 프로젝트'), projectCount);
   const status=node('section',undefined,'mobile-execution');
   status.setAttribute('aria-label','프로젝트 대화 진행 상태');
   for(const [key,name] of Object.entries(executionNames)){
@@ -633,7 +646,8 @@ function projects(root) {
     button.dataset.state=key;button.setAttribute('aria-label',name+' 대화 '+count+'개');
     button.append(node('span',name),node('strong',String(count)));status.append(button);
   }
-  root.append(status);
+  overview.append(status);
+  root.append(overview);
   const tasks=node('section',undefined,'mobile-today'),todo=data.sessions
     .filter(s=>s.workflow && s.workflow.status!=='done')
     .sort((a,b)=>Number(b.executionState==='decision')-Number(a.executionState==='decision')||b.updatedAt.localeCompare(a.updatedAt));
@@ -646,23 +660,25 @@ function projects(root) {
     tasks.append(loadingRegion('오늘 할 일'));
     if(loadErrors.has('오늘 할 일'))tasks.append(action('오늘 할 일 다시 불러오기',()=>loadDashboard(true)));
   }else if(!todo.length && !due.length && !goals.length)tasks.append(node('p','진행할 업무가 없습니다.','hint'));
-  root.append(tasks,activityChart(),node("h2", "프로젝트 현황"));
+  const projectList = node('section', undefined, 'mobile-list-panel');
+  projectList.append(node('h2','프로젝트 현황'));
+  root.append(tasks,activityChart(),projectList);
   if(Object.keys(phases).length){
     const counts=node('p',undefined,'hint');
     counts.textContent=Object.entries(phases).map(([phase,count])=>phase+' '+count+'개').join(' / ');
-    root.append(counts);
+    projectList.append(counts);
   }
   if (!data.projects.length)
-    root.append(
+    projectList.append(
       node(
         "p",
         "데스크톱의 프로젝트 추가에서 작업할 폴더를 지정하세요.",
-        "box",
+        "hint",
       ),
     );
   for (const p of data.projects) {
     const list = data.sessions.filter((s) => s.projectId === p.id);
-    root.append(
+    projectList.append(
       row(
         p.name,
         "업무 " + list.length + "개",
@@ -700,8 +716,13 @@ function activityChart(){
 function statusPage(root){
   const label=executionNames[statusFilter];root.append(action('대시보드로',()=>go('projects')),node('h1',label+' 대화'));
   const list=data.sessions.filter(s=>s.executionState===statusFilter).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
-  for(const s of list)root.append(sessionRow(s));
+  if(list.length) root.append(sessionList(list));
   if(!list.length)root.append(node('p',label+' 상태의 대화가 없습니다.','hint'));
+}
+function sessionList(sessions) {
+  const list = node('div', undefined, 'mobile-list-panel session-list');
+  for (const session of sessions) list.append(sessionRow(session));
+  return list;
 }
 function team(root) {
   const reset = action("팀 상태 새로 고침", () => loadAssets());
@@ -823,7 +844,7 @@ function projectPage(root) {
   root.append(action("새 업무 대화", () => go("new"), "main-action"));
   if (!list.length)
     root.append(node("p", "이 프로젝트에서 맡길 첫 업무를 고르세요.", "hint"));
-  for (const s of list) root.append(sessionRow(s));
+  if (list.length) root.append(sessionList(list));
 }
 function bindDraft(el, id, initial) {
   el.dataset.field = id;
@@ -1201,6 +1222,14 @@ function settingsSwitch(name, input) {
 }
 function settingsPage(root){
   root.append(node('h1','설정 / 사용량'),settingsGuides());
+  root.append(mobileUpdateSection({
+    data, call, onError:clearPrivateState,
+    refresh:()=>{if (route === 'settings' && data && !gate) render();},
+    canReload:()=>route === 'settings' && !gate && !busy,
+    hasDrafts:()=>Boolean(settingsDraft || editingTeam || [...drafts.values()].some(Boolean) ||
+      [...attachedDrafts.values()].some(items=>items.length) ||
+      [...questionDrafts.values()].some(fields=>[...fields.values()].some(answer=>answer.text || answer.selection))),
+  }));
   const device=node('section',undefined,'settings-block');
   device.append(node('h2','기기 연결'));
   root.append(device);
@@ -1290,6 +1319,7 @@ function render() {
       field && "selectionStart" in active ? active.selectionStart : null,
     end = field && "selectionEnd" in active ? active.selectionEnd : null;
   const root = document.createDocumentFragment();
+  content.dataset.view = gate || !data ? 'connection' : route;
   navigation.hidden = !data || !!gate;
   for (const btn of navigation.querySelectorAll("button")) {
     const current =
@@ -1328,7 +1358,7 @@ function render() {
   else if (route === "running") {
     root.append(node("h1", "실행 중인 업무"));
     const list = data.sessions.filter((s) => running(s.id));
-    for (const s of list) root.append(sessionRow(s));
+    if (list.length) root.append(sessionList(list));
     if (!list.length)
       root.append(node("p", "실행 중인 업무가 없습니다.", "hint"));
   } else if (route === "approvals") {

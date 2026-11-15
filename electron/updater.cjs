@@ -353,4 +353,4 @@ class DesktopUpdater extends EventEmitter {
   }
 }
 
-module.exports = { acknowledgeUpdateLaunch, DesktopUpdater, newer, selectRelease, checksum, artifactSuffix, handoff };
+module.exports = { acknowledgeUpdateLaunch, DesktopUpdater, newer, selectRelease, checksum, artifactSuffix, handoff, requestRelease:request, readSmall };

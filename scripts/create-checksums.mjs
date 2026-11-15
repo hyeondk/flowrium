@@ -8,7 +8,7 @@ const version=versions.releaseVersion(JSON.parse(await readFile(new URL('../pack
 const directory = resolve(process.argv[2] || "release");
 const names = (await readdir(directory))
   .filter((name) =>
-    ['install.sh','install.ps1','flowrium-install-support.cjs','SOURCE-COMMIT.txt'].includes(name) || name.startsWith('Flowrium-'+version+'-') && /^Flowrium-[0-9A-Za-z._-]+-(?:mac-arm64\.(?:dmg|zip)|win-x64\.exe|source\.tar\.gz)$/.test(
+    ['install.sh','install.ps1','flowrium-install-support.cjs','SOURCE-COMMIT.txt'].includes(name) || name.startsWith('Flowrium-'+version+'-') && /^Flowrium-[0-9A-Za-z._-]+-(?:mac-arm64\.(?:dmg|zip)|win-x64\.exe|source\.tar\.gz|mobile-v1\.json)$/.test(
       name,
     ),
   )

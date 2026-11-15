@@ -13,6 +13,15 @@ const commit=execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'})
 if(!/^[a-f0-9]{40}$/.test(commit))throw Error('소스 커밋을 확인하지 못했습니다.');
 if(execFileSync('git',['status','--porcelain','--untracked-files=normal'],{cwd:root,encoding:'utf8'}).trim())throw Error('커밋한 소스만 릴리스로 묶을 수 있습니다. 변경 파일을 먼저 확인해 주세요.');
 await mkdir(directory,{recursive:true});
+// Only tracked mobile interface files from the release commit are transferable.
+const mobilePaths=execFileSync('git',['ls-tree','-z','--name-only',commit+':electron/mobile'],{cwd:root,encoding:'utf8'})
+  .split('\0').filter(name=>/^[a-z0-9][a-z0-9-]*\.(?:js|html|css|webmanifest|svg)$/.test(name)).sort();
+const mobileFiles={};
+for (const name of mobilePaths) {
+  mobileFiles[name]=execFileSync('git',['show',commit+':electron/mobile/'+name],{cwd:root,encoding:'utf8'});
+}
+if (!mobileFiles['index.html'] || !mobileFiles['app.js']) throw Error('휴대폰 화면의 시작 파일을 찾지 못했습니다.');
+await writeFile(join(directory,`Flowrium-${version}-mobile-v1.json`),JSON.stringify({format:1,version,files:mobileFiles})+'\n','utf8');
 for(const [source,name] of [['install.sh','install.sh'],['install.ps1','install.ps1'],['scripts/installer-support.cjs','flowrium-install-support.cjs']])await copyFile(join(root,source),join(directory,name));
 const file=join(directory,`Flowrium-${version}-source.tar.gz`),temporary=file+'.tmp';
 const child=spawn('git',['archive','--format=tar',`--prefix=Flowrium-${version}/`,commit],{cwd:root,stdio:['ignore','pipe','inherit']});

@@ -4,6 +4,7 @@ const fs = require("node:fs/promises"),
   { spawn } = require("node:child_process"),
   { randomBytes, timingSafeEqual, createHash } = require("node:crypto");
 const {executionFor} = require('./execution-state.js');
+const {MobileUpdater} = require('./mobile-updater.cjs');
 const allowed = new Set([
   "startWork",
   "send",
@@ -18,6 +19,7 @@ const allowed = new Set([
   "saveTeam", "directTeam", "changeTeamRun", "workflowAction", "mobileWorkflowState",
   "mobileSettings", "saveMobileSettings", "setMobileChatModel", "readAccountUsage", "readChatAttachment",
   "listQueuedMessages", "cancelQueuedMessage", "resumeQueuedMessages", "webPushState", "webPushAction",
+  "checkMobileUpdate", "applyMobileUpdate",
 ]);
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 function mobileSummary(s, active, deciding, revision, activity) {
@@ -147,6 +149,9 @@ function registerRemote(
     handlers,
     isLocked,
     version,
+    mobileUpdateDirectory,
+    mobileUpdateStorage,
+    mobileUpdateFetch,
     guard = (_name, action) => action(),
     readDecisionLinks = () => [],
     tunnelFactory = spawn,
@@ -155,6 +160,7 @@ function registerRemote(
     now = Date.now,
   },
 ) {
+  const mobileUpdater = new MobileUpdater({version,directory:mobileUpdateDirectory,storage:mobileUpdateStorage,fetchImpl:mobileUpdateFetch});
   const answeredInputs = new Set();
   const runRevisions = new WeakMap();
   const runLabels = new WeakMap();
@@ -182,6 +188,12 @@ function registerRemote(
       pending:(value.pending || []).map(e => e.type === "input" ? mobileInput(e) : e).filter(e => e.type === "input" || e.type === "approval")};
   }
   async function mobileCall(method, args, requestScope, requestOwner) {
+    if (method === 'checkMobileUpdate' || method === 'applyMobileUpdate') {
+      if (method === 'checkMobileUpdate' && args.length === 0) return mobileUpdater.check();
+      if (method === 'applyMobileUpdate' && args.length === 1 && typeof args[0] === 'string')
+        return mobileUpdater.apply(args[0], () => checkScope(requestScope, requestOwner));
+      throw Error('모바일 업데이트 요청을 확인해 주세요.');
+    }
     if (method === "setMobileChatModel") {
       const [id,model]=args;
       const session=store.state.sessions.find(s=>s.id===id&&!s.scope);
@@ -387,6 +399,7 @@ function registerRemote(
                 effort: snapshot.settings.chatDefaults?.effort || snapshot.settings.effort,
               },
               version,
+              mobileVersion:mobileUpdater.version,
               pushAvailable: !!handlers.get("webPushAction"),
               connection: {
                 available: connection.available,
@@ -529,6 +542,7 @@ function registerRemote(
       "/model-display.js": "model-display.js",
       "/style.css": "style.css",
       "/install.js": "install.js",
+      "/mobile-update.js": "mobile-update.js",
       "/install.css": "install.css",
       "/icon-192.png": "icon-192.png",
       "/icon-512.png": "icon-512.png",
@@ -542,13 +556,19 @@ function registerRemote(
       "/manifest.webmanifest": "manifest.webmanifest",
       "/icon.png": "../../assets/flowrium.png",
     };
-    const name = files[u.pathname];
-    if (!name) {
+    await mobileUpdater.restore();
+    const packaged = files[u.pathname], name = packaged || u.pathname.slice(1);
+    const updated = mobileUpdater.contents(name);
+    if (!packaged && updated === undefined) {
       res.writeHead(404).end();
       return;
     }
     try {
-      const content = await fs.readFile(path.join(__dirname, "mobile", name));
+      let content = updated ?? await fs.readFile(path.join(__dirname, "mobile", name));
+      if (name === 'index.html') {
+        const stamp = String(mobileUpdater.version).replace(/[^\w.-]/g, '');
+        content = content.toString().replace('name="flowrium-mobile-version" content=""', 'name="flowrium-mobile-version" content="'+stamp+'"');
+      }
       res.writeHead(200, {
         "Content-Type": name.endsWith(".html")
           ? "text/html; charset=utf-8"
