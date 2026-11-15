@@ -6,12 +6,11 @@ import {messageContent,safeLogPreview} from './message-content';
 import './message-content.css';
 
 type Props={text:string;role:'user'|'assistant'|'system';streaming?:boolean};
-export function Markdown({text,draft=false}:{text:string;draft?:boolean}){
+function Markdown({text}:{text:string}){
  return <div className="markdown message-prose">
   <ReactMarkdown remarkPlugins={[remarkGfm]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={{
-    a:({node:_,href,children,...props})=>draft?<span className="draft-link">{children}</span>:<a {...props} href={href} target={href?.startsWith('#')?undefined:'_blank'} rel="noopener noreferrer">{children}</a>,
-    ...(draft?{img:({alt}:{alt?:string})=><span>{alt||'이미지'}</span>}:{}),
-    table:({node:_,...props})=><div className="message-table-wrap" role="region" aria-label={draft?'입력한 표':'답변 표'} tabIndex={0}><table {...props}/></div>,
+    a:({node:_,href,children,...props})=> <a {...props} href={href} target={href?.startsWith('#')?undefined:'_blank'} rel="noopener noreferrer">{children}</a>,
+    table:({node:_,...props})=><div className="message-table-wrap" role="region" aria-label="답변 표" tabIndex={0}><table {...props}/></div>,
   }}>{text}</ReactMarkdown>
  </div>;
 }
@@ -31,7 +30,8 @@ function LogDetails({raw,title,failed=false,pending=false}:{raw:string;title:str
     <button type="button" className="button subtle" data-message-detail-control onClick={()=>void copy()}><Copy size={12} aria-hidden="true"/>{copied?'원문 복사 완료':'원문 복사'}</button>
    </div>
    {copyError&&<p role="status">{copyError}</p>}
-   <pre className="message-detail-text" data-message-original={original?'true':undefined}><code>{original?raw:preview}</code></pre>
+   {original?<div className="message-detail-text" role="region" aria-label="작업 원문" data-message-original="true" tabIndex={0}>{raw}</div>:
+    <pre className="message-detail-text"><code>{preview}</code></pre>}
   </div>}
  </details>;
 }

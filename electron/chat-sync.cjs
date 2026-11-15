@@ -72,7 +72,7 @@ function mergeNative(local, incoming) {
   const result=[];
   for(const item of incoming){
     const old=localById.get(item.id);
-    const merged=matches.has(item.id)?matches.get(item.id):old?{...old,...item,createdAt:old.createdAt}:item;
+    const merged=matches.has(item.id)?matches.get(item.id):old?{...old,...item,...(require('./chat-long-request.cjs').retainsRequest(old,item)&&{text:old.text}),createdAt:old.createdAt}:item;
     if(merged)result.push(merged);
   }
   const preserved=new Set(result.map(m=>m.id));
@@ -233,4 +233,4 @@ async function rename(runtime, session, name) {
   guardSession(runtime,session,id,context);
 }
 
-module.exports = { bindNative, sync, openDesktop, mergeNative, listingTitles, rename };
+module.exports = { probe, bindNative, sync, openDesktop, mergeNative, listingTitles, rename };

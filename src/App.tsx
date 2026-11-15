@@ -1,3 +1,5 @@
+import {RequestSource} from './RequestSource';
+import {maxChatInput, exceedsChatSize, chatLengthError} from '../electron/mobile/chat-input.js';
 import ChatAccessHint from './ChatAccessHint';
 import {useModelCatalog} from './useModelCatalog';
 import chatgptAvatar from "../electron/mobile/chatgpt.svg?no-inline";
@@ -757,11 +759,20 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     setSessionId(undefined);
     setTimeout(() => composer.current?.focus(), 0);
   }
+  const submissionReceipts=useRef(new Map<string,{id:string;text:string}>());
+  function longSubmission(key:string,text:string) {
+    if(text.length<=maxChatInput)return {};
+    const prior=submissionReceipts.current.get(key);
+    if(prior?.text===text)return {submissionId:prior.id};
+    const id=crypto.randomUUID();submissionReceipts.current.set(key,{id,text});
+    return {submissionId:id};
+  }
   async function send(textOverride?:string, nextTurn=false) {
     const requestText=textOverride??input;
     if ((!requestText.trim() && !attachments.length) || submittingRef.current || modelSaveKey.current === draftKey) return;
     if (!api)
       return notify("데스크톱 앱에서 작업 폴더와 Codex를 연결해 주세요.");
+    if (exceedsChatSize(requestText)) return notify(chatLengthError);
     if (!conversationProject) return notify("먼저 대화할 프로젝트나 대화 범위를 선택해 주세요.");
     submittingRef.current = true;
     setSubmitting(true);
@@ -771,7 +782,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const originalInput = requestText;
     const originalAttachments=attachments;
     const wasRunning=running;
-    const text = requestText.trim();
+    const text = requestText;
     setDrafts((prev) => ({ ...prev, [originKey]: { text: "", mode } }));
     try {
       if (!activeId) {
@@ -799,6 +810,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       }));
       stickToBottom.current = true;
       const sent=await api.send({
+        ...longSubmission(restoreKey,text),
         ...(wasRunning&&!nextTurn&&{delivery:"steer" as const}),
         sessionId: activeId,
         text,
@@ -807,8 +819,15 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         model: data.settings.model || undefined,
         effort: data.settings.effort,
       });
+      submissionReceipts.current.delete(restoreKey);
       if(sent.steered)notify("현재 작업에 추가 지시를 전달했습니다.");
-      else if(sent.queued)notify("추가 지시를 보관했습니다. 현재 작업이 끝나면 차례로 전달합니다.");
+      else if(sent.queued){
+        if(!wasRunning)setActivities(prev=>{
+          if(prev[activeId!]?.status!=="Codex에 연결하고 있습니다")return prev;
+          const next={...prev};delete next[activeId!];return next;
+        });
+        notify(sent.waitingForWriter?"요청을 보관했습니다. 원래 대화의 쓰기 권한이 반환되면 자동으로 보냅니다.":"추가 지시를 보관했습니다. 현재 작업이 끝나면 차례로 전달합니다.");
+      }
     } catch (error) {
       if (activeId&&!wasRunning)
         setActivities((prev) => {
@@ -898,7 +917,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const originKey=draftKey,originalInput=input,originalAttachments=attachments;
     submittingRef.current=true;setSubmitting(true);
     try{
-      await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,text:originalInput,attachments:originalAttachments.map(a=>a.id),mode,model:data.settings.model||undefined,effort:data.settings.effort});
+      await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,...longSubmission(originKey,originalInput),text:originalInput,attachments:originalAttachments.map(a=>a.id),mode,model:data.settings.model||undefined,effort:data.settings.effort});
+      submissionReceipts.current.delete(originKey);
       setDrafts(previous=>{const draft=previous[originKey];return {...previous,[originKey]:{...draft,mode:draft?.mode||mode,text:draft?.text===originalInput?'':draft?.text||'',attachments:(draft?.attachments||[]).filter(item=>!originalAttachments.some(sent=>sent.id===item.id))}}});
       stickToBottom.current=true;
     }finally{submittingRef.current=false;setSubmitting(false)}
@@ -1090,7 +1110,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                   aria-label="메시지 복사"
                                   onClick={async () => {
                                     try {
-                                      await api?.copyText(message.text);
+                                      const original=message.sourceOnly ? (await api!.readRequestSource(session.id,message.id,"full")).text : message.text;
+                                      await api?.copyText(original);
                                       notify("메시지를 복사했습니다.");
                                     } catch (error) {
                                       fail(error);
@@ -1118,6 +1139,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                           {Boolean(message.attachments?.length)&&project&&<ChatAttachmentList projectId={project.id} items={message.attachments!}/>}
                           <div className="markdown">
                             <MessageContent text={message.text} role={message.role}/>
+                            {message.sourceOnly && <RequestSource sessionId={session.id} messageId={message.id}/>}
                           </div>
                         </div>
                       </article>
@@ -1242,7 +1264,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       </button>
                     )}
                   </div>
-                  <ChatContinuation session={session} running={running || sessionApprovals.length > 0 || Boolean(session && visibleProposals(proposals).some(p=>p.sourceId===session.id || p.targetId===session.id))}
+                  <ChatContinuation key={draftKey} session={session} running={running || sessionApprovals.length > 0 || Boolean(session && visibleProposals(proposals).some(p=>p.sourceId===session.id || p.targetId===session.id))}
                     authenticated={connection.authenticated} busy={submitting || savingModel === draftKey} model={session?.preferences?.model || data.settings.model} draft={input} textareaRef={composer}
                     active={chatActive && dockOpen && !settingsOpen && !attentionOpen} cache={suggestionCache.current}
                     placeholder={project ? "어떤 작업을 함께 해볼까요?" : "만들고 싶은 것, 풀고 싶은 문제를 적어 주세요."}

@@ -58,7 +58,7 @@ async function addAttachments(store, projectId, files) {
     throw error;
   }
 }
-async function resolveAttachments(store,projectId,ids=[]) {
+async function resolveAttachments(store,projectId,ids=[],includeBytes=false) {
   const project=store.project(projectId);
   if (!Array.isArray(ids) || ids.length > MAX_FILES || ids.some(id=>typeof id!=='string'||!UUID.test(id)) || new Set(ids).size!==ids.length) throw Error('첨부 파일 식별자를 확인해 주세요.');
   if (!ids.length) return [];
@@ -74,12 +74,38 @@ async function resolveAttachments(store,projectId,ids=[]) {
     total+=fileStat.size;if(total>MAX_TOTAL)throw Error('첨부 합계가 50MB를 넘었습니다.');
     const data=await fs.readFile(file);
     if(createHash('sha256').update(data).digest('hex')!==record.sha256) throw Error('첨부 파일 내용이 변경됐습니다. 다시 첨부해 주세요.');
-    result.push({...record,path:file,image:Boolean(imageType(data)),...(imageType(data)&&data.length<=2*1024*1024?{dataUrl:`data:${imageType(data)};base64,${data.toString('base64')}`}:{})});
+    result.push({...record,path:file,...(includeBytes&&{bytes:data}),image:Boolean(imageType(data)),...(imageType(data)&&data.length<=2*1024*1024?{dataUrl:`data:${imageType(data)};base64,${data.toString('base64')}`}:{})});
   }
   if(store.project(projectId)!==project)throw Error('첨부를 읽는 중 계정이나 프로젝트가 바뀌었습니다. 다시 확인해 주세요.');
   return result;
 }
+// Multiple sends and queued retries of the same large request can reuse the immutable source.
+async function storeRequestSource(store, projectId, text) {
+  const bytes = Buffer.from(text, 'utf8');
+  if(!bytes.length || bytes.length > MAX_FILE)throw Error(require('./mobile/chat-input.js').chatLengthError);
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const id = [sha256.slice(0,8),sha256.slice(8,12),'8'+sha256.slice(13,16),'a'+sha256.slice(17,20),sha256.slice(20,32)].join('-');
+  const record = {id, name:'request.txt', type:'text/plain', size:bytes.length, sha256};
+  const root = await attachmentRoot(store, projectId);
+  const target = path.join(root,id);
+  async function verify() {
+    const [source] = await resolveAttachments(store,projectId,[id]);
+    if (source.sha256 !== sha256 || source.name !== record.name) throw Error('긴 요청 원본의 내용이 달라졌습니다.');
+    return record;
+  }
+  try { return await verify(); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  const stage = await fs.mkdtemp(path.join(root,'.request-'));
+  try {
+    await fs.writeFile(path.join(stage,record.name),bytes,{flag:'wx',mode:0o600});
+    await createJSON(path.join(stage,'attachment.json'),record);
+    try { await fs.rename(stage,target); }
+    catch (error) { if (!['EEXIST','ENOTEMPTY','EPERM'].includes(error.code)) throw error; }
+    return await verify();
+  } finally { await fs.rm(stage,{recursive:true,force:true}); }
+}
 function registerChatAttachments(register,store) {
+  register('readRequestSource',(sessionId,messageId,offset)=>require('./chat-long-request.cjs').readRequestSource(store,sessionId,messageId,offset));
   register('addChatAttachments',(projectId,files)=>addAttachments(store,projectId,files));
   register('readChatAttachment',async(projectId,id)=>{
     const [file]=await resolveAttachments(store,projectId,[id]);
@@ -94,4 +120,4 @@ function registerChatAttachments(register,store) {
     return {attachment,...(dataUrl?{dataUrl}:{})};
   });
 }
-module.exports={MAX_FILE,MAX_TOTAL,MAX_FILES,checkedAttachments,addAttachments,resolveAttachments,registerChatAttachments};
+module.exports={MAX_FILE,MAX_TOTAL,MAX_FILES,checkedAttachments,storeRequestSource,addAttachments,resolveAttachments,registerChatAttachments};

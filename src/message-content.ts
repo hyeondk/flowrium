@@ -1,3 +1,4 @@
+import {attachmentDisplayText} from '../electron/mobile/attachment-text.js';
 export type MessageContentBlock =
   | {kind:'markdown';text:string}
   | {kind:'writing';text:string;raw:string}
@@ -54,7 +55,8 @@ function lines(text:string){const result:{start:number;end:number;text:string}[]
 }
 export function messageContent(text:string,role:'user'|'assistant'|'system',streaming=false):MessageContentBlock[]{
   if(role==='system')return [{kind:'log',raw:text,failed:/^(?:작업을 완료하지 못했습니다|답변은 보존했지만 산출물)/.test(text)}];
-  if(role==='user'||!text)return [{kind:'markdown',text}];
+  if(role==='user')return [{kind:'markdown',text:attachmentDisplayText(text)}];
+  if(!text)return [{kind:'markdown',text}];
   if(text.trimStart().startsWith('"')){
     const encoded=parse(text.trim()),decoded=typeof encoded==='string'?parse(encoded):undefined;
     if(isToolResult(decoded))return [{kind:'log',raw:text,failed:failed(decoded)}];
@@ -147,7 +149,7 @@ export function speakableMessage(text:string,role:'user'|'assistant'|'system'='a
 
 /** 목록 미리보기에서도 전달 JSON과 작성 메타데이터를 본문처럼 노출하지 않는다. */
 export function messagePreview(text:string,role:'user'|'assistant'|'system',limit=90):string{
-  if(role==='user')return text.slice(0,limit);
+  if(role==='user')return attachmentDisplayText(text).slice(0,limit);
   if(role==='system')return '작업 상태';
   const start=text.trimStart();
   if(/^(?:[\[{]|"\s*[\[{])/.test(start))return '구조화된 응답 / 대화에서 확인하세요.';

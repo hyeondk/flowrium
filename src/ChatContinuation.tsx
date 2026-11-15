@@ -4,7 +4,6 @@ import type {Session} from '../shared/types';
 import type {FollowupSuggestions} from '../shared/chat-continuation';
 import {awaitsContinuation} from '../shared/execution-state';
 import ResizableComposerInput from './ResizableComposerInput';
-import ComposerMarkdown from './ComposerMarkdown';
 import {MotionOverlay} from './ui-motion';
 import {followupFromAnswer, type DisplaySuggestion} from './answer-followup';
 import './chat-continuation.css';
@@ -164,7 +163,7 @@ export default function ChatContinuation({
       placeholder={preview || placeholder} data-inline-suggestion={Boolean(preview)}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onChange={e => onChange(e.target.value)}
       onKeyDown={e => {
-        if (e.nativeEvent.isComposing) return;
+        if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
         if (e.key === 'Tab' && preview && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
           e.preventDefault(); accept();
         } else if (e.key === 'Escape' && candidate) {
@@ -174,7 +173,6 @@ export default function ChatContinuation({
         }
       }}
     />
-    <ComposerMarkdown draft={draft}/>
     {key && <section className="chat-continuation" aria-label="다음 작업">
       <div className="chat-continuation-actions">
         {candidate

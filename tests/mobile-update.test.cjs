@@ -84,6 +84,9 @@ test('운영체제가 보호한 파일 지문으로 오프라인 복원하고 �
   const offline=new MobileUpdater({...options,fetchImpl:()=>{throw Error('오프라인');}});
   await offline.restore();
   assert.equal(offline.version,next);
+  assert(offline.contents('composer-syntax.js').includes('Permission is hereby granted'));
+  assert(offline.contents('composer-markdown.js').includes('attachComposerMarkdown'));
+  assert(offline.contents('composer-markdown.css').includes('.markdown-input-ink'));
   assert(offline.contents('markdown-engine.js').includes('Permission is hereby granted'));
   assert(offline.contents('chat-reader.js').includes('groupMobileHistory'));
   const filename=path.join(directory,marker),saved=JSON.parse(await fs.readFile(filename,'utf8'));

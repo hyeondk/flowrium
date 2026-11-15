@@ -16,7 +16,7 @@ function matchExchanges(local,incoming,matches) {
   if(index<0)index=0; // Older clients appended instructions to the original prompt.
   const row=remote.splice(index,1)[0];
   if(!row)continue;
-  if(row.user.id!==user.id)matches.set(row.user.id,user);
+  if(row.user.id!==user.id || require('./chat-long-request.cjs').retainsRequest(user,row.user))matches.set(row.user.id,user);
   if(answers.length!==1 || !row.answers.length)continue;
   const answer=answers[0];
   if(row.answers.some(part=>part.id===answer.id))continue;
@@ -48,7 +48,7 @@ function mergeMessages(previous,incoming){
    if(message.role==='assistant'&&sources.length>1){next={...message,text:sources.map(m=>m.text).join('\n\n')};for(const row of sources.slice(1))suppressed.add(row.id);}
   }
   if(!original){const matches=previous.filter(old=>!used.has(old.id)&&old.role===message.role&&old.text===message.text);if(matches.length===1)original=matches[0];}
-  if(original){used.add(original.id);out.push({...copy(original),...copy(next),id:original.id,createdAt:original.createdAt,...(original.reaction?{reaction:original.reaction}:{}),...(!next.attachments&&original.attachments?{attachments:copy(original.attachments)}:{})});}
+  if(original){used.add(original.id);out.push({...copy(original), ...copy(next),...(require('./chat-long-request.cjs').retainsRequest(original,next) && {text:original.text}),id:original.id,createdAt:original.createdAt,...(original.reaction?{reaction:original.reaction}:{}),...(!next.attachments&&original.attachments?{attachments:copy(original.attachments)}:{})});}
   else out.push(copy(next));
  }
  // 참조 중인 과거 메시지나 로컬 안내를 삭제하지 않습니다. 이전 원문 사본도 별도로 남깁니다.

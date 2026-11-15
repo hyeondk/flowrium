@@ -18,19 +18,19 @@ function disabledConnections(config){
  }
  return overrides;
 }
-async function runStructuredAnalysis(controller,input){
+async function runStructuredAnalysis(controller,input,chatRun){
  if(!input||typeof input.prompt!=='string'||!input.prompt.trim()||input.prompt.length>150000||!input.schema||typeof input.schema!=='object'||Array.isArray(input.schema)||JSON.stringify(input.schema).length>32000)throw Error('AI 분석 요청 형식을 확인해 주세요.');
  if(controller.shuttingDown||controller.options.canRun?.()===false)throw Error('잠금과 계정 전환 또는 업데이트를 마친 뒤 분석해 주세요.');
  const owner=controller.options.queueOwner?.()??'local';
  controller.analysisRuns ||=new Map();
- const previous=controller.analysisRuns.values().next().value;
+ const previous=[...controller.analysisRuns.values()].find(entry=>!entry.chatRun);
  if(previous?.background && !input.background){
   previous.cancel();
   await previous.finished;
   if(controller.shuttingDown||controller.options.canRun?.()===false||owner!==(controller.options.queueOwner?.()??'local'))
    throw Error('계정이나 잠금 상태가 바뀌었습니다. 다시 요청해 주세요.');
  }
- if(controller.analysisRuns.size)throw Error('진행 중인 AI 분석을 먼저 마쳐 주세요.');
+ if(!chatRun && [...controller.analysisRuns.values()].some(entry=>!entry.chatRun))throw Error('진행 중인 AI 분석을 먼저 마쳐 주세요.');
  const id='analysis:'+randomUUID();
  let client,directory,timer,stopped;
  const completion=Promise.withResolvers();
@@ -44,6 +44,7 @@ async function runStructuredAnalysis(controller,input){
  };
  const checkActive=()=>{
   if(stopped)throw stopped;
+  if(chatRun && (chatRun.cancelled || chatRun.finalized || controller.runs.get(chatRun.sessionId)!==chatRun))throw Error('긴 요청 읽기를 중단했습니다.');
   if(controller.shuttingDown||owner!==(controller.options.queueOwner?.()??'local')||controller.options.canRun?.()===false)
    throw Error('계정이나 잠금 상태가 바뀌었습니다. 다시 요청해 주세요.');
  };
@@ -53,7 +54,9 @@ async function runStructuredAnalysis(controller,input){
   timer.unref?.();
  };
  const finished=Promise.withResolvers();
- controller.analysisRuns.set(id,{background:input.background===true,cancel:()=>stop(Error('AI 분석이 취소됐습니다.')),finished:finished.promise});
+ const cancel=()=>stop(Error('AI 분석이 취소됐습니다.'));
+ if(chatRun)chatRun.cancelInputAnalysis=cancel;
+ controller.analysisRuns.set(id,{chatRun,background:input.background===true,cancel,finished:finished.promise});
  controller.editingSessions.add(id);
  try{
   await controller.client.start(controller.store.state.settings.codexPath);
@@ -125,6 +128,7 @@ async function runStructuredAnalysis(controller,input){
   throw stopped||error;
  }finally{
   clearTimeout(timer);client?.close();controller.analysisRuns.delete(id);controller.editingSessions.delete(id);
+  if(chatRun?.cancelInputAnalysis===cancel)delete chatRun.cancelInputAnalysis;
   try{if(directory)await fs.rm(directory,{recursive:true,force:true,maxRetries:4,retryDelay:100});}finally{finished.resolve();}
  }
 }

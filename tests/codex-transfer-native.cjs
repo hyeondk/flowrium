@@ -13,7 +13,20 @@ async function direct(client,threadId,text,model){let answer='',complete,failed;
  await direct(a,threadId,'첫 번째 표식은 푸른달별입니다. 기억한 뒤 확인이라고만 답하세요.',model);
  let sent,borrowedClosed=false;const text='두 번째 표식은 은빛바람입니다. 기억한 뒤 확인이라고만 답하세요.';
  controller=new Controller(store,{client:b,queueOwner:()=>0,canRun:()=>true,linkedClientFactory:()=>{const client=new CodexClient({configOverrides:overrides}),request=client.request.bind(client),close=client.close.bind(client);client.request=(method,params,...args)=>{if(method==='turn/start')sent=params;return request(method,params,...args)};client.close=()=>{borrowedClosed=true;close()};return client;}});runtime=new CodexTransfer(store,controller,{accountRevision:()=>0,accountOwner:()=> '합성검증계정',canRun:()=>true});const plan=await runtime.preview({projects:[{name:'합성 연결 프로젝트',path:folder,threadIds:[threadId]}]});const result=await runtime.apply({planId:plan.id});assert.equal(result.failed,0);const session=store.state.sessions[0];assert.equal(session.threadId,threadId);
- await controller.send({sessionId:session.id,mode:'plan',model,effort:'low',text});const deadline=Date.now()+60000;while(controller.runs.has(session.id)&&Date.now()<deadline)await delay(50);assert.equal(controller.runs.has(session.id),false);let writerLocked=false;if(!sent){const error=session.messages.filter(m=>m.role==='system').map(m=>m.text).join(' / ');assert.match(error,/원래 앱에서 이 대화를 벗어나거나/);writerLocked=true;const begun=Date.now();await a.request('thread/unsubscribe',{threadId});a.close();await delay(1800);await controller.send({sessionId:session.id,mode:'plan',model,effort:'low',text});const retry=Date.now()+60000;while(controller.runs.has(session.id)&&Date.now()<retry)await delay(50);console.log('소유 프로세스 종료 뒤 다시 실행',Date.now()-begun);}assert(sent,session.messages.filter(m=>m.role==='system').map(m=>m.text).join(' / '));assert.equal(sent.input[0].text,text);assert.equal(sent.threadId,threadId);assert(borrowedClosed);assert.equal(controller.linkedClients.size,0);
+ controller.status.authenticated=true;
+ const submitted=await controller.send({sessionId:session.id,mode:'plan',model,effort:'low',text});
+ const writerLocked=submitted.waitingForWriter===true;
+ if(writerLocked){
+   assert(!sent);
+   assert(session.queuedMessages.some(q=>q.id===submitted.queueId&&q.status==='queued'));
+   await a.request('thread/unsubscribe',{threadId});
+ }
+ const deadline=Date.now()+70000;
+ while((!sent||controller.runs.has(session.id))&&Date.now()<deadline)await delay(50);
+ assert(!controller.runs.has(session.id));
+ assert(sent,session.messages.filter(m=>m.role==='system').map(m=>m.text).join(' / '));
+ assert.equal(sent.input[0].text,text);assert.equal(sent.threadId,threadId);
+ assert(borrowedClosed);assert.equal(controller.linkedClients.size,0);a.close();
  const fromFresh=await D.snapshot(c,threadId,folder);assert(fromFresh.messages.some(m=>m.text===text));
  a=new CodexClient({configOverrides:overrides});await a.start();const releaseAt=Date.now();await a.request('thread/resume',{threadId,excludeTurns:true,cwd:folder,sandbox:'read-only',approvalPolicy:'never',model});console.log('Flowrium 실행 종료 뒤 반대 방향 재연결',Date.now()-releaseAt);
  const answerA=await direct(a,threadId,'앞서 정한 두 번째 표식만 그대로 답하세요. 확인할 수 없으면 없음이라고 답하세요.',model);assert(answerA.includes('은빛바람'),answerA);await a.request('thread/unsubscribe',{threadId});a.close();

@@ -47,8 +47,8 @@
 .conversation-dock .markdown p{font-size:inherit;line-height:1.8;word-break:keep-all;overflow-wrap:normal;margin-bottom:14px}
 .conversation-dock .markdown :is(h1,h2,h3){font-size:17px;line-height:28px;font-weight:700;margin:24px 0 12px}
 .conversation-dock .markdown :is(pre,table){display:block;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
-.conversation-dock .markdown pre{padding:16px;border-radius:10px;font-size:12px;line-height:22px;white-space:pre}
-.conversation-dock .markdown pre code{white-space:pre;overflow-wrap:normal;word-break:normal}
+.conversation-dock .message-prose pre{padding:16px;border-radius:10px;font-size:12px;line-height:22px;white-space:pre}
+.conversation-dock .message-prose pre code{white-space:pre;overflow-wrap:normal;word-break:normal}
 .conversation-dock .markdown img{max-width:100%;height:auto}
 .conversation-dock .markdown :is(a,code){overflow-wrap:anywhere;word-break:normal}
 .app-shell .conversation-dock .composer-area,.app-shell .conversation-dock .has-session .composer-area{padding:12px 24px 10px;background:var(--panel);border-top:1px solid var(--line-soft);margin:0;flex:none;width:100%;max-width:none;max-height:45%;overflow-y:auto;overflow-x:hidden}

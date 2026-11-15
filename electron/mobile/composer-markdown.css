@@ -1,0 +1,29 @@
+.markdown-input {position:relative;display:block;width:100%;min-width:0;}
+.markdown-input > textarea {display:block;}
+/* Never change glyph widths or replace native text. Both surfaces wrap at the same coordinate. */
+.markdown-input > .markdown-input-ink {
+  display:none;position:absolute;z-index:1;margin:0;border:none;box-sizing:border-box;
+  pointer-events:none;user-select:none;overflow:hidden;color:var(--text,CanvasText);
+  text-size-adjust:none;-webkit-text-size-adjust:none;
+}
+.markdown-input[data-formatted=true] > .markdown-input-ink {display:block;}
+.markdown-input[data-formatted=true] > textarea {
+  -webkit-text-fill-color:transparent!important;color:transparent!important;caret-color:var(--text,CanvasText)!important;
+}
+.markdown-input-ink .md-heading,.markdown-input-ink .md-strong {
+  -webkit-text-stroke:.45px currentColor;
+}
+.markdown-input-ink .md-heading {color:var(--accent,var(--focus,#255e91));}
+.markdown-input-ink .md-em {font-synthesis:style;font-style:oblique;}
+.markdown-input-ink .md-strike {text-decoration:line-through;}
+.markdown-input-ink .md-code {
+  background:var(--selected,var(--row-tint,#e5edf4));color:var(--accent,var(--focus,#255e91));border-radius:3px;
+}
+.markdown-input-ink .md-link {color:var(--accent,var(--focus,#255e91));text-decoration:underline;}
+.markdown-input-ink .md-destination,.markdown-input-ink .md-quote,.markdown-input-ink .md-marker {color:var(--muted,var(--soft,#61788d));}
+.markdown-input-ink .md-marker {opacity:.55;}
+.markdown-input-ink .md-bullet,.markdown-input-ink .md-task {color:var(--accent,var(--focus,#255e91));-webkit-text-stroke:.35px currentColor;}
+@media (forced-colors:active) {
+  .markdown-input[data-formatted=true] > .markdown-input-ink {display:none;}
+  .markdown-input[data-formatted=true] > textarea {color:CanvasText!important;-webkit-text-fill-color:CanvasText!important;}
+}

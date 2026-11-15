@@ -67,10 +67,12 @@ export interface Project {
   createdAt: string;
 }
 export interface ChatAttachment {id:string;name:string;type:string;size:number;sha256:string}
-export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;error?:string}
+export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;waitingForWriter?:boolean;error?:string}
 export interface Message {
   workSteps?: WorkStep[];
   reaction?: 'like';
+  requestSource?: ChatAttachment;
+  sourceOnly?: boolean;
   attachments?: ChatAttachment[];
   turnId?: string;
   id: string;
@@ -189,6 +191,7 @@ export interface FlowriumAPI
   createHubConversation(input:{scope:ConversationScope;title?:string}):Promise<Session>;
   listHubConversations():Promise<{projects:Project[];sessions:Session[]}>;
   addChatAttachments(projectId:string,files:{name:string;type:string;bytes:Uint8Array}[]):Promise<ChatAttachment[]>;
+  readRequestSource(sessionId:string,messageId:string,offset:number|"full"):Promise<{text:string;next:number|null}>;
   readChatAttachment(projectId:string,id:string):Promise<{attachment:ChatAttachment;dataUrl?:string}>;
   listQueuedMessages(sessionId:string):Promise<QueuedMessage[]>;
   cancelQueuedMessage(sessionId:string,id:string):Promise<void>;
@@ -215,13 +218,14 @@ export interface FlowriumAPI
   login(): Promise<{ authUrl?: string }>;
   send(input: {
     delivery?: "steer";
+    submissionId?:string;
     sessionId: string;
     text: string;
     attachments?: string[];
     mode: Mode;
     model?: string;
     effort?: Effort;
-  }): Promise<{ accepted: boolean; steered?: boolean; queued?: boolean; queueId?:string }>;
+  }): Promise<{ accepted: boolean; steered?: boolean; queued?: boolean; waitingForWriter?:boolean; queueId?:string }>;
   interrupt(sessionId: string): Promise<void>;
   answerInput(input: { requestId: string; answers: InputAnswers }): Promise<void>;
   approval(input: {

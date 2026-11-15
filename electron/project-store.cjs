@@ -62,12 +62,17 @@ function validateSession(session, projectId) {
       ids.has(message.id) ||
       !["user", "assistant", "system"].includes(message.role) ||
       typeof message.text !== "string" ||
-      message.text.length > 2_000_000 ||
+      message.text.length > require("./mobile/chat-input.js").maxChatInput ||
       !validateDate(message.createdAt)
     )
       throw new Error(
         "저장된 메시지 형식이 올바르지 않습니다. 원본은 보존됩니다.",
       );
+    if(message.sourceOnly!==undefined && (message.sourceOnly!==true || !message.requestSource))throw Error('긴 요청 원문 참조를 확인해 주세요.');
+    if(message.requestSource!==undefined) {
+      const [source]=require("./chat-attachments.cjs").checkedAttachments([message.requestSource]);
+      if(message.role!=="user" || source.name!=="request.txt" || source.type!=="text/plain")throw Error("긴 요청 원문 정보를 확인해 주세요.");
+    }
     if(message.attachments!==undefined)require("./chat-attachments.cjs").checkedAttachments(message.attachments);
     if (message.workSteps !== undefined && (!Array.isArray(message.workSteps) || message.workSteps.some(step =>
       !step || typeof step.id !== 'string' || !step.id || step.id.length > 300 ||

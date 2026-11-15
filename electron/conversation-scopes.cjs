@@ -2,10 +2,11 @@ const fs=require('node:fs/promises'),path=require('node:path');
 const {CodexClient}=require('./codex.cjs');
 const {text}=require('./store.cjs');
 const {disabledConnections}=require('./structured-analysis.cjs');
+const currentRequest=require('./scoped-request.cjs');
 const SCOPES=['general','integrated'];
 const instructions={
- general:'이 대화는 프로젝트와 무관한 일반 대화입니다. 사용자가 쓴 대화와 직접 첨부한 자료만 사용하세요. 프로젝트 파일, 다른 대화, 외부 연결, 셸과 도구에 접근하지 마세요. 파일 편집이나 실행을 수행했다고 주장하지 마세요.',
- integrated:'이 대화는 등록한 모든 프로젝트의 현황을 살피는 통합 채팅입니다. 제공한 현황 자료와 flowrium_hub_snapshot만 읽어 설명하세요. 등록 프로젝트 수와 전체 현황을 확인할 때는 query를 빈 문자열로 조회하세요. query는 자연어 질문이 아닌 키워드 부분 일치 검색입니다. 등록 전체 수는 totalProjects이며 matchedProjects와 projects.length는 검색 결과 수입니다. 검색 결과가 0이어도 등록 프로젝트가 0이라는 뜻이 아닙니다. 필요하면 빈 문자열로 다시 조회하세요. limits와 cap에 따른 생략 범위를 확인하고 조회하지 못한 내용을 추정하지 마세요. 원본 프로젝트에 접근하거나 파일을 변경할 수 없습니다. 구현이나 변경을 요청받으면 flowrium_hub_delegate로 결정함에 업무를 제안하세요. 사용자가 결정함에서 승인한 뒤 해당 프로젝트 대화에서 실행됩니다. 승인 전 실행했다고 주장하지 마세요.'
+ general:'이 대화는 프로젝트와 무관한 일반 대화입니다. 사용자가 쓴 대화와 직접 첨부한 자료만 사용하세요. 긴 요청은 flowrium_read_current_request로 이번에 보낸 원문만 읽을 수 있습니다. 프로젝트 파일, 다른 대화, 외부 연결, 셸에 접근하지 마세요. 파일 편집이나 실행을 수행했다고 주장하지 마세요.',
+ integrated:'이 대화는 등록한 모든 프로젝트의 현황을 살피는 통합 채팅입니다. 이번에 보낸 긴 요청은 flowrium_read_current_request로 읽고, 업무 현황은 제공한 현황 자료와 flowrium_hub_snapshot으로 확인하세요. 등록 프로젝트 수와 전체 현황을 확인할 때는 query를 빈 문자열로 조회하세요. query는 자연어 질문이 아닌 키워드 부분 일치 검색입니다. 등록 전체 수는 totalProjects이며 matchedProjects와 projects.length는 검색 결과 수입니다. 검색 결과가 0이어도 등록 프로젝트가 0이라는 뜻이 아닙니다. 필요하면 빈 문자열로 다시 조회하세요. limits와 cap에 따른 생략 범위를 확인하고 조회하지 못한 내용을 추정하지 마세요. 원본 프로젝트에 접근하거나 파일을 변경할 수 없습니다. 구현이나 변경을 요청받으면 flowrium_hub_delegate로 결정함에 업무를 제안하세요. 사용자가 결정함에서 승인한 뒤 해당 프로젝트 대화에서 실행됩니다. 승인 전 실행했다고 주장하지 마세요.'
 };
 const toolDefinitions=[
  {name:'flowrium_hub_snapshot',description:'등록 프로젝트의 목표 / 현황 / 최근 작업 대화 / 진행 상태를 읽습니다. 등록 전체 수나 전체 현황 조회는 query를 빈 문자열로 보내세요. query는 키워드 부분 일치 검색이며 자연어 질문이나 지시문을 넣지 않습니다. totalProjects는 등록 전체 수, matchedProjects는 검색 일치 수, projects는 반환된 조회 결과입니다. 검색 일치 0건을 등록 전체 0개로 해석하지 마세요. 프로젝트 파일을 실행하거나 수정하지 않습니다.',inputSchema:{type:'object',properties:{query:{type:'string',maxLength:1000,description:'빈 문자열은 전체 조회입니다. 등록 프로젝트 수를 확인할 때 반드시 빈 문자열을 사용하세요. 검색할 때만 프로젝트명이나 대화 제목에 포함된 짧은 키워드를 넣으세요. 자연어 질문은 넣지 마세요.'}},required:['query'],additionalProperties:false}},
@@ -39,6 +40,7 @@ async function snapshot(controller,query=''){
 async function callScopeTool(controller,run,params){
  if(controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
  const session=controller.store.session(run.sessionId);assertScope(controller.store,session);
+ if(params.tool===currentRequest.reader.name && controller.runs.get(session.id)===run && !run.cancelled && !run.finalized) return currentRequest.readPage(run,params.arguments);
  if(session.scope!=='integrated')throw Error('일반 대화에서는 프로젝트 도구를 사용할 수 없습니다.');
  const args=params.arguments;
  if(!args||typeof args!=='object'||Array.isArray(args))throw Error('앱 도구 입력을 확인해 주세요.');
@@ -105,10 +107,12 @@ async function startScopedRun(controller,run,input,message,project){
  const model=input.model;
  let result;
  const previous=!run.threadId?session.messages.filter(m=>m.id!==run.userMessageId&&m.role!=='system').slice(-20).map(m=>m.role+': '+m.text).join('\n').slice(-40000):'';
- if(run.threadId){if(!controller.loadedThreads.has(run.threadId))result=await client.request('thread/resume',{threadId:run.threadId,...params,...(model&&{model})});}
+ if(run.threadId){if(!controller.loadedThreads.has(run.threadId))result=await client.request('thread/resume',{threadId:run.threadId,excludeTurns:true,...params,...(model&&{model})});}
  else{
-  result=await client.request('thread/start',{...params,...(model&&{model}),...(session.scope==='integrated'?{dynamicTools:toolDefinitions.map(t=>({type:'function',...t}))}:{})});
+  const tools=session.scope==='integrated'?[...toolDefinitions,currentRequest.reader]:[currentRequest.reader];
+  result=await client.request('thread/start',{...params,...(model&&{model}),dynamicTools:tools.map(t=>({type:'function',...t}))});
   run.threadId=result.thread?.id;if(!run.threadId)throw Error('ChatGPT 대화를 생성하지 못했습니다.');session.threadId=run.threadId;
+  session.requestReaderThreadId=run.threadId;
  }
  if(result&&result.activePermissionProfile?.id!==params.permissions)throw Error('대화의 파일 접근 제한을 확인하지 못했습니다.');
  controller.codexTransfer?.bindNative?.(session,run.threadId,params.cwd);
@@ -120,9 +124,15 @@ async function startScopedRun(controller,run,input,message,project){
   attachmentText+='\n\n첨부 자료 / '+file.name+'\n'+(content||'이 파일 형식의 본문은 읽지 못했습니다. 텍스트 또는 이미지로 다시 첨부해 주세요.');if(remaining<=0)break;
  }
  const context=session.scope==='integrated'?'\n\n현재 전체 업무 현황(참고 자료):\n'+JSON.stringify(await snapshot(controller)):'';
+ const guard=()=>{
+  assertScope(controller.store,session);
+  if(controller.runs.get(session.id)!==run || run.cancelled || run.finalized || run.ownerRevision!==(controller.options.queueOwner?.()??'local') || controller.options.canRun?.()===false) throw Error('현재 대화의 긴 요청 읽기를 중단했습니다.');
+ };
+ message=await currentRequest.scopedRequest(controller,run,session,message,model,guard);
  if(run.cancelled||run.finalized)return controller.finish(run,'interrupted');
  assertScope(controller.store,session);if(controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
- const turn=await client.request('turn/start',{threadId:run.threadId,clientUserMessageId:run.userMessageId,approvalPolicy:'never',approvalsReviewer:'user',permissions:params.permissions,cwd:params.cwd,model,effort:input.effort,additionalContext:{flowrium_app:{kind:'application',value:'한국어로 답변해 주세요.\n'+instructions[session.scope]+'\n'+require('./chat-preferences.cjs').instructions(prefs)+(run.replyFollowupHint||'')},...((context||previous||attachmentText)&&{flowrium_work:{kind:'untrusted',value:[context,previous,attachmentText].filter(Boolean).join('\n\n')}})},input:[{type:'text',text:message},...run.attachments.filter(a=>a.image).map(a=>({type:'localImage',path:a.path}))]});
+ const guidance=instructions[session.scope]+(run.requestPages?'\n현재 긴 요청의 원문을 읽을 때는 전용 도구 flowrium_read_current_request를 사용하세요. 이 도구는 사용자가 이번에 입력한 글만 반환합니다.':'');
+ const turn=await client.request('turn/start',{threadId:run.threadId,clientUserMessageId:run.userMessageId,approvalPolicy:'never',approvalsReviewer:'user',permissions:params.permissions,cwd:params.cwd,model,effort:input.effort,additionalContext:{flowrium_app:{kind:'application',value:'한국어로 답변해 주세요.\n'+guidance+'\n'+require('./chat-preferences.cjs').instructions(prefs)+(run.replyFollowupHint||'')},...((context||previous||attachmentText)&&{flowrium_work:{kind:'untrusted',value:[context,previous,attachmentText].filter(Boolean).join('\n\n')}})},input:[{type:'text',text:message},...run.attachments.filter(a=>a.image).map(a=>({type:'localImage',path:a.path}))]});
  if(!turn.turn?.id)throw Error('ChatGPT 응답을 시작하지 못했습니다.');run.turnId=turn.turn.id;
  const sent=session.messages.find(m=>m.id===run.userMessageId);if(sent)sent.turnId=run.turnId;await controller.store.save();
  if(run.cancelled&&!run.finalized)await client.request('turn/interrupt',{threadId:run.threadId,turnId:run.turnId});

@@ -5,4 +5,20 @@ function fixture(){const client=new Client(),borrowed=new Client(),events=[],ses
 test('공유 실행은 별도 연결에서 승인과 질문을 처리하고 해제 시 종료한다',async()=>{const f=fixture(),approval=randomUUID(),question=randomUUID();f.borrowed.approvals.set(approval,{params:{threadId:'원래대화',turnId:'작업'}});f.borrowed.emit('approval',{requestId:approval,method:'item/commandExecution/requestApproval',params:{threadId:'원래대화',turnId:'작업'}});assert.equal(f.events.at(-1).type,'approval');assert.equal(f.controller.requestClient(approval),f.borrowed);f.controller.decideApproval(approval,'accept');assert.equal(f.borrowed.decided.decision,'accept');f.borrowed.inputs.set(question,{params:{threadId:'원래대화',turnId:'작업'}});f.borrowed.emit('input',{requestId:question,params:{threadId:'원래대화',turnId:'작업',questions:[]}});f.controller.answerInput({requestId:question,answers:{질문:['답변']}});assert.deepEqual(f.borrowed.answered.answers,{질문:['답변']});assert.equal(f.controller.clients().length,2);await f.run.releaseClient();assert(f.borrowed.closed);assert.equal(f.client.closed,undefined);assert.equal(f.controller.linkedClients.size,0);assert.equal(f.borrowed.calls[0].method,'thread/unsubscribe');});
 test('계정 변경 뒤 남은 공유 승인과 질문은 거절한다',async()=>{const f=fixture(),approval=randomUUID(),question=randomUUID();f.run.ownerRevision=0;f.borrowed.approvals.set(approval,{params:{threadId:'원래대화',turnId:'작업'}});f.borrowed.inputs.set(question,{params:{threadId:'원래대화',turnId:'작업'}});assert.throws(()=>f.controller.decideApproval(approval,'accept'),/종료/);assert.throws(()=>f.controller.answerInput({requestId:question,answers:{}}),/종료/);await f.run.releaseClient();});
 test('원래 앱의 전용 도구는 실행 성공으로 꾸미지 않고 명확히 거절한다',async()=>{const f=fixture();f.borrowed.emit('tool',{requestId:'도구',params:{threadId:'원래대화',turnId:'작업',tool:'원래앱전용',callId:'호출',arguments:{}}});await new Promise(setImmediate);assert.equal(f.borrowed.toolResult.result.success,false);assert.match(f.borrowed.toolResult.result.contentItems[0].text,/원래 앱 전용 도구/);await f.run.releaseClient();});
-test('쓰기 소유권 충돌은 한국어로 원래 앱의 연결 해제 방법을 안내한다',()=>{assert.match(linkedError(Error('thread opaque already has an active writer')).message,/원래 앱에서 이 대화를 벗어나거나 앱을 닫은 뒤/);const other=Error('다른 오류');assert.equal(linkedError(other),other);});
+test('쓰기 소유권 충돌은 한국어로 원래 앱의 연결 해제 방법을 안내한다',()=>{assert.equal(linkedError(Error('thread opaque already has an active writer')).code,'THREAD_WRITER_BUSY');assert.equal(linkedError(Error('thread opaque is closing; retry thread/resume after the thread is closed')).code,'THREAD_WRITER_BUSY');const other=Error('다른 오류');assert.equal(linkedError(other),other);});
+
+test('재시작 시 전송 기록이 있는 대기 지시는 재전송하지 않고 확정된 수신만 전달함으로 표시한다',async()=>{
+  const {controller,session}=fixture();
+  controller.runs.clear();
+  controller.status.authenticated=true;
+  controller.messageQueue.owner=async()=> '검증 기기';
+  const id=randomUUID(),q={id,owner:'검증 기기',status:'sending',attachments:[]};
+  session.queuedMessages=[q];
+  session.messages.push({role:'user',id,text:'같은 원본에 한 번만 보내는 지시'});
+  let sent=0;controller.send=async()=>{sent++;};
+  await controller.messageQueue.flush(session.id);
+  assert.equal(sent,0);assert.equal(q.status,'queued');assert.match(q.error,/수신 여부/);
+  session.messages[0].turnId=randomUUID();delete q.error;
+  await controller.messageQueue.flush(session.id);
+  assert.equal(sent,0);assert.equal(q.status,'sent');
+});

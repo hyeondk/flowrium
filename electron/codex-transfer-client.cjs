@@ -2,7 +2,7 @@ const {CodexClient}=require('./codex.cjs');
 const {publicMessage}=require('./errors.cjs');
 
 function linkedError(error){
- if(/already has an active writer/i.test(error?.message||''))return new Error('원래 앱에서 이 대화를 벗어나거나 앱을 닫은 뒤 다시 보내 주세요. 같은 대화의 작업은 한 앱에서만 시작할 수 있습니다.');
+ if(/already has an active writer|is closing; retry thread\/resume after the thread is closed/i.test(error?.rpcMessage||error?.message||''))return Object.assign(Error('원래 대화의 쓰기 권한을 기다리고 있습니다.'),{code:'THREAD_WRITER_BUSY'});
  return error;
 }
 function createRunClient(controller,run){
@@ -26,7 +26,7 @@ function createRunClient(controller,run){
   }catch(error){client.answerTool(requestId,{contentItems:[{type:'inputText',text:publicMessage(error)}],success:false});}
  });
  client.on('unsupported',()=>controller.emitEvent({type:'error',sessionId:run.sessionId,text:'원래 앱 전용 추가 입력을 Flowrium에서 처리할 수 없어 거절했습니다. 필요한 작업은 원래 앱에서 이어가 주세요.'}));
- client.on('disconnect',error=>{if(!run.finalized)controller.finish(run,'failed',publicMessage(linkedError(error))).catch(()=>{});});
+ client.on('disconnect',error=>{if(!run.finalized && !run.claimingWriter)controller.finish(run,'failed',publicMessage(linkedError(error))).catch(()=>{});});
  let releasing;
  run.releaseClient=()=>releasing??=(async()=>{
   try{if(client.ready&&run.threadId)await client.request('thread/unsubscribe',{threadId:run.threadId},2500).catch(()=>{});}

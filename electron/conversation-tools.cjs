@@ -26,7 +26,7 @@ async function prepare(controller,session) {
   await client.start(controller.store.state.settings.codexPath);
   if(!controller.loadedThreads.has(session.threadId)){
     const params=await controller.conversationThreadParams?.(session)||{};
-    const resumed=await client.request('thread/resume',{threadId:session.threadId,...params});
+    const resumed=await client.request('thread/resume',{threadId:session.threadId,...params,excludeTurns:true});
     if(session.scope&&resumed.activePermissionProfile?.id!==params.permissions)throw Error('대화의 파일 접근 제한을 확인하지 못했습니다.');
     controller.loadedThreads.add(session.threadId);
   }
@@ -101,6 +101,7 @@ function registerConversationTools(register,controller) {
    }
    else if(input?.action==='rewind'&&index>=0&&session.messages[index].role==='user'){
     const {turns,client}=await prepare(controller,session),target=session.messages[index];
+    const draftText=target.sourceOnly?(await require("./chat-long-request.cjs").readRequestSource(store,id,target.id,"full")).text:target.text;
     const turnIndex=turns.findIndex(t=>t.id===target.turnId);
     if(turnIndex<0)throw Error('선택한 요청의 Codex 실행 기록이 없습니다. 원본 기록을 유지했습니다.');
     // 먼저 원본을 실제로 분기한다. 이후 저장 실패가 나도 원래 Codex 대화는 변경하지 않는다.
@@ -118,7 +119,7 @@ function registerConversationTools(register,controller) {
     if(session.workflow){session.workflow.status='active';delete session.workflow.completion;}
     session.updatedAt=new Date().toISOString();
     await store.save();controller.loadedThreads.add(session.threadId);
-    return {...structuredClone(session),restoredDraft:{text:target.text,attachments:target.attachments||[]}};
+    return {...structuredClone(session),restoredDraft:{text:draftText,attachments:target.attachments||[]}};
    }else throw Error('대화 편집 요청을 확인해 주세요.');
    session.updatedAt=new Date().toISOString();await store.save();return structuredClone(session);
   }catch(e){for(const key of Object.keys(session))delete session[key];Object.assign(session,old);throw e;}

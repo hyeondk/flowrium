@@ -11,12 +11,25 @@ const { CodexTransfer } = require('../electron/codex-transfer.cjs');
 const D = require('../electron/codex-transfer-data.cjs');
 
 function onceEvent(emitter, event, matches) {
-  return new Promise((resolve, reject) => {
+  const result=new Promise((resolve, reject) => {
     const stop = () => { clearTimeout(timer); emitter.off(event, listen); };
     const listen = value => { if(matches(value)){ stop(); resolve(value); } };
-    const timer = setTimeout(() => { stop(); reject(Error('동기화 시험 응답 시간 초과')); }, 15000);
+    const timer = setTimeout(() => { stop(); reject(Error('동기화 시험 응답 시간 초과')); }, process.platform==='win32'?45000:30000);
     emitter.on(event, listen);
   });
+  result.catch(()=>{});
+  return result;
+}
+
+async function resumeWhenReleased(client,params) {
+  const limit=Date.now()+20000;
+  for(;;){
+    try{return await client.request('thread/resume',params);}
+    catch(error){
+      if(Date.now()>=limit||require('../electron/codex-transfer-client.cjs').linkedError(error).code!=='THREAD_WRITER_BUSY')throw error;
+      await new Promise(resolve=>setTimeout(resolve,200));
+    }
+  }
 }
 
 async function main() {
@@ -51,11 +64,12 @@ async function main() {
       return client;
     }
     primary=makeClient();reader=makeClient();desktop=makeClient();
-    const store=new Store(path.join(root,'flowrium'));await store.load();
+    let store=new Store(path.join(root,'flowrium'));await store.load();
     const project=await store.addProject(cwd),session=await store.createSession(project.id);
     await store.saveSettings({model:'gpt-5.5'});
     controller=new Controller(store,{client:primary,canRun:()=>true});
     runtime=new CodexTransfer(store,controller,{readClient:reader,accountOwner:()=> 'synthetic',canRun:()=>true});
+    await controller.connect();
     async function send(text) {
       const done=onceEvent(controller,'event',e=>e.type==='done'&&e.sessionId===session.id);
       await controller.send({sessionId:session.id,text,mode:'plan'});assert.equal((await done).status,'completed');
@@ -67,7 +81,7 @@ async function main() {
     const first=await D.snapshot(desktop,id,cwd);
     assert.deepEqual(first.messages.filter(m=>m.role==='user').map(m=>m.text),['첫 번째 로컬 요청']);
     assert(first.messages.some(m=>m.text==='동기화 응답 1'));
-    await desktop.request('thread/resume',{threadId:id,excludeTurns:true,cwd,approvalPolicy:'never',sandbox:'read-only'});
+    await resumeWhenReleased(desktop,{threadId:id,excludeTurns:true,cwd,approvalPolicy:'never',sandbox:'read-only'});
     const done=onceEvent(desktop,'notification',e=>e.method==='turn/completed'&&e.params.threadId===id);
     await desktop.request('turn/start',{threadId:id,input:[{type:'text',text:'상대 앱에서 작성한 요청'}]});
     assert.equal((await done).params.turn.status,'completed');
@@ -136,13 +150,97 @@ async function main() {
     assert.equal((await desktop.request('project/read',{projectId:foreign.id})).project.name,'다른 카드');
     const fresh=new Store(path.join(root,'flowrium'));await fresh.load();
     assert.equal(fresh.project(project.id).name,'Codex에서 바꾼 프로젝트');
+
+    // Keep the other app's server alive and subscribed to this conversation.
+    // The model must not see an unsent message, even after a Flowrium restart.
+    const source=(await desktop.request('thread/start',{cwd,model:'gpt-5.5',approvalPolicy:'never',sandbox:'read-only'})).thread.id;
+    async function originalTurn(text) {
+      const ended=onceEvent(desktop,'notification',e=>e.method==='turn/completed'&&e.params.threadId===source);
+      await desktop.request('turn/start',{threadId:source,input:[{type:'text',text}]});
+      assert.equal((await ended).params.turn.status,'completed');
+    }
+    await originalTurn('이전 대화의 첫 메시지');
+    const plan=await runtime.preview({projects:[{name:'긴 대화 검증',path:cwd,threadIds:[source]}]});
+    await runtime.apply({planId:plan.id});
+    let shared=store.state.sessions.find(s=>s.codexLink?.sourceThreadId===source);
+    assert(shared);
+    // Use a native engine configured for the same synthetic local model.
+    controller.options.linkedClientFactory=makeClient;
+    controller.status.authenticated=true;
+    const draft={sessionId:shared.id,mode:'plan',text:'같은 대화의 예약된 요청'};
+    const externalStart=Promise.withResolvers(),externalRelease=Promise.withResolvers();
+    hold={started:externalStart,release:externalRelease};
+    const externalDone=originalTurn('원래 앱에서 실행 중인 요청');
+    try{
+      await externalStart.promise;
+      const active=await controller.send({...draft,text:'원래 작업 중 취소할 요청'});
+      assert(active.queued&&active.waitingForWriter);
+      assert(!controller.runs.has(shared.id));
+      await controller.cancelQueuedMessage(shared.id,active.queueId);
+    }finally{externalRelease.resolve();}
+    await externalDone;
+    const beforeCount=requests;
+    const queued=await controller.send(draft);
+    assert(queued.queued && queued.waitingForWriter);
+    assert(!controller.runs.has(shared.id));
+    assert(!shared.messages.some(m=>m.text===draft.text));
+    const cancelled=await controller.send({...draft,text:'취소한 요청'});
+    await controller.cancelQueuedMessage(shared.id,cancelled.queueId);
+    await controller.shutdown();await runtime.shutdown();
+    const disk=new Store(path.join(root,'flowrium'));await disk.load();
+    assert.equal(disk.session(shared.id).queuedMessages.find(q=>q.id===queued.queueId).waitingForWriter,true);
+    assert.equal(disk.session(shared.id).queuedMessages.find(q=>q.id===cancelled.queueId).status,'cancelled');
+    primary=makeClient();reader=makeClient();
+    store=disk;shared=store.session(shared.id);
+    controller=new Controller(store,{client:primary,canRun:()=>true,linkedClientFactory:makeClient});
+    runtime=new CodexTransfer(store,controller,{readClient:reader,accountOwner:()=> 'synthetic',canRun:()=>true});
+    await controller.connect();
+    // Let at least one automatic retry encounter the busy writer again.
+    await new Promise(resolve=>setTimeout(resolve,5500));
+    assert.equal(requests,beforeCount);
+    assert.equal(controller.runs.size,0);
+    assert.equal(shared.messages.filter(m=>m.text===draft.text).length,0);
+    const ended=onceEvent(controller,'event',e=>e.type==='done'&&e.sessionId===shared.id);
+    await desktop.request('thread/unsubscribe',{threadId:source});
+    assert.equal((await ended).status,'completed');
+    assert.equal(requests,beforeCount+1);
+    const transcript=await D.snapshot(desktop,source,cwd);
+    assert.deepEqual(transcript.messages.filter(m=>m.role==='user').map(m=>m.text),['이전 대화의 첫 메시지','원래 앱에서 실행 중인 요청',draft.text]);
+    assert(shared.messages.some(m=>m.role==='assistant'&&m.text==='동기화 응답 '+requests));
+    console.log('상대가 작업 중인 대화와 유휴 대화의 쓰기 권한 대기 / Flowrium 재시작 보존과 취소 / 다른 앱을 닫지 않고 권한 반환 후 원본에 한 번만 자동 전송');
+    await resumeWhenReleased(desktop,{threadId:source,excludeTurns:true});
+    const longText='가'.repeat(1024*1024-32);
+    for(let i=0;i<6;i++)await originalTurn(longText+i);
+    await desktop.request('thread/unsubscribe',{threadId:source});
+    const detached=makeClient();
+    try{
+      await detached.start();
+      // Full-history hydration exceeds the production 16 MiB frame limit.
+      let baseline;
+      try {await resumeWhenReleased(detached,{threadId:source});}
+      catch(error){baseline=error;}
+      assert.equal(baseline?.code,'PROTOCOL_FRAME_TOO_LARGE');
+    }finally{detached.close();}
+    const afterLarge=onceEvent(controller,'event',e=>e.type==='done'&&e.sessionId===shared.id);
+    await controller.send({...draft,text:'긴 원본을 이어 쓰는 요청'});
+    assert.equal((await afterLarge).status,'completed');
+    const all=await D.snapshot(desktop,source,cwd);
+    const original=all.messages.filter(m=>m.role==='user');
+    assert.equal(original.length,10);
+    assert.equal(original.at(-1).text,'긴 원본을 이어 쓰는 요청');
+    for(let i=0;i<6;i++)assert.equal(original[i+3].text,longText+i);
+    console.log('18MiB가 넘는 원본 / 기존 방식 응답 한도 초과 재현 / 원본 전체 보존과 같은 대화 답변 통과');
     console.log('서로 다른 앱 서버의 대화 제목 왕복 / 미열람 대화 제목 수신 / 프로젝트 이름 왕복과 순서 이동 / 관련 없는 카드 및 파일 경로 보존 / 재실행 복원 통과');
     console.log('독립 Codex 앱 서버 두 개의 같은 대화 3회 왕복 / 원래 본문과 순서 보존 / 버튼 없는 수신 / 상대 프로세스를 종료하지 않고 재개 통과');
   } finally {
-    await runtime?.shutdown();await controller?.shutdown();
+    let shutdownError;
+    for(const resource of [controller,runtime]){
+      try{await resource?.shutdown();}catch(error){shutdownError??=error;}
+    }
     for(const client of [desktop,primary,reader])client?.close();
     if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}
     await fs.rm(root,{recursive:true,force:true,maxRetries:6,retryDelay:200});
+    if(shutdownError)throw shutdownError;
   }
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

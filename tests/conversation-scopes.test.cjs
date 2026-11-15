@@ -2,6 +2,35 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const {EventEmitter}=require('node:events');
 const {Store}=require('../electron/store.cjs'),{Controller}=require('../electron/controller.cjs');
 const {registerConversationScopes,callScopeTool,snapshot,toolDefinitions}=require('../electron/conversation-scopes.cjs');
+const {scopedRequest, readPage}=require('../electron/scoped-request.cjs');
+
+test('기존 일반 대화는 원본을 보존하고 긴 입력의 모든 부분을 격리 분석한 뒤 같은 대화에서 이어 쓴다',async t=>{
+ const temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-legacy-request-'));
+ t.after(()=>fs.rm(temp,{recursive:true,force:true,maxRetries:5,retryDelay:100}));
+ const store=new Store(path.join(temp,'app'));await store.load();
+ const project=await store.conversations.ensure('general');
+ const row=await store.createSession(project.id);const session=store.session(row.id);
+ const message='  처음\n'+'가'.repeat(47994)+'🫧'+'나'.repeat(10_000)+'\n마지막  ';
+ const user={id:require('node:crypto').randomUUID(),role:'user',text:message,createdAt:new Date().toISOString()};
+ session.messages.push(user);
+ const run={threadId:'existing',userMessageId:user.id,sessionId:session.id};
+ const captured=[];
+ t.mock.method(require('../electron/structured-analysis.cjs'),'runStructuredAnalysis',async(controller,input,caller)=>{
+  assert.equal(caller,run);assert.equal(input.model,'selected-model');
+  captured.push(input.prompt.slice(input.prompt.indexOf('\n\n')+2));
+  return {notes:'근거 '+captured.length};
+ });
+ const result=await scopedRequest({store,emitEvent(){}},run,session,message,'selected-model',()=>{});
+ assert.equal(captured.length,2);assert.equal(captured.join(''),message);
+ assert(captured.every(part=>part.isWellFormed()));
+ assert.match(result,/근거 1\n\n근거 2$/);assert.equal(user.text,message);
+ assert.match(result,new RegExp(user.requestSource.sha256));
+ session.requestReaderThreadId=run.threadId;
+ run.requestSource=user.requestSource;
+ await scopedRequest({store},run,session,'긴 요청 첨부','selected-model',()=>{});
+ assert.equal(run.requestPages.map((_,i)=>readPage(run,{page:i+1}).text).join(''),message);
+ assert.throws(()=>readPage(run,{page:0}));assert.throws(()=>readPage(run,{page:1,path:'/'}));assert.throws(()=>readPage({}, {page:1}));
+});
 class Client extends EventEmitter{
  constructor(){super();this.ready=true;this.options={};this.inputs=new Map();this.approvals=new Map();this.calls=[];this.number=0;}
  async start(){}
@@ -33,7 +62,7 @@ test('일반 / 통합 대화의 계정별 영속 저장과 실행 범위 격리'
   const run=controller.runs.get(g.id);assert(run?.turnId);assert.equal(externalCalls,0);assert.equal(scoped.length,1);
   client.emit('tool',{requestId:'다른 연결의 실행 도구',params:{threadId:run.threadId,turnId:run.turnId,tool:'danger',arguments:{}}});await new Promise(resolve=>setImmediate(resolve));assert.equal(client.lastToolAnswer.result.success,false);assert.equal(externalCalls,0);
   const start=scoped[0].calls.find(c=>c.method==='thread/start').params,turn=scoped[0].calls.find(c=>c.method==='turn/start').params;
-  assert.equal(start.permissions,'flowrium_hub_general');assert.equal(start.approvalPolicy,'never');assert(!start.dynamicTools);assert(!start.sandbox);assert.equal(turn.permissions,start.permissions);assert(!turn.sandboxPolicy);assert.equal(start.config.permissions[start.permissions].network.enabled,false);assert.equal(start.config.permissions[start.permissions].filesystem[':root'],'deny');assert.equal(scoped[0].overrides['features.shell_tool'],false);assert.equal(scoped[0].overrides['mcp_servers."example".enabled'],false);
+  assert.equal(start.permissions,'flowrium_hub_general');assert.equal(start.approvalPolicy,'never');assert.deepEqual(start.dynamicTools.map(tool=>tool.name),['flowrium_read_current_request']);assert(!start.sandbox);assert.equal(turn.permissions,start.permissions);assert(!turn.sandboxPolicy);assert.equal(start.config.permissions[start.permissions].network.enabled,false);assert.equal(start.config.permissions[start.permissions].filesystem[':root'],'deny');assert.equal(scoped[0].overrides['features.shell_tool'],false);assert.equal(scoped[0].overrides['mcp_servers."example".enabled'],false);
   assert(!JSON.stringify(turn.input).includes('프로젝트 현황 근거'));assert(!JSON.stringify(turn.input).includes(original));
   assert.match(turn.additionalContext.flowrium_app.value,/미완료 작업/);
   assert(!JSON.stringify(start).includes('미완료 작업'));assert(!JSON.stringify(turn.input).includes('미완료 작업'));

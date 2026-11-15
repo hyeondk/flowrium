@@ -14,7 +14,7 @@ function ImageAttachment({item,projectId,onRemove}:{item:ChatAttachment;projectI
   return ()=>{current=false;};
  },[projectId,item.id]);
  return <li className="chat-image-tile">
-   {source?<img src={source} alt={item.name} draggable={false} onError={()=>{setFailed(true);setSource(undefined);}}/>:
+   {source?<img src={source} alt="첨부 사진" aria-label={item.name} draggable={false} onError={()=>{setFailed(true);setSource(undefined);}}/>:
     <span className="chat-image-placeholder" role="img" aria-label={item.name+(failed?' 미리보기를 열 수 없습니다':' 불러오는 중')}><ImageIcon size={18}/></span>}
    {onRemove&&<button type="button" className="chat-attachment-remove" aria-label={item.name+' 첨부 제거'} onClick={()=>onRemove(item.id)}><X size={12} aria-hidden="true"/></button>}
  </li>;
@@ -67,6 +67,6 @@ export function ChatQueuePanel({session,onCancel,onResume}:{session:import('../s
  if(!rows.length)return null;
  return <details className="chat-queue-panel" open={pending.length>0}><summary>추가 지시 (대기 {pending.length}개)</summary>
   {pending.some(q=>q.error)&&<button onClick={onResume}>대기 지시 다시 시작</button>}
-  {rows.slice().reverse().map(q=><div key={q.id}><span>{q.status==='queued'?'대기 중':q.status==='sending'?'전달 중':q.status==='sent'?'전달함':'취소함'}</span><p>{q.text}</p>{q.attachments.length>0&&<small>첨부 {q.attachments.length}개</small>}{q.error&&<p role="alert">{q.error}</p>}{q.status==='queued'&&<><button onClick={()=>onCancel(q.id)}>대기 취소</button><button onClick={onResume}>지금 전달 재개</button></>}</div>)}
+  {rows.slice().reverse().map(q=><div key={q.id}><span>{q.status==='queued'?(q.waitingForWriter?'원래 대화의 쓰기 권한 대기':'대기 중'):q.status==='sending'?'전달 중':q.status==='sent'?'전달함':'취소함'}</span><p>{q.text}</p>{q.attachments.length>0&&<small>첨부 {q.attachments.length}개</small>}{q.waitingForWriter&&q.status==='queued'&&<small>원래 앱에서 이 대화를 벗어나 권한을 반환하면 자동으로 보냅니다.</small>}{q.error&&<p role="alert">{q.error}</p>}{q.status==='queued'&&<><button onClick={()=>onCancel(q.id)}>대기 취소</button><button onClick={onResume}>지금 전달 재개</button></>}</div>)}
  </details>;
 }

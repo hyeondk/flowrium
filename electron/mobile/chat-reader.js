@@ -28,24 +28,6 @@ export function markdownBody(text) {
   }
   return body;
 }
-export function draftPreview(input) {
-  const section=element('details'),summary=element('summary','서식 미리보기');
-  section.className='mobile-draft-preview';section.setAttribute('aria-label','입력 중인 마크다운');
-  section.open=true;section.append(summary);
-  let frame=0;
-  const paint=()=>{
-    const body=markdownBody(input.value);
-    section.hidden=!body.querySelector('strong,em,del,s,code,a,table,li,h1,h2,h3,h4,h5,h6,pre,blockquote,hr');
-    for(const link of body.querySelectorAll('a'))link.removeAttribute('href');
-    section.replaceChildren(summary,body);
-  };
-  paint();
-  input.addEventListener('input',()=>{
-    cancelAnimationFrame(frame);
-    frame=requestAnimationFrame(()=>{if(input.isConnected)paint();});
-  });
-  return section;
-}
 export function groupMobileHistory(messages,session,running) {
   const rows=[],groups=new Map(),owners=new Map();
   let owner='start',currentGroup;

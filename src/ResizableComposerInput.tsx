@@ -1,3 +1,5 @@
+import {attachComposerMarkdown} from '../electron/mobile/composer-markdown.js';
+import '../electron/mobile/composer-markdown.css';
 import {useId, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject, type TextareaHTMLAttributes} from 'react';
 
 const storageKey = 'flowrium.composer.height.v1';
@@ -15,6 +17,14 @@ function storedHeight() {
 
 export default function ResizableComposerInput({textareaRef, ...props}: Props) {
   const id = useId();
+  const ink = useRef<HTMLSpanElement>(null);
+  const editor = useRef<ReturnType<typeof attachComposerMarkdown> | null>(null);
+  useLayoutEffect(() => {
+    if (!textareaRef.current || !ink.current) return;
+    editor.current=attachComposerMarkdown(textareaRef.current,ink.current);
+    return () => {editor.current?.dispose();editor.current=null;};
+  },[textareaRef]);
+  useLayoutEffect(() => {editor.current?.refresh();},[props.value]);
   const [preferred, setPreferred] = useState(storedHeight);
   const [bounds, setBounds] = useState({max: maximum, actual: minimum});
   const drag = useRef<{pointer: number; y: number; height: number; last: number} | null>(null);
@@ -93,8 +103,8 @@ export default function ResizableComposerInput({textareaRef, ...props}: Props) {
           : bounds.actual + (event.key === 'ArrowUp' ? step : -step);
         save(Math.max(minimum, Math.min(bounds.max, next)));
       }}><span aria-hidden="true"/></div>
-    <textarea {...props} ref={textareaRef} id={id} rows={1} className="composer-input"
+    <div className="markdown-input"><textarea {...props} ref={textareaRef} id={id} rows={1} className="composer-input"
       data-height-mode={actual === undefined ? 'auto' : 'manual'}
-      style={{height: actual === undefined ? undefined : actual, '--composer-limit': bounds.max + 'px'} as CSSProperties}/>
+      style={{height: actual === undefined ? undefined : actual, '--composer-limit': bounds.max + 'px'} as CSSProperties}/><span ref={ink} className="markdown-input-ink" aria-hidden="true"/></div>
   </>;
 }

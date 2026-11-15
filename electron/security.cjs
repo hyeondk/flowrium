@@ -411,7 +411,7 @@ function registerSecurity(
   };
   function pending() {
     const events = [...controller.runs.values()]
-      .filter((r) => !r.finalized && r.ownerRevision === security.accountRevision)
+      .filter((r) => !r.finalized && !r.claimingWriter && r.ownerRevision === security.accountRevision)
       .map((r) => ({
         type: "status",
         sessionId: r.sessionId,
@@ -476,7 +476,11 @@ function registerSecurity(
     return security.state();
   });
   register("lockSecurity", () => security.lock());
-  register("unlockSecurity", (pin) => security.unlock(pin));
+  register("unlockSecurity", async (pin) => {
+    const state=await security.unlock(pin);
+    if(!state.locked)controller.messageQueue?.flushAll();
+    return state;
+  });
   register("setSecurityPin", (current, next) => security.setPin(current, next));
   register("setSecurityPreferences", (prefs) => security.preferences(prefs));
   register("securityPending", pending);

@@ -81,7 +81,7 @@ class Controller extends EventEmitter {
       this.loadedThreads.clear();
       this.status.authenticated = false;
       for (const run of [...this.runs.values()])
-        this.finish(run, "failed", error.message).catch(() => {});
+        if(!run.claimingWriter && (!run.client || run.client===this.client))this.finish(run, "failed", error.message).catch(() => {});
       this.emitEvent({
         type: "status",
         status: "disconnected",
@@ -222,6 +222,22 @@ class Controller extends EventEmitter {
     await this.store.deleteSession(id);
   }
   async send(input, internal = {}) {
+    if(input?.submissionId===undefined || internal.fromQueue)return this.sendOnce(input,internal);
+    if(!require('./project-store.cjs').UUID.test(input.submissionId))throw Error('요청 식별자를 확인해 주세요.');
+    if(this.shuttingDown || this.options.canRun?.()===false)throw Error('현재 계정과 잠금 상태를 확인해 주세요.');
+    const session=this.store.session(input.sessionId),id=input.submissionId;
+    const receipt=session.messages.find(row=>row.role==='user' && row.id===id);
+    if(receipt)return {accepted:true};
+    const queued=session.queuedMessages?.find(row=>row.id===id);
+    if(queued)return {accepted:true,queued:true,queueId:id,waitingForWriter:queued.waitingForWriter};
+    const key=JSON.stringify([this.options.queueOwner?.()??'local',session.id,id]);
+    this.pendingSubmissions ??=new Map();
+    if(this.pendingSubmissions.has(key))return this.pendingSubmissions.get(key);
+    const sending=this.sendOnce(input,internal);
+    this.pendingSubmissions.set(key,sending);
+    try{return await sending;}finally{this.pendingSubmissions.delete(key);}
+  }
+  async sendOnce(input, internal = {}) {
     if(this.shuttingDown||this.options.canRun?.()===false)throw Error("잠금과 계정 전환 또는 업데이트를 마친 뒤 요청해 주세요.");
     if(this.codexTransfer?.refreshDone)await this.codexTransfer.waitForRefresh();
     if(this.codexTransfer?.isBusy())throw Error('대화 연결 작업을 마친 뒤 보내 주세요.');
@@ -229,13 +245,27 @@ class Controller extends EventEmitter {
     if (!input || typeof input !== "object")
       throw new Error("작업 요청 형식이 올바르지 않습니다.");
     const attachmentIds = input.attachments || [];
-    const message = typeof input.text === "string" && !input.text.trim() && attachmentIds.length ? "첨부한 자료를 확인해 주세요." : text(input.text, "작업 내용");
+    const {chatInput,maxChatInput} = require("./mobile/chat-input.js");
     if (!Object.hasOwn(MODE_INSTRUCTIONS, input.mode))
       throw new Error("작업 방식을 선택해 주세요.");
     if (input.effort && !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(input.effort))
       throw new Error("추론 강도를 확인해 주세요.");
     if (input.model) text(input.model, "모델", 300);
     const session = this.store.session(input.sessionId);
+    const requests=require('./chat-long-request.cjs');
+    let source, message;
+    if(input.requestSourceId){
+      const file=await requests.sourceRecord(this.store,session.projectId,input.requestSourceId);
+      [source]=require('./chat-attachments.cjs').checkedAttachments([file]);
+      message=requests.sourceLabel(source);
+    } else {
+      message=chatInput(input.text,Boolean(attachmentIds.length));
+      if(message.length > maxChatInput){
+        source=await require('./chat-attachments.cjs').storeRequestSource(this.store,session.projectId,message);
+        message=requests.sourceLabel(source);
+      }
+    }
+    if(source)input={...input,requestSourceId:source.id};
     const settings = this.store.state.settings;
     const own = session.preferences || {};
     // Capture the selection before any asynchronous work, including time in the queue.
@@ -264,7 +294,12 @@ class Controller extends EventEmitter {
       return this.messageQueue.enqueue({...input,text:message,ownerRevision});
     if(session.codexLink){
       if(!this.codexTransfer)throw Error('Codex 대화 연결을 준비한 뒤 다시 요청해 주세요.');
-      await this.codexTransfer.beforeSend(session.id);
+      try {
+        await this.codexTransfer.beforeSend(session.id,{waitingForWriter:internal.waitingForWriter});
+      } catch(error) {
+        if(error.code!=='THREAD_ACTIVE'||internal.fromQueue||internal.outputSchema)throw error;
+        return this.messageQueue.enqueue({...input,text:message,ownerRevision,waitingForWriter:true});
+      }
     }
     const project = this.store.project(session.projectId);
     if (!(await fs.stat(project.path)).isDirectory())
@@ -275,6 +310,7 @@ class Controller extends EventEmitter {
     const run = {
       ownerRevision,
       userMessageId: null,
+      ...(source && {requestSource:source}),
       attachments,
       sessionId: session.id,
       threadId: session.threadId,
@@ -295,19 +331,39 @@ class Controller extends EventEmitter {
       if(!internal.fromQueue)return this.messageQueue.enqueue({...input,text:message,ownerRevision});
       throw new Error("현재 작업이 끝난 뒤 대기 지시를 다시 전달해 주세요.");
     }
+    if(internal.queueItem?.status==='cancelled')throw Error('대기 요청을 취소했습니다.');
     this.runs.set(session.id, run);
+    // Claim an existing conversation before committing a user message. A busy
+    // owner must leave one cancellable queued request and no unsent transcript row.
+    if(run.threadId && !session.scope && (session.codexLink?.mode==='linked' || session.desktopThread)){
+      run.claimingWriter=true;
+      try{
+        run.prepared=await this.prepareProjectRun(run,input,project);
+        if(run.cancelled||run.finalized||this.shuttingDown||this.options.canRun?.()===false||
+           ownerRevision!==(this.options.queueOwner?.()??'local')||
+           internal.queueItem?.status==='cancelled')throw Error('대화 전송이 취소되었습니다.');
+      }catch(error){
+        run.finalized=true;
+        await run.releaseClient?.();
+        if(this.runs.get(session.id)===run)this.runs.delete(session.id);
+        if(error.code!=='THREAD_WRITER_BUSY'||internal.fromQueue||internal.outputSchema)throw error;
+        return this.messageQueue.enqueue({...input,text:message,ownerRevision,waitingForWriter:true});
+      }finally{run.claimingWriter=false;}
+    }
     const previous = { title: session.title, updatedAt: session.updatedAt };
     const userMessage = {
-      id: randomUUID(),
+      id: internal.queueItem?.id || input.submissionId || randomUUID(),
       role: "user",
       text: message,
+      ...(source && {requestSource:source,sourceOnly:true}),
       ...(attachments.length ? {attachments:require("./chat-attachments.cjs").checkedAttachments(attachments)} : {}),
       createdAt: new Date().toISOString(),
     };
     run.userMessageId=userMessage.id;
+    if(internal.queueItem)internal.queueItem.status='sending';
     session.messages.push(userMessage);
     if (!session.pendingThreadName && !session.workflow && !session.personalAssistant && session.messages.filter((m) => m.role === "user").length === 1)
-      session.title = Array.from(message.replace(/\s+/g, " "))
+      session.title = Array.from(message.trimStart().replace(/\s+/g, " ").slice(0, 100))
         .slice(0, 42)
         .join("");
     session.updatedAt = new Date().toISOString();
@@ -320,6 +376,7 @@ class Controller extends EventEmitter {
       session.title = previous.title;
       session.updatedAt = previous.updatedAt;
       this.runs.delete(session.id);
+      await run.releaseClient?.();
       throw error;
     }
     this.emitEvent({
@@ -333,7 +390,7 @@ class Controller extends EventEmitter {
       status: "running",
       text: "Codex 작업을 준비하고 있습니다.",
     });
-    this.startRun(run, input, message, project)
+    const starting=this.startRun(run, input, message, project)
       .catch(async (error) => {
         const client=run.client||this.client;
         if (error.code === "RPC_TIMEOUT" && !run.finalized) client.close();
@@ -350,17 +407,20 @@ class Controller extends EventEmitter {
           run.cancelled ? "interrupted" : "failed",
           error.message,
         );
-      })
-      .catch(() => {});
+        if(internal.queueItem)throw error;
+      });
+    if(internal.queueItem){
+      await starting;
+      if(!run.turnId)throw Error("Codex가 대기 지시의 수신을 확인하기 전에 작업이 종료됐습니다.");
+    }else void starting.catch(()=>{});
     return { accepted: true };
   }
-  async startRun(run, input, message, project) {
-    if(this.store.session(run.sessionId).scope)return require('./conversation-scopes.cjs').startScopedRun(this,run,input,message,project);
+  async prepareProjectRun(run,input,project) {
     const linked=this.store.session(run.sessionId).codexLink?.mode==='linked';
     const client=linked?require('./codex-transfer-client.cjs').createRunClient(this,run):this.client;
     run.client=client;
     await client.start(this.store.state.settings.codexPath);
-    if (run.cancelled || run.finalized) return this.finish(run, "interrupted");
+    if (run.cancelled || run.finalized) throw Error("작업 준비를 취소했습니다.");
     const account = await client.request("account/read", {
       refreshToken: false,
     });
@@ -390,15 +450,19 @@ class Controller extends EventEmitter {
     if(this.options.canRun?.()===false||run.ownerRevision!==(this.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.');
     const model = input.model;
     if (model) threadParams.model = model;
-    let result;
+    if(run.threadId && (linked || !this.loadedThreads.has(run.threadId))){
+      const resumed=await client.request('thread/resume',{threadId:run.threadId,...threadParams,excludeTurns:true})
+        .catch(error=>{throw require('./codex-transfer-client.cjs').linkedError(error);});
+      if(resumed.thread?.id!==run.threadId)throw Error('원래 대화 식별자를 확인하지 못했습니다. 새 요청을 보내지 않았습니다.');
+    }
+    return {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model};
+  }
+  async startRun(run,input,message,project) {
+    if(this.store.session(run.sessionId).scope)return require('./conversation-scopes.cjs').startScopedRun(this,run,input,message,project);
+    const {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model}=
+      run.prepared || await this.prepareProjectRun(run,input,project);
     let restoredContext = "";
-    if (run.threadId) {
-      if (linked || !this.loadedThreads.has(run.threadId))
-        result = await client.request("thread/resume", {
-          threadId: run.threadId,
-          ...threadParams,
-        }).catch(error=>{throw require('./codex-transfer-client.cjs').linkedError(error);});
-    } else {
+    if (!run.threadId) {
       const previousMessages = this.store
         .session(run.sessionId)
         .messages.slice(0, -1)
@@ -412,7 +476,7 @@ class Controller extends EventEmitter {
           )
           .join("\n\n")
           .slice(-40_000)}\n\n현재 요청:\n`;
-      result = await client.request("thread/start", {...threadParams,...(dynamicTools.length?{dynamicTools:dynamicTools.map(t=>({type:"function",...t}))}:{})});
+      const result = await client.request("thread/start", {...threadParams,...(dynamicTools.length?{dynamicTools:dynamicTools.map(t=>({type:"function",...t}))}:{})});
       if(dynamicTools.length)this.store.session(run.sessionId).applicationTools=true;
       if (!result.thread?.id)
         throw new Error("Codex 대화를 생성하지 못했습니다.");
@@ -444,12 +508,20 @@ class Controller extends EventEmitter {
     }
     const files=run.attachments.filter(a=>!a.image);
     if(files.length)additionalContext.flowrium_files={kind:'untrusted',value:files.map(a=>a.name+' / '+a.path).join('\n')};
+    const request = await require("./chat-long-request.cjs").prepareRequest(this.store,currentSession,message,cwd,run.requestSource);
+    if (request.source) {
+      currentSession.messages.find(row=>row.id===run.userMessageId).requestSource=request.source;
+      await this.store.save();
+    }
+    if(run.cancelled || run.finalized) return this.finish(run,"interrupted");
+    if(this.options.canRun?.()===false || run.ownerRevision!==(this.options.queueOwner?.()??'local')) throw Error("계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.");
+    run.cwd=cwd;
     const turn = await client.request("turn/start", {
       ...(run.outputSchema && { outputSchema: run.outputSchema }),
       threadId: run.threadId,
       clientUserMessageId:run.userMessageId,
       ...(Object.keys(additionalContext).length && {additionalContext}),
-      input: [{type:"text",text:message}, ...run.attachments.filter(a=>a.image).map(a=>({type:"localImage",path:a.path}))],
+      input: [{type:"text",text:request.text}, ...run.attachments.filter(a=>a.image).map(a=>({type:"localImage",path:a.path}))],
       cwd,
       approvalPolicy,
       approvalsReviewer: "user",
@@ -676,6 +748,7 @@ class Controller extends EventEmitter {
     const run = this.runs.get(sessionId);
     if (!run) return;
     run.cancelled = true;
+    run.cancelInputAnalysis?.();
     this.emitEvent({
       type: "status",
       sessionId,
@@ -795,6 +868,7 @@ class Controller extends EventEmitter {
   }
   async shutdown() {
     this.shuttingDown=true;
+    this.messageQueue.stopTimers();
     const analyses=[...(this.analysisRuns?.values()||[])];
     this.cancelStructuredAnalyses();
     await Promise.all(analyses.map(a=>a.finished));

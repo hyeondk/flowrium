@@ -2,20 +2,22 @@ const {randomUUID}=require('node:crypto');
 const fs=require('node:fs/promises'),path=require('node:path');
 const {readJSON,createJSON,UUID}=require('./project-store.cjs');
 const {checkedAttachments,resolveAttachments}=require('./chat-attachments.cjs');
+const {maxChatInput}=require("./mobile/chat-input.js");
 function validateQueue(items=[]) {
   if(!Array.isArray(items)||items.length>150)throw Error('대기 지시 목록을 확인해 주세요.');
   const seen=new Set();
   for(const q of items){
-    if(!q||!/^[a-f0-9-]{36}$/i.test(q.id)||seen.has(q.id)||typeof q.text!=='string'||q.text.length>200000||
+    if(!q||!/^[a-f0-9-]{36}$/i.test(q.id)||seen.has(q.id)||typeof q.text!=='string'||q.text.length>maxChatInput||
       !['plan','build','review'].includes(q.mode)||!['queued','sending','sent','cancelled'].includes(q.status)||
       !Number.isFinite(Date.parse(q.createdAt))||typeof q.owner!=='string'||q.owner.length>200||
       (q.model!=null&&(typeof q.model!=='string'||q.model.length>300))||
       (q.effort!==undefined&&!['none','minimal','low','medium','high','xhigh','max','ultra'].includes(q.effort))) throw Error('저장된 대기 지시 형식이 올바르지 않습니다.');
+    if(q.requestSourceId!==undefined&&!UUID.test(q.requestSourceId))throw Error('대기 요청의 원문 식별자를 확인해 주세요.');
     checkedAttachments(q.attachments||[]);seen.add(q.id);
   }
 }
 class ChatQueue {
-  constructor(controller){this.controller=controller;this.store=controller.store;this.busy=new Set();this.tail=Promise.resolve();this.flights=new Set();}
+  constructor(controller){this.controller=controller;this.store=controller.store;this.busy=new Set();this.tail=Promise.resolve();this.flights=new Set();this.timers=new Map();}
   async owner(revision=this.controller.options.queueOwner?.()??'local'){
     if(!this.installation)this.installation=(async()=>{
       const file=path.join(path.dirname(this.store.file),'chat-queue-installation.json');
@@ -35,12 +37,14 @@ class ChatQueue {
     const files=await resolveAttachments(this.store,s.projectId,input.attachments||[]);
     const history=s.queuedMessages||[];
     if(history.filter(q=>q.status==='queued'||q.status==='sending').length>=50)throw Error('이 대화의 대기 지시는 50개까지 보관할 수 있습니다.');
-    const q={id:randomUUID(),text:input.text.trim(),mode:input.mode,model:input.model,...(input.effort?{effort:input.effort}:{}),attachments:checkedAttachments(files),createdAt:new Date().toISOString(),status:'queued',owner};
+    const q={id:input.submissionId || randomUUID(),text:input.text,...(input.requestSourceId&&{requestSourceId:input.requestSourceId}),mode:input.mode,model:input.model,...(input.effort?{effort:input.effort}:{}),attachments:checkedAttachments(files),createdAt:new Date().toISOString(),status:'queued',...(input.waitingForWriter&&{waitingForWriter:true}),owner};
     if((this.controller.options.queueOwner?.()??'local')!==revision||this.controller.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다. 추가 지시를 다시 확인해 주세요.');
     const before=s.queuedMessages;
     s.queuedMessages=[...history.filter(q=>q.status==='queued'||q.status==='sending'||history.indexOf(q)>=history.length-90),q];
     try{await this.store.save();}catch(e){if(before)s.queuedMessages=before;else delete s.queuedMessages;throw e;}
-    this.emit(s);queueMicrotask(()=>this.flush(s.id));return {accepted:true,queued:true,queueId:q.id};
+    this.emit(s);
+    if(q.waitingForWriter)this.schedule(s.id);else queueMicrotask(()=>this.flush(s.id));
+    return {accepted:true,queued:true,queueId:q.id,...(q.waitingForWriter&&{waitingForWriter:true})};
   });}
   cancel(id,queueId){return this.serial(async()=>{
     const s=this.store.session(id),q=(s.queuedMessages||[]).find(q=>q.id===queueId);
@@ -64,15 +68,39 @@ class ChatQueue {
     if(this.busy.has(id)||c.runs.has(id)||c.editingSessions.has(id)||c.shuttingDown||!c.status.authenticated||c.options.canRun?.()===false)return;
     const s=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===id);if(!s||s.compacting)return;
     const q=(s.queuedMessages||[]).find(q=>q.status==='queued'||q.status==='sending');
-    if(!q||q.owner!==await this.owner()||q.error)return;
+    if(!q||q.error)return;
     this.busy.add(id);
     try{
-      q.status='sending';await this.store.save();this.emit(s);
-      if(q.owner!==await this.owner()||c.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다.');
-      await c.send({sessionId:id,text:q.text,mode:q.mode,model:q.model,effort:q.effort,attachments:q.attachments.map(a=>a.id)},{fromQueue:true});
-      q.status='sent';q.sentAt=new Date().toISOString();await this.store.save();this.emit(s);
-    }catch(e){q.status='queued';q.error=e.message;await this.store.save().catch(()=>{});this.emit(s);}
-    finally{this.busy.delete(id);}
+      if(q.owner!==await this.owner()||q.status==='cancelled'||c.options.canRun?.()===false||c.shuttingDown)return;
+      // The transcript row and its stable submission ID are persisted before
+      // sending. Never replay an ambiguous transmission on restart.
+      const receipt=s.messages.find(m=>m.role==='user'&&m.id===q.id);
+      if(receipt && !receipt.turnId)throw Error('앱이 종료되기 전 요청의 수신 여부가 확인되지 않았습니다. 원래 대화를 확인하고, 다시 보내려면 이 대기 지시를 취소한 뒤 새 요청으로 보내 주세요.');
+      if(!receipt){
+        await c.send({sessionId:id,text:q.text,requestSourceId:q.requestSourceId,mode:q.mode,model:q.model,effort:q.effort,attachments:q.attachments.map(a=>a.id)},
+          {fromQueue:true,queueItem:q,waitingForWriter:q.waitingForWriter});
+      }
+      q.status='sent';delete q.waitingForWriter;q.sentAt=new Date().toISOString();
+      await this.store.save();this.emit(s);
+      if(!c.runs.has(id)&&this.pending(id))setImmediate(()=>this.flush(id));
+    }catch(error){
+      if(q.status==='cancelled')return;
+      q.status='queued';
+      if(c.shuttingDown && !s.messages.some(m=>m.id===q.id))return;
+      if(error.code==='THREAD_WRITER_BUSY'||error.code==='THREAD_ACTIVE'){
+        const changed=!q.waitingForWriter;
+        q.waitingForWriter=true;
+        this.schedule(id);
+        if(!changed)return;
+      }else q.error=error.message;
+      await this.store.save();this.emit(s);
+    }finally{this.busy.delete(id);}
   }
+  schedule(id){
+    if(this.timers.has(id)||this.controller.shuttingDown)return;
+    const timer=setTimeout(()=>{this.timers.delete(id);void this.flush(id);},5000);
+    timer.unref?.();this.timers.set(id,timer);
+  }
+  stopTimers(){for(const timer of this.timers.values())clearTimeout(timer);this.timers.clear();}
 }
 module.exports={ChatQueue,validateQueue};

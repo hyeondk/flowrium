@@ -1,6 +1,6 @@
 {
   "name": "flowrium",
-  "version": "26.11.1601",
+  "version": "26.11.1602",
   "private": true,
   "description": "프로젝트마다 독립된 AI 업무 대화를 운영하는 데스크톱 앱",
   "author": "hyeondk",
@@ -39,12 +39,15 @@
     "electron": "45.3.1",
     "electron-builder": "26.18.0",
     "lucide-react": "1.72.0",
+    "micromark": "4.0.3",
+    "micromark-extension-gfm": "3.0.0",
     "playwright": "^1.58.0",
     "qrcode.react": "4.2.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
+    "rolldown": "1.2.19",
     "typescript": "7.0.2",
     "vite": "8.3.8"
   },
@@ -52,7 +55,7 @@
     "appId": "io.github.hyeondk.flowrium",
     "productName": "Flowrium",
     "beforePack": "./scripts/build-native.cjs",
-    "artifactName": "Flowrium-261116_01-${os}-${arch}.${ext}",
+    "artifactName": "Flowrium-261116_02-${os}-${arch}.${ext}",
     "directories": {
       "output": "release",
       "buildResources": "assets"
@@ -138,11 +141,11 @@
       }
     ],
     "extraMetadata": {
-      "flowriumVersion": "261116_01"
+      "flowriumVersion": "261116_02"
     }
   },
   "overrides": {
     "image-size": "2.0.4"
   },
-  "flowriumVersion": "261116_01"
+  "flowriumVersion": "261116_02"
 }

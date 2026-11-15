@@ -17,8 +17,9 @@
 .message-detail-hint{margin:0 0 8px;font-size:11px;line-height:20px;color:var(--muted);word-break:keep-all}
 .message-detail-actions{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .message-detail-actions>.button{display:inline-flex;align-items:center;gap:5px;min-height:30px;padding:4px 8px;font-size:10px;line-height:20px}
-.message-detail-text{display:block;max-width:100%;max-height:320px;margin:0;overflow:auto;overscroll-behavior:contain;white-space:pre;font:11px/1.7 'SFMono-Regular',Consolas,monospace;tab-size:2;color:var(--text);background:var(--bg);border:1px solid var(--line-soft);border-radius:6px;padding:10px}
-.message-detail-text>code{font:inherit;white-space:inherit;word-break:normal;overflow-wrap:normal}
+.message-detail-text{display:block;max-width:100%;max-height:320px;margin:0;overflow:auto;overscroll-behavior:contain;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;font:11px/1.7 'SFMono-Regular',Consolas,monospace;tab-size:2;color:var(--text);background:var(--bg);border:1px solid var(--line-soft);border-radius:6px;padding:10px}
+.message-detail-body .message-detail-text>code{font:inherit;white-space:inherit;word-break:inherit;overflow-wrap:inherit}
+.message-detail-text[data-message-original]{padding:10px 12px;font:inherit;font-size:13px;line-height:1.55;background:var(--panel);border-radius:10px}
 .message-prose{min-width:0;max-width:100%}
 .message-prose p,.message-prose li,.message-prose blockquote{word-break:keep-all;overflow-wrap:break-word}
 .message-prose pre{overscroll-behavior:contain}

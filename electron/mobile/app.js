@@ -1,4 +1,7 @@
-import {markdownBody,draftPreview,groupMobileHistory,progressButton,syncProgress} from './chat-reader.js';
+import {maxChatInput,exceedsChatSize,chatLengthError} from './chat-input.js';
+import {attachComposerMarkdown} from './composer-markdown.js';
+import {attachmentDisplayText} from './attachment-text.js';
+import {markdownBody,groupMobileHistory,progressButton,syncProgress} from './chat-reader.js';
 import {installDatePicker} from './date-picker.js';
 import {settingsGuides, reconnectForm} from './install.js';
 import {mobileUpdateSection, resetUpdate, resumeUpdateSettings} from './mobile-update.js';
@@ -129,6 +132,16 @@ const showNotice = (message, tone = "info") => {
   notice.dataset.phase = "enter";
   errorTimer = setTimeout(hideNotice, 6000);
 };
+const submissionReceipts=new Map();
+function longSubmission(sessionId,text){
+  if(text.length<=maxChatInput)return {};
+  const prior=submissionReceipts.get(sessionId);
+  if(prior?.text===text)return {submissionId:prior.id};
+  const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
+  const id=[hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');submissionReceipts.set(sessionId,{id,text});
+  return {submissionId:id};
+}
 const ownSessions = () =>
   (data?.sessions ?? []).filter((s) => s.projectId === selectedProject);
 const project = (id) => data?.projects.find((p) => p.id === id);
@@ -973,9 +986,19 @@ function chat(root) {
         "small",
         (m.role === "user" ? "나" : m.role === "assistant" ? "Codex" : "작업 상태") + " / " + date(m.createdAt),
       ),
-      markdownBody(m.text),
+      markdownBody(m.role==='user'&&!m.attachmentHeaderRemoved?attachmentDisplayText(m.text):m.text),
     );
     appendAttachments(block,m.attachments||[],s.projectId,m.id);
+    if(m.sourceOnly){
+      const details=node('details'),summary=node('summary','요청 원문 읽기'),body=node('p'),buttons=node('div',undefined,'actions');
+      let offset=0,next=null;const previous=[];
+      const load=async()=>{const page=await call('readRequestSource',s.id,m.id,offset);body.textContent=page.text;next=page.next;back.disabled=!previous.length;forward.disabled=next===null;};
+      const back=action('이전 부분',()=>run(async()=>{if(previous.length){offset=previous.pop();await load();}}));
+      const forward=action('다음 부분',()=>run(async()=>{if(next!==null){previous.push(offset);offset=next;await load();}}));
+      body.style.whiteSpace='pre-wrap';body.style.overflowWrap='anywhere';buttons.append(back,forward);details.append(summary,body,buttons);
+      details.addEventListener('toggle',()=>{if(details.open && !body.textContent)load().catch(error=>showNotice(error.message,'error'));});
+      block.append(details);
+    }
     root.append(block);
   }
   if (running(s.id)) {
@@ -990,6 +1013,7 @@ function chat(root) {
     for(const item of queueItems){
       const line=node("div",undefined,"queue-line");
       line.append(node("p",item.text||"첨부 요청","body"),node("small",({queued:"대기",sending:"전송 중",sent:"전송 완료",cancelled:"취소"})[item.status]||item.status));
+      if(item.waitingForWriter&&item.status==="queued")line.append(node("p","원래 대화의 쓰기 권한 대기 / 권한이 반환되면 자동으로 보냅니다.","hint"));
       if(item.error)line.append(node("p",item.error,"hint"));
       if(item.status==="queued")line.append(confirmationButton('이 지시 취소','queue/'+item.id,'대기 중인 지시를 취소할까요?',item.text||'첨부 요청',()=>
         run(async()=>{await call('cancelQueuedMessage',s.id,item.id);await loadQueue();showNotice('대기 중인 지시를 취소했습니다.');})));
@@ -1001,7 +1025,7 @@ function chat(root) {
   const form = node("form"),
     draftId = "chat/" + s.id,
     text = bindDraft(node("textarea"), draftId, "");
-  text.maxLength = 120000;
+
   const initialMode =
     s.workflow?.teamSlot?.mode ||
     (s.workflow?.kind === "task" ? "build" : "plan");
@@ -1023,7 +1047,10 @@ function chat(root) {
   submit.disabled = busy || !data.connection?.authenticated;
   const options=node('div',undefined,'chat-options');
   options.append(label("작업 모드", mode),chatModelPicker(s));
-  form.append(label("요청", text), draftPreview(text), options);
+  const textLabel=label('요청',text),editor=node('span',undefined,'markdown-input');
+  const ink=node('span',undefined,'markdown-input-ink');ink.setAttribute('aria-hidden','true');
+  text.replaceWith(editor);editor.append(text,ink);
+  form.append(textLabel,options);
   if (s.executionState) {
     const state=node('p',executionNames[s.executionState],'chat-state');
     state.dataset.state=s.executionState;
@@ -1033,8 +1060,8 @@ function chat(root) {
     const choices=node('div',undefined,'actions');
     const proceed=action('진행하기',()=>run(async()=>{
       const attachments=attachedDrafts.get(s.id)||[];
-      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:s.lastMessageId,text:text.value,attachments:attachments.map(a=>a.id),mode:mode.value});
-      drafts.delete(draftId);attachedDrafts.delete(s.id);
+      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:s.lastMessageId,...await mobileChatInput(s,text.value),attachments:attachments.map(a=>a.id),mode:mode.value});
+      submissionReceipts.delete(s.id);drafts.delete(draftId);attachedDrafts.delete(s.id);
     }));
     const complete=action('완료',()=>run(async()=>{
       await call('workflowAction',{action:'completeContinuation',sessionId:s.id,messageId:s.lastMessageId});showNotice('후속 대기를 완료했습니다.');
@@ -1054,22 +1081,31 @@ function chat(root) {
     );
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    const value = text.value.trim();
+    const value = text.value;
     const attachments=attachedDrafts.get(s.id)||[];
-    if (!value && !attachments.length) return;
+    if (!value.trim() && !attachments.length) return;
+    if (exceedsChatSize(value)) return showNotice(chatLengthError, 'error');
     void run(async () => {
       const result=await call("send", {
         ...(canSteer && e.submitter?.dataset.delivery!=='queue' && {delivery:'steer'}),
         sessionId: s.id,
-        text: value,
+        ...await mobileChatInput(s,value),
         attachments:attachments.map(a=>a.id),
         mode: mode.value,
       });
-      drafts.delete(draftId);attachedDrafts.delete(s.id);await loadQueue();
-      showNotice(result.steered ? "현재 작업에 추가 지시를 전달했습니다." : result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
+      submissionReceipts.delete(s.id);drafts.delete(draftId);attachedDrafts.delete(s.id);await loadQueue();
+      showNotice(result.steered ? "현재 작업에 추가 지시를 전달했습니다." : result.waitingForWriter ? "요청을 보관했습니다. 원래 대화의 쓰기 권한이 반환되면 자동으로 보냅니다." : result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
     });
   });
   root.append(form);
+}
+async function mobileChatInput(session,text){
+  if(text.length<=maxChatInput)return {text};
+  if(exceedsChatSize(text))throw Error(chatLengthError);
+  const response=await fetch('/api/mobile/request-source?sessionId='+encodeURIComponent(session.id),{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/octet-stream'},body:new Blob([text]),credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(120000)});
+  const result=await response.json();
+  if(!response.ok)throw Error(result.error||'원문을 보관하지 못했습니다. 작성한 글에서 다시 시도해 주세요.');
+  return {text:'',requestSourceId:result.id,...longSubmission(session.id,text)};
 }
 async function loadQueue(){
   const id=selectedSession,epoch=accessEpoch;if(route!=='chat'||gate||!id)return;
@@ -1077,7 +1113,8 @@ async function loadQueue(){
 }
 function observePhoto(img,attachment,projectId) {
   const id=projectId+':'+attachment.id;
-  img.alt=attachment.name;
+  img.alt='첨부 사진';
+  img.setAttribute('aria-label',attachment.name);
   const cached=attachmentPreviews.get(id);
   if(cached){img.src=cached;return;}
   const epoch=accessEpoch;
@@ -1373,16 +1410,21 @@ function visibleMessageAnchor(){
   const first=messages[lo],top=first?.getBoundingClientRect().top;
   if(first && top<innerHeight)return {id:first.dataset.messageId,top};
 }
+let mobileEditor, composingField, composerHistory, pendingComposerRender=false;
 function render() {
+  if (composingField?.isConnected && route==='chat' && renderedChatId===selectedSession && !gate && data && key) {
+    pendingComposerRender=true;return;
+  }
   const calendar = document.querySelector('.flow-date-picker[open]');
   if (calendar) {
     if (!gate && key) return;
     calendar.close();
   }
+  mobileEditor?.dispose();mobileEditor=undefined;
+  composingField=undefined;pendingComposerRender=false;
   photoObserver?.disconnect();
   if(route!=='chat'||gate||!data)syncProgress();
   const galleryPositions=new Map([...content.querySelectorAll('[data-gallery]')].map(strip=>[strip.dataset.gallery,strip.scrollLeft]));
-  const priorPreview=renderedChatId===selectedSession&&content.querySelector('.mobile-draft-preview');
   const active = document.activeElement,
     field = active?.dataset?.field,
     settingsGuide = route === 'settings' && active?.dataset?.settingsGuide,
@@ -1446,8 +1488,16 @@ function render() {
   else if (route === "chat") chat(root);
   content.replaceChildren(root);
   for(const strip of content.querySelectorAll('[data-gallery]'))strip.scrollLeft=galleryPositions.get(strip.dataset.gallery)||0;
-  const nextPreview=content.querySelector('.mobile-draft-preview');
-  if(priorPreview&&nextPreview)nextPreview.open=priorPreview.open;
+  const composingInput=content.querySelector('.markdown-input > textarea');
+  if(composingInput){
+    if(composerHistory?.id!==selectedSession)composerHistory={id:selectedSession};
+    mobileEditor=attachComposerMarkdown(composingInput,composingInput.nextElementSibling,composerHistory);
+    composingInput.addEventListener('compositionstart',()=>{composingField=composingInput;});
+    composingInput.addEventListener('compositionend',()=>{
+      composingField=undefined;
+      if(pendingComposerRender)requestAnimationFrame(()=>{if(pendingComposerRender)render();});
+    });
+  }else composerHistory=undefined;
   reconcileConfirmation(Boolean(gate) || !data);
   if ((settingsGuide || confirmAction) && !gate && !document.querySelector('dialog[open]')) {
     const selector = confirmAction ? '[data-confirm-action="' + CSS.escape(confirmAction) + '"]' : '[data-settings-guide="' + CSS.escape(settingsGuide) + '"]';

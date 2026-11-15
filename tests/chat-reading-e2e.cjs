@@ -13,7 +13,7 @@ async function run() {
   const title = '채팅 읽기 화면 시험';
   const turnId = randomUUID();
   const note = (role, text) => ({id:randomUUID(), role, text, turnId, createdAt:new Date().toISOString()});
-  const messages = [note('user','화면을 살펴보세요.'),note('system','실행 도구 / 명령\n\n첫 기록'),note('assistant','진행 상황을 확인했습니다.'),note('system','파일 변경 기록\n둘째 기록'),note('system','도구 실행 기록\n셋째 기록'),note('assistant','결과 안내\n\n- 첫 항목\n- 둘째 항목\n- 셋째 항목\n\n후속 계획입니다.')];
+  const messages = [note('user','화면을 살펴보세요.'),note('system','실행 도구 / 명령\n\n첫 기록'),note('assistant','진행 상황을 확인했습니다.'),note('system','파일 변경 기록\n둘째 기록 / '+('아주긴로그토큰'.repeat(400))),note('system','도구 실행 기록\n셋째 기록'),note('assistant','결과 안내\n\n- 첫 항목\n- 둘째 항목\n- 셋째 항목\n\n후속 계획입니다.')];
   let app;
   try {
     const profile=path.join(temp,'profile'), folder=path.join(temp,'project');
@@ -49,17 +49,25 @@ async function run() {
     assert.equal(await popup.locator('details').count(),3);
     await popup.locator('summary').nth(1).click();
     assert.match(await popup.locator('pre').innerText(),/둘째 기록/);
+    await popup.getByRole('button',{name:'원문 보기',exact:true}).click();
+    const original=popup.getByRole('region',{name:'작업 원문',exact:true});
+    assert((await original.textContent()).includes('아주긴로그토큰'.repeat(400)));
+    assert(await original.evaluate(el=>el.scrollWidth<=el.clientWidth+1));
     await page.keyboard.press('Escape');
     await popup.waitFor({state:'hidden'});
     const input=page.getByRole('textbox',{name:'Codex에 보낼 작업 요청'});
     const draft='# 제목\n\n**강조** 그리고 `코드`\n\n- [x] 목록';
+    await require('./inline-draft-checks.cjs').checkInlineDraft(page,input,draft);
+    await require('./inline-draft-checks.cjs').checkLargeDraft(page,input,async()=>{
+      // Only this test project's temporary directory is moved, briefly causing a real IPC failure.
+      const moved=folder+'-moved';
+      await fs.rename(folder,moved);
+      try{
+        await page.getByRole('button',{name:'작업 보내기',exact:true}).click();
+        await page.getByText(/파일이나 폴더를 찾을 수 없습니다/).first().waitFor();
+      }finally{await fs.rename(moved,folder);}
+    },page.getByRole('button',{name:'작업 보내기',exact:true}),folder);
     await input.fill(draft);
-    // 미리보기와 편집은 같은 초안을 사용합니다.
-    const preview=page.getByRole('region',{name:'입력 중인 마크다운'});
-    await preview.getByRole('heading',{name:'제목',exact:true}).waitFor();
-    assert.equal(await preview.locator('strong').textContent(),'강조');
-    assert.equal(await preview.locator('code').textContent(),'코드');
-    assert.equal(await input.inputValue(),draft);
     const image=await fs.readFile(path.join(root,'assets/flowrium.png'));
     // 무작위 픽셀을 담은 실제 PNG로 큰 원본의 운영체제 미리보기 경로도 검증합니다.
     const pixels=randomBytes(900*900*4);
@@ -70,7 +78,7 @@ async function run() {
     const attachments=page.locator('.attachment-composer .chat-image-strip');
     await attachments.locator('img').nth(7).waitFor({state:'attached'});
     assert(!(await attachments.innerText()).includes('.png'));
-    const thumb=attachments.locator('img[alt="사진0.png"]');
+    const thumb=attachments.getByRole('img',{name:'사진0.png',exact:true});
     await thumb.waitFor();
     assert(await thumb.evaluate(img=>img.complete && img.naturalWidth>0 && img.naturalWidth<=640));
     assert(await attachments.evaluate(e=>e.scrollWidth>e.clientWidth+30));

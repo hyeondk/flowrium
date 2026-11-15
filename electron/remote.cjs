@@ -4,6 +4,7 @@ const fs = require("node:fs/promises"),
   { spawn } = require("node:child_process"),
   { randomBytes, timingSafeEqual, createHash } = require("node:crypto");
 const {executionFor} = require('./execution-state.js');
+const {attachmentDisplayText}=require('./mobile/attachment-text.js');
 const {MobileUpdater} = require('./mobile-updater.cjs');
 const allowed = new Set([
   "startWork",
@@ -17,7 +18,7 @@ const allowed = new Set([
   "readWorkbench",
   "readWorkArtifact",
   "saveTeam", "directTeam", "changeTeamRun", "workflowAction", "mobileWorkflowState",
-  "mobileSettings", "saveMobileSettings", "setMobileChatModel", "readAccountUsage", "readChatAttachment",
+  "mobileSettings", "saveMobileSettings", "setMobileChatModel", "readAccountUsage", "readChatAttachment", "readRequestSource",
   "listQueuedMessages", "cancelQueuedMessage", "resumeQueuedMessages", "webPushState", "webPushAction",
   "checkMobileUpdate", "applyMobileUpdate",
 ]);
@@ -90,7 +91,8 @@ function mobileMessages(s, params, revision) {
       m.text.startsWith('파일 변경 기록') ? '파일 변경' :
       m.text.startsWith('도구 실행 기록') ? '도구 실행' : undefined);
     const workSteps=progress&&visible&&m.workSteps?.map(({id,label,state,createdAt})=>({id,label,state,createdAt}));
-    const size = (visible ? Buffer.byteLength(m.text) : 0)+(workSteps?Buffer.byteLength(JSON.stringify(workSteps)):0);
+    const text=m.role==='user'?attachmentDisplayText(m.text):m.text;
+    const size = (visible ? Buffer.byteLength(text) : 0)+(workSteps?Buffer.byteLength(JSON.stringify(workSteps)):0);
     if (messages.length && bytes + size > 512 * 1024) break;
     start--;
     if (visible || toolLabel) {
@@ -98,9 +100,11 @@ function mobileMessages(s, params, revision) {
         id: m.id,
         createdAt: m.createdAt,
         role: m.role,
-        text: visible ? m.text : toolLabel,
+        text: visible ? text : toolLabel,
+        ...(text!==m.text && {attachmentHeaderRemoved:true}),
         index: start,
         attachments: visible ? m.attachments : undefined,
+        ...(visible && m.sourceOnly && {sourceOnly:true}),
         ...(progress && m.turnId && {turnId:m.turnId}),
         ...(workSteps && {workSteps}),
       });
@@ -203,6 +207,7 @@ function registerRemote(
         return mobileUpdater.apply(args[0], () => checkScope(requestScope, requestOwner));
       throw Error('모바일 업데이트 요청을 확인해 주세요.');
     }
+    if(method==='readRequestSource' && (args.length!==3 || !Number.isSafeInteger(args[2]) || args[2]<0 || !store.state.sessions.some(s=>s.id===args[0])))throw Error('프로젝트 채팅 원문 위치를 확인해 주세요.');
     if (method === "setMobileChatModel") {
       const [id,model]=args;
       const session=store.state.sessions.find(s=>s.id===id&&!s.scope);
@@ -366,6 +371,21 @@ function registerRemote(
         return;
       }
       const requestScope = scopeId(), requestOwner = String(accountRevision());
+      if(u.pathname==='/api/mobile/request-source' && req.method==='POST'){
+        try{
+          if(!originAllowed(req,local)||req.headers["content-type"]?.split(";")[0]!=="application/octet-stream")throw Error('원문 업로드 요청을 확인해 주세요.');
+          const sessionId=u.searchParams.get('sessionId'),session=store.state.sessions.find(s=>s.id===sessionId);
+          if(!session)throw Error('프로젝트 대화를 다시 선택해 주세요.');
+          const bytes=await readBody(req,require('./mobile/chat-input.js').maxRequestBytes);
+          checkScope(requestScope,requestOwner);
+          const raw=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
+          require('./mobile/chat-input.js').chatInput(raw);
+          const source=await guard('addChatAttachments',()=>require('./chat-attachments.cjs').storeRequestSource(store,session.projectId,raw));
+          checkScope(requestScope,requestOwner);
+          json(res,200,{id:source.id});
+        }catch(e){json(res,400,{error:require('./errors.cjs').publicMessage(e)});}
+        return;
+      }
       if (u.pathname === "/api/mobile/attachments" && req.method === "POST") {
         try {
           if (!originAllowed(req,local) || req.headers["content-type"]?.split(";")[0] !== "application/octet-stream") throw Error("첨부 요청 형식을 확인해 주세요.");
@@ -478,7 +498,9 @@ function registerRemote(
           return;
         }
         try {
-          const input = JSON.parse((await readBody(req)).toString("utf8"));
+          const bytes = await readBody(req, require("./mobile/chat-input.js").maxChatInput * 6 + 131072);
+          const input = JSON.parse(bytes.toString("utf8"));
+          if (bytes.length > 2 * 1024 * 1024 && input.method !== "send" && !(input.method === "workflowAction" && input.args?.[0]?.action === "continueConversation")) throw Error("요청 크기가 너무 큽니다.");
           checkScope(requestScope,requestOwner);
           if (
             !allowed.has(input.method) ||
@@ -545,7 +567,13 @@ function registerRemote(
     const files = {
       "/": "index.html",
       "/app.js": "app.js",
+      "/composer-parse-worker.js": "composer-parse-worker.js",
+      "/composer-syntax.js": "composer-syntax.js",
+      "/composer-markdown.js": "composer-markdown.js",
+      "/composer-markdown.css": "composer-markdown.css",
       "/chat-reader.js": "chat-reader.js",
+      "/chat-input.js": "chat-input.js",
+      "/attachment-text.js": "attachment-text.js",
       "/markdown-engine.js": "markdown-engine.js",
       "/navigation.js": "navigation.js",
       "/date-picker.js": "date-picker.js",

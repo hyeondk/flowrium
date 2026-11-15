@@ -49,7 +49,7 @@ async function main(){
   const btn=name=>page.getByRole('button',{name,exact:true});
   const openProject=()=>page.getByRole('button',{name:/현장 업무.*업무/}).click();
   const oneTime=remote.issueLink({ttlMinutes:15}),oneHash=new URL(oneTime.url).hash;await page.goto(origin+'/'+oneHash);await openProject();assert.equal(new URL(page.url()).hash,'');
-  await checkReading(page,reading,origin,key);
+  await checkReading(page,reading,origin,key,project.path);
   await page.getByRole('button',{name:/휴대폰 요청/}).click();
   await checkDraftImages(page,png);
   await page.getByLabel('요청',{exact:true}).fill('대기검증');await btn('요청 보내기').click();await btn('추가 지시 대기열에 넣기').waitFor();assert.equal(store.session(chat.id).messages.find(m=>m.role==='user').attachments[0].name,'현장.png');

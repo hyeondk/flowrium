@@ -1,0 +1,28 @@
+// Preserve source offsets so native input, selection and submitted Markdown use the same text.
+import { parse, postprocess, preprocess } from 'micromark';
+import { gfm } from 'micromark-extension-gfm';
+
+const syntax = gfm();
+const styles = {
+  atxHeadingText:'heading', setextHeadingText:'heading',
+  strongText:'strong', emphasisText:'em', strikethroughText:'strike',
+  blockQuote:'quote', codeTextData:'code', codeFlowValue:'code',
+  labelText:'link', literalAutolink:'link', autolinkProtocol:'link', autolinkEmail:'link',
+  resourceDestination:'destination', taskListCheck:'task',
+  listItemMarker:'bullet', blockQuoteMarker:'marker', thematicBreak:'marker',
+  tableDelimiterMarker:'marker', tableDelimiterFiller:'marker', tableDelimiter:'marker',
+  codeFencedFence:'marker', atxHeadingSequence:'marker', setextHeadingLine:'marker',
+  strongSequence:'marker', emphasisSequence:'marker', strikethroughSequence:'marker',
+  codeTextSequence:'marker', labelMarker:'marker', resourceMarker:'marker',
+};
+export function markdownRanges(source) {
+  if (!/[#>*_~\x60\[\]|\\-]|^\s*\d+[.)]\s/m.test(source)) return [];
+  const events = postprocess(parse({extensions:[syntax]}).document().write(preprocess()(source, undefined, true)));
+  const ranges = [];
+  for (const [phase, token] of events) {
+    const style = styles[token.type];
+    if (!style) continue;
+    ranges.push([phase === 'enter' ? token.start.offset : token.end.offset, phase === 'enter' ? style : null]);
+  }
+  return ranges;
+}

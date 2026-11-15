@@ -41,7 +41,7 @@ export interface WorkflowState {
 export type WorkflowAction =
   |{action:'followupSuggestions';sessionId:string;messageId:string;background?:boolean}
   |{action:'completeContinuation';sessionId:string;messageId:string}
-  |{action:'continueConversation';sessionId:string;messageId:string;text?:string;attachments?:string[];mode:Mode;model?:string;effort?:Effort}
+  |{action:'continueConversation';submissionId?:string;sessionId:string;messageId:string;text?:string;attachments?:string[];mode:Mode;model?:string;effort?:Effort}
   |{action:"preferences";value:Partial<WorkflowPreferences>}
   |{action:"send";sourceId?:string|null;targetId:string;text:string}
   |{action:"request";sourceId?:string;projectId?:string;targetId?:string;title:string;text:string}

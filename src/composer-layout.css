@@ -133,12 +133,3 @@ html[data-composer-resizing], html[data-composer-resizing] * {cursor: row-resize
 .turn-progress-line time {margin-left:auto;white-space:nowrap;font-size:10px;color:var(--muted)}
 .turn-progress-line [data-step-state] {font-size:10px;color:var(--accent)}
 .turn-progress-dialog .message-detail {margin:5px 0 0}
-
-.composer-markdown {margin:4px 1px;min-width:0;border-top:1px solid var(--line-soft)}
-.composer-markdown > button {display:flex;align-items:center;gap:4px;border:0;background:transparent;color:var(--muted);padding:3px 0;min-height:22px;font-size:10px}
-.composer-markdown > button[aria-expanded=true] svg {transform:rotate(180deg)}
-.composer-markdown-body {max-height:min(86px,12dvh);overflow:auto;padding:3px 7px;border-radius:6px;background:var(--panel-alt);overscroll-behavior:contain}
-.composer-markdown-body .message-prose,.composer-markdown-body .message-prose :is(p,li) {font-size:12px;line-height:1.45}
-.composer-markdown-body .message-prose :is(p,ul,ol,pre,h1,h2,h3) {margin:4px 0}
-.composer-markdown-body .message-prose :is(h1,h2,h3) {font-size:14px;line-height:1.35}
-.composer-markdown-body .draft-link {color:var(--accent);text-decoration:underline}

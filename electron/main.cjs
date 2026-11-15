@@ -476,7 +476,7 @@ async function launch() {
     return shell.openExternal(links[target]);
   });
   register("copyText", (value) => {
-    if (typeof value !== "string" || value.length > 2_000_000)
+    if (typeof value !== "string" || require("./mobile/chat-input.js").exceedsChatSize(value))
       throw new Error("복사할 텍스트 크기를 확인해 주세요.");
     clipboard.writeText(value);
   });

@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld(
     reactMessage: input => invoke('reactMessage',input),
     readDrafts: revision => invoke("readDrafts", revision),
     addChatAttachments: (project, files) => invoke("addChatAttachments", project, files),
+    readRequestSource: (session, message, offset) => invoke("readRequestSource",session,message,offset),
     readChatAttachment: (project, id) => invoke("readChatAttachment", project, id),
     listQueuedMessages: id => invoke("listQueuedMessages", id),
     cancelQueuedMessage: (id, queued) => invoke("cancelQueuedMessage", id, queued),

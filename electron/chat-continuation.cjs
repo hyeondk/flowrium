@@ -56,10 +56,10 @@ async function continueConversation(controller,input){
  controller.continuationFlights ||=new Set();if(controller.continuationFlights.has(input.sessionId))throw Error('이 대화의 진행 요청을 이미 보내고 있습니다.');
  controller.continuationFlights.add(input.sessionId);
  try{
-  if(input.text!==undefined&&(typeof input.text!=='string'||input.text.length>100000||input.text.includes('\0')))throw Error('이어서 보낼 내용을 확인해 주세요.');
+  if(input.text!==undefined&&(typeof input.text!=='string'||require('./mobile/chat-input.js').exceedsChatSize(input.text)||input.text.includes('\0')))throw Error('이어서 보낼 내용을 확인해 주세요.');
   if(input.attachments!==undefined&&(!Array.isArray(input.attachments)||input.attachments.length>16||input.attachments.some(id=>typeof id!=='string')))throw Error('첨부 자료를 확인해 주세요.');
   recheck(controller,input,before);
-  return await controller.send({sessionId:input.sessionId,text:input.text?.trim()||'앞서 제안한 다음 단계를 이어서 진행해 주세요.',attachments:input.attachments||[],mode:input.mode||'plan',model:input.model,effort:input.effort},{expectedContinuation:{messageId:input.messageId,text:before.text,owner:before.owner}});
+  return await controller.send({sessionId:input.sessionId,requestSourceId:input.requestSourceId,submissionId:input.submissionId,text:input.text?.trim()?input.text:'앞서 제안한 다음 단계를 이어서 진행해 주세요.',attachments:input.attachments||[],mode:input.mode||'plan',model:input.model,effort:input.effort},{expectedContinuation:{messageId:input.messageId,text:before.text,owner:before.owner}});
  }finally{controller.continuationFlights.delete(input.sessionId);}
 }
 async function completeContinuation(controller,input){

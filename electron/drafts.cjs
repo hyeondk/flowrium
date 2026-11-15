@@ -32,14 +32,14 @@ function checked(input, deletion = false) {
     if (
       !v ||
       typeof v.text !== "string" ||
-      v.text.length > 200000 ||
+      require("./mobile/chat-input.js").exceedsChatSize(v.text) ||
       !["plan", "build", "review"].includes(v.mode)
     )
       throw new Error("초안의 내용과 작업 모드를 확인해 주세요.");
     bytes += Buffer.byteLength(v.text, "utf8");
-    if (bytes > 12 * 1024 * 1024)
+    if (bytes > require("./mobile/chat-input.js").maxRequestBytes + 4 * 1024 * 1024)
       throw new Error(
-        "이 기기에 보관한 초안이 12MB를 넘었습니다. 이전 초안을 정리해 주세요.",
+        "이 기기에 보관한 초안이 24MB를 넘었습니다. 이전 초안을 정리해 주세요.",
       );
     result[k] = { text: v.text, mode: v.mode, ...(v.attachments?.length ? {attachments:require("./chat-attachments.cjs").checkedAttachments(v.attachments)} : {}) };
   }
@@ -121,7 +121,7 @@ class Drafts {
   async prior(revision) {
     const file = path.join(this.directory, String(revision) + ".json");
     try {
-      const data = await readJSON(file);
+      const data = await readJSON(file,{maxBytes:128*1024*1024});
       if (data.version !== 1 || data.revision !== revision) throw stale();
       return checked(data.drafts);
     } catch (e) {
@@ -174,7 +174,7 @@ class Drafts {
       const file = path.join(this.directory, String(revision) + ".json"),
         tmp = file + "." + randomUUID() + ".tmp";
       try {
-        await createJSON(tmp, { version: 1, revision, drafts });
+        await createJSON(tmp, { version: 1, revision, drafts },{maxBytes:128*1024*1024});
         await fs.rename(tmp, file);
       } finally {
         await fs.unlink(tmp).catch(() => {});
