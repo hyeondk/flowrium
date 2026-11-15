@@ -30,7 +30,7 @@
 .mobile-switch-control > input:focus-visible + .mobile-switch-track {outline: 2px solid var(--focus); outline-offset: 3px;}
 @media (prefers-reduced-motion:reduce) {.mobile-switch-track, .mobile-switch-track::before {transition: none;}}
 
-html:has(#confirmation-sheet[open]) {overflow:hidden;}
+html:has(#install-guide[open], #confirmation-sheet[open]) {overflow:hidden;}
 #confirmation-sheet {
   position:fixed;
   inset:auto 0 0;

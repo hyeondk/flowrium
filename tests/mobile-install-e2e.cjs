@@ -101,20 +101,27 @@ async function main() {
     await settings.click();
     const help=mobile.getByRole('button',{name:'도움말',exact:true});
     assert.deepEqual(await mobile.locator('.settings-guides > button').evaluateAll(rows=>rows.map(row=>row.dataset.settingsGuide)),['help','install']);
+    // Reserve a classic scrollbar even when the host uses overlay scrollbars.
+    await mobile.evaluate(()=>{
+      const sheet=Array.from(document.styleSheets).at(-1);
+      sheet.insertRule('html::-webkit-scrollbar {width:16px}',sheet.cssRules.length);
+      sheet.insertRule('html {overflow-y:scroll}',sheet.cssRules.length);
+    });
     await help.click();
     const helpDialog=mobile.getByRole('dialog',{name:'도움말',exact:true});
     for(const title of ['처음 연결하기','대시보드','프로젝트 대화','결정과 대기','다시 접속하기']) {
       await helpDialog.getByRole('heading',{name:title,exact:true}).waitFor();
     }
     assert.equal(await mobile.locator('dialog[open]').count(),1);
-    const centered = await helpDialog.evaluate(el=>{
+    const centerOffset = await helpDialog.evaluate(el=>{
       const r=el.getBoundingClientRect();
-      return Math.abs((r.top+r.bottom)/2-innerHeight/2)<2 && Math.abs((r.left+r.right)/2-innerWidth/2)<2;
+      return {x:(r.left+r.right-innerWidth)/2,y:(r.top+r.bottom-innerHeight)/2};
     });
-    assert(centered,'도움말은 화면 중앙에 유지');
+    assert(Math.abs(centerOffset.x)<2 && Math.abs(centerOffset.y)<2,'도움말 중심 오차 '+JSON.stringify(centerOffset));
     assert.equal(await helpDialog.locator('[data-install-details]').isVisible(),false);
     await helpDialog.getByRole('button',{name:'도움말 닫기'}).click();
     await mobile.waitForFunction(()=>document.activeElement?.dataset.settingsGuide==='help');
+    assert.equal(await mobile.evaluate(()=>getComputedStyle(document.documentElement).overflowY),'scroll');
     await mobile.evaluate(()=>document.dispatchEvent(new Event('flowrium-install-state')));
     assert.equal(await mobile.evaluate(()=>document.activeElement?.dataset.settingsGuide),'help','설정 갱신 후에도 원래 도움말 행의 초점을 유지');
     const install=mobile.getByRole('button',{name:'홈 화면에 설치',exact:true});
