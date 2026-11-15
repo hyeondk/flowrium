@@ -1,0 +1,54 @@
+{
+  "version": "261115_08",
+  "sourceCommit": "6b22ff6e62ff09279650ea19f875c89d2a41623a",
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_08",
+  "publishedAt": "2026-11-15T13:08:29Z",
+  "publicDownloadStatus": 200,
+  "assets": [
+    {
+      "name": "Flowrium-261115_08-mac-arm64.dmg",
+      "bytes": 368896601,
+      "sha256": "2d1a3e73a81c9e2ee2204f4fffb96c23169c00b7accc5edaf38709c2427601dc"
+    },
+    {
+      "name": "Flowrium-261115_08-mac-arm64.zip",
+      "bytes": 356846594,
+      "sha256": "364010530ae6ea8f27eb4b9e57d0125465fdb7fdf7e173c1dc2012c0507a5c42"
+    },
+    {
+      "name": "Flowrium-261115_08-source.tar.gz",
+      "bytes": 10103704,
+      "sha256": "413f66ba67c97bd2bcd88d7a5719dc5349e359f2cb2d6e28f85b052ba330521b"
+    },
+    {
+      "name": "Flowrium-261115_08-win-x64.exe",
+      "bytes": 323763763,
+      "sha256": "d94860f611661c81fe564b55d6447adbf6d482068622f0c97ac2bbc1c74e8731"
+    },
+    {
+      "name": "flowrium-install-support.cjs",
+      "bytes": 6783,
+      "sha256": "c466afcc9e1692159f9a1728b048784569ba00b1ac75f81d5bc73f5a1d715122"
+    },
+    {
+      "name": "install.ps1",
+      "bytes": 13794,
+      "sha256": "b181a71dd7a723285166f8921ca94ba9fb0cbd9abd7c2b8a9e67d36851f0c2f5"
+    },
+    {
+      "name": "install.sh",
+      "bytes": 15549,
+      "sha256": "d51ab1de56d47fff28cb5e8777ffd5b7e55581441ea3ccd07ee8235c4067ea1b"
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 728,
+      "sha256": "09542189556ddc247860de2fdfc850e36015454d86c755167083e1b854c76db2"
+    },
+    {
+      "name": "SOURCE-COMMIT.txt",
+      "bytes": 60,
+      "sha256": "4de4b29dbde711fa750eb915efe27ee1b38cdd35abdff5a7514ad2611d35bf55"
+    }
+  ]
+}
