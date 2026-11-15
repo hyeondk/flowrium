@@ -1,0 +1,72 @@
+{
+  "version": "261115_06",
+  "sourceCommit": "519c5f8c21859d29be062544d552465bfcd61d63",
+  "release": "https://github.com/hyeondk/flowrium/releases/tag/261115_06",
+  "publishedAt": "2026-11-15T10:32:30Z",
+  "checkedAt": "2026-11-15T10:32:34.532111+00:00",
+  "assets": [
+    {
+      "name": "Flowrium-261115_06-mac-arm64.dmg",
+      "bytes": 368887925,
+      "sha256": "67e1ae6f23a2d30a84e2c02c76c3481a192e50951e11b9ebfaed2b8f604b70b8",
+      "serverDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "Flowrium-261115_06-mac-arm64.zip",
+      "bytes": 356841158,
+      "sha256": "0d8574446d350b04c7f0181df562dd6610111f50613d6c1c0d1012daeae0cbb8",
+      "serverDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "Flowrium-261115_06-source.tar.gz",
+      "bytes": 9169060,
+      "sha256": "539072397f0fd29a26f4d6d38feb69f0244aea101d39ae51fc64d18b040e8e3a",
+      "serverDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "Flowrium-261115_06-win-x64.exe",
+      "bytes": 323760744,
+      "sha256": "6da266319986cfef65cca63bc48913ba5cdb3cfb407faf558f119fdf2dc7b3dc",
+      "serverDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "bytes": 728,
+      "sha256": "1bc59b979a74ff9ace319705961e6cd3bce58438bc92414a21302ad948aa4c84",
+      "serverDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "SOURCE-COMMIT.txt",
+      "bytes": 60,
+      "sha256": "df1aeea1c0808cf14c335fe217c8ea110ef7cb34521e6b0f21760eb1ec57a0e8",
+      "serverDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "flowrium-install-support.cjs",
+      "bytes": 6783,
+      "sha256": "c466afcc9e1692159f9a1728b048784569ba00b1ac75f81d5bc73f5a1d715122",
+      "serverDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "install.ps1",
+      "bytes": 13794,
+      "sha256": "b181a71dd7a723285166f8921ca94ba9fb0cbd9abd7c2b8a9e67d36851f0c2f5",
+      "serverDigestMatch": true,
+      "anonymousHttpStatus": 200
+    },
+    {
+      "name": "install.sh",
+      "bytes": 15549,
+      "sha256": "d51ab1de56d47fff28cb5e8777ffd5b7e55581441ea3ccd07ee8235c4067ea1b",
+      "serverDigestMatch": true,
+      "anonymousHttpStatus": 200
+    }
+  ]
+}
