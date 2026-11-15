@@ -1,4 +1,5 @@
 const path = require('node:path');
+const fs = require('node:fs/promises');
 const {storeRequestSource,resolveAttachments} = require('./chat-attachments.cjs');
 
 // Large prompts in project chats are read from disk in ranges, using the turn's existing
@@ -18,7 +19,7 @@ async function prepareRequest(store, session, text, cwd, savedSource) {
   const project = store.project(session.projectId);
   const source = savedSource || await storeRequestSource(store,session.projectId,text);
   const absolute = path.join(project.path,'.flowrium','attachments',source.id,source.name);
-  const relative = path.relative(cwd || project.path,absolute);
+  const relative = path.relative(await fs.realpath(cwd || project.path),absolute);
   if (path.isAbsolute(relative)) throw Error('긴 요청 원문을 읽으려면 프로젝트와 같은 드라이브의 작업 폴더를 선택해 주세요.');
   return {
     source,

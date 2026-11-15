@@ -24,7 +24,7 @@ async function main(){
     const relative=prompt.match(/\.flowrium\/attachments\/[a-f0-9-]{36}\/request\.txt/)?.[0];
     assert(relative);assert(prompt.includes('범위별'));assert(!prompt.includes(longProbe.head));
     const reader="const fs=require('node:fs'),c=require('node:crypto'); const file="+JSON.stringify(relative)+"; const f=fs.openSync(file,'r'),n=fs.fstatSync(f).size;const read=(start,size)=>{const b=Buffer.alloc(size);fs.readSync(f,b,0,size,start);return b.toString()};const hash=c.createHash('sha256');for(let i=0;i<n;i+=4096){const b=Buffer.alloc(Math.min(4096,n-i));fs.readSync(f,b,0,b.length,i);hash.update(b);}console.log(JSON.stringify({head:read(0,20),middle:read(Math.floor(n/2)-9,18),tail:read(n-20,20),digest:hash.digest('hex')}));fs.closeSync(f)";
-    const command=JSON.stringify(process.execPath)+' -e '+JSON.stringify("eval(Buffer.from('"+Buffer.from(reader).toString('base64')+"','base64').toString())");
+    const command=(process.platform==='win32'?'node':JSON.stringify(process.execPath))+' -e '+JSON.stringify("eval(Buffer.from('"+Buffer.from(reader).toString('base64')+"','base64').toString())");
     const args=tool.name==='exec_command'?{cmd:command}:tool.name==='shell_command'?{command}:{command:process.platform==='win32'?['cmd','/c',command]:['sh','-c',command]};
     longProbe.called=true;
     item={id:itemId,type:'function_call',call_id:'call_large_read',name:tool.name,...(tool.namespace&&{namespace:tool.namespace}),arguments:JSON.stringify(args)};

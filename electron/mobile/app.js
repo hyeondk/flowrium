@@ -241,6 +241,7 @@ async function loadDashboard(retry=false){
   finally{if(dashboardRequest===work){dashboardRequest=undefined;dashboardFetched=Date.now();}}
 }
 function clearPrivateState(nextGate) {
+  submissionReceipts.clear();
   resetUpdate();
   connection.removeAttribute('data-connected');
   loadErrors.clear();
@@ -993,8 +994,8 @@ function chat(root) {
       const details=node('details'),summary=node('summary','요청 원문 읽기'),body=node('p'),buttons=node('div',undefined,'actions');
       let offset=0,next=null;const previous=[];
       const load=async()=>{const page=await call('readRequestSource',s.id,m.id,offset);body.textContent=page.text;next=page.next;back.disabled=!previous.length;forward.disabled=next===null;};
-      const back=action('이전 부분',()=>run(async()=>{if(previous.length){offset=previous.pop();await load();}}));
-      const forward=action('다음 부분',()=>run(async()=>{if(next!==null){previous.push(offset);offset=next;await load();}}));
+      const back=action('이전 부분',async()=>{if(previous.length){offset=previous.pop();await load().catch(e=>showNotice(e.message,'error'));}});
+      const forward=action('다음 부분',async()=>{if(next!==null){previous.push(offset);offset=next;await load().catch(e=>showNotice(e.message,'error'));}});
       body.style.whiteSpace='pre-wrap';body.style.overflowWrap='anywhere';buttons.append(back,forward);details.append(summary,body,buttons);
       details.addEventListener('toggle',()=>{if(details.open && !body.textContent)load().catch(error=>showNotice(error.message,'error'));});
       block.append(details);

@@ -69,7 +69,10 @@ async function checkLargeDraft(page,input,verifyFailedSend,send,folder) {
   const block=head+fill(1_000_000-head.length)+middle;
   const exact=block+fill(2_000_000-block.length-tail.length)+tail;
   async function paste(value) {
-    return input.evaluate((el,raw)=>{
+    return page.evaluate(raw=>{
+      // Resolve the live control after the large protocol argument arrives.
+      // Mobile state polling may have replaced the previously located element.
+      const el=document.querySelector('.markdown-input textarea');
       el.focus();el.select();
       const data=new DataTransfer();data.setData('text/plain',raw);
       const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data});
@@ -113,7 +116,7 @@ async function checkLargeDraft(page,input,verifyFailedSend,send,folder) {
   const oversized=unit.repeat(Math.floor(bytes/Buffer.byteLength(unit)))+'!'.repeat(bytes%Buffer.byteLength(unit));
   await paste(oversized);
   await send.click();
-  await page.getByText(/한 번에 보낼 수 있는 원문은 UTF-8 기준 20MB/).first().waitFor();
+  await page.getByText(/한 번에 보낼 수 있는 원문은 UTF-8 기준 20(?:MiB|MB)/).first().waitFor();
   await persisted(oversized);
   console.log('2,000,001자 붙여넣기',elapsed,'밀리초 / 실행 취소·다시 실행 / 2,000,000자 실패 복원 / 2,000,001자 정상 전송 및 첨부 해시 일치 / 20MiB + 1바이트 거절 후 전체 원문 보존');
 }
