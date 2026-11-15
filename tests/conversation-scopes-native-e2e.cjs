@@ -39,18 +39,21 @@ async function main(){
   async function send(id,text,extra={}){const completed=done(controller,id);await controller.send({sessionId:id,text,mode:'build',...extra});await completed;if(failure)throw failure;}
   await send(general.id,'일반첫요청',{attachments:attachments.map(a=>a.id)});assert(JSON.stringify(bodies[0]).includes('명시적 첨부 근거 ABC'));assert(/data:image\/[a-z]+;base64,/.test(JSON.stringify(bodies[0])));
   assert(!JSON.stringify(bodies[0]).includes('실제 프로젝트 업무'),'일반 대화에 프로젝트 내용이 없어야 합니다.');
-  await send(general.id,'두번째제외대상');const original=store.session(general.id).threadId,users=store.session(general.id).messages.filter(m=>m.role==='user');
+  assert.equal(bodies.at(-1).model,'gpt-5.5');
+  await edit(general.id,{action:'model',model:'gpt-5.4'});
+  await send(general.id,'두번째제외대상');assert.equal(bodies.at(-1).model,'gpt-5.4');const original=store.session(general.id).threadId,users=store.session(general.id).messages.filter(m=>m.role==='user');
   const fork=await edit(general.id,{action:'branch',messageId:users[0].id});assert.equal(fork.scope,'general');assert.equal(fork.projectId,general.projectId);assert.notEqual(fork.threadId,original);await send(fork.id,'분기후요청');assert(!JSON.stringify(bodies.at(-1)).includes('두번째제외대상'));
   const rewind=await edit(general.id,{action:'rewind',messageId:users[1].id});assert.equal(rewind.restoredDraft.text,'두번째제외대상');await send(general.id,'되감기후요청');assert(!JSON.stringify(bodies.at(-1)).includes('두번째제외대상'));
   const privateClient=await controller.conversationClient(store.session(general.id));assert.equal((await threadTurns(privateClient,original)).length,2,'원본 실행 기록을 보존해야 합니다.');
-  await send(hub.id,'모든 프로젝트 현황을 보고 업무를 제안해 줘');assert.equal(delegated,1);assert.equal(store.state.sessions.length,1,'승인 전에 프로젝트 업무 대화를 만들지 않습니다.');
+  await send(hub.id,'모든 프로젝트 현황을 보고 업무를 제안해 줘');assert.equal(bodies.at(-1).model,'gpt-5.5');assert.equal(delegated,1);assert.equal(store.state.sessions.length,1,'승인 전에 프로젝트 업무 대화를 만들지 않습니다.');
   const integrated=bodies.filter(b=>JSON.stringify(b).includes('flowrium_hub_snapshot'));assert(integrated.some(b=>JSON.stringify(b.input).includes('실제 프로젝트 업무')));assert(integrated.some(b=>b.input.some(i=>i.type==='function_call_output'&&JSON.stringify(i.output).includes('결정함'))));
   const guarded=await handlers.get('createHubConversation')({scope:'general'});await send(guarded.id,'차단시도 / 프로젝트 파일을 변경해 줘');assert(patchAttempted);assert.equal(await fs.readFile(path.join(folder,'protected.txt'),'utf8'),'원본 보존');
   const patchOutputs=[...new Set(bodies.flatMap(body=>body.input||[]).filter(item=>['custom_tool_call_output','function_call_output'].includes(item.type)&&item.call_id==='blocked-patch').map(item=>JSON.stringify({type:item.type,call_id:item.call_id,output:item.output})))];
   const patchDiagnostic=(patchOutputs.length?patchOutputs.join('\n'):'blocked-patch의 도구 반환 항목을 찾지 못했습니다.').slice(0,2000);
   assert(bodies.at(-1).input.some(i=>['custom_tool_call_output','function_call_output'].includes(i.type)&&/reject|denied|not allowed|not permitted|permission|refusing to run unsandboxed/i.test(JSON.stringify(i))),'파일 변경 도구의 거부 결과가 모델에 반환돼야 합니다.\n합성 파일 변경 도구 반환 진단 (최대 2000자):\n'+patchDiagnostic);
+  await edit(general.id,{action:'model',model:''});await send(general.id,'기본 모델 복귀 확인');assert.equal(bodies.at(-1).model,'gpt-5.5');
   const restored=new Store(path.join(temp,'app'));await restored.load();restored.conversations.getOwner=()=>0;await restored.syncConversationOwner();assert.equal(restored.session(general.id).threadId,store.session(general.id).threadId);assert.equal(restored.session(fork.id).scope,'general');
-  console.log('번들 Codex 실제 RPC 통과 / 일반 대화의 프로젝트 격리 / 외부 실행 도구 미노출 / 위험 설정 강제 제한과 실제 파일 변경 시도 차단 / 첨부 텍스트와 이미지 모델 입력 / 실제 분기와 되감기 / 통합 현황 조회와 승인 대기 제안 / 재시작 영속 저장');
+  console.log('번들 Codex 실제 RPC 통과 / 일반 대화의 프로젝트 격리 / 외부 실행 도구 미노출 / 위험 설정 강제 제한과 실제 파일 변경 시도 차단 / 첨부 텍스트와 이미지 모델 입력 / 실제 분기와 되감기 / 통합 현황 조회와 승인 대기 제안 / 모델 재지정·상속 실제 전송 / 재시작 영속 저장');
  }finally{
   await controller?.shutdown();client?.close();if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});
  }

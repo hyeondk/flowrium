@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {EventEmitter} = require('node:events');
 const {runStructuredAnalysis} = require('../electron/structured-analysis.cjs');
 
-function fixture(t) {
+function fixture(t, background=false) {
   const analysis = new EventEmitter();
   const ready = Promise.withResolvers();
   analysis.start = async () => {};
@@ -19,10 +19,10 @@ function fixture(t) {
     options:{analysisClientFactory:() => analysis},
     editingSessions:new Set(), store:{state:{settings:{}}}
   };
-  const result = runStructuredAnalysis(controller, {prompt:'합성 추천 자료',schema:{type:'object'}});
+  const result = runStructuredAnalysis(controller, {prompt:'합성 추천 자료',schema:{type:'object'},background});
   result.catch(() => {});
   return {
-    ready:ready.promise, result,
+    controller, ready:ready.promise, result,
     cancel:() => [...controller.analysisRuns.values()][0]?.cancel(),
     notify:(method, params) => analysis.emit('notification', {method, params:{threadId:'test', ...params}})
   };
@@ -65,4 +65,22 @@ test('실행 도구 이벤트는 차단하고 그 이유를 표시한다', async
   const f = fixture(t); await f.ready;
   f.notify('item/started', {item:{id:'tool',type:'commandExecution'}});
   await assert.rejects(f.result, /도구/);
+});
+
+test('명시한 요청이 다른 대화의 추천 준비를 기다리지 않고 우선 실행된다',async t=>{
+ const f=fixture(t,true);await f.ready;
+ const getsForeground=Promise.withResolvers();
+ const client=new EventEmitter();
+ client.start=async()=>{};
+ client.close=()=>{};
+ client.request=async(method,params)=>{
+  if(method==='thread/start')return {thread:{id:'explicit'},activePermissionProfile:{id:params.permissions}};
+  getsForeground.resolve();return {turn:{id:'turn'}};
+ };
+ f.controller.options.analysisClientFactory=()=>client;
+ const foreground=runStructuredAnalysis(f.controller,{prompt:'사용자가 선택한 분석',schema:{type:'object'}});
+ await assert.rejects(f.result,/취소/);await getsForeground.promise;
+ client.emit('notification',{method:'item/completed',params:{threadId:'explicit',item:{id:'answer',type:'agentMessage',text:'{"ok":true}'}}});
+ client.emit('notification',{method:'turn/completed',params:{threadId:'explicit',turn:{status:'completed'}}});
+ assert.deepEqual(await foreground,{ok:true});assert.equal(f.controller.analysisRuns.size,0);
 });

@@ -39,6 +39,27 @@ function registerConversationTools(register,controller) {
  register('editConversation',async(id,input)=>{
   if(controller.codexTransfer?.isBusy())throw Error('대화 연결 작업을 마친 뒤 대화를 편집해 주세요.');
   const session=store.session(text(id,'대화 식별자',100));
+  if (input?.action === 'model') {
+    if (editing.has(id)) throw Error('대화 설정을 저장하는 중입니다.');
+    const model = input.model === '' ? undefined : text(input.model, '대화 모델', 300);
+    const previous = session.preferences;
+    const next = {...previous};
+    if (model) next.model = model;
+    else delete next.model;
+    editing.add(id);
+    session.preferences = next;
+    try {
+      await store.save();
+      return structuredClone(session);
+    } catch (error) {
+      if (previous) session.preferences = previous;
+      else delete session.preferences;
+      throw error;
+    } finally {
+      editing.delete(id);
+      if (controller.messageQueue.pending(id)) void controller.messageQueue.flush(id);
+    }
+  }
   if(session.codexLink?.mode==='linked'&&['compact','rewind','branch'].includes(input?.action))throw Error('원래 앱과 공유하는 대화의 과거 문맥은 여기서 바꾸지 않습니다. 독립 사본으로 연결한 뒤 분기 / 되감기 / 압축을 사용해 주세요.');
   if(controller.runs.has(id)||editing.has(id)||session.compacting||controller.messageQueue.pending(id))throw Error('실행 중인 작업과 대기 지시를 마친 뒤 다시 시도해 주세요.');
   editing.add(id);

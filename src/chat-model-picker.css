@@ -1,0 +1,27 @@
+.composer .chat-model-picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 5px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.composer .chat-model-picker > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer .chat-model-picker > svg { flex: none; }
+.composer .chat-model-picker > select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  opacity: 0;
+  cursor: inherit;
+}
+.composer .chat-model-picker:hover { background: var(--accent-bg); }
+.composer .chat-model-picker:focus-within { outline: 2px solid var(--accent); }

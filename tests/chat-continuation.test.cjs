@@ -16,3 +16,58 @@ test('실제 전송의 파일 확인 대기 중 일반 요청이 완료돼도 �
 test('분석 강도는 모델이 지원하는 값만 선택하고 정보가 없으면 서버 기본값을 사용한다',()=>{
  const {analysisEffort}=require('../electron/structured-analysis.cjs'),models=[{model:'fast',defaultReasoningEffort:'none',supportedReasoningEfforts:[{reasoningEffort:'none'}]},{model:'deep',defaultReasoningEffort:'medium',supportedReasoningEfforts:[{reasoningEffort:'medium'},{reasoningEffort:'xhigh'}]}];assert.equal(analysisEffort('low','fast',models),'none');assert.equal(analysisEffort('xhigh','deep',models),'xhigh');assert.equal(analysisEffort('ultra','deep',models),'medium');assert.equal(analysisEffort('low','unknown',models),undefined);assert.equal(analysisEffort('low',undefined,models),undefined);
 });
+
+test('추천은 선택한 대화 모델에 짧은 문맥과 가벼운 강도로 요청하며 최근 답변의 끝을 보존한다',async t=>{
+ const f=await fixture(t);f.session.preferences={model:'chat-model',effort:'ultra'};
+ const last=f.session.messages.at(-1);
+ last.text='최근 답변 시작'+'가'.repeat(12000)+'마지막 남은 일';
+ f.session.messages.unshift(...Array.from({length:30},(_,i)=>({role:i%2?'assistant':'user',text:'예전 기록'.repeat(2000)})));
+ f.controller.runStructuredAnalysis=async request=>{
+  assert.equal(request.model,'chat-model');assert.equal(request.effort,'low');assert(request.prompt.length<7500);
+  assert(request.prompt.includes('최근 답변 시작') && request.prompt.includes('마지막 남은 일'));
+  return {suggestions:[]};
+ };
+ await suggest(f.controller,f.input);
+ assert.equal(f.session.preferences.effort,'ultra');
+});
+
+test('대화 지정 모델을 해제하면 추천 요청에도 설정의 대화 기본 모델을 사용한다',async t=>{
+ const f=await fixture(t);
+ f.controller.store.state.settings.model='account-model';
+ f.controller.store.state.settings.chatDefaults={model:'default-chat-model'};
+ f.controller.runStructuredAnalysis=async request=>{
+  assert.equal(request.model,'default-chat-model');
+  return {suggestions:[]};
+ };
+ await suggest(f.controller,f.input);
+});
+
+test('후속 완료 저장 실패를 되돌리고 재시도와 중복 완료가 메시지나 전송을 바꾸지 않는다',async t=>{
+ const f=await fixture(t),{completeContinuation}=require('../electron/chat-continuation.cjs');
+ const before=structuredClone(f.session.messages),events=[];
+ f.controller.emitEvent=e=>events.push(e);
+ const save=f.controller.store.save.bind(f.controller.store);
+ f.controller.store.save=async()=>{throw Error('쓰기 실패')};
+ await assert.rejects(completeContinuation(f.controller,f.input),/쓰기 실패/);
+ assert.equal(f.session.completedContinuationId,undefined);assert.equal(events.length,0);
+ f.controller.store.save=save;
+ await completeContinuation(f.controller,f.input);
+ await completeContinuation(f.controller,f.input);
+ assert.equal(f.session.completedContinuationId,f.input.messageId);
+ assert.equal(events.length,1);assert.equal(f.calls(),0);assert.deepEqual(f.session.messages,before);
+ await assert.rejects(continueConversation(f.controller,f.input),/상태가 바뀌/);
+ await assert.rejects(suggest(f.controller,f.input),/상태가 바뀌/);
+});
+test('실제 대기 답변만 완료하고 실행, 대기열, 다른 진행 요청 또는 교체된 메시지는 건드리지 않는다',async t=>{
+ const {completeContinuation}=require('../electron/chat-continuation.cjs');
+ for(const state of ['plain','running','queue','old','proceeding']){
+  const f=await fixture(t);
+  if(state==='plain')f.session.messages.at(-1).text='모든 확인이 끝났습니다.';
+  if(state==='running')f.controller.runs.set(f.session.id,{});
+  if(state==='queue')f.controller.messageQueue.pending=()=>true;
+  if(state==='old')f.session.messages.push({...f.session.messages.at(-1),id:randomUUID()});
+  if(state==='proceeding')f.controller.continuationFlights=new Set([f.session.id]);
+  await assert.rejects(completeContinuation(f.controller,f.input),/상태가 바뀌/);
+  assert.equal(f.session.completedContinuationId,undefined);assert.equal(f.calls(),0);
+ }
+});

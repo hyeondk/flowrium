@@ -228,9 +228,19 @@ class Controller extends EventEmitter {
       throw new Error("추론 강도를 확인해 주세요.");
     if (input.model) text(input.model, "모델", 300);
     const session = this.store.session(input.sessionId);
+    const settings = this.store.state.settings;
+    const own = session.preferences || {};
+    // Capture the selection before any asynchronous work, including time in the queue.
+    const queuedSelection = internal.fromQueue && input.model !== undefined;
+    input = {
+      ...input,
+      model: queuedSelection ? input.model : own.model || settings.chatDefaults?.model || input.model || settings.model || null,
+      effort: queuedSelection ? input.effort : own.effort || settings.chatDefaults?.effort || input.effort || settings.effort,
+    };
     const checkContinuation=()=>{
       const expected=internal.expectedContinuation;if(!expected)return;
       const last=session.messages.at(-1);
+      if(session.completedContinuationId===expected.messageId)throw Error('이미 완료로 표시한 후속 작업입니다.');
       if(!last||last.role!=='assistant'||last.id!==expected.messageId||last.text!==expected.text||ownerRevision!==expected.owner||ownerRevision!==(this.options.queueOwner?.()??'local')||this.runs.has(session.id)||this.editingSessions.has(session.id)||session.compacting||this.messageQueue.pending(session.id)||session.workflow?.status==='done')throw Error('대화나 계정 상태가 바뀌었습니다. 최신 답변을 확인하고 다시 선택해 주세요.');
     };
     checkContinuation();
@@ -362,7 +372,7 @@ class Controller extends EventEmitter {
       threadParams.config = { web_search: research.searchMode };
     const dynamicTools=await this.options.applicationTools?.(this.store.session(run.sessionId)) || [];
     if(this.options.canRun?.()===false||run.ownerRevision!==(this.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.');
-    const model = prefs?.model || input.model || this.store.state.settings.model;
+    const model = input.model;
     if (model) threadParams.model = model;
     let result;
     let restoredContext = "";
@@ -429,8 +439,8 @@ class Controller extends EventEmitter {
               networkAccess: prefs.networkAccess ?? false,
             }
           : { type: "readOnly" },
-      ...(model ? { model } : {}),
-      effort: prefs?.effort || input.effort || this.store.state.settings.effort,
+      model,
+      effort: input.effort,
     });
     if (!turn.turn?.id) throw new Error("Codex 작업을 시작하지 못했습니다.");
     run.turnId = turn.turn.id;

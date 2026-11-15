@@ -7,7 +7,7 @@
 .composer .chat-continuation-actions .followup-accept{overflow:hidden;color:var(--accent-bright)}
 .composer .followup-accept span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .composer .followup-accept kbd{flex:none;font:inherit;line-height:15px;padding:0 3px;border:1px solid var(--line);border-radius:4px}
-.composer .chat-continuation-actions :is(.followup-dismiss,.followup-cycle,.followup-proceed){flex:none}
+.composer .chat-continuation-actions :is(.followup-dismiss,.followup-cycle,.followup-proceed,.followup-complete){flex:none}
 .composer .chat-continuation-actions .followup-proceed{margin-inline-start:auto;color:var(--accent-bright)}
 .composer .chat-continuation p{margin:2px 6px 4px;color:var(--muted);font-size:11px;line-height:1.5}
 .composer textarea[data-inline-suggestion=true]::placeholder{color:var(--muted);opacity:.82}

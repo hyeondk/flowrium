@@ -215,6 +215,7 @@ jobs:
         run: |
           node tests/chat-core-e2e.cjs
           node tests/chat-core-native-e2e.cjs
+          node tests/chat-model-e2e.cjs
       - name: 목표·그래프·산출물·복원과 실제 모델 도구
         id: verify_5
         continue-on-error: true
@@ -273,6 +274,7 @@ jobs:
         run: |
           node tests/mobile-e2e.cjs
           node tests/mobile-extensions-e2e.cjs
+          node tests/mobile-install-e2e.cjs
       - name: 터미널 설치 파일의 검증과 백업
         id: verify_16
         if: runner.os == 'macOS'

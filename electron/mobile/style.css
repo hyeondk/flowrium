@@ -320,3 +320,28 @@ button,select,a{transition:background-color 200ms var(--ease-enter),color 200ms 
 .ui-checkbox-control:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:4px;border-radius:5px}
 .ui-checkbox-control>input:disabled+svg{opacity:.45}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition-duration:1ms!important;scroll-behavior:auto!important}}
+.mobile-execution{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:16px 0 24px}
+.mobile-execution button{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:9px 12px;border-radius:12px}
+.mobile-execution strong{font-variant-numeric:tabular-nums;font-size:19px}
+.mobile-execution span,.chat-state{display:inline-flex;align-items:center;gap:6px}
+.mobile-execution span::before,.chat-state::before{content:"";width:7px;height:7px;flex:none;border-radius:50%;background:#8090a0}
+[data-state="running"] span::before,.chat-state[data-state="running"]::before{background:#4385b4}
+[data-state="decision"] span::before,.chat-state[data-state="decision"]::before{background:#b17634}
+.chat-state{font-size:13px;margin:2px 0 5px}
+.activity-chart{margin:18px 0 22px;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.activity-chart h2{margin:0 0 10px}
+.activity-chart ol{list-style:none;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin:0;padding:0}
+.activity-chart li{text-align:center;min-width:0}
+.activity-chart .bars{display:flex;justify-content:center;align-items:end;height:40px;gap:3px}
+.activity-chart meter{height:40px;width:8px;writing-mode:vertical-lr;direction:rtl;border-radius:3px}
+.activity-chart meter::-webkit-meter-bar{border:0;background:var(--bg)}
+.activity-chart .started::-webkit-meter-optimum-value{background:#95acc0}
+.activity-chart .done::-webkit-meter-optimum-value{background:#35739f}
+.activity-chart small{font-size:11px}
+.activity-chart .chart-legend{font-size:12px;margin:9px 0 0;color:var(--soft);text-align:right}
+.chart-legend span::before{content:"";display:inline-block;width:7px;height:7px;background:#95acc0;border-radius:2px;margin-right:4px}
+.chart-legend .done::before{background:#35739f}
+.mobile-today .row{border-radius:10px}
+.chat-options{display:grid;grid-template-columns:minmax(72px,.65fr) minmax(0,1.35fr);gap:8px;align-items:end}
+.chat-options label{min-width:0}.chat-options select{text-overflow:ellipsis}
+@media(max-width:520px){#nav{gap:2px}#nav button{min-width:0;flex:1;padding-inline:2px}.mobile-execution button{padding-inline:8px}}

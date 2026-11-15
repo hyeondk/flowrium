@@ -38,7 +38,7 @@ async function run() {
           <div data-motion="loading" aria-label="로딩" style={{width:20,height:20}}>◌</div>
           <CommandCenter projects={[]} sessions={[]} onProject={()=>{}} onSession={()=>{}} onView={()=>{}} onNew={()=>{}}/>
           <AssistantShortcut projects={[]} onOpen={()=>{}}/>
-          <MotionOverlay open={popup} onClose={()=>setPopup(false)} label="검증 팝업"><h2>검증 팝업</h2><button>첫 버튼</button><button>끝 버튼</button></MotionOverlay>
+          <MotionOverlay open={popup} onClose={()=>setPopup(false)} label={popup?"검증 팝업":"닫힘"}>{popup && <><h2>검증 팝업</h2><button>첫 버튼</button><button>끝 버튼</button></>}</MotionOverlay>
           <MotionOverlay open={sheet} onClose={()=>setSheet(false)} label="검증 시트" kind="sheet"><h2>검증 시트</h2><button onClick={()=>setSheet(false)}>시트 닫기</button></MotionOverlay>
           <Toast message={toast} onClose={()=>setToast('')}/><Snackbar message={snack} onClose={()=>setSnack('')}/>
         </main>
@@ -93,7 +93,7 @@ async function run() {
     await page.keyboard.press('Escape');
     const exit=await page.locator('.motion-overlay').evaluate(e=>({phase:e.dataset.phase,ease:getComputedStyle(e).animationTimingFunction}));
     assert.equal(exit.phase,'exit');assert.equal(exit.ease,'cubic-bezier(0.7, 0, 0.84, 0)');
-    await page.waitForTimeout(80);assert.equal(await popup.count(),1,'닫힘 도중 유지');await popup.waitFor({state:'detached'});
+    await page.waitForTimeout(80);assert.equal(await popup.count(),1,'닫힘 도중 유지');assert.equal(await popup.locator('h2').textContent(),'검증 팝업','퇴장 중에도 기존 제목과 내용을 유지');await popup.waitFor({state:'detached'});
     assert.equal(await page.getByRole('button',{name:'팝업 열기'}).evaluate(e=>e===document.activeElement),true,'닫힌 뒤 시작 버튼으로 초점 복구');
     await page.evaluate(()=>window.motion.setPopup(true));await popup.waitFor();await page.evaluate(()=>window.motion.setPopup(false));await page.waitForTimeout(90);await page.evaluate(()=>window.motion.setPopup(true));await page.waitForTimeout(280);assert.equal(await popup.count(),1,'닫히던 팝업을 다시 열면 이전 종료 취소');await page.evaluate(()=>window.motion.setPopup(false));await popup.waitFor({state:'detached'});
     for(const [kind,label] of [['toast','토스트 표시'],['snackbar','스낵바 표시']]){

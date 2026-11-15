@@ -2,13 +2,17 @@ const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=r
 const {_electron}=require('playwright'),{Store}=require('../electron/store.cjs'),{Controller}=require('../electron/controller.cjs');
 const {registerRemote}=require('../electron/remote.cjs'),{registerWebPush}=require('../electron/web-push.cjs'),{png}=require('./chat-fixtures.cjs');
 async function main(){
+ process.env.FLOWRIUM_TEST_CHAT_MODELS='1';
  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-mobile-extensions-'));let app,remote,workflow,push,controller;
  try{
   const store=new Store(path.join(directory,'profile'));await store.load();await fs.mkdir(path.join(directory,'현장 업무'));const project=await store.addProject(path.join(directory,'현장 업무'));const chat=await store.createSession(project.id,{title:'휴대폰 요청'});
+  const sibling=await store.createSession(project.id,{title:'별도 모델 비교'});
+  await store.saveSettings({model:'gpt-6.1-sol',effort:'high'});
   const handlers=new Map(),register=(name,fn)=>handlers.set(name,fn);let locked=false,owner=0;
   controller=new Controller(store,{descriptor:{command:process.execPath,prefix:[path.join(__dirname,'backend-fake-codex.cjs')],label:'격리 모형',node:false},canRun:()=>!locked,queueOwner:()=>owner});await controller.connect();
   for(const [name,fn]of Object.entries({send:i=>controller.send(i),interrupt:id=>controller.interrupt(id),connect:()=>controller.connect(),saveSettings:v=>controller.saveSettings(v),listQueuedMessages:id=>controller.listQueuedMessages(id),cancelQueuedMessage:(id,q)=>controller.cancelQueuedMessage(id,q),resumeQueuedMessages:id=>controller.resumeQueuedMessages(id),securityPending:()=>[],readAccountUsage:()=>({checkedAt:Date.now(),allowed:true,buckets:[{name:'Codex',plan:'시험',windows:[{key:'primary',usedPercent:24,minutes:300,resetsAt:null}]}]})}))register(name,fn);
   require('../electron/chat-attachments.cjs').registerChatAttachments(register,store);require('../electron/workbench.cjs').registerWorkbench(register,store,{});
+  require('../electron/conversation-tools.cjs').registerConversationTools(register,controller);
   const teams=require('../electron/teams.cjs').registerTeams(register,store,controller,{canRun:()=>!locked});
   workflow=require('../electron/workflow.cjs').registerWorkflow(register,store,controller,{canRun:()=>!locked,accountRevision:()=>owner,teamRuntime:teams,intervalMs:3600000,notify:e=>push?.notify(e)});
   const encryptionKey=crypto.randomBytes(32),storage={isEncryptionAvailable:()=>true,encryptString:text=>{const iv=crypto.randomBytes(12),cipher=crypto.createCipheriv('aes-256-gcm',encryptionKey,iv);const body=Buffer.concat([cipher.update(text),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),body])},decryptString:buffer=>{const d=crypto.createDecipheriv('aes-256-gcm',encryptionKey,buffer.subarray(0,12));d.setAuthTag(buffer.subarray(12,28));return Buffer.concat([d.update(buffer.subarray(28)),d.final()]).toString()}};
@@ -17,6 +21,18 @@ async function main(){
   const access=await handlers.get('startRemoteAccess')(),origin=new URL(access.localUrl).origin,key=new URLSearchParams(new URL(access.localUrl).hash.slice(1)).get('key');
   const post=async(method,...args)=>{const r=await fetch(origin+'/api/mobile/call',{method:'POST',headers:{Authorization:'Bearer '+key,Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({method,args})});return {status:r.status,...await r.json()}};
   assert.equal((await post('saveSettings',{codexPath:'/invalid'})).status,400);assert.equal((await post('saveMobileSettings',{chatDefaults:{sandbox:'danger-full-access'}})).status,400);assert.equal((await post('changeTeamRun',project.id,crypto.randomUUID(),{action:'deleteRun'},1)).status,400);
+  assert.equal((await post('editConversation',chat.id,{action:'rewind'})).status,400);
+  assert.equal((await post('setMobileChatModel',crypto.randomUUID(),'test-model')).status,400);
+  assert.equal((await post('setMobileChatModel',chat.id,'missing-model')).status,400);
+  assert.equal((await post('setMobileChatModel',chat.id,{action:'preferences',approval:'never'})).status,400);
+  assert.equal((await post('setMobileChatModel',chat.id,'test-model','extra')).status,400);
+  const originalConnect=handlers.get('connect'),entered=Promise.withResolvers(),release=Promise.withResolvers();
+  try {
+    handlers.set('connect',async()=>{entered.resolve();await release.promise;return {status:{authenticated:true},models:[{id:'test-model'}]};});
+    const saving=post('setMobileChatModel',chat.id,'test-model');
+    await entered.promise;locked=true;release.resolve();
+    assert.equal((await saving).status,400);assert.equal(store.session(chat.id).preferences?.model,undefined);
+  } finally {locked=false;release.resolve();handlers.set('connect',originalConnect);}
   const link=remote.issueLink({ttlMinutes:5}),handoff=new URLSearchParams(new URL(link.url).hash.slice(1)).get('handoff');assert(!link.url.includes(key));
   const exchange=()=>fetch(origin+'/api/mobile/handoff',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({handoff})});
   assert.equal((await exchange()).status,200);assert.equal((await exchange()).status,400);
@@ -33,10 +49,33 @@ async function main(){
   await page.getByRole('button',{name:/휴대폰 요청/}).click();await page.getByLabel('파일 첨부',{exact:true}).setInputFiles({name:'현장.png',mimeType:'image/png',buffer:png});await page.getByText('현장.png / 1KB',{exact:true}).waitFor();await btn('이미지 보기').click();await page.locator('.attachment img').waitFor();
   await page.getByLabel('요청',{exact:true}).fill('대기검증');await btn('요청 보내기').click();await btn('추가 지시 대기열에 넣기').waitFor();assert.equal(store.session(chat.id).messages.find(m=>m.role==='user').attachments[0].name,'현장.png');
   await page.getByLabel('요청',{exact:true}).fill('휴대폰 후속 지시');await btn('추가 지시 대기열에 넣기').click();await page.getByText('휴대폰 후속 지시',{exact:true}).waitFor();await btn('이 지시 취소').click();assert.equal(store.session(chat.id).queuedMessages.at(-1).status,'cancelled');await btn('작업 중단').click();await btn('요청 보내기').waitFor();
+  const picker=page.getByLabel('이 채팅의 모델',{exact:true});
+  async function choose(value){
+    await picker.locator('option[value="gpt-6.1-terra"]').waitFor({state:'attached'});
+    const response=page.waitForResponse(r=>r.url().endsWith('/api/mobile/call')&&r.request().postDataJSON()?.method==='setMobileChatModel');
+    await picker.selectOption(value);assert.equal((await response).status(),200);
+    await page.waitForFunction(id=>{const el=document.querySelector('select[aria-label="이 채팅의 모델"]');return el&&!el.disabled&&el.value===id},value);
+  }
+  assert.match(await picker.locator('option:checked').innerText(),/GPT-6.1 Sol/);
+  await choose('gpt-6.1-terra');
+  assert.equal(store.session(chat.id).preferences.model,'gpt-6.1-terra');
+  assert.equal(store.session(sibling.id).preferences?.model,undefined);assert.equal(store.state.settings.model,'gpt-6.1-sol');
+  await page.getByLabel('요청',{exact:true}).fill('전송 모델 확인 (휴대폰 대화별 선택)');
+  await btn('요청 보내기').click();await page.getByText('실제 전송 / gpt-6.1-terra / low',{exact:true}).waitFor();
+  await choose('');assert.equal(store.session(chat.id).preferences?.model,undefined);
+  await page.getByLabel('요청',{exact:true}).fill('전송 모델 확인 (휴대폰 기본값 복귀)');
+  await btn('요청 보내기').click();await page.getByText('실제 전송 / gpt-6.1-sol / high',{exact:true}).waitFor();
+  const stale=await post('send',{sessionId:sibling.id,mode:'plan',text:'전송 모델 확인 / 오래된 휴대폰 화면',model:'gpt-6.1-terra',effort:'low'});
+  assert.equal(stale.status,200);await page.waitForTimeout(100);
+  for(let start=Date.now();!store.session(sibling.id).messages.some(m=>m.text==='실제 전송 / gpt-6.1-sol / high');){
+    if(Date.now()-start>6000)throw Error('오래된 모바일 모델값이 현재 기본값을 따르지 않았습니다.');
+    await new Promise(resolve=>setTimeout(resolve,30));
+  }
+  console.log('휴대폰 모델 선택 / 다른 대화와 기본값 보존 / 실제 전송 모델·추론 수준 / 기본값 복귀 / 구형 화면의 이전 값 제거 / 허용 범위 외 요청 차단 통과');
   await btn('프로젝트로').click();await btn('팀').click();await btn('새 팀 만들기').click();await page.getByLabel('팀 이름',{exact:true}).fill('모바일 운영팀');await page.getByLabel('역할 이름 1',{exact:true}).fill('조사');await page.getByLabel('역할 지시 1',{exact:true}).fill('근거를 확인하세요.');await page.getByLabel('역할 이름 2',{exact:true}).fill('검토');await page.getByLabel('역할 지시 2',{exact:true}).fill('결과를 검토하세요.');await btn('팀 저장').click();await page.getByText('모바일 운영팀 / 조사 / 검토',{exact:true}).waitFor();
   await page.getByLabel('모바일 운영팀의 목표',{exact:true}).fill('대기검증');await page.getByLabel('배정 방식',{exact:true}).selectOption('manual');await btn('팀 업무 시작').click();await page.getByLabel('배정 업무 1',{exact:true}).waitFor();await btn('배정하고 실행').click();await btn('일시 중지').click();await btn('다시 시작').waitFor();await btn('다시 시작').click();await btn('팀 중단').click();await btn('팀 다시 열기').waitFor();
   const board=await handlers.get('readTeams')(project.id);assert.equal(board.teams.length,1);assert.equal(board.runs[0].directed.phase,'stopped');
-  await btn('설정').click();await btn('기본 설정 저장').waitFor();await page.getByLabel('답변 길이',{exact:true}).selectOption('short');await btn('기본 설정 저장').click();assert.equal(store.state.settings.chatDefaults.answerLength,'short');await page.getByText('5시간 / 24% 사용',{exact:true}).waitFor();
+  await btn('설정').click();await btn('기본 설정 저장').waitFor();await page.getByLabel('답변 길이',{exact:true}).selectOption('short');const savedDefault=page.waitForResponse(r=>r.url().endsWith('/api/mobile/call')&&r.request().postDataJSON()?.method==='saveMobileSettings');await btn('기본 설정 저장').click();assert.equal((await savedDefault).status(),200);assert.equal(store.state.settings.chatDefaults.answerLength,'short');await page.getByText('5시간 / 24% 사용',{exact:true}).waitFor();
   await page.getByLabel('이 기기에서 연결 유지',{exact:true}).check();await page.evaluate(()=>sessionStorage.removeItem('flowrium.mobile.key'));await page.reload();await openProject();await btn('설정').click();await btn('기본 설정 저장').waitFor();assert.equal(await page.getByLabel('이 기기에서 연결 유지',{exact:true}).isChecked(),true);await page.getByLabel('이 기기에서 연결 유지',{exact:true}).uncheck();assert.equal(await page.evaluate(()=>localStorage.getItem('flowrium.mobile.rememberedKey')),null);
   await page.waitForFunction(()=>navigator.serviceWorker.controller!==null);await page.getByLabel('알림 기기 이름',{exact:true}).fill('화면 검증 기기');await btn('이 기기에서 알림 켜기').click();await btn('이 기기에 시험 알림 보내기').waitFor();await page.getByLabel('작업 완료',{exact:true}).uncheck();await btn('알림 종류 저장').click();assert(!(await push.status()).devices[0].kinds.includes('done'));await btn('이 기기에 시험 알림 보내기').click();assert.equal(delivered.length,1);assert.equal(delivered[0].test,true);
   await btn('비서').click();await btn('대화 연결').click();await page.getByLabel('대상 대화',{exact:true}).selectOption(chat.id);await page.getByLabel('연결 방식',{exact:true}).selectOption('request');await page.getByLabel('요청 제목',{exact:true}).fill('현장 내용 확인');await page.getByLabel('보낼 내용',{exact:true}).fill('최종 근거를 확인하세요.');await btn('업무 연결 보내기').click();await btn('결정').click();await page.getByRole('heading',{name:'현장 내용 확인',exact:true}).waitFor();await btn('거절').click();

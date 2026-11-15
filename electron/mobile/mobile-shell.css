@@ -1,0 +1,68 @@
+:root {
+  --bg:#f1f6fb; --panel:#fff; --text:#1b344b; --soft:#546b7e; --line:#d4e0eb; --focus:#215989;
+  --glass:rgba(247,251,255,.9); --glass-edge:#ffffffdc; --glass-shadow:#20486822;
+  --accent-fill:#225984; --accent-text:#f7fbff; --selected:#d5e7f5; --row-tint:#f7fafd;
+  --nav-floor:max(14px,env(safe-area-inset-bottom,0px));
+}
+@media(prefers-color-scheme:dark){
+  :root{--bg:#15232e;--panel:#20323f;--text:#edf4f8;--soft:#b2c6d4;--line:#39505e;--focus:#a1d5f8;
+    --glass:rgba(35,54,69,.94);--glass-edge:#71869b80;--glass-shadow:#04090f66;--accent-fill:#b2d5f0;--accent-text:#102c41;--selected:#395972;--row-tint:#253a49}
+}
+body{background:linear-gradient(150deg,var(--selected) -95%,var(--bg) 46%) fixed}
+.bar{padding:max(8px,env(safe-area-inset-top)) max(16px,calc((100% - 728px)/2)) 8px;gap:8px;background:var(--glass);border-bottom:1px solid var(--line);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);z-index:3}
+#home{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0;letter-spacing:-.025em;color:var(--text)}
+#home img{border-radius:10px}
+#status{margin-inline-start:auto;white-space:nowrap;font-size:11px}
+#content{padding:18px clamp(14px,4.6vw,30px) calc(92px + var(--nav-floor));min-height:70dvh}
+#content h1{font-size:clamp(23px,5.5vw,30px);line-height:1.35;margin:4px 0 14px}
+#content h2{font-size:17px;line-height:1.45}
+#content :is(.box,form,.activity-chart,.message){border-radius:18px;border-color:var(--line);box-shadow:0 3px 13px var(--glass-shadow)}
+#content .row{border-radius:14px;padding:11px 14px;line-height:1.4}
+#content button{touch-action:manipulation}
+#content :is(.box,form,.activity-chart){padding:15px}
+#content .row small{color:var(--soft)}
+#content :is(.actions,.tabs) button,#content form button{border-radius:12px}
+#content :is(input:not([type=checkbox]):not([type=radio]),textarea,select){border-radius:11px;background:var(--row-tint)}
+#content .main-action{background:var(--accent-fill);color:var(--accent-text);border-color:transparent}
+.message[data-role=user]{background:var(--row-tint);border-left:3px solid var(--focus)}
+#content .body{word-break:keep-all;overflow-wrap:break-word}
+.mobile-execution button{min-height:54px;background:var(--panel);box-shadow:0 3px 12px var(--glass-shadow)}
+#nav {
+  --tab:0;position:fixed;isolation:isolate;left:50%;right:auto;bottom:var(--nav-floor);transform:translateX(-50%);
+  display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;
+  width:min(440px,calc(100% - 36px));height:62px;padding:5px;border:1px solid var(--glass-edge);border-radius:26px;
+  background:var(--glass);backdrop-filter:blur(24px) saturate(1.4);-webkit-backdrop-filter:blur(24px) saturate(1.4);
+  box-shadow:0 9px 30px var(--glass-shadow),inset 0 1px 0 var(--glass-edge);z-index:8;
+  touch-action:pan-y;user-select:none;-webkit-user-select:none
+}
+#nav::before{content:'';pointer-events:none;position:absolute;top:5px;bottom:5px;left:5px;width:calc((100% - 10px)/5);
+  border-radius:21px;background:linear-gradient(150deg,var(--row-tint),var(--selected));box-shadow:inset 0 0 0 1px var(--line),0 2px 7px var(--glass-shadow);
+  transform:translateX(calc(var(--tab)*100%));transition:transform 260ms cubic-bezier(.2,.78,.24,1)}
+#nav:has([data-view=running][aria-current]){--tab:1}
+#nav:has([data-view=approvals][aria-current]){--tab:2}
+#nav:has([data-view=assistant][aria-current]){--tab:3}
+#nav:has([data-view=settings][aria-current]){--tab:4}
+#nav[data-preview="0"]{--tab:0!important}#nav[data-preview="1"]{--tab:1!important}#nav[data-preview="2"]{--tab:2!important}#nav[data-preview="3"]{--tab:3!important}#nav[data-preview="4"]{--tab:4!important}
+#nav button,#nav button[aria-current=page]{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  min-width:0;min-height:44px;padding:2px;border:0;background:transparent;border-radius:20px;font-size:11px;line-height:14px;white-space:nowrap;color:var(--soft)}
+#nav button[aria-current=page]{color:var(--focus);font-weight:800}
+#nav svg{width:19px;height:19px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+#nav button[aria-current=page] svg{stroke-width:2.25}
+#nav button:active svg{transform:scale(.92)}#nav button svg{transition:transform 200ms ease-out}
+#nav[hidden],html[data-mobile-keyboard] #nav{display:none}
+#notice{bottom:calc(76px + var(--nav-floor));z-index:9}
+@media(max-width:360px){#nav{width:calc(100% - 22px);height:58px}#content{padding-inline:12px}#home{font-size:18px}#home img{width:25px;height:25px}}
+@media(prefers-reduced-transparency:reduce){.bar,#nav{background:var(--panel);backdrop-filter:none;-webkit-backdrop-filter:none}}
+#install-guide {
+  opacity:0;transform:scale(.82);transform-origin:center;
+  transition:opacity 230ms ease-in,transform 230ms ease-in,display 230ms allow-discrete,overlay 230ms allow-discrete;
+}
+#install-guide[open]{opacity:1;transform:scale(1);transition-timing-function:ease-out}
+#install-guide::backdrop{background:#12283900;transition:background-color 230ms ease-in,display 230ms allow-discrete,overlay 230ms allow-discrete}
+#install-guide[open]::backdrop{background:#12283970;transition-timing-function:ease-out}
+@starting-style{#install-guide[open]{opacity:0;transform:scale(.9)}#install-guide[open]::backdrop{background:#12283900}}
+@media(prefers-reduced-motion:reduce){#install-guide,#install-guide::backdrop,#nav::before{transition:none!important}}
+.message:is([data-role=user],[data-role=assistant]) > small{display:flex;align-items:center;gap:6px;min-height:23px}
+.message:is([data-role=user],[data-role=assistant]) > small::before{content:"";width:20px;height:20px;flex:none;background:center/contain no-repeat}
+.message[data-role=assistant] > small::before{background-image:url("/chatgpt.svg")}
+.message[data-role=user] > small::before{background:var(--soft);mask:center/16px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' stroke='black' stroke-width='2' stroke-linecap='round' fill='none'%3E%3Ccircle cx='12' cy='8' r='4'/%3E%3Cpath d='M4 21a8 8 0 0 1 16 0'/%3E%3C/svg%3E")}

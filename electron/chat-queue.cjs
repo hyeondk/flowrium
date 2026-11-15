@@ -9,7 +9,7 @@ function validateQueue(items=[]) {
     if(!q||!/^[a-f0-9-]{36}$/i.test(q.id)||seen.has(q.id)||typeof q.text!=='string'||q.text.length>200000||
       !['plan','build','review'].includes(q.mode)||!['queued','sending','sent','cancelled'].includes(q.status)||
       !Number.isFinite(Date.parse(q.createdAt))||typeof q.owner!=='string'||q.owner.length>200||
-      (q.model!==undefined&&(typeof q.model!=='string'||q.model.length>300))||
+      (q.model!=null&&(typeof q.model!=='string'||q.model.length>300))||
       (q.effort!==undefined&&!['none','minimal','low','medium','high','xhigh','max','ultra'].includes(q.effort))) throw Error('저장된 대기 지시 형식이 올바르지 않습니다.');
     checkedAttachments(q.attachments||[]);seen.add(q.id);
   }
@@ -35,7 +35,7 @@ class ChatQueue {
     const files=await resolveAttachments(this.store,s.projectId,input.attachments||[]);
     const history=s.queuedMessages||[];
     if(history.filter(q=>q.status==='queued'||q.status==='sending').length>=50)throw Error('이 대화의 대기 지시는 50개까지 보관할 수 있습니다.');
-    const q={id:randomUUID(),text:input.text.trim(),mode:input.mode,...(input.model?{model:input.model}:{}),...(input.effort?{effort:input.effort}:{}),attachments:checkedAttachments(files),createdAt:new Date().toISOString(),status:'queued',owner};
+    const q={id:randomUUID(),text:input.text.trim(),mode:input.mode,model:input.model,...(input.effort?{effort:input.effort}:{}),attachments:checkedAttachments(files),createdAt:new Date().toISOString(),status:'queued',owner};
     if((this.controller.options.queueOwner?.()??'local')!==revision||this.controller.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다. 추가 지시를 다시 확인해 주세요.');
     const before=s.queuedMessages;
     s.queuedMessages=[...history.filter(q=>q.status==='queued'||q.status==='sending'||history.indexOf(q)>=history.length-90),q];

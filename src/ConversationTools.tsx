@@ -4,16 +4,16 @@ import {effortOptions} from '../shared/model-options';
 import {useEffect,useState} from 'react';
 import type {Session,ConversationEdit,Model,Effort,ChatPreferences,ChatAttachment} from '../shared/types';
 const initial={answerLength:'normal',testing:true,askNext:false,autoCompact:true,compactAt:80} as const;
-export function ConversationTools({session,models,running,onOpen,onChange,notify,fail,defaults,onDefaults,onRewind,onDelete}:{
+export function ConversationTools({session,models,running,onOpen,onChange,notify,fail,defaults,defaultModel,onDefaults,onRewind,onDelete}:{
  session:Session;models:Model[];running:boolean;onOpen:(s:Session)=>void;onChange:(s:Session)=>void;notify:(s:string)=>void;fail:(e:unknown)=>void;
- defaults?:ChatPreferences;onDefaults?:(p:ChatPreferences)=>void;onRewind?:(draft:{text:string;attachments:ChatAttachment[]})=>void;onDelete?:()=>void;
+ defaults?:ChatPreferences;defaultModel?:string;onDefaults?:(p:ChatPreferences)=>void;onRewind?:(draft:{text:string;attachments:ChatAttachment[]})=>void;onDelete?:()=>void;
 }) {
  const linked=session.codexLink?.mode==='linked';
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[title,setTitle]=useState(session.title);
  const [model,setModel]=useState(session.preferences?.model||''),[effort,setEffort]=useState(session.preferences?.effort||''),[address,setAddress]=useState(session.preferences?.chatGptUrl||'');
  const [messageId,select]=useState(''),[confirm,setConfirm]=useState(false),[danger,setDanger]=useState(false);
- const efforts=effortOptions(models.find(row=>row.id===model)||(!model?models.find(row=>row.isDefault):undefined));
- useEffect(()=>{setEffort(value=>value&&!efforts.some(row=>row.reasoningEffort===value)?'':value);},[model,models]);
+ const efforts=effortOptions(models.find(row=>row.id===(model||defaultModel))||(!model&&!defaultModel?models.find(row=>row.isDefault):undefined));
+ useEffect(()=>{setEffort(value=>value&&!efforts.some(row=>row.reasoningEffort===value)?'':value);},[model,models,defaultModel]);
  const [inherit,setInherit]=useState(!session.preferences?.answerLength),[prefs,setPrefs]=useState<ChatPreferences>({...initial,...defaults,...session.preferences});
  const set=<K extends keyof ChatPreferences>(key:K,value:ChatPreferences[K])=>setPrefs(old=>({...old,[key]:value}));
  const behavior=():ChatPreferences=>({answerLength:prefs.answerLength,testing:prefs.testing,askNext:prefs.askNext,autoCompact:prefs.autoCompact,compactAt:prefs.compactAt,sandbox:prefs.sandbox,approval:prefs.approval,networkAccess:prefs.networkAccess});
@@ -26,12 +26,12 @@ export function ConversationTools({session,models,running,onOpen,onChange,notify
    setOpen(false);setConfirm(false);select('');
   }catch(e){fail(e);}finally{setBusy(false);}
  }
- return <div className="conversation-tools"><button className="button subtle" aria-expanded={open} onClick={()=>{setOpen(!open);setTitle(session.title);setPrefs({...initial,...defaults,...session.preferences});}}>대화 관리</button>
+ return <div className="conversation-tools"><button className="button subtle" aria-expanded={open} onClick={()=>{setOpen(!open);setTitle(session.title);setModel(session.preferences?.model||'');setEffort(session.preferences?.effort||'');setAddress(session.preferences?.chatGptUrl||'');setInherit(!session.preferences?.answerLength);setPrefs({...initial,...defaults,...session.preferences});}}>대화 관리</button>
  <MotionOverlay open={open} onClose={()=>setOpen(false)} label="대화 관리" className="conversation-management"><header><h2>대화 관리</h2><button onClick={()=>setOpen(false)}>닫기</button></header><fieldset disabled={running||busy||session.compacting} className="conversation-popover">
   <label>대화 이름<input aria-label="대화 이름" maxLength={300} value={title} onChange={e=>setTitle(e.target.value)}/></label>
   <button className="button subtle" disabled={!title.trim()} onClick={()=>apply({action:'rename',title})}>이름 저장</button>
-  <label>이 대화의 모델<select value={model} onChange={e=>{setModel(e.target.value);setEffort('')}}><option value="">앱 기본 설정</option>{model&&!models.some(m=>m.id===model)&&<option value={model}>{modelDisplayName(model)}</option>}{models.map(m=><option key={m.id} value={m.id}>{modelDisplayName(m)}</option>)}</select></label>
-  <label>이 대화의 추론 강도<select value={effort} onChange={e=>setEffort(e.target.value)}><option value="">앱 기본 설정</option>{efforts.map(row=><option key={row.reasoningEffort} value={row.reasoningEffort}>{effortDisplayName(row.reasoningEffort)}</option>)}</select></label>
+  <label>이 대화의 모델<select aria-label="이 대화의 모델" value={model} onChange={e=>{setModel(e.target.value);setEffort('')}}><option value="">앱 기본 설정</option>{model&&!models.some(m=>m.id===model)&&<option value={model}>{modelDisplayName(model)}</option>}{models.map(m=><option key={m.id} value={m.id}>{modelDisplayName(m)}</option>)}</select></label>
+  <label>이 대화의 추론 강도<select aria-label="이 대화의 추론 강도" value={effort} onChange={e=>setEffort(e.target.value)}><option value="">앱 기본 설정</option>{efforts.map(row=><option key={row.reasoningEffort} value={row.reasoningEffort}>{effortDisplayName(row.reasoningEffort)}</option>)}</select></label>
   <label>이어갈 ChatGPT 대화 주소<input type="url" placeholder="https://chatgpt.com/c/…" value={address} onChange={e=>setAddress(e.target.value)}/></label>
   {linked&&<p className="field-hint">연결한 대화는 원래 지침을 유지합니다. 모델과 생각의 깊이, 작업 모드는 이 앱에서 정할 수 있습니다.</p>}
   <label className="preference-check"><AnimatedSwitch disabled={linked} checked={inherit} onChange={e=>setInherit(e.target.checked)}/>대화 동작은 앱 기본 설정 따르기</label>

@@ -35,6 +35,7 @@ export interface ChatPreferences {
 }
 export type ConversationEdit =
   | { action: "preferences"; preferences: ChatPreferences }
+  | { action: "model"; model: string }
   | { action: "rename"; title: string }
   | { action: "branch"; messageId?: string }
   | { action: "rewind"; messageId: string }
@@ -66,7 +67,7 @@ export interface Project {
   createdAt: string;
 }
 export interface ChatAttachment {id:string;name:string;type:string;size:number;sha256:string}
-export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string;effort?:Effort;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;error?:string}
+export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;error?:string}
 export interface Message {
   reaction?: 'like';
   attachments?: ChatAttachment[];
@@ -90,6 +91,7 @@ export interface Session {
   workflow?: Workflow;
   preferences?: ChatPreferences;
   messages: Message[];
+  completedContinuationId?: string;
   queuedMessages?: QueuedMessage[];
   context?: {used:number;total:number;max:number;percent:number;updatedAt:string};
   compacting?: boolean;
@@ -191,7 +193,7 @@ export interface FlowriumAPI
   onUpdate(callback: (state: UpdateState) => void): () => void;
   bootstrap(): Promise<Bootstrap>;
   chooseProject(): Promise<Project | null>;
-  createSession(projectId: string): Promise<Session>;
+  createSession(projectId: string, model?: string): Promise<Session>;
   deleteSession(id: string): Promise<void>;
   saveSettings(settings: Partial<Settings>): Promise<Settings>;
   connectionStatus(): Promise<ConnectionStatus>;

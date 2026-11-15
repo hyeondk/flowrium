@@ -41,6 +41,22 @@ export function MotionOverlay({ open, onClose, children, label, className = '', 
 }) {
   const { present, phase } = usePresence(open, durationMs);
   const surface = useRef<HTMLElement>(null);
+  const lastOpen = useRef({children, label});
+  useLayoutEffect(() => {
+    if (open) lastOpen.current = {children, label};
+    // An early dismissal should shrink from the currently visible frame.
+    const element = surface.current;
+    if (!element || kind !== 'popup') return;
+    if (open) {
+      element.style.removeProperty('--popup-start-transform');
+      element.style.removeProperty('--popup-start-opacity');
+    } else if (present && phase === 'enter') {
+      const style = getComputedStyle(element);
+      element.style.setProperty('--popup-start-transform', style.transform);
+      element.style.setProperty('--popup-start-opacity', style.opacity);
+    }
+  }, [open, children, label, present, phase, kind]);
+  const frame = !open && present ? lastOpen.current : {children, label};
   const callback = useRef(onClose); callback.current = onClose;
   useEffect(() => {
     if (!present || !open) return;
@@ -61,7 +77,7 @@ export function MotionOverlay({ open, onClose, children, label, className = '', 
   }, [present, open, initialFocus]);
   if (!present && !persist) return null;
   return <ModalPortal><div className={`motion-overlay ${className}`} data-phase={phase} data-kind={kind} hidden={!present} aria-hidden={!present} style={{ display:present?undefined:'none', '--motion-duration': `${Math.max(200, Math.min(400, durationMs))}ms` } as CSSProperties} onMouseDown={event => { if (open && event.target === event.currentTarget) onClose?.(); }}>
-    <section className="motion-surface" data-motion={kind} data-phase={phase} role={present?"dialog":undefined} aria-modal={present?true:undefined} aria-label={label} tabIndex={-1} ref={surface} inert={phase === 'exit'}>{children}</section>
+    <section className="motion-surface" data-motion={kind} data-phase={phase} role={present?"dialog":undefined} aria-modal={present?true:undefined} aria-label={frame.label} tabIndex={-1} ref={surface} inert={phase === 'exit'}>{frame.children}</section>
   </div></ModalPortal>;
 }
 

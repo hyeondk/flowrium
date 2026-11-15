@@ -4,6 +4,7 @@ const { randomUUID } = require("node:crypto");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { UUID, readJSON } = require("./project-store.cjs");
+const {visibleProposals}=require('./execution-state.js');
 const run = promisify(execFile);
 const copy = value => structuredClone(value);
 const invalid = () => new Error("업무 연결과 알림 요청의 형식을 확인해 주세요.");
@@ -127,6 +128,12 @@ class WorkflowRuntime {
     return this.serial(async()=>{this.ready();return{...copy(this.record),pending:await this.options.pending?.()||[],
       projects:this.store.state.projects.map(p=>({id:p.id,name:p.name})),
       sessions:this.store.state.sessions.slice(0,200).map(s=>({id:s.id,projectId:s.projectId,title:s.title,running:this.controller.runs.has(s.id)}))};});
+  }
+  pendingDecisionLinks(){
+    return this.serial(()=>{
+      this.ready();
+      return visibleProposals(this.record.proposals,this.now()).map(({sourceId,targetId})=>({sourceId,targetId}));
+    });
   }
   proposal(input){
     const source=input.sourceId?this.store.session(id(input.sourceId)):null;
@@ -286,6 +293,11 @@ class WorkflowRuntime {
     return this.serial(async()=>{
       this.ready();if(!input||typeof input!=="object")throw invalid();
       switch(input.action){
+        case 'completeContinuation':{
+          const deciding=visibleProposals(this.record.proposals,this.now()).some(p=>p.sourceId===input.sessionId||p.targetId===input.sessionId);
+          if(deciding)throw Error('이 대화의 결정 요청에 먼저 응답해 주세요.');
+          return require('./chat-continuation.cjs').completeContinuation(this.controller,input);
+        }
         case "preferences":{
           const next=preferences(input.value,this.record.preferences);if(next.projectId)this.store.project(next.projectId);
           if(next.enabled&&next.aiReports&&!next.projectId)throw new Error("자동 보고를 보관할 프로젝트를 선택해 주세요.");

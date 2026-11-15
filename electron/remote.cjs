@@ -3,6 +3,7 @@ const fs = require("node:fs/promises"),
   http = require("node:http"),
   { spawn } = require("node:child_process"),
   { randomBytes, timingSafeEqual, createHash } = require("node:crypto");
+const {executionFor} = require('./execution-state.js');
 const allowed = new Set([
   "startWork",
   "send",
@@ -15,23 +16,31 @@ const allowed = new Set([
   "readWorkbench",
   "readWorkArtifact",
   "saveTeam", "directTeam", "changeTeamRun", "workflowAction", "mobileWorkflowState",
-  "mobileSettings", "saveMobileSettings", "readAccountUsage", "readChatAttachment",
+  "mobileSettings", "saveMobileSettings", "setMobileChatModel", "readAccountUsage", "readChatAttachment",
   "listQueuedMessages", "cancelQueuedMessage", "resumeQueuedMessages", "webPushState", "webPushAction",
 ]);
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-function mobileSummary(s) {
+function mobileSummary(s, active, deciding, revision, activity) {
   const { id, projectId, title, createdAt, updatedAt } = s;
+  const executionState=executionFor(s,active,deciding);
   return {
     id,
     projectId,
     title,
     createdAt,
     updatedAt,
+    executionState,
+    canCompleteWaiting: executionState==='waiting' && !s.compacting && !s.queuedMessages?.some(q=>q.status==='queued'||q.status==='sending'),
+    revision,
+    activity,
     messageCount: s.messages.length,
     lastMessageId: s.messages.at(-1)?.id,
     messages: [],
     workflow: s.workflow && {
       kind: s.workflow.kind,
+      status: s.workflow.status,
+      completedAt: s.workflow.completion?.at,
+      nextTask: s.workflow.checklist?.find(item=>!item.done)?.text.slice(0,200),
       teamSlot: s.workflow.teamSlot && { mode: s.workflow.teamSlot.mode },
     },
     preferences: s.preferences && {
@@ -40,7 +49,7 @@ function mobileSummary(s) {
     },
   };
 }
-function mobileMessages(s, params) {
+function mobileMessages(s, params, revision) {
   const limit = Number(params.get("limit") ?? 50);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100)
     return { code: 400, value: { error: "메시지 조회 개수는 1~100개입니다." } };
@@ -91,6 +100,7 @@ function mobileMessages(s, params) {
     code: 200,
     value: {
       id: s.id,
+      revision,
       messages: messages.reverse(),
       start,
       end,
@@ -138,6 +148,7 @@ function registerRemote(
     isLocked,
     version,
     guard = (_name, action) => action(),
+    readDecisionLinks = () => [],
     tunnelFactory = spawn,
     accountRevision = () => 0,
     onContextChanged = () => {},
@@ -145,6 +156,9 @@ function registerRemote(
   },
 ) {
   const answeredInputs = new Set();
+  const runRevisions = new WeakMap();
+  const runLabels = new WeakMap();
+  const revisionOf=id=>runRevisions.get(controller.runs.get(id))||0;
   const handoffs = new Map();
   const scopeId = () => key ? createHash("sha256").update(key).digest("hex") : "";
   const checkScope = (scope, owner) => {
@@ -167,7 +181,31 @@ function registerRemote(
       proposals:(value.proposals||[]).map(p=>{const {id,revision,kind,title,body,sourceId,targetId,projectId,status,createdAt,hidden,snoozedUntil,result,preview}=p;return {id,revision,kind,title,body,sourceId,targetId,projectId,status,createdAt,hidden,snoozedUntil,result,preview};}),
       pending:(value.pending || []).map(e => e.type === "input" ? mobileInput(e) : e).filter(e => e.type === "input" || e.type === "approval")};
   }
-  async function mobileCall(method, args) {
+  async function mobileCall(method, args, requestScope, requestOwner) {
+    if (method === "setMobileChatModel") {
+      const [id,model]=args;
+      const session=store.state.sessions.find(s=>s.id===id&&!s.scope);
+      if(args.length!==2 || typeof id!=='string' || !uuid.test(id) || !session || typeof model!=='string' || model.length>300 || model!==model.trim())
+        throw Error('연결된 프로젝트 대화와 모델을 선택해 주세요.');
+      if(model){
+        const connection=await handlers.get('connect')?.();
+        if(!connection?.status?.authenticated || !connection.models?.some(x=>x.id===model))throw Error('현재 계정에서 제공하는 모델을 선택해 주세요.');
+      }
+      checkScope(requestScope,requestOwner);
+      if(!store.state.sessions.includes(session))throw Error('대화 목록이 바뀌었습니다. 프로젝트 대화를 다시 선택해 주세요.');
+      const edit=handlers.get('editConversation');
+      if(!edit)throw Error('이 데스크톱 버전은 대화 모델 변경을 지원하지 않습니다.');
+      const value=await guard('editConversation',()=>edit(id,{action:'model',model}));
+      checkScope(requestScope,requestOwner);
+      controller.emitEvent?.({type:'session',sessionId:id,session:value});
+      return {model:value.preferences?.model||''};
+    }
+    // Older mobile clients include a snapshot of the default model. Resolve it in
+    // the desktop controller at send time, including when this request is queued.
+    if(method==='send' && args.length===1 && args[0] && typeof args[0]==='object'){
+      const {model,effort,...input}=args[0];
+      return handlers.get('send')(input);
+    }
     if (method === "mobileSettings") {
       const connection = await handlers.get("connect")?.();
       return {model:store.state.settings.model,effort:store.state.settings.effort,chatDefaults:store.state.settings.chatDefaults,
@@ -185,6 +223,11 @@ function registerRemote(
     if (method === "mobileWorkflowState") return workflowView(await handlers.get("workflowState")());
     if (method === "workflowAction") {
       const input = args[0];
+      if(input?.action==='completeContinuation'||input?.action==='continueConversation'){
+        if(args.length!==1||!uuid.test(input.messageId)||!store.state.sessions.some(s=>s.id===input.sessionId))throw Error('프로젝트의 후속 대기를 선택해 주세요.');
+        const {model,effort,...target}=input;
+        return handlers.get('workflowAction')(target);
+      }
       if (args.length !== 1 || !input || !["preferences","send","request","propose","approve","reject","hide","restore","snooze","bulk","read","readSession","clearNotifications","reportNow","collect","recommend","reminderAdd","reminderCancel","retryDelivery"].includes(input.action))
         throw Error("지원하지 않는 비서 작업입니다.");
       if (input.action === "preferences" && Object.keys(input.value || {}).some(k => !["enabled","aiReports","intervalMinutes","startHour","endHour","weekdays","timezone","projectId"].includes(k)))
@@ -220,6 +263,9 @@ function registerRemote(
     message: status || undefined,
   });
   function update(event) {
+    const run=controller.runs.get(event.sessionId);
+    if(server && run && (event.type==='delta'||event.type==='session'))runRevisions.set(run,revisionOf(event.sessionId)+1);
+    if(server && run && event.type==='status' && typeof event.text==='string')runLabels.set(run,event.text.slice(0,180));
     if (event.type === "approval" || event.type === "input")
       approvals.set(event.requestId, event);
     if (event.type === "input") answeredInputs.delete(event.requestId);
@@ -307,22 +353,35 @@ function registerRemote(
         } catch(e) {json(res,400,{error:require("./errors.cjs").publicMessage(e)});}
         return;
       }
+      if (u.pathname === '/api/mobile/dashboard' && req.method === 'GET') {
+        try {
+          const facts = await guard('bootstrap', async () => {
+            const cards = await handlers.get('readPortfolio')?.() || [];
+            return require('./mobile/dashboard-facts.js').dashboardFacts(cards);
+          });
+          checkScope(requestScope, requestOwner);
+          json(res, 200, facts);
+        } catch { json(res, 403, {error:'대시보드 연결 상태를 확인해 주세요.'}); }
+        return;
+      }
       if (u.pathname === "/api/mobile/state" && req.method === "GET") {
         try {
           const value = await guard("bootstrap", async () => {
             const snapshot = store.state,
               connection = await controller.connectionStatus();
-            const requests = await readPending();
+            const [pending,links] = await Promise.all([readPending(),readDecisionLinks()]);
+            const requests = pending.filter(e=>e.type==='approval'||(e.type==='input'&&!answeredInputs.has(e.requestId)));
+            const deciding = new Set([...requests.map(e=>e.sessionId),...links.flatMap(p=>[p.sourceId,p.targetId])]);
             return {
               projects: snapshot.projects.map((p) => ({
                 id: p.id,
                 name: p.name,
                 createdAt: p.createdAt,
               })),
-              sessions: snapshot.sessions.map(mobileSummary),
+              sessions: snapshot.sessions.map(s=>mobileSummary(s,controller.runs.has(s.id),deciding.has(s.id),revisionOf(s.id),runLabels.get(controller.runs.get(s.id)))),
               settings: {
-                model: snapshot.settings.model,
-                effort: snapshot.settings.effort,
+                model: snapshot.settings.chatDefaults?.model || snapshot.settings.model,
+                effort: snapshot.settings.chatDefaults?.effort || snapshot.settings.effort,
               },
               version,
               pushAvailable: !!handlers.get("webPushAction"),
@@ -332,13 +391,7 @@ function registerRemote(
                 accountLabel: connection.accountLabel,
               },
               running: [...controller.runs.keys()],
-              approvals: requests
-                .filter(
-                  (e) =>
-                    e.type === "approval" ||
-                    (e.type === "input" && !answeredInputs.has(e.requestId)),
-                )
-                .map((e) => (e.type === "input" ? mobileInput(e) : e)),
+              approvals: requests.map(e => e.type === "input" ? mobileInput(e) : e),
             };
           });
           if (isLocked()) {
@@ -368,7 +421,7 @@ function registerRemote(
               uuid.test(sessionRoute[1]) &&
               store.state.sessions.find((s) => s.id === sessionRoute[1]);
             return record
-              ? mobileMessages(record, u.searchParams)
+              ? mobileMessages(record, u.searchParams, revisionOf(record.id))
               : { code: 404, value: { error: "대화를 찾을 수 없습니다." } };
           });
           if (isLocked()) {
@@ -448,7 +501,7 @@ function registerRemote(
             }
             return;
           }
-          const result = await guard(input.method, () => mobileCall(input.method,input.args));
+          const result = await guard(input.method, () => mobileCall(input.method,input.args,requestScope,requestOwner));
           checkScope(requestScope,requestOwner);
           json(res, 200, { result });
         } catch (e) {
@@ -466,8 +519,15 @@ function registerRemote(
     const files = {
       "/": "index.html",
       "/app.js": "app.js",
+      "/navigation.js": "navigation.js",
+      "/chatgpt.svg": "chatgpt.svg",
+      "/mobile-shell.css": "mobile-shell.css",
       "/model-display.js": "model-display.js",
       "/style.css": "style.css",
+      "/install.js": "install.js",
+      "/install.css": "install.css",
+      "/icon-192.png": "icon-192.png",
+      "/icon-512.png": "icon-512.png",
       "/fonts/NanumSquareRoundL.woff2": "fonts/NanumSquareRoundL.woff2",
       "/fonts/NanumSquareRoundR.woff2": "fonts/NanumSquareRoundR.woff2",
       "/fonts/NanumSquareRoundB.woff2": "fonts/NanumSquareRoundB.woff2",
@@ -490,7 +550,7 @@ function registerRemote(
           ? "text/html; charset=utf-8"
           : name.endsWith(".js")
             ? "text/javascript; charset=utf-8"
-            : name.endsWith(".woff2") ? "font/woff2" : name.endsWith(".txt") ? "text/plain; charset=utf-8" : name.endsWith(".png") ? "image/png" : name.endsWith(".webmanifest") ? "application/manifest+json" : "text/css; charset=utf-8",
+            : name.endsWith(".svg") ? "image/svg+xml" : name.endsWith(".woff2") ? "font/woff2" : name.endsWith(".txt") ? "text/plain; charset=utf-8" : name.endsWith(".png") ? "image/png" : name.endsWith(".webmanifest") ? "application/manifest+json" : "text/css; charset=utf-8",
         "Cache-Control": "no-store",
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",

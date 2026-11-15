@@ -50,6 +50,7 @@ function validateSession(session, projectId) {
   if (session.preferences !== undefined) require("./chat-preferences.cjs").preferences(session.preferences);
   if (session.workflow !== undefined) require("./workbench.cjs").validateWorkflow(session.workflow);
   if(session.queuedMessages!==undefined)require("./chat-queue.cjs").validateQueue(session.queuedMessages);
+  if(session.completedContinuationId!==undefined&&!UUID.test(session.completedContinuationId))throw Error('완료한 후속 작업의 답변 식별자를 확인해 주세요.');
   if(session.context!==undefined && (!session.context || !Number.isFinite(session.context.used)||!Number.isFinite(session.context.total)||!Number.isFinite(session.context.max)||!Number.isFinite(session.context.percent)))throw Error("문맥 사용량 정보를 확인해 주세요.");
   const ids = new Set();
   for (const message of session.messages) {

@@ -1,11 +1,14 @@
 import { AnimatedSwitch } from './ui-motion';
 import { useEffect, useState } from "react";
-import { Smartphone, Copy, RefreshCw } from "lucide-react";
+import { Smartphone, Copy, QrCode, RefreshCw } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import type { RemoteAccess, WebPushState, PushKind } from "../shared/remote";
 export default function RemotePanel() {
   const [state, setState] = useState<RemoteAccess>({ enabled: false }),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
+  const [qrVisible, setQrVisible] = useState(false);
+  useEffect(() => { setQrVisible(false); }, [state.url]);
   const [push,setPush]=useState<WebPushState>();
   const [deviceKinds,setDeviceKinds]=useState<Record<string,PushKind[]>>({});
   const pushLabels:Record<PushKind,string>={decision:"결정과 승인",done:"작업 완료",error:"오류",report:"보고서",reminder:"예약 알림",message:"업무 메시지"};
@@ -44,8 +47,8 @@ export default function RemotePanel() {
         휴대폰에서 이어가기
       </h3>
       <p>
-        이 컴퓨터를 켜 둔 상태에서 연결 주소를 휴대폰에 열면
-        프로젝트와 첨부 대화를 확인하고 팀 업무를 배정하거나 중단할 수 있습니다. 결정과 비서 메시지, 사용량도 확인하며 작업을 이어갑니다.
+        컴퓨터를 켜 둔 상태에서 휴대폰 연결을 켜고, 휴대폰 카메라로 QR 코드를 스캔하세요.
+        휴대폰의 설정에서 ‘홈 화면에 설치’를 누르면 다음부터 앱 아이콘으로 열 수 있습니다.
       </p>
       <div className="settings-buttons">
         {state.enabled ? (
@@ -75,23 +78,24 @@ export default function RemotePanel() {
         </button>
       </div>
       {state.url && (
-        <label>
-          이 주소를 가진 사람이 내 프로젝트를 제어할 수 있습니다.
-          <input readOnly value={state.url} aria-label="휴대폰 연결 주소" />
-          <button
-            className="button subtle"
-            onClick={() => {
-              void api
-                ?.copyText(state.url!)
-                .then(() =>
-                  setMessage("휴대폰에서 열 연결 주소를 복사했습니다."),
-                );
-            }}
-          >
-            <Copy size={14} />
-            연결 주소 복사
-          </button>
-        </label>
+        <div className="mobile-connect-card">
+          <label>휴대폰 연결 주소<input type="password" readOnly value={state.url} autoComplete="off" /></label>
+          <p>이 주소와 QR 코드로 프로젝트에 접근할 수 있습니다. 연결을 종료한 뒤 다시 켜면 새 주소로 연결하세요.</p>
+          <div className="settings-buttons">
+            <button type="button" className="button secondary" aria-expanded={qrVisible}
+              onClick={() => setQrVisible(!qrVisible)}><QrCode size={15}/>{qrVisible ? 'QR 코드 닫기' : 'QR 코드 보기'}</button>
+            <button type="button" className="button subtle" onClick={async () => {
+              try {
+                await api!.copyText(state.url!);
+                setMessage("휴대폰에서 열 연결 주소를 복사했습니다.");
+              } catch {
+                setMessage("주소를 복사하지 못했습니다. QR 코드로 연결해 주세요.");
+              }
+            }}><Copy size={14}/>연결 주소 복사</button>
+          </div>
+          {qrVisible && <figure><QRCodeSVG value={state.url} title="휴대폰 연결 QR 코드" size={204} level="M" marginSize={4}/>
+            <figcaption>휴대폰 카메라로 스캔해 Flowrium을 여세요.</figcaption></figure>}
+        </div>
       )}
       {state.enabled&&<div className="mobile-device-settings">
         <h4>휴대폰 알림 기기</h4>

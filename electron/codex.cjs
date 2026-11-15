@@ -250,9 +250,13 @@ class CodexClient extends EventEmitter {
     if(this.options.canRun?.()===false||!current())throw Error('계정이나 작업 상태가 바뀌었습니다.');
     if(!this.modelCatalog||this.modelCatalog.owner!==owner||Date.now()-this.modelCatalog.at>300000)await this.request('model/list',{limit:100,includeHidden:false},Math.min(timeout,5000)).catch(()=>{if(this.modelCatalog?.owner===owner)this.modelCatalog=null;});
     if(epoch!==this.catalogEpoch||owner!==(this.options.queueOwner?.()??'local')||this.options.canRun?.()===false||!current())throw Error('계정이나 연결 상태가 바뀌었습니다. 다시 요청해 주세요.');
-    const model=params.model||this.threadModels.get(params.threadId),effort=require('./model-effort.cjs').supportedEffort(params.effort,model,this.modelCatalog?.owner===owner?this.modelCatalog.data:undefined),next={...params};
+    const catalog=this.modelCatalog?.owner===owner?this.modelCatalog.data:undefined;
+    const defaultModel=params.model===null?catalog?.find(row=>row?.isDefault):undefined;
+    const selected=params.model===null?defaultModel?.model||defaultModel?.id:params.model;
+    const model=selected||this.threadModels.get(params.threadId),effort=require('./model-effort.cjs').supportedEffort(params.effort,model,catalog),next={...params};
+    if(selected)next.model=selected;else delete next.model;
     if(effort===undefined)delete next.effort;else next.effort=effort;
-    return this.rawRequest('turn/start',next,timeout).then(result=>{if(params.model&&params.threadId)this.threadModels.set(params.threadId,params.model);return result});
+    return this.rawRequest('turn/start',next,timeout).then(result=>{if(selected&&params.threadId)this.threadModels.set(params.threadId,selected);return result});
   }
   rawRequest(method, params = {}, timeout = 30_000) {
     const id = ++this.counter;

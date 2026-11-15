@@ -331,6 +331,7 @@ async function launch() {
   });
   const remote = require("./remote.cjs").registerRemote(register, {
     store, controller, handlers: apiHandlers, isLocked: () => security.locked || security.loggingOut,
+    readDecisionLinks: () => workflowRuntime.pendingDecisionLinks(),
     accountRevision: () => security.accountRevision,
     onContextChanged: () => webPush?.invalidate(),
     version: displayVersion(app.getVersion()), guard: (name, action) => security.guard(name, action),
@@ -417,8 +418,8 @@ async function launch() {
     if (choice.canceled || !choice.filePaths[0]) return null;
     return store.addProject(choice.filePaths[0]);
   });
-  register("createSession", (projectId) =>
-    store.createSession(text(projectId, "프로젝트 식별자", 100)),
+  register("createSession", (projectId, model) =>
+    store.createSession(text(projectId, "프로젝트 식별자", 100), model ? {preferences:{model:text(model, "모델", 300)}} : {}),
   );
   register("deleteSession", (id) =>
     controller.deleteSession(text(id, "대화 식별자", 100)),

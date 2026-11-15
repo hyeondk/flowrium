@@ -1,3 +1,4 @@
+import chatgptAvatar from "../electron/mobile/chatgpt.svg?no-inline";
 import WorkflowHub from "./WorkflowHub";
 import CommandCenter from "./CommandCenter";
 import {AttachmentComposer,ChatAttachmentList,ChatQueuePanel} from "./ChatAttachments";
@@ -42,11 +43,12 @@ import { ActivityPanel, useWorkspaceShortcuts } from "./ActivityPanel";
 import TeamPanel from "./TeamPanel";
 import RepositoryPanel from "./RepositoryPanel";
 import { ConversationTools } from "./ConversationTools";
+import ChatModelPicker from './ChatModelPicker';
 import Workbench, { WorkSessionControls } from "./Workbench";
 import { UpdatePanel, useDesktopUpdate } from "./UpdatePanel";
 import { workKinds } from "../shared/workbench";
 import packageInfo from "../package.json";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Bell,
   PanelRight,
@@ -63,7 +65,6 @@ import {
   CircleHelp,
   Clock3,
   Code2,
-  Command,
   Copy,
   Download,
   ExternalLink,
@@ -83,7 +84,7 @@ import {
   Square,
   Terminal,
   Trash2,
-  Waves,
+  UserRound,
   X,
 } from "lucide-react";
 import type {
@@ -280,6 +281,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [models, setModels] = useState<Model[]>([]);
   const [connecting, setConnecting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const modelSaveKey = useRef<string | null>(null);
+  const [savingModel, setSavingModel] = useState<string | null>(null);
   const [activities, setActivities] = useState<Record<string, Activity>>({});
   const [approvals, setApprovals] = useState<FlowriumEvent[]>([]);
   const [deletionTarget,setDeletionTarget]=useState<DeleteTarget|null>(null),[trashOpen,setTrashOpen]=useState(false);
@@ -307,13 +310,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     document.addEventListener('pointermove',move,{passive:true});return()=>{document.removeEventListener('pointermove',move);cancelAnimationFrame(frame);};
   },[]);
 
-  useLayoutEffect(()=>{
-    const inputElement=composer.current;if(!inputElement||!chatActive)return;
-    let frame=0,lastWidth=-1;
-    const fit=()=>{inputElement.style.height='auto';inputElement.style.height=Math.min(132,Math.max(48,inputElement.scrollHeight+2))+'px';};
-    fit();const observer=new ResizeObserver(entries=>{const width=entries[0]?.contentRect.width;if(width===lastWidth)return;lastWidth=width;cancelAnimationFrame(frame);frame=requestAnimationFrame(fit);});observer.observe(inputElement);
-    return()=>{observer.disconnect();cancelAnimationFrame(frame);};
-  },[input,chatActive,chatExpanded,sessionId]);
   const messages = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const messageGeometry=useRef<{width:number;height:number;content:number}|undefined>(undefined);
@@ -622,6 +618,31 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   function rememberSession(value: Session) {
     setData(prev => ({ ...prev, sessions: upsert(prev.sessions, value) }));
   }
+  async function selectChatModel(model: string) {
+    if (!api || modelSaveKey.current || !conversationProject) return;
+    const key = draftKey;
+    modelSaveKey.current = key;
+    setSavingModel(key);
+    try {
+      if (session) {
+        rememberSession(await api.editConversation(session.id, {action:'model', model}));
+      } else {
+        const created = await api.createSession(conversationProject.id, model);
+        rememberSession(created);
+        if (currentDraftKey.current === key) {
+          const destination = `session:${created.id}`;
+          voiceContinuity.current.preserve = destination;
+          setDrafts(prev => ({...prev, [destination]:prev[key] || {text:'', mode}, [key]:{text:'', mode}}));
+          setSessionId(created.id);
+        }
+      }
+    } catch (error) {
+      fail(error);
+    } finally {
+      modelSaveKey.current = null;
+      setSavingModel(null);
+    }
+  }
   async function openWork(value: Session, nextMode?: Mode, request?: string) {
     rememberSession(value);
     selectSession(value);
@@ -712,7 +733,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }
   async function send(textOverride?:string) {
     const requestText=textOverride??input;
-    if ((!requestText.trim() && !attachments.length) || submittingRef.current) return;
+    if ((!requestText.trim() && !attachments.length) || submittingRef.current || modelSaveKey.current === draftKey) return;
     if (!api)
       return notify("데스크톱 앱에서 작업 폴더와 Codex를 연결해 주세요.");
     if (!conversationProject) return notify("먼저 대화할 프로젝트나 대화 범위를 선택해 주세요.");
@@ -845,7 +866,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     }
   }
   async function continueWaitingSession(messageId:string){
-    if(!api||!session||submittingRef.current||running)return;
+    if(!api||!session||submittingRef.current||running||modelSaveKey.current===draftKey)return;
     const originKey=draftKey,originalInput=input,originalAttachments=attachments;
     submittingRef.current=true;setSubmitting(true);
     try{
@@ -959,7 +980,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     </div>
                     <div className="session-actions">
                       <button className="icon-button dock-chatgpt-button" aria-label="ChatGPT로 이어가기" title="ChatGPT로 이어가기" onClick={handoff}><ExternalLink size={17}/></button>
-                      <ConversationTools onDelete={()=>setDeletionTarget({kind:"session",id:session.id,name:session.title})} key={session.id} session={session} models={models} running={running} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} defaults={data.settings.chatDefaults} onDefaults={chatDefaults=>setData(old=>({...old,settings:{...old.settings,chatDefaults}}))} onRewind={draft=>setDrafts(prev=>({...prev,[draftKey]:{text:draft.text,mode,attachments:draft.attachments}}))} />
+                      <ConversationTools onDelete={()=>setDeletionTarget({kind:"session",id:session.id,name:session.title})} key={session.id} session={session} models={models} running={running} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} defaults={data.settings.chatDefaults} defaultModel={data.settings.model} onDefaults={chatDefaults=>setData(old=>({...old,settings:{...old.settings,chatDefaults}}))} onRewind={draft=>setDrafts(prev=>({...prev,[draftKey]:{text:draft.text,mode,attachments:draft.attachments}}))} />
                       <button
                         className="icon-button"
                         aria-label="대화 내보내기"
@@ -1012,9 +1033,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       >
                         <span className={`message-avatar ${message.role}`}>
                           {message.role === "assistant" ? (
-                            <Waves size={17} />
+                            <img className="chatgpt-avatar" src={chatgptAvatar} width="24" height="24" alt="" draggable={false}/>
                           ) : message.role === "user" ? (
-                            <Command size={16} />
+                            <UserRound size={16} aria-hidden="true" />
                           ) : (
                             <Circle size={13} />
                           )}
@@ -1076,7 +1097,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     {running && (
                       <article className="message assistant">
                         <span className="message-avatar assistant">
-                          <Waves size={17} />
+                          <img className="chatgpt-avatar" src={chatgptAvatar} width="24" height="24" alt="" draggable={false}/>
                         </span>
                         <div className="message-body">
                           <div className="message-meta">
@@ -1193,8 +1214,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       </button>
                     )}
                   </div>
-                  <ChatContinuation session={session} running={running || sessionApprovals.length > 0}
-                    authenticated={connection.authenticated} busy={submitting} draft={input} textareaRef={composer}
+                  <ChatContinuation session={session} running={running || sessionApprovals.length > 0 || Boolean(session && visibleProposals(proposals).some(p=>p.sourceId===session.id || p.targetId===session.id))}
+                    authenticated={connection.authenticated} busy={submitting || savingModel === draftKey} model={session?.preferences?.model || data.settings.model} draft={input} textareaRef={composer}
                     active={chatActive && dockOpen && !settingsOpen && !attentionOpen} cache={suggestionCache.current}
                     placeholder={project ? "어떤 작업을 함께 해볼까요?" : "만들고 싶은 것, 풀고 싶은 문제를 적어 주세요."}
                     onChange={setInput} onSend={() => void send()} onContinue={continueWaitingSession}
@@ -1230,16 +1251,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         <ChevronDown size={12} />
                       </label>}
                       <span className="option-divider" />
-                      <button
-                        className="model-select"
-                        onClick={() => setSettingsOpen(true)}
-                      >
-                        <span className="small-codex-icon">
-                          <Terminal size={12} />
-                        </span>
-                        {modelDisplayName(session?.preferences?.model || data.settings.model) || "계정 기본 모델"}
-                        <ChevronDown size={12} />
-                      </button>
+                      <ChatModelPicker models={models} model={session?.preferences?.model}
+                        defaultModel={data.settings.model}
+                        disabled={!conversationProject || savingModel !== null || submitting}
+                        onChange={model => void selectChatModel(model)}/>
                     </div>
                     <div className="chat-run-controls">
                     {running&&<button className="button secondary" aria-label="추가 지시 대기열에 넣기" onClick={()=>void send()} disabled={(!input.trim()&&!attachments.length)||submitting}>추가 지시 보내기</button>}

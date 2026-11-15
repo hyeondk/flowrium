@@ -11,7 +11,7 @@ const { registerWorkbench } = require("../electron/workbench.cjs");
 
 async function run() {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "flowrium-mobile-e2e-"));
-  let window, service;
+  let window, service, workflow;
   try {
     const folder = path.join(temp, "취재 자료집");
     await fs.mkdir(path.join(folder, "docs"), { recursive: true });
@@ -38,7 +38,14 @@ async function run() {
       interrupted;
     const handlers = new Map(),
       register = (name, fn) => handlers.set(name, fn);
+    controller.store=store;controller.editingSessions=new Set();
+    controller.options={canRun:()=>!locked};
+    controller.emitEvent=event=>controller.emit('event',event);
+    workflow=require('../electron/workflow.cjs').registerWorkflow(register,store,controller,{
+      canRun:()=>!locked,pending:()=>requests,intervalMs:600000,
+    });
     registerWorkbench(register, store, { reveal: () => {} });
+    register('readPortfolio',async()=>[{project:p,details:{dueDate:'2020-01-01',kickoff:{phase:'진행'},periodGoals:[{id:'fixture',text:'모바일 검토 마무리',due:'2020-01-01'}]}}]);
     register("readTeams", () => ({
       teams: [
         {
@@ -102,6 +109,7 @@ async function run() {
       controller,
       handlers,
       isLocked: () => locked,
+      readDecisionLinks: () => workflow.pendingDecisionLinks(),
       version: "시험",
       tunnelFactory: () => {
         setTimeout(
@@ -160,6 +168,36 @@ async function run() {
     const firstState = await (await stateResponse).json();
     assert.equal(firstState.sessions[0].messages.length, 0);
     assert.equal(firstState.sessions[0].messageCount, 121);
+    await page.getByRole('heading',{name:'대시보드',exact:true}).waitFor();
+    await page.getByRole('heading',{name:'오늘 할 일',exact:true}).waitFor();
+    await page.getByRole('heading',{name:'프로젝트 현황',exact:true}).waitFor();
+    assert.equal(await page.locator('.activity-chart li').count(),7);
+    await page.locator('.mobile-today').getByText('모바일 검토 마무리',{exact:true}).waitFor();
+    await require('./mobile-shell-checks.cjs').checkMobileShell(page);
+    const tail=archivedSession.messages.at(-1),savedTail={...tail};
+    Object.assign(tail,{role:'assistant',text:'후속 업무도 진행할까요?'});
+    await btn('대기 대화 1개').click();await page.getByRole('heading',{name:'대기 대화',exact:true}).waitFor();
+    await page.getByRole('button',{name:/지난 현장 기록/}).waitFor();
+    controller.runs.set(archived.id,{sessionId:archived.id});
+    await page.getByText('대기 상태의 대화가 없습니다.',{exact:true}).waitFor();
+    await btn('대시보드로').click();await btn('작업중 대화 1개').waitFor();
+    const proposal=await workflow.action({action:'propose',kind:'next',sourceId:archived.id,title:'다음 단계 선택',text:'합성 제안'});
+    await btn('결정 대화 1개').click();
+    await page.getByRole('button',{name:/지난 현장 기록/}).click();
+    await page.getByRole('heading',{name:'지난 현장 기록',exact:true}).waitFor();
+    await page.locator('.chat-state[data-state="decision"]').waitFor();
+    await btn('결정 대화 목록으로').click();await btn('대시보드로').click();
+    await workflow.action({action:'reject',id:proposal.id,revision:proposal.revision});controller.runs.delete(archived.id);
+    await btn('대기 대화 1개').click();
+    await page.getByRole('button',{name:/지난 현장 기록/}).click();
+    await page.getByLabel('요청',{exact:true}).fill('후속 완료 전에 적은 초안');
+    await btn('완료').click();await btn('완료').waitFor({state:'detached'});
+    assert.equal(await page.getByLabel('요청',{exact:true}).inputValue(),'후속 완료 전에 적은 초안');
+    assert.equal(archivedSession.completedContinuationId,tail.id);assert.equal(archivedSession.messages.length,121);
+    await btn('대기 대화 목록으로').click();await page.getByText('대기 상태의 대화가 없습니다.',{exact:true}).waitFor();await btn('대시보드로').click();
+    await btn('대기 대화 0개').waitFor();
+    Object.assign(tail,savedTail);delete archivedSession.completedContinuationId;
+    pages.length=0;
     await openProject();
     assert.equal(new URL(page.url()).hash, "");
     assert.equal(pages.length, 0);
@@ -178,9 +216,33 @@ async function run() {
     assert.equal(await page.locator(".message").count(), 121);
     assert.equal(await btn("이전 메시지 더 보기").count(), 0);
     assert.equal(pages.filter((q) => q.before).length, 2);
+    const anchor=page.getByText('답사 기록 060',{exact:true});
+    await anchor.evaluate(el=>el.scrollIntoView({block:'center'}));
+    const anchorTop=()=>anchor.evaluate(el=>el.getBoundingClientRect().top);
+    const beforeTop=await anchorTop();
     archivedSession.messages.push(note(122));
     archivedSession.updatedAt = new Date().toISOString();
     await page.getByText("답사 기록 122", { exact: true }).waitFor();
+    const afterTop=await anchorTop();
+    await page.waitForTimeout(350);
+    const settledTop=await anchorTop();
+    assert.ok(Math.abs(afterTop-beforeTop)<=1 && Math.abs(settledTop-beforeTop)<=1,'새 메시지 뒤 읽던 위치 '+[beforeTop,afterTop,settledTop].join(' / '));
+    console.log('휴대폰 상태 자동 갱신, 대기 / 작업중 / 결정 우선순위와 이동, 읽던 메시지의 화면 위치 '+[beforeTop,afterTop,settledTop].join(' / '));
+    const streaming=archivedSession.messages.at(-1);
+    controller.runs.set(archived.id,{sessionId:archived.id});
+    controller.emit('event',{type:'status',sessionId:archived.id,status:'running',text:'파일 변경을 적용하고 있습니다.',details:'표시하지 않을 검사용 명령'});
+    streaming.text='새 단계 확인 중';
+    controller.emit('event',{type:'delta',sessionId:archived.id,text:'새 단계 확인 중'});
+    await page.getByText(streaming.text,{exact:true}).waitFor();
+    await page.getByText('파일 변경을 적용하고 있습니다.',{exact:true}).waitFor();
+    assert.equal(await page.getByText('표시하지 않을 검사용 명령',{exact:true}).count(),0);
+    streaming.text='다음 단계 확인';
+    controller.emit('event',{type:'session',sessionId:archived.id});
+    await page.getByText(streaming.text,{exact:true}).waitFor();
+    assert.ok(Math.abs(await anchorTop()-beforeTop)<=1);
+    controller.runs.delete(archived.id);
+    await page.locator('.chat-state[data-state="running"]').waitFor({state:'detached'});
+    await page.waitForTimeout(250);
     assert.equal(await page.locator(".message").count(), 122);
     const delivered = pages.length;
     await page.waitForTimeout(2250);
@@ -355,6 +417,7 @@ async function run() {
   } finally {
     if (window) await window.close();
     if (service) await service.shutdown();
+    if (workflow) await workflow.shutdown();
     await fs.rm(temp, {
       recursive: true,
       force: true,

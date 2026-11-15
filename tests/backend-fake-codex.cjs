@@ -108,6 +108,10 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       result: {
         data: [
           { id: "test-model", model: "test-model", displayName: "검증 모델" },
+          ...(process.env.FLOWRIUM_TEST_CHAT_MODELS === '1' ? [
+            {id:'gpt-6.1-terra', model:'gpt-6.1-terra', supportedReasoningEfforts:[{reasoningEffort:'low'}], defaultReasoningEffort:'low'},
+            {id:'gpt-6.1-sol', model:'gpt-6.1-sol', supportedReasoningEfforts:[{reasoningEffort:'high'}], defaultReasoningEffort:'high'},
+          ] : []),
         ].map(model=>model.supportedReasoningEfforts?model:{...model,isDefault:true,defaultReasoningEffort:"medium",supportedReasoningEfforts:[{reasoningEffort:"low"},{reasoningEffort:"medium"},{reasoningEffort:"high"},{reasoningEffort:"xhigh"}]}),
       },
     });
@@ -152,6 +156,10 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     write({ id, result: { turn: { id: turnId, status: "inProgress" } } });
     notify("turn/started", { threadId, turn: { id: turnId } });
     const prompt = params.input[0].text;
+    if (process.env.FLOWRIUM_TEST_CHAT_MODELS === '1' && prompt.includes('전송 모델 확인')) {
+      setTimeout(() => complete(threadId, turnId, `실제 전송 / ${params.model} / ${params.effort}`), 30);
+      return;
+    }
     if(prompt.includes("문맥검증"))notify("thread/tokenUsage/updated",{threadId,turnId,tokenUsage:{last:{inputTokens:900,outputTokens:0,totalTokens:900},total:{totalTokens:1900},modelContextWindow:1000}});
     if (prompt.includes("강제종료")) {
       setTimeout(() => process.exit(9), 20);

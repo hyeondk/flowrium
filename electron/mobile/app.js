@@ -1,3 +1,4 @@
+import {settingsGuides, reconnectForm} from './install.js';
 import {modelDisplayName,effortDisplayName,reasoningEffortOptions} from './model-display.js';
 const content = document.querySelector("#content");
 const navigation = document.querySelector("#nav");
@@ -43,8 +44,11 @@ const phases = {
   review: "검토",
   reporting: "보고 중",
 };
+const executionNames = {running:'작업중',waiting:'대기',decision:'결정'};
 let data,
   route = "projects",
+  statusFilter = "running",
+  chatOriginStatus = "",
   selectedProject = "",
   selectedSession = "",
   detailTab = "work";
@@ -180,7 +184,22 @@ async function request(path, body) {
 }
 const call = (method, ...args) =>
   request("/api/mobile/call", { method, args }).then((r) => r.result);
+let dashboardFacts, dashboardFetched=0, dashboardRequest;
+async function loadDashboard(){
+  if(route!=='projects' || gate || !data || dashboardRequest || Date.now()-dashboardFetched<15000)return;
+  const epoch=accessEpoch;
+  const work=request('/api/mobile/dashboard');dashboardRequest=work;
+  try {
+    const facts=await work;
+    if(accessEpoch!==epoch)return;
+    const changed=JSON.stringify(facts)!==JSON.stringify(dashboardFacts);
+    dashboardFacts=facts;
+    if(changed && route==='projects')render();
+  } catch(error){if(epoch===accessEpoch && error.gate)clearPrivateState(error.gate);}
+  finally{if(dashboardRequest===work){dashboardRequest=undefined;dashboardFetched=Date.now();}}
+}
 function clearPrivateState(nextGate) {
+  dashboardFacts=undefined;dashboardRequest=undefined;dashboardFetched=0;
   accessEpoch++;
   resetHistory();
   gate = nextGate;
@@ -190,8 +209,10 @@ function clearPrivateState(nextGate) {
   signature = "";
   drafts.clear();
   questionDrafts.clear();
-  attachedDrafts.clear();attachmentPreviews.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;extrasEpoch++;
+  attachedDrafts.clear();attachmentPreviews.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;chatModels=chatModelRequest=undefined;extrasEpoch++;
   selectedSession = selectedProject = "";
+  statusFilter = "running";
+  chatOriginStatus = "";
   route = "projects";
   notice.hidden = true;
   if (gate === "expired") {
@@ -231,6 +252,7 @@ async function poll() {
       ? "데스크톱 연결됨"
       : "계정 연결 필요";
     if (changed) render();
+    if(route==="projects") void loadDashboard();
     if (["assistant","settings"].includes(route)) void loadExtras(false);
     if (route === "chat") {
       void loadQueue();
@@ -240,6 +262,7 @@ async function poll() {
         !historyError &&
         (!historyPage ||
           current.messageCount !== historyPage.total ||
+          current.revision !== historyPage.revision ||
           current.lastMessageId !== historyPage.lastMessageId ||
           current.updatedAt !== historyPage.updatedAt)
       )
@@ -277,7 +300,10 @@ async function run(callback) {
 }
 function go(view, id) {
   assetRequest++;
+  if(view==='chat')chatOriginStatus=route==='status'?statusFilter:'';
+  const previousRoute=route,previousSession=selectedSession;
   route = view;
+  if(view==='status') statusFilter=id;
   resetHistory();
   preview = undefined;
   hideNotice();
@@ -293,7 +319,12 @@ function go(view, id) {
   }
   window.scrollTo(0, 0);
   render();
-  if (view === "chat") {void loadMessages();void loadQueue();}
+  if(previousRoute!==view || view==='chat' && previousSession!==id){
+    content.getAnimations().forEach(animation=>animation.cancel());
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) content.animate([{opacity:.55,transform:'translateY(5px)'},{opacity:1,transform:'none'}],
+      {duration:240,easing:'cubic-bezier(.16,1,.3,1)'});
+  }
+  if (view === "chat") {void loadMessages();void loadQueue();void loadChatModels();}
   if (["assistant","settings"].includes(view)) void loadExtras();
 }
 async function loadMessages(older = false) {
@@ -400,9 +431,9 @@ function openTab(tab) {
 function sessionRow(s) {
   return row(
     s.title,
-    [kinds[s.workflow?.kind] || "대화", date(s.updatedAt)].join(" / "),
+    [project(s.projectId)?.name,kinds[s.workflow?.kind] || "대화", date(s.updatedAt)].filter(Boolean).join(" / "),
     () => go("chat", s.id),
-    running(s.id) ? "실행 중" : undefined,
+    executionNames[s.executionState],
   );
 }
 function inputCard(entry) {
@@ -550,10 +581,31 @@ function approvals(list, root) {
   }
 }
 function projects(root) {
-  root.append(
-    node("h1", "프로젝트"),
-    node("p", "데스크톱에서 연결한 프로젝트의 업무와 문서를 여세요.", "hint"),
-  );
+  root.append(node("h1", "대시보드"));
+  const status=node('section',undefined,'mobile-execution');
+  status.setAttribute('aria-label','프로젝트 대화 진행 상태');
+  for(const [key,name] of Object.entries(executionNames)){
+    const count=data.sessions.filter(s=>s.executionState===key).length;
+    const button=action('',()=>go('status',key));
+    button.dataset.state=key;button.setAttribute('aria-label',name+' 대화 '+count+'개');
+    button.append(node('span',name),node('strong',String(count)));status.append(button);
+  }
+  root.append(status);
+  const tasks=node('section',undefined,'mobile-today'),todo=data.sessions
+    .filter(s=>s.workflow && s.workflow.status!=='done')
+    .sort((a,b)=>Number(b.executionState==='decision')-Number(a.executionState==='decision')||b.updatedAt.localeCompare(a.updatedAt));
+  tasks.append(node('h2','오늘 할 일'));
+  const {due=[],goals=[],phases={}}=dashboardFacts||{};
+  for(const item of due.slice(0,3))if(project(item.projectId))tasks.append(row(project(item.projectId).name,item.due,()=>go('project',item.projectId),item.due===dashboardFacts.today?'오늘 기한':'기한 경과'));
+  for(const item of goals.slice(0,5))if(project(item.projectId))tasks.append(row(item.text,project(item.projectId).name,()=>go('project',item.projectId),item.target!=null?(item.current||0)+' / '+item.target:'목표'));
+  for(const s of todo.slice(0,3))tasks.append(row(s.workflow.nextTask||s.title,project(s.projectId)?.name,()=>go('chat',s.id),executionNames[s.executionState]));
+  if(!todo.length && !due.length && !goals.length)tasks.append(node('p','진행할 업무가 없습니다.','hint'));
+  root.append(tasks,activityChart(),node("h2", "프로젝트 현황"));
+  if(Object.keys(phases).length){
+    const counts=node('p',undefined,'hint');
+    counts.textContent=Object.entries(phases).map(([phase,count])=>phase+' '+count+'개').join(' / ');
+    root.append(counts);
+  }
   if (!data.projects.length)
     root.append(
       node(
@@ -569,10 +621,41 @@ function projects(root) {
         p.name,
         "업무 " + list.length + "개",
         () => go("project", p.id),
-        list.some((s) => running(s.id)) ? "실행 중" : undefined,
+        list.some(s=>s.executionState==='decision') ? '결정' : list.some(s=>s.executionState==='running') ? '작업중' : list.some(s=>s.executionState==='waiting') ? '대기' : undefined,
       ),
     );
   }
+}
+function activityChart(){
+  const chart=node('section',undefined,'activity-chart'), days=[];
+  for(let offset=6;offset>=0;offset--){
+    const day=new Date();day.setHours(0,0,0,0);day.setDate(day.getDate()-offset);
+    const next=new Date(day);next.setDate(next.getDate()+1);
+    const during=value=>value&&Date.parse(value)>=day.getTime()&&Date.parse(value)<next.getTime();
+    days.push({day,started:data.sessions.filter(s=>during(s.createdAt)).length,done:data.sessions.filter(s=>during(s.workflow?.completedAt)).length});
+  }
+  chart.append(node('h2','최근 7일 업무 흐름'));
+  const bars=node('ol'),peak=Math.max(1,...days.flatMap(d=>[d.started,d.done]));
+  for(const {day,started,done} of days){
+    const label=day.toLocaleDateString('ko-KR',{month:'numeric',day:'numeric'});
+    const cell=node('li'),pair=node('div',undefined,'bars');
+    cell.setAttribute('aria-label',label+' 시작 '+started+'개 / 완료 '+done+'개');cell.title=cell.getAttribute('aria-label');
+    for(const [key,value] of [['started',started],['done',done]]){
+      const bar=node('meter');bar.min=0;bar.max=peak;bar.value=value;bar.className=key;
+      bar.setAttribute('aria-hidden','true');pair.append(bar);
+    }
+    cell.append(pair,node('small',String(day.getDate())+'일'));bars.append(cell);
+  }
+  const legend=node('p',undefined,'chart-legend');
+  legend.append(node('span','시작','started'),document.createTextNode(' / '),node('span','완료','done'));
+  chart.append(bars,legend);
+  return chart;
+}
+function statusPage(root){
+  const label=executionNames[statusFilter];root.append(action('대시보드로',()=>go('projects')),node('h1',label+' 대화'));
+  const list=data.sessions.filter(s=>s.executionState===statusFilter).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+  for(const s of list)root.append(sessionRow(s));
+  if(!list.length)root.append(node('p',label+' 상태의 대화가 없습니다.','hint'));
 }
 function team(root) {
   const reset = action("팀 상태 새로 고침", () => loadAssets());
@@ -740,11 +823,40 @@ function newWork(root) {
   });
   root.append(form);
 }
+let chatModelRequest,chatModels;
+async function loadChatModels(){
+  if(chatModels?.length || mobileSettings?.models?.length || chatModelRequest || gate || !data?.connection?.authenticated)return;
+  const epoch=accessEpoch,request=call('mobileSettings');chatModelRequest=request;
+  try{
+    const catalog=await request;
+    if(epoch===accessEpoch){chatModels=catalog.models;if(route==='chat')render();}
+  }catch(error){if(epoch===accessEpoch&&error.gate)clearPrivateState(error.gate);}
+  finally{if(chatModelRequest===request)chatModelRequest=undefined;}
+}
+function chatModelPicker(s){
+  const models=mobileSettings?.models||chatModels||[],own=s.preferences?.model||'';
+  const inherited=data.settings.model||models.find(m=>m.isDefault)?.id;
+  const name=id=>modelDisplayName(models.find(row=>row.id===id)||id);
+  const options=[['',inherited?'기본 설정 따르기 ('+name(inherited)+')':'기본 설정 따르기']];
+  if(own&&!models.some(m=>m.id===own))options.push([own,name(own)]);
+  for(const model of models)options.push([model.id,modelDisplayName(model)]);
+  const picker=select(options,own);
+  picker.disabled=busy||(!own&&!models.length);
+  picker.addEventListener('change',()=>{
+    const value=picker.value;
+    void run(async()=>{
+      const saved=await call('setMobileChatModel',s.id,value);
+      const current=session(s.id);
+      if(current)current.preferences={...current.preferences,model:saved.model||undefined};
+    });
+  });
+  return label('이 채팅의 모델',picker);
+}
 function chat(root) {
   const s = session(selectedSession);
   if (!s) return projects(root);
   root.append(
-    action("프로젝트로", () => go("project", s.projectId)),
+    chatOriginStatus ? action(executionNames[chatOriginStatus]+" 대화 목록으로",()=>go("status",chatOriginStatus)) : action("프로젝트로", () => go("project", s.projectId)),
     node("h1", s.title),
     node(
       "p",
@@ -769,10 +881,11 @@ function chat(root) {
   for (const m of historyPage?.messages || []) {
     const block = node("article", undefined, "message");
     block.dataset.role = m.role;
+    block.dataset.messageId = m.id;
     block.append(
       node(
         "small",
-        (m.role === "user" ? "나" : "답변") + " / " + date(m.createdAt),
+        (m.role === "user" ? "나" : m.role === "assistant" ? "Codex" : "작업 상태") + " / " + date(m.createdAt),
       ),
       node("div", m.text, "body"),
     );
@@ -782,7 +895,7 @@ function chat(root) {
   if (running(s.id)) {
     const stop = action("작업 중단", () => run(() => call("interrupt", s.id)));
     stop.disabled = busy;
-    root.append(node("p", "데스크톱에서 실행 중입니다.", "hint"), stop);
+    root.append(node("p", s.activity || "데스크톱에서 실행 중입니다.", "hint"), stop);
   }
   if(queueItems.length){const queue=node("section",undefined,"box");queue.append(node("h2","추가 지시 대기열"));for(const item of queueItems){const line=node("div",undefined,"queue-line");line.append(node("p",item.text||"첨부 요청","body"),node("small",({queued:"대기",sending:"전송 중",sent:"전송 완료",cancelled:"취소"})[item.status]||item.status));if(item.error)line.append(node("p",item.error,"hint"));if(item.status==="queued")line.append(action("이 지시 취소",()=>run(async()=>{await call("cancelQueuedMessage",s.id,item.id);await loadQueue()})));queue.append(line)}queue.append(action("대기 지시 이어 보내기",()=>run(async()=>{await call("resumeQueuedMessages",s.id);await loadQueue()})));root.append(queue)}
   const form = node("form"),
@@ -807,7 +920,26 @@ function chat(root) {
   const submit = node("button", running(s.id) ? "추가 지시 대기열에 넣기" : "요청 보내기", "main-action");
   submit.type = "submit";
   submit.disabled = busy || !data.connection?.authenticated;
-  form.append(label("요청", text), label("작업 모드", mode));
+  const options=node('div',undefined,'chat-options');
+  options.append(label("작업 모드", mode),chatModelPicker(s));
+  form.append(label("요청", text), options);
+  if (s.executionState) {
+    const state=node('p',executionNames[s.executionState],'chat-state');
+    state.dataset.state=s.executionState;
+    root.insertBefore(state,root.querySelector('h1')?.nextSibling||null);
+  }
+  if(s.canCompleteWaiting){
+    const choices=node('div',undefined,'actions');
+    const proceed=action('진행하기',()=>run(async()=>{
+      const attachments=attachedDrafts.get(s.id)||[];
+      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:s.lastMessageId,text:text.value,attachments:attachments.map(a=>a.id),mode:mode.value});
+      drafts.delete(draftId);attachedDrafts.delete(s.id);
+    }));
+    const complete=action('완료',()=>run(async()=>{
+      await call('workflowAction',{action:'completeContinuation',sessionId:s.id,messageId:s.lastMessageId});showNotice('후속 대기를 완료했습니다.');
+    }));
+    proceed.disabled=busy||!data.connection?.authenticated;complete.disabled=busy;choices.append(proceed,complete);form.append(choices);
+  }
   attachmentComposer(form,s);form.append(submit);
   if (!data.connection?.authenticated)
     form.append(
@@ -824,8 +956,6 @@ function chat(root) {
         text: value,
         attachments:attachments.map(a=>a.id),
         mode: mode.value,
-        model: s.preferences?.model || data.settings.model,
-        effort: s.preferences?.effort || data.settings.effort,
       });
       drafts.delete(draftId);attachedDrafts.delete(s.id);await loadQueue();
       showNotice(result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
@@ -946,10 +1076,30 @@ function assistantPage(root){
     form.append(label('자동 비서 사용',enabled),label('ChatGPT로 보고 생성',ai),label('확인 주기',interval),label('업무 시작 시간',start),label('업무 종료 시간',end));const submit=node('button','비서 설정 저장');submit.type='submit';form.append(submit);form.addEventListener('submit',e=>{e.preventDefault();void workflowDo({action:'preferences',value:{enabled:enabled.checked,aiReports:ai.checked,intervalMinutes:Number(interval.value),startHour:Number(start.value),endHour:Number(end.value)}})});root.append(form);
   }
 }
+function settingsSwitch(name, input) {
+  const row=node('label',name,'mobile-settings-switch');
+  input.type='checkbox';
+  input.setAttribute('role','switch');
+  input.setAttribute('aria-label',name);
+  const control=node('span',undefined,'mobile-switch-control');
+  const track=node('span',undefined,'mobile-switch-track');
+  track.setAttribute('aria-hidden','true');
+  control.append(input,track);
+  row.append(control);
+  return row;
+}
 function settingsPage(root){
-  root.append(node('h1','설정 / 사용량'),node('p',data.connection.accountLabel||'ChatGPT','hint'),action('설정과 사용량 새로 고침',()=>loadExtras()));
-  const remember=node('input');remember.type='checkbox';remember.checked=rememberDevice;remember.addEventListener('change',()=>{try{rememberDevice=remember.checked;if(rememberDevice){localStorage.setItem(rememberFlag,'1');localStorage.setItem(rememberedKeyStorage,key)}else{localStorage.removeItem(rememberFlag);localStorage.removeItem(rememberedKeyStorage)}showNotice(rememberDevice?'이 기기에 연결을 보관했습니다.':'탭을 닫으면 연결 정보를 보관하지 않습니다.')}catch{rememberDevice=false;remember.checked=false;showNotice('이 브라우저에서 연결을 보관할 수 없습니다.')}});root.append(label('이 기기에서 연결 유지',remember),node('p','개인 기기에서만 켜세요. 알림으로 새 창을 열 때도 연결하며 데스크톱의 연결 종료로 언제든 취소할 수 있습니다.','hint'));
-  if(!mobileSettings){root.append(node('p','설정을 불러오는 중입니다.','hint'));return}
+  root.append(node('h1','설정 / 사용량'),settingsGuides());
+  const device=node('section',undefined,'settings-block');
+  device.append(node('h2','기기 연결'));
+  root.append(device);
+  const remember=node('input');remember.type='checkbox';remember.checked=rememberDevice;remember.addEventListener('change',()=>{try{rememberDevice=remember.checked;if(rememberDevice){localStorage.setItem(rememberFlag,'1');localStorage.setItem(rememberedKeyStorage,key)}else{localStorage.removeItem(rememberFlag);localStorage.removeItem(rememberedKeyStorage)}showNotice(rememberDevice?'이 기기에 연결을 보관했습니다.':'탭을 닫으면 연결 정보를 보관하지 않습니다.')}catch{rememberDevice=false;remember.checked=false;showNotice('이 브라우저에서 연결을 보관할 수 없습니다.')}});device.append(settingsSwitch('이 기기에서 연결 유지',remember),node('p','개인 기기에서만 켜세요. 알림으로 새 창을 열 때도 연결하며 데스크톱의 연결 종료로 언제든 취소할 수 있습니다.','hint'));
+  const account=node('section',undefined,'settings-block');
+  const accountLine=node('div',undefined,'settings-account-line');
+  accountLine.append(node('p',data.connection.accountLabel||'ChatGPT','hint'),action('설정과 사용량 새로 고침',()=>loadExtras()));
+  account.append(node('h2','계정과 모델'),accountLine);
+  root.append(account);
+  if(!mobileSettings){account.append(node('p','설정을 불러오는 중입니다.','hint'));return}
   const form=node('form'),models=mobileSettings.models||[],model=select([['','계정 기본 모델'],...models.map(m=>[m.id,modelDisplayName(m)])],mobileSettings.model||''),effort=select([],''),answer=select([['short','짧게'],['normal','보통'],['detailed','자세히']],mobileSettings.chatDefaults?.answerLength||'normal');
   function refreshEfforts(preferred=''){
     const selected=models.find(m=>m.id===model.value)||(!model.value?models.find(m=>m.isDefault):undefined),available=reasoningEffortOptions(selected);
@@ -958,7 +1108,7 @@ function settingsPage(root){
   }
   refreshEfforts(mobileSettings.effort||'');model.addEventListener('change',()=>refreshEfforts());
   const tests=node('input'),ask=node('input'),compact=node('input');tests.type=ask.type=compact.type='checkbox';tests.checked=mobileSettings.chatDefaults?.testing!==false;ask.checked=mobileSettings.chatDefaults?.askNext===true;compact.checked=mobileSettings.chatDefaults?.autoCompact!==false;
-  form.append(label('기본 ChatGPT 모델',model),label('추론 수준',effort),label('답변 길이',answer),label('작업 후 검증',tests),label('필요한 다음 질문',ask),label('문맥 자동 압축',compact));const save=node('button','기본 설정 저장','main-action');save.type='submit';save.disabled=busy||!models.length;form.append(save);form.addEventListener('submit',e=>{e.preventDefault();const value={model:model.value,...(effort.value?{effort:effort.value}:{}),chatDefaults:{answerLength:answer.value,testing:tests.checked,askNext:ask.checked,autoCompact:compact.checked}};void run(async()=>{await call('saveMobileSettings',value);await loadExtras();showNotice('기본 설정을 저장했습니다.')})});root.append(form);
+  form.append(label('기본 ChatGPT 모델',model),label('추론 수준',effort),label('답변 길이',answer),settingsSwitch('작업 후 검증',tests),settingsSwitch('필요한 다음 질문',ask),settingsSwitch('문맥 자동 압축',compact));const save=node('button','기본 설정 저장','main-action');save.type='submit';save.disabled=busy||!models.length;form.append(save);form.addEventListener('submit',e=>{e.preventDefault();const value={model:model.value,...(effort.value?{effort:effort.value}:{}),chatDefaults:{answerLength:answer.value,testing:tests.checked,askNext:ask.checked,autoCompact:compact.checked}};void run(async()=>{await call('saveMobileSettings',value);await loadExtras();showNotice('기본 설정을 저장했습니다.')})});account.append(form);
   const usage=node('section',undefined,'box');usage.append(node('h2','계정 사용량'));if(!usageData)usage.append(node('p','현재 사용량을 읽지 못했습니다.','hint'));for(const b of usageData?.buckets||[]){usage.append(node('strong',[b.name,b.plan].filter(Boolean).join(' / ')));for(const w of b.windows){const progress=node('progress');progress.max=100;progress.value=w.usedPercent;progress.setAttribute('aria-label',b.name+' 사용량');usage.append(node('p',(w.minutes?Math.round(w.minutes/60)+'시간':'사용 구간')+' / '+Math.round(w.usedPercent)+'% 사용','hint'),progress);if(w.resetsAt)usage.append(node('small','초기화 '+date(w.resetsAt*1000)))}}root.append(usage);
   pushSettings(root);
 }
@@ -978,16 +1128,33 @@ function pushSettings(root){
     });});subscribe.disabled=busy||pushData?.available===false;box.append(subscribe);
   }else{
     box.append(node('p',device.label));const chosen=new Set(device.kinds);
-    for(const [kind,title]of Object.entries(pushLabels)){const check=node('input');check.type='checkbox';check.checked=chosen.has(kind);check.addEventListener('change',()=>check.checked?chosen.add(kind):chosen.delete(kind));box.append(label(title,check))}
+    for(const [kind,title]of Object.entries(pushLabels)){const check=node('input');check.type='checkbox';check.checked=chosen.has(kind);check.addEventListener('change',()=>check.checked?chosen.add(kind):chosen.delete(kind));box.append(settingsSwitch(title,check))}
     box.append(action('알림 종류 저장',()=>run(async()=>{await call('webPushAction',{action:'preferences',id:device.id,kinds:[...chosen]});await loadExtras()})),action('이 기기에 시험 알림 보내기',()=>run(async()=>{const result=await call('webPushAction',{action:'test',id:device.id});showNotice(result.sent?'알림 서버에 발송했습니다.':'발송을 확인하지 못했습니다.');await loadExtras()})),action('이 기기 알림 해제',()=>run(async()=>{await call('webPushAction',{action:'unsubscribe',id:device.id});const registration=await navigator.serviceWorker.ready;await(await registration.pushManager.getSubscription())?.unsubscribe();sessionStorage.removeItem('flowrium.mobile.pushId');await loadExtras();showNotice('기기 알림을 해제했습니다.')})));
     if(device.lastError)box.append(node('p',device.lastError,'hint'));
   }
   box.append(node('p','연결을 종료하거나 계정을 바꾸면 알림도 중지됩니다. 새 연결 주소에서는 기기를 다시 등록하세요.','hint'));root.append(box);
 }
 
+let renderedChatId;
+function visibleMessageAnchor(){
+  if(route!=='chat'||renderedChatId!==selectedSession||gate)return;
+  const messages=content.querySelectorAll('[data-message-id]');
+  const headerBottom=document.querySelector('.bar').getBoundingClientRect().bottom;
+  let lo=0,hi=messages.length;
+  while(lo<hi){
+    const middle=Math.floor((lo+hi)/2);
+    if(messages[middle].getBoundingClientRect().bottom<=headerBottom)lo=middle+1;
+    else hi=middle;
+  }
+  const first=messages[lo],top=first?.getBoundingClientRect().top;
+  if(first && top<innerHeight)return {id:first.dataset.messageId,top};
+}
 function render() {
   const active = document.activeElement,
-    field = active?.dataset?.field;
+    field = active?.dataset?.field,
+    anchor=visibleMessageAnchor();
+  const fieldTop=field && renderedChatId===selectedSession && route==='chat' ? active.getBoundingClientRect().top : undefined;
+  const fieldOffset=active?.scrollTop;
   const start =
       field && "selectionStart" in active ? active.selectionStart : null,
     end = field && "selectionEnd" in active ? active.selectionEnd : null;
@@ -995,7 +1162,7 @@ function render() {
   navigation.hidden = !data || !!gate;
   for (const btn of navigation.querySelectorAll("button")) {
     const current =
-      (["project", "new", "chat"].includes(route) ? "projects" : route) ===
+      (["project", "new", "chat", "status"].includes(route) ? "projects" : route) ===
       btn.dataset.view;
     if (current) btn.setAttribute("aria-current", "page");
     else btn.removeAttribute("aria-current");
@@ -1019,7 +1186,9 @@ function render() {
       gate === "locked" ? "잠김" : !key ? "연결 필요" : "연결 중";
     root.append(node("h1", title), node("p", hint, "hint"));
     if (key) root.append(action("다시 확인", () => poll()));
+    else if (!handoff) root.append(reconnectForm());
   } else if (route === "projects") projects(root);
+  else if (route === "status") statusPage(root);
   else if (route === "running") {
     root.append(node("h1", "실행 중인 업무"));
     const list = data.sessions.filter((s) => running(s.id));
@@ -1035,6 +1204,9 @@ function render() {
   else if (route === "new") newWork(root);
   else if (route === "chat") chat(root);
   content.replaceChildren(root);
+  renderedChatId=data && !gate && route==='chat' ? selectedSession : undefined;
+  const restored=anchor && content.querySelector('[data-message-id="'+CSS.escape(anchor.id)+'"]');
+  if(restored)window.scrollBy(0,restored.getBoundingClientRect().top-anchor.top);
   if (field) {
     const next = [...content.querySelectorAll("[data-field]")].find(
       (el) => el.dataset.field === field,
@@ -1043,9 +1215,13 @@ function render() {
       next.focus({ preventScroll: true });
       if (start !== null && typeof next.setSelectionRange === "function")
         next.setSelectionRange(start, end);
+      if(fieldOffset)next.scrollTop=fieldOffset;
+      if(!restored && fieldTop!==undefined && fieldTop>=0 && fieldTop<innerHeight)
+        window.scrollBy(0,next.getBoundingClientRect().top-fieldTop);
     }
   }
 }
+document.addEventListener('flowrium-install-state', () => { if (route === 'settings') render(); });
 document.querySelector("#home").addEventListener("click", () => go("projects"));
 for (const btn of navigation.querySelectorAll("button"))
   btn.addEventListener("click", () => go(btn.dataset.view));

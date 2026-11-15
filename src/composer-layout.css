@@ -1,0 +1,84 @@
+:root {
+  --dock-default-width: clamp(350px, 30vw, 480px);
+  --dock-expanded-width: clamp(416px, 40vw, 680px);
+}
+
+.app-shell .conversation-dock[data-chat-active=true]:not([data-minimized=true]) > .dock-heading {
+  height: 40px;
+  min-height: 40px;
+  padding: 4px 12px;
+}
+.conversation-dock[data-chat-active=true] > .dock-scope-tabs,
+.conversation-dock[data-chat-active=true] > .dock-status-tabs {
+  padding-block: 3px;
+}
+.conversation-dock[data-chat-active=true] .session-heading {
+  min-height: 42px;
+  padding: 5px 12px;
+}
+.conversation-dock[data-chat-active=true] .session-heading h2 {font-size: 14px; line-height: 21px;}
+.conversation-dock[data-chat-active=true] .messages {padding: 12px 12px 8px;}
+.conversation-dock[data-chat-active=true] .message {margin-bottom: 16px;}
+.conversation-dock[data-chat-active=true] .markdown,
+.conversation-dock[data-chat-active=true] .markdown p {line-height: 1.65;}
+
+.app-shell .conversation-dock[data-chat-active=true] .has-session .composer-area {
+  padding: 6px 10px max(5px, env(safe-area-inset-bottom));
+}
+.app-shell .conversation-dock[data-chat-active=true] .composer-area:has(.composer-input[data-height-mode=manual]) {
+  max-height: 68%;
+}
+.app-shell .conversation-dock[data-chat-active=true] .composer {
+  position: relative;
+  padding: 5px 8px;
+}
+.app-shell .conversation-dock .composer textarea.composer-input[data-height-mode] {
+  height: auto;
+  min-height: 42px;
+  max-height: min(104px, var(--composer-limit));
+  padding: 7px 4px 5px;
+  font-size: 13px;
+  line-height: 21px;
+  field-sizing: content;
+  resize: none;
+}
+.app-shell .conversation-dock .composer textarea.composer-input[data-height-mode=manual] {
+  field-sizing: fixed;
+  max-height: var(--composer-limit);
+}
+.composer .composer-resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: -6px;
+  left: 50%;
+  width: 66px;
+  height: 14px;
+  transform: translateX(-50%);
+  cursor: row-resize;
+  touch-action: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+}
+.composer-resize-handle > span {
+  width: 28px;
+  height: 3px;
+  border-radius: 4px;
+  background: var(--muted);
+  opacity: .45;
+  transition: opacity .2s ease-in-out;
+}
+.composer-resize-handle:is(:hover,:focus-visible) > span,
+html[data-composer-resizing] .composer-resize-handle > span {background: var(--accent); opacity: 1;}
+html[data-composer-resizing], html[data-composer-resizing] * {cursor: row-resize !important; user-select: none !important;}
+
+.conversation-dock .composer-toolbar {min-height: 32px; padding-top: 1px;}
+.app-shell .conversation-dock .composer :is(.composer-attach,.voice-composer>button) {width: 28px; height: 28px; min-width: 28px; min-height: 28px;}
+.app-shell .conversation-dock .composer .send-button {width: 32px; height: 32px; min-width: 32px; min-height: 32px;}
+.composer .chat-continuation-actions {column-gap: 2px;}
+.composer .chat-continuation-actions .followup-preview {flex: none; width: 24px; justify-content: center; padding-inline: 0;}
+.followup-preview-dialog > .motion-surface {width: min(480px, calc(100vw - 28px)); max-height: min(70dvh, 520px); overflow: auto; padding: 18px;}
+.followup-preview-dialog header {display: flex; align-items: center; justify-content: space-between; gap: 10px;}
+.followup-preview-dialog h2 {font-size: 15px; line-height: 22px; margin: 0; word-break: keep-all;}
+.followup-preview-dialog p {white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; font-size: 14px; line-height: 1.65; margin: 14px 0;}
+.followup-preview-dialog footer {display: flex; justify-content: flex-end;}

@@ -157,7 +157,7 @@ contextBridge.exposeInMainWorld(
     chooseProject: () => invoke("chooseProject"),
     createHubConversation: input => invoke("createHubConversation",input),
     listHubConversations: () => invoke("listHubConversations"),
-    createSession: (projectId) => invoke("createSession", projectId),
+    createSession: (projectId, model) => invoke("createSession", projectId, model),
     deleteSession: (id) => invoke("deleteSession", id),
     saveSettings: (input) => invoke("saveSettings", input),
     connectionStatus: () => invoke("connectionStatus"),

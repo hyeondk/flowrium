@@ -22,7 +22,7 @@ async function run() {
     const project = await store.addProject(folder);
     const session = await store.createSession(project.id, {
       title: '주간 보고서 초안 검토',
-      messages: [{ id: randomUUID(), role: 'assistant', text: '문의 유형별로 이번 주 대응 내역을 정리했습니다.\n\n- 결제 문의의 답변 초안을 검토합니다.\n- 반복 문의를 다음 주 도움말에 반영합니다.', createdAt: new Date().toISOString() }],
+      messages: [{ id: randomUUID(), role: 'user', text: '주간 보고서를 검토해 주세요.', createdAt: new Date().toISOString() }, { id: randomUUID(), role: 'assistant', text: '문의 유형별로 이번 주 대응 내역을 정리했습니다.\n\n- 결제 문의의 답변 초안을 검토합니다.\n- 반복 문의를 다음 주 도움말에 반영합니다.', createdAt: new Date().toISOString() }],
     });
     await store.saveSettings({ codexPath: path.join(__dirname, 'backend-fake-codex.cjs'), theme: 'light' });
     const env = { ...process.env, FLOWRIUM_USER_DATA: profile, CODEX_HOME: path.join(temp, 'codex') };
@@ -64,6 +64,10 @@ async function run() {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openConversation(page, session.title);
     const message = page.locator('.message.assistant').first();
+    await page.locator('.message.user .message-avatar .lucide-user-round').waitFor();
+    const logo=message.locator('.message-avatar img');
+    await logo.waitFor();
+    assert(await logo.evaluate(img=>img.complete && img.naturalWidth>0 && /\/chatgpt(?:-[\w-]+)?\.svg$/.test(img.src)), '오프라인 번들 아이콘이 원래 비율로 열림');
     const like = message.getByRole('button', { name: '좋아요', exact: true });
     await like.waitFor();
     const capture = process.argv.indexOf('--screenshot');

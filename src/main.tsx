@@ -9,6 +9,7 @@ import "./chat-workspace.css";
 import "./surface-polish.css";
 import "./workspace-layout.css";
 import "./compact-density.css";
+import "./composer-layout.css";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

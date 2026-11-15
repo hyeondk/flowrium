@@ -2,9 +2,24 @@ const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=r
 const {Store}=require('../electron/store.cjs'),{openConversation,composer}=require('./shell-test-helpers.cjs');
 const {closeInstalledApp}=require('./update-installed-ui.cjs');
 async function main(){const root=path.resolve(__dirname,'..'),qa=path.join(root,'.flowrium-tmp/qa-261115_03');await fs.mkdir(qa,{recursive:true});const temp=await fs.mkdtemp(path.join(qa,'decision-continuation-screen-'));let app;
- try{const folder=path.join(temp,'합성 프로젝트');await fs.mkdir(folder);const profile=path.join(temp,'profile'),store=new Store(profile);await store.load();const project=await store.addProject(folder),waiting=store.session((await store.createSession(project.id,{title:'검색 검증 대화'})).id),questions=await store.createSession(project.id,{title:'별도 질문 대화'});waiting.messages=[{id:randomUUID(),role:'user',text:'검색 기능을 검증해 주세요.',createdAt:new Date().toISOString()},{id:randomUUID(),role:'assistant',text:'검색 결과를 확인했습니다. 회귀 검사도 이어서 진행할까요?',createdAt:new Date().toISOString()}];await store.save();await store.saveSettings({codexPath:path.join(__dirname,'continuation-fake-codex.cjs'),model:'test-model',theme:'light'});const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
- app=await _electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();page.setDefaultTimeout(16000);await page.setViewportSize({width:1440,height:1000});await page.locator('.side-usage[data-connected=true]').waitFor();await openConversation(page,waiting.title);const input=composer(page);await input.focus();
+ try{const folder=path.join(temp,'합성 프로젝트');await fs.mkdir(folder);const profile=path.join(temp,'profile'),store=new Store(profile);await store.load();const project=await store.addProject(folder),waiting=store.session((await store.createSession(project.id,{title:'검색 검증 대화'})).id),questions=await store.createSession(project.id,{title:'별도 질문 대화'});waiting.messages=[{id:randomUUID(),role:'user',text:'검색 기능을 검증해 주세요.',createdAt:new Date().toISOString()},{id:randomUUID(),role:'assistant',text:'검색 결과를 확인했습니다. 회귀 검사도 이어서 진행할까요?',createdAt:new Date().toISOString()}];await store.save();await store.saveSettings({codexPath:path.join(__dirname,'continuation-fake-codex.cjs'),model:'test-model',theme:'light'});const completed=store.session((await store.createSession(project.id,{title:'완료할 후속 대화'})).id);
+ completed.messages=waiting.messages.map(message=>({...message,id:randomUUID()}));
+ await store.save();
+ const followupTrace=path.join(temp,'synthetic-requests.log');await fs.writeFile(followupTrace,'');const env={...process.env,FLOWRIUM_TEST_FOLLOWUP_TRACE:followupTrace,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
+ app=await _electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();page.setDefaultTimeout(16000);await page.setViewportSize({width:1440,height:1000});await page.locator('.side-usage[data-connected=true]').waitFor();await openConversation(page,waiting.title);const input=composer(page);
+ await page.evaluate(()=>{
+   const field=document.querySelector('.composer textarea');
+   field.addEventListener('focus',()=>{window.followupFocus=performance.now();},{once:true});
+   const watch=new MutationObserver(()=>{
+     if(document.querySelector('.followup-request:disabled') && window.followupFocus!=null && window.followupDispatch==null){
+       window.followupDispatch=performance.now()-window.followupFocus;watch.disconnect();
+     }
+   });
+   watch.observe(document.querySelector('.composer'),{subtree:true,childList:true,attributes:true});
+ });
+ await input.focus();
  await page.waitForFunction(()=>document.querySelector('.composer textarea')?.dataset.inlineSuggestion==='true');
+ const dispatch=await page.evaluate(()=>window.followupDispatch);assert(Number.isFinite(dispatch) && dispatch<450,'입력 초점 후 기존 550밀리초 강제 대기 없이 추천 시작: '+dispatch);console.log('추천 요청 시작 '+Math.round(dispatch)+'ms (격리 화면)');
  assert.equal(await input.inputValue(),'','추천은 실제 초안과 구분됩니다.');
  assert.match(await input.getAttribute('placeholder'),/한글 검색어/);
  await input.press('Tab');
@@ -14,6 +29,52 @@ async function main(){const root=path.resolve(__dirname,'..'),qa=path.join(root,
  await page.getByRole('button',{name:'진행하기',exact:true}).waitFor();await page.getByRole('button',{name:'다음 작업 추천받기',exact:true}).click();const suggestion=page.getByRole('button',{name:/검색 회귀 검사/});await suggestion.waitFor();assert.equal((await page.evaluate(()=>window.flowrium.bootstrap())).sessions.find(s=>s.id===waiting.id).messages.length,2);await suggestion.click();assert.match(await input.inputValue(),/^기존 검토 메모\n\n한글 검색어/);assert.equal((await page.evaluate(()=>window.flowrium.bootstrap())).sessions.find(s=>s.id===waiting.id).messages.length,2);await input.fill('회귀 검사를 먼저 진행해 주세요.');await page.getByRole('button',{name:'진행하기',exact:true}).click();await page.locator('.message.assistant').filter({hasText:'확인한 결과입니다.'}).waitFor();const sent=(await page.evaluate(()=>window.flowrium.bootstrap())).sessions.find(s=>s.id===waiting.id);assert.equal(sent.messages.filter(m=>m.role==='user').length,2);assert.equal(sent.messages.findLast(m=>m.role==='user').text,'회귀 검사를 먼저 진행해 주세요.');await assert.rejects(page.evaluate(({sessionId,messageId})=>window.flowrium.workflowAction({action:'continueConversation',sessionId,messageId,mode:'plan'}),{sessionId:waiting.id,messageId:waiting.messages.at(-1).id}),error=>/상태가 바뀌/.test(error.message)&&!error.message.includes('Error invoking remote method'));
  await input.fill('다른 대화의 결정 중에도 보존할 초안');await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'입력질문검증',mode:'plan'}),questions.id);await page.locator('.decision-arrival').waitFor();assert(!/검증 문구|비밀|명령/.test(await page.locator('.decision-arrival').innerText()));await page.getByRole('button',{name:'응답하기',exact:true}).click();let popup=page.getByRole('dialog',{name:'알림',exact:true}),form=popup.getByRole('form',{name:'Codex 질문'});await form.waitFor();await form.getByRole('radio',{name:/요약/}).check();await form.getByRole('radio',{name:'직접 입력',exact:true}).check();await form.getByLabel('직접 답변').fill('대화 자료');await form.getByLabel('비밀 답변').fill('저장하지 않을 합성 확인값');await form.getByRole('button',{name:'답변 보내기',exact:true}).click();await form.waitFor({state:'detached'});await popup.getByRole('button',{name:'알림 닫기',exact:true}).click();assert.equal(await input.inputValue(),'다른 대화의 결정 중에도 보존할 초안');
  await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'승인검증',mode:'build'}),questions.id);await page.locator('.decision-arrival').waitFor();await page.getByRole('button',{name:'응답하기',exact:true}).click();popup=page.getByRole('dialog',{name:'알림',exact:true});const card=popup.getByRole('region',{name:'실행 승인 요청'});await card.waitFor();const request=(await page.evaluate(()=>window.flowrium.securityPending())).find(e=>e.type==='approval');await card.getByText('실행 내용과 권한 확인',{exact:true}).click();await card.getByText(/검증용 명령/).waitFor();await card.getByRole('button',{name:'이번 작업 승인',exact:true}).click();await card.waitFor({state:'detached'});await assert.rejects(page.evaluate(requestId=>window.flowrium.approval({requestId,decision:'accept'}),request.requestId),/이미 종료/);await popup.getByRole('button',{name:'알림 닫기',exact:true}).click();assert.equal(await input.inputValue(),'다른 대화의 결정 중에도 보존할 초안');assert(!JSON.stringify(await page.evaluate(()=>window.flowrium.bootstrap())).includes('저장하지 않을 합성 확인값'));
- for(const width of [1440,900,390]){await page.setViewportSize({width,height:1000});assert(await input.isVisible());assert(await input.isEditable());}console.log('실제 화면 / 대기 하단 진행 버튼과 기존 입력창 / 모델 추천 조회 후 초안 추가·수정·명시 전송 / 자동 실행 없음 / 지난 답변 재실행 거절 / 즉시 비밀 없는 알림 / 중앙 질문·승인 직접 응답 / 중복 응답 차단 / 다른 대화 초안·비밀 답변 비보관 / 세 화면 폭 통과');
+ for(const width of [1440,900,390]){await page.setViewportSize({width,height:1000});assert(await input.isVisible());assert(await input.isEditable());}await page.setViewportSize({width:960,height:700});
+ await openConversation(page,completed.title);
+ const complete=page.locator('.chat-continuation').getByRole('button',{name:'완료',exact:true});
+ const proceed=page.locator('.chat-continuation').getByRole('button',{name:'진행하기',exact:true});
+ await complete.waitFor();await proceed.waitFor();
+ const draft='이번 대기를 마쳐도 남겨둘 초안';
+ await composer(page).fill(draft);
+ await page.locator('.dock-status-tabs').getByRole('button',{name:'대기 상태 1개',exact:true}).waitFor();
+ await complete.click();
+ await complete.waitFor({state:'detached'});await proceed.waitFor({state:'detached'});
+ const badge=page.locator('.dock-status-tabs').getByRole('button',{name:'대기 상태 0개',exact:true});
+ await badge.waitFor();
+ const after=await page.evaluate(id=>window.flowrium.bootstrap().then(s=>s.sessions.find(row=>row.id===id)),completed.id);
+ assert.deepEqual(after.messages,completed.messages);
+ assert.equal(after.completedContinuationId,completed.messages.at(-1).id);
+ assert.equal(await composer(page).inputValue(),draft);
+ const target={sessionId:completed.id,messageId:completed.messages.at(-1).id};
+ await page.evaluate(value=>window.flowrium.workflowAction({action:'completeContinuation',...value}),target);
+ await assert.rejects(page.evaluate(value=>window.flowrium.workflowAction({action:'continueConversation',mode:'plan',...value}),target),/상태가 바뀌/);
+ await badge.click();await page.getByText('해당 상태의 대화가 없습니다.',{exact:true}).waitFor();
+ await closeInstalledApp(app,'대기 완료 직후 실제 앱 종료');app=null;
+ app=await _electron.launch({args:[root],env,timeout:45000});
+ const reopened=await app.firstWindow();reopened.setDefaultTimeout(16000);
+ await reopened.locator('.side-usage[data-connected=true]').waitFor();
+ await openConversation(reopened,completed.title);
+ await reopened.locator('.dock-status-tabs').getByRole('button',{name:'대기 상태 0개',exact:true}).waitFor();
+ assert.equal(await reopened.locator('.followup-complete').count(),0);
+ assert.equal(await composer(reopened).inputValue(),draft);
+ const restored=await reopened.evaluate(id=>window.flowrium.bootstrap().then(s=>s.sessions.find(row=>row.id===id)),completed.id);
+ assert.deepEqual(restored.messages,completed.messages);
+ await composer(reopened).fill('완료 후 별도 검토를 요청합니다.');
+ const previousCalls=(await fs.readFile(followupTrace,'utf8')).length;
+ await composer(reopened).press('Enter');
+ await composer(reopened).blur();
+ await reopened.locator('.message.assistant').filter({hasText:'확인한 결과입니다.'}).waitFor();
+ // Reading the response prepares the model request even without input focus.
+ const deadline=Date.now()+8000;
+ while((await fs.readFile(followupTrace,'utf8')).length===previousCalls && Date.now()<deadline)await new Promise(r=>setTimeout(r,30));
+ const preparedCalls=(await fs.readFile(followupTrace,'utf8')).length;
+ assert(preparedCalls>previousCalls,'열린 대화의 답변이 끝나면 읽는 동안 추천을 준비');
+ await composer(reopened).focus();
+ await reopened.waitForFunction(()=>document.querySelector('.composer textarea')?.dataset.inlineSuggestion==='true');
+ assert.equal((await fs.readFile(followupTrace,'utf8')).length,preparedCalls,'준비한 추천을 재사용하고 모델 중복 호출 없음');
+ const resumed=await reopened.evaluate(id=>window.flowrium.bootstrap().then(s=>s.sessions.find(row=>row.id===id)),completed.id);
+ assert.equal(resumed.messages.filter(message=>message.role==='user').length,2);
+ console.log('후속 대기 완료 / 건수와 필터 즉시 갱신 / 전송 없음 / 중복 요청과 지난 답변 보호 / 재시작 후 초안과 대화 보존 / 같은 대화에 새 지시 전송 통과');
+ console.log('실제 화면 / 대기 하단 진행 버튼과 기존 입력창 / 모델 추천 조회 후 초안 추가·수정·명시 전송 / 자동 실행 없음 / 지난 답변 재실행 거절 / 즉시 비밀 없는 알림 / 중앙 질문·승인 직접 응답 / 중복 응답 차단 / 다른 대화 초안·비밀 답변 비보관 / 세 화면 폭 통과');
  }finally{try{if(app)await closeInstalledApp(app,'결정과 후속 작업 검사 앱 종료');}finally{await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:150});}}}
 main().catch(error=>{console.error(error);process.exitCode=1});
