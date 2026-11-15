@@ -33,6 +33,8 @@ async function legacySnapshot(root,{workspace,memory,includeFiles=false}={}){
  root=await directory(root);const entries=[],sourceChecks=[],excluded=[],warnings=[],projects=[],seed=digest(root),projectMap=new Map();
  const cards=path.join(root,'data','projects'),state=path.join(root,'data','state');
  await directory(cards);await directory(state);
+ const keepLegacyFile = (relative, entry, file) =>
+  path.relative(state, file).toLowerCase() !== 'login.json' && fileFilter(relative, entry);
  const cardFiles=(await fs.readdir(cards)).filter(f=>/^[a-z0-9][a-z0-9-]{0,40}\.md$/.test(f)).sort();
  for(const file of cardFiles){
   const cardFile=path.join(cards,file),raw=await bytes(cardFile),{data,body}=frontmatter(raw.toString('utf8')),slug=file.slice(0,-3),key='legacy-'+slug,p=makeProject(entries,key,data.name||slug,'project',Date.parse(data.startedAt),seed);sourceChecks.push({source:cardFile,size:raw.length,sha256:digest(raw)});
@@ -50,7 +52,7 @@ async function legacySnapshot(root,{workspace,memory,includeFiles=false}={}){
   if(Number.isInteger(data.no)&&data.no>=1&&data.no<=99){const n=data.no;entries.push({group:key,...objectEntry('.flowrium/ports/first.json',{version:1,previous:null,data:{projectId:p.id,revision:uuid(seed+'/ports/'+slug),enabled:true,number:n,mode:'automatic',ports:{web:2000+n,admin:2100+n,api:3000+n,db:4000+n,aux:4100+n},updatedAt:iso()}})});}
   if(includeFiles&&workspace&&typeof data.folder==='string'){
    const base=await directory(workspace),folder=path.resolve(base,data.folder),rel=path.relative(base,folder);if(rel==='..'||rel.startsWith('..'+path.sep)||path.isAbsolute(rel))throw Error(p.name+' / 작업 폴더가 선택한 원본 작업 공간을 벗어납니다.');
-   const items=await walk(folder,{filter:(r,e)=>e.name!=='.flowrium'&&fileFilter(r,e),excluded,prefix:p.name+'/'});entries.push(...items.map(e=>({...e,group:key})));
+   const items=await walk(folder,{filter:(r,e,file)=>e.name!=='.flowrium'&&keepLegacyFile(r,e,file),excluded,prefix:p.name+'/'});entries.push(...items.map(e=>({...e,group:key})));
   }
  }
  let chats=[];try{chats=JSON.parse((await bytes(path.join(state,'chats.json'))).toString('utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
@@ -72,9 +74,9 @@ async function legacySnapshot(root,{workspace,memory,includeFiles=false}={}){
   }
   recordSession(entries,p,session,seed);entries.push({group:'raw',...objectEntry('chats/'+meta.id+'.json',raw)});
  }
- const rawState=await walk(state,{filter:fileFilter,excluded,prefix:'원본 상태/'});sourceChecks.push(...rawState);
+ const rawState=await walk(state,{filter:keepLegacyFile,excluded,prefix:'원본 상태/'});sourceChecks.push(...rawState);
  for(const e of rawState){let data=await bytes(e.source);if(e.path.endsWith('.json')){const removed=[];data=Buffer.from(JSON.stringify(scrub(JSON.parse(data.toString()),removed,e.path),null,2));excluded.push(...removed);}entries.push({group:'raw',...objectEntry('state/'+e.path,data)});}
- if(memory){const files=await walk(await directory(memory),{filter:fileFilter,excluded,prefix:'기억/'});sourceChecks.push(...files);for(const e of files){const raw=await bytes(e.source);entries.push({group:'raw',...objectEntry('memory/'+e.path,raw)});if(!e.path.endsWith('.md')||path.basename(e.path)==='MEMORY.md'||e.path.split('/').some(p=>p.startsWith('.')))continue;const {data,body}=frontmatter(raw.toString()),id=uuid(seed+'/memory/'+e.path),rev=uuid(seed+'/memory-rev/'+e.path);if(body.length>16000){warnings.push('긴 기억은 원문에 보존했습니다: '+e.path);continue;}entries.push({group:'app',...objectEntry('personal-memory/'+id+'/first.json',{version:1,id,projectId:null,rev,parent:null,at:iso(),title:string(data.name||path.basename(e.path,'.md'),120),body,role:'',link:'',linked:false,deleted:false})});}}
+ if(memory){const files=await walk(await directory(memory),{filter:keepLegacyFile,excluded,prefix:'기억/'});sourceChecks.push(...files);for(const e of files){const raw=await bytes(e.source);entries.push({group:'raw',...objectEntry('memory/'+e.path,raw)});if(!e.path.endsWith('.md')||path.basename(e.path)==='MEMORY.md'||e.path.split('/').some(p=>p.startsWith('.')))continue;const {data,body}=frontmatter(raw.toString()),id=uuid(seed+'/memory/'+e.path),rev=uuid(seed+'/memory-rev/'+e.path);if(body.length>16000){warnings.push('긴 기억은 원문에 보존했습니다: '+e.path);continue;}entries.push({group:'app',...objectEntry('personal-memory/'+id+'/first.json',{version:1,id,projectId:null,rev,parent:null,at:iso(),title:string(data.name||path.basename(e.path,'.md'),120),body,role:'',link:'',linked:false,deleted:false})});}}
  // 동일한 첨부를 여러 메시지가 참조하는 경우 하나만 보존합니다.
  const unique=new Map();for(const e of entries){const k=e.group+'/'+e.path,old=unique.get(k);if(old&&old.sha256!==e.sha256)throw Error('동일한 경로에 서로 다른 원본 파일이 있습니다.');unique.set(k,e);}
  return{format:'flowrium-transfer',version:1,id:uuid(seed+'/'+digest(JSON.stringify([...unique.values()].map(e=>[e.group,e.path,e.sha256])))),createdAt:iso(),sourceKind:'workspace-records',projects,entries:[...unique.values()],sourceChecks,excluded,warnings,settings:{}};

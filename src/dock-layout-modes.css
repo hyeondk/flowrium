@@ -31,3 +31,9 @@ html[data-dock-resizing=true],html[data-dock-resizing=true] *{cursor:col-resize!
 .dock-panel-menu[role=menu]>button:disabled{opacity:.48;cursor:default;background:transparent;color:var(--muted)}
 @media(max-width:899px){.app-shell .conversation-dock[data-layout-mode=overlay][data-chat-active]{inset:10px 10px 10px auto;width:min(480px,calc(100vw - 30px));height:calc(100dvh - 20px)}.app-shell .conversation-dock[data-minimized=true][data-chat-active],.app-shell .conversation-dock[data-minimized=true][data-chat-active][data-expanded=true]{inset:auto 10px 10px auto;width:min(480px,calc(100vw - 20px));max-height:58dvh}.app-shell .conversation-dock[data-minimized=true][data-chat-active]>.dock-body{max-height:calc(58dvh - 40px)}.conversation-dock[data-minimized=true] .dock-layout-toggle{display:inline-grid!important}}
 @media(prefers-reduced-motion:reduce){.conversation-dock[data-minimized=true]{animation:none!important}}
+.conversation-dock>.dock-notifications[data-pending=false] {
+  color:var(--accent);
+  border-color:var(--line-soft);
+  background:var(--panel);
+}
+.conversation-dock>.dock-notifications small {font-size:11px;white-space:nowrap}

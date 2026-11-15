@@ -1,6 +1,7 @@
 const assert=require("node:assert/strict"),fs=require("node:fs/promises"),path=require("node:path"),os=require("node:os");
 const { _electron }=require("playwright");
 const {Store}=require("../electron/store.cjs"),{registerMemory}=require("../electron/memory.cjs");
+const {dockHome,composer,openConversation}=require("./shell-test-helpers.cjs");
 async function main(){
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),"flowrium-workflow-ui-")),profile=path.join(temp,"설정"),folder=path.join(temp,"기능 검증 프로젝트");
   await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await store.addProject(folder);
@@ -11,10 +12,33 @@ async function main(){
   let app,page;
   async function launch(){app=await _electron.launch({args:[path.resolve(__dirname,"..")],env,timeout:45000});page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(18000);}
   const button=name=>page.getByRole("button",{name,exact:true});
+  async function integratedNotifications(){
+    const dock=await dockHome(page);
+    await dock.locator('.dock-scope-open').filter({hasText:'통합 채팅'}).click();
+    await dock.getByLabel('대화함 검색').waitFor();
+    const entry=dock.getByRole('button',{name:'프로젝트 알림 열기',exact:true});
+    assert(await entry.isVisible(),'우측 통합 대화 목록에 프로젝트 알림 진입점이 없습니다.');
+    if(await entry.locator('small').count()){
+      await page.setViewportSize({width:390,height:844});
+      const fits=await entry.evaluate(row=>{
+        const parts=[...row.children].map(child=>child.getBoundingClientRect());
+        return parts.every((box,i)=>i===0||parts[i-1].right<=box.left+1)&&row.scrollWidth<=row.clientWidth+1;
+      });
+      assert(fits,'좁은 통합 대화의 알림 표시가 겹칩니다.');
+      await page.setViewportSize({width:1440,height:1000});
+    }
+    await entry.click();
+    const popup=page.getByRole('dialog',{name:'알림',exact:true});
+    await popup.waitFor();return popup;
+  }
   async function state(){return page.evaluate(()=>window.flowrium.workflowState());}
   async function wait(fn){for(let n=0;n<160;n++){const value=await state();if(fn(value))return value;await page.waitForTimeout(30);}throw Error("업무 연결 화면 검증 대기 시간 초과");}
   try{
-    await launch();await button("업무 연결 / 비서").click();await page.getByRole("heading",{name:"업무 연결과 비서",exact:true}).waitFor();
+    await launch();
+    let popup=await integratedNotifications();
+    await popup.getByText('아직 도착한 알림이 없습니다.',{exact:true}).waitFor();
+    await popup.getByRole('button',{name:'알림 닫기'}).click();await popup.waitFor({state:'hidden'});
+    await button("업무 연결 / 비서").click();await page.getByRole("heading",{name:"업무 연결과 비서",exact:true}).waitFor();
     await button("대화에 전달").click();await page.getByLabel("보내는 대화",{exact:true}).selectOption(source.id);await page.getByLabel("받는 대화",{exact:true}).selectOption(target.id);
     await page.getByLabel("조사 요청 제목",{exact:true}).fill("분리한 자료 조사");await page.getByLabel("전할 내용",{exact:true}).fill("두 자료의 근거를 비교해 보고하세요.");
     await button("승인할 조사 요청 만들기").click();const proposal=page.locator(".workflow-card").filter({has:page.getByText("분리한 자료 조사",{exact:true})});await proposal.waitFor();
@@ -22,9 +46,32 @@ async function main(){
     await proposal.getByRole("button",{name:"내용 확인하고 승인",exact:true}).click();
     let data=await wait(d=>d.proposals[0].status==="completed"&&d.deliveries.some(r=>r.kind==="result"&&r.status==="sent"));
     assert.equal(data.proposals[0].targetId,target.id);assert.match(data.proposals[0].result,/확인한 결과/);
+    const resultNotice=data.notifications.find(n=>n.kind==='report'&&n.sessionId===source.id);
+    assert(resultNotice,'완료 알림이 원래 프로젝트 대화를 가리켜야 합니다.');
+    const mainView=await page.locator('.main-shell').getAttribute('data-view');
+    const dock=await dockHome(page);await dock.getByRole('button',{name:'새 통합 대화',exact:true}).click();
+    const draft='알림을 확인하는 동안 보존되는 통합 대화 초안';
+    await composer(page).fill(draft);
+    const integrated=(await page.evaluate(()=>window.flowrium.bootstrap())).sessions.find(s=>s.scope==='integrated');
+    popup=await integratedNotifications();
+    const noticeCard=popup.locator('.attention-item').filter({has:page.getByText(resultNotice.title,{exact:true})}).filter({has:page.getByText(resultNotice.body,{exact:true})});
+    await noticeCard.waitFor();
+    assert.equal(await noticeCard.count(),1,'검사 대상은 해당 위임 결과 알림 한 건입니다.');
+    await noticeCard.getByRole('button').first().click();await popup.waitFor({state:'hidden'});
+    const sourceNow=(await page.evaluate(()=>window.flowrium.bootstrap())).sessions.find(s=>s.id===source.id);
+    await page.locator('.session-heading').getByRole('heading',{name:sourceNow.title,exact:true}).waitFor();
+    await wait(d=>d.notifications.some(n=>n.id===resultNotice.id&&n.readAt));
+    assert.equal(await page.locator('.main-shell').getAttribute('data-view'),mainView);
+    await openConversation(page,integrated.title);assert.equal(await composer(page).inputValue(),draft);
     await page.getByLabel("처리한 기록",{exact:true}).check();await proposal.getByRole("button",{name:"목록에서 숨기기",exact:true}).click();await page.getByLabel("숨긴 항목과 미룬 항목",{exact:true}).check();
     await proposal.getByRole("button",{name:"목록에 복원",exact:true}).click();
     await page.getByRole("button",{name:/^알림 \d+$/}).click();await button("모두 읽음").click();await wait(d=>d.notifications.every(n=>n.readAt));
+    popup=await integratedNotifications();
+    await popup.getByRole('button',{name:'읽지 않은 알림',exact:true}).click();
+    await popup.getByText('읽지 않은 알림이 없습니다.',{exact:true}).waitFor();
+    await popup.getByRole('button',{name:'전체 알림 보기',exact:true}).click();
+    await noticeCard.waitFor();
+    await popup.getByRole('button',{name:'알림 닫기'}).click();await popup.waitFor({state:'hidden'});
     await button("읽은 알림 정리").click();assert.equal((await state()).notifications.length,0);
     await button("비서와 예약").click();assert.equal(await page.getByLabel("정한 시간에 프로젝트 감시와 반복 목표 알림 켜기").isChecked(),false);
     await page.getByLabel("보고를 보관할 프로젝트",{exact:true}).selectOption(project.id);await button("비서 설정 저장").click();await button("지금 상태 보고").click();

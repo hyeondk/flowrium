@@ -43,6 +43,33 @@ test('다른 형식의 프로젝트 카드 / 도구 기록 / 첨부 / 기억을 
 test('안전하지 않은 경로 / 심볼릭 링크 / Windows 이름 충돌 / YAML 별칭과 예약 키를 차단한다',async t=>{
  const x=await fixture(t);assert.throws(()=>F.safe('../침입'),/안전하지/);assert.throws(()=>F.safe('aux.txt'),/Windows/);await fs.symlink(x.target,path.join(x.source,'연결'));await assert.rejects(nativeSnapshot(x.store,{includeFiles:true}),/연결 파일/);assert.throws(()=>frontmatter('---\na: &x [x]\nb: *x\n---\n본문'),/별칭/);assert.throws(()=>frontmatter('---\n__proto__: x\n---\n본문'),/예약된 키/);assert.throws(()=>frontmatter('---\na: 1\na: 2\n---\n본문'),/문법/);const manifest={format:'flowrium-transfer',version:1,id:randomUUID(),projects:[],files:[{group:'raw',path:'File.txt',size:0,sha256:F.digest('')},{group:'raw',path:'file.txt',size:0,sha256:F.digest('')}]};assert.throws(()=>F.validateManifest(manifest),/대소문자/);
 });
+test('이전 형식의 로그인 프로필은 읽지 않고 설정과 대화는 보관한다', async t => {
+ const fixtureData = await fixture(t);
+ const root = path.join(fixtureData.root, '이전 앱');
+ const state = path.join(root, 'data', 'state');
+ const cards = path.join(root, 'data', 'projects');
+ await fs.mkdir(cards, {recursive:true});
+ await fs.writeFile(path.join(cards, 'source.md'), '---\nname: 프로젝트\nfolder: "."\n---\n프로젝트 파일도 확인');
+ await fs.mkdir(path.join(state, 'chats'), {recursive:true});
+ await fs.writeFile(path.join(state, 'login.json'), '읽으면 JSON 구문 오류가 생기는 시험용 로그인 자료');
+ await fs.writeFile(path.join(root, 'login.json'), JSON.stringify({page:'프로젝트의 일반 화면 자료'}));
+ await fs.writeFile(path.join(state, 'settings.json'), JSON.stringify({theme:'blue'}));
+ await fs.writeFile(path.join(state, 'chats.json'), JSON.stringify([{id:'chat-1', title:'합성 대화', scope:'global'}]));
+ await fs.writeFile(path.join(state, 'chats', 'chat-1.json'), JSON.stringify([{type:'user', text:'기억할 합성 대화'}]));
+
+ const snapshot = await legacySnapshot(root, {workspace:root, memory:state, includeFiles:true});
+ assert(snapshot.excluded.includes('원본 상태/login.json'));
+ assert(snapshot.excluded.includes('프로젝트/data/state/login.json'));
+ assert(snapshot.excluded.includes('기억/login.json'));
+ assert(!snapshot.entries.some(entry => ['state/login.json','data/state/login.json','memory/login.json'].includes(entry.path)));
+ assert(snapshot.entries.some(entry => entry.group === 'legacy-source' && entry.path === 'login.json'));
+ assert(!snapshot.sourceChecks.some(entry => entry.source === path.join(state, 'login.json')));
+ const settings = snapshot.entries.find(entry => entry.path === 'state/settings.json');
+ assert.deepEqual(JSON.parse((await F.content(settings)).toString()), {theme:'blue'});
+ const original = snapshot.entries.find(entry => entry.path === 'chats/chat-1.json');
+ assert.equal(JSON.parse((await F.content(original)).toString())[0].text, '기억할 합성 대화');
+ assert(snapshot.projects.some(project => project.scope === 'integrated'));
+});
 test('다른 형식 원본이 미리보기 후 바뀌면 변환 캐시가 있어도 적용하지 않는다',async t=>{
  const x=await fixture(t),root=path.join(x.root,'자료');await fs.mkdir(path.join(root,'data','projects'),{recursive:true});await fs.mkdir(path.join(root,'data','state'),{recursive:true});const file=path.join(root,'data','projects','a.md');await fs.writeFile(file,'---\nname: 프로젝트\n---\n원문');const snap=await legacySnapshot(root),m=new Migration(x.store),plan=m.plan(snap,'import');m.plans.get(plan.id).targets[snap.projects[0].key]=path.join(x.target,'새 프로젝트');await fs.writeFile(file,'변경된 원문');await assert.rejects(m.action({action:'applyImport',id:plan.id}),/원본이 바뀌었습니다/);
 });

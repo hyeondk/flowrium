@@ -4,7 +4,7 @@
 
 [다운로드](https://hyeondk.github.io/flowrium/), [릴리스와 설치 파일](https://github.com/hyeondk/flowrium/releases), [터미널 설치](docs/TERMINAL-INSTALL.md), [기능별 지원 범위](docs/FEATURES.md), [Codex 대화 연결](docs/CODEX-CHAT-LINK.md), [사용 범위와 전환 상태](docs/REPLACEMENT-STATUS.md)
 
-[**261115_04**](docs/VALIDATION-261115_04.md)는 채팅 입력창에서 다음 작업을 제안합니다. 마지막 답변을 읽고 빈 입력창을 선택하면 추천 문구를 볼 수 있습니다. `Tab`이나 추천 버튼으로 초안에 넣고 직접 수정해 보내세요. 같은 기기의 Codex 대화는 두 앱에서 순서대로 이어 쓸 수 있습니다. [이번 변경점](docs/release-notes.md) / [대화 연결 방법](docs/CODEX-CHAT-LINK.md)
+**261115_05**에서는 우측 **통합** 탭에서 프로젝트 알림을 열고 관련 대화로 바로 이동할 수 있습니다. 채팅 입력창에서는 다음 작업을 제안합니다. 마지막 답변을 읽고 빈 입력창을 선택하면 추천 문구를 볼 수 있습니다. `Tab`이나 추천 버튼으로 초안에 넣고 직접 수정해 보내세요. 같은 기기의 Codex 대화는 두 앱에서 순서대로 이어 쓸 수 있습니다. [이번 변경점](docs/release-notes.md) / [대화 연결 방법](docs/CODEX-CHAT-LINK.md)
 
 ![예시 프로젝트로 촬영한 실제 대시보드. 오늘의 할 일과 목표 진척, 최근 7일 업무 그래프를 표시합니다.](docs/workspace.png)
 

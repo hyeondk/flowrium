@@ -21,9 +21,10 @@ async function walk(root,{filter=()=>true,excluded=[],prefix=''}={}){
  async function visit(current,relative){
   for(const ent of (await fs.readdir(current,{withFileTypes:true})).sort((a,b)=>a.name.localeCompare(b.name))){
    const rel=relative?relative+'/'+ent.name:ent.name;
-   if(!filter(rel,ent)){excluded.push(prefix+rel);continue;}
+   const file=path.join(current,ent.name);
+   if(!filter(rel,ent,file)){excluded.push(prefix+rel);continue;}
    try{safe(rel);}catch(error){throw Error(`${prefix+rel} / ${error.message}`);}
-   const file=path.join(current,ent.name),stat=await fs.lstat(file);
+   const stat=await fs.lstat(file);
    if(stat.isSymbolicLink()||(!stat.isFile()&&!stat.isDirectory()))throw Error(`${prefix+rel} / 연결 파일이나 특수 파일은 원본을 보존한 채 이관을 중단합니다.`);
    if(stat.isDirectory())await visit(file,rel);else{const data=await bytes(file);result.push({path:rel,sha256:digest(data),size:data.length,source:file});if(result.length>MAX_FILES)throw Error('이관 파일 수가 100,000개를 넘었습니다.');}
   }

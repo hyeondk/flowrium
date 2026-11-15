@@ -1,5 +1,5 @@
 import {useEffect,useId,useRef,useState,type ReactNode,type MouseEvent,type KeyboardEvent as ReactKeyboardEvent} from 'react';
-import {ArrowLeft,ChevronRight,Folder,Globe2,Maximize2,Menu,MoreHorizontal,MessageCircle,MessagesSquare,PanelRight,PanelRightClose,Plus,Search,Settings2,ShieldCheck,X} from 'lucide-react';
+import {ArrowLeft,Bell,ChevronRight,Folder,Globe2,Maximize2,Menu,MoreHorizontal,MessageCircle,MessagesSquare,PanelRight,PanelRightClose,Plus,Search,Settings2,ShieldCheck,X} from 'lucide-react';
 import type {FlowriumEvent,Project,Session} from '../shared/types';
 import type {WorkflowProposal} from '../shared/workflow';
 import {executionLabels,sessionExecution,type ExecutionState} from '../shared/execution-state';
@@ -48,7 +48,14 @@ export default function ConversationDock(props:Props){
     {(chatActive||scope==='assistant')&&<button className="dock-icon" aria-label="대화 화면 설정 열기" title="설정" onClick={props.onSettings}><Settings2 size={18}/></button>}<button className="dock-icon" aria-label="대화함 접기" onClick={props.onClose}><PanelRightClose size={18}/></button></div></header>
    <div className="dock-scope-tabs" aria-label="대화 종류">{([['integrated','통합'],['project','프로젝트'],['general','일반'],['assistant','개인 비서']] as const).map(([key,label])=><button key={key} aria-label={key==='assistant'?'개인 비서 보기':undefined} aria-pressed={scope===key} title={key==='integrated'?'전체 프로젝트의 대화와 알림':label+' 대화'} onClick={()=>group(key)}>{label}{key==='integrated'&&Boolean(props.attentionCount)&&<small>{props.attentionCount}</small>}</button>)}</div>
    <div className="dock-status-tabs" aria-label="대화 진행 상태">{(['running','waiting','decision'] as const).map(state=><button key={state} data-state={state} title={executionLabels[state]+' '+props.counts[state]} aria-label={executionLabels[state]+' 상태 '+props.counts[state]+'개'} aria-pressed={props.filter===state} onClick={()=>{props.onLeaveChat();props.onFilter(props.filter===state?'all':state)}}><i/><span>{executionLabels[state]}</span><strong>{props.counts[state]}</strong></button>)}</div>
-   {props.counts.decision>0&&<button className="dock-decisions" onClick={props.onDecisions}><ShieldCheck size={16}/><span>확인할 결정 {props.counts.decision}건</span><ChevronRight size={15}/></button>}
+   {scope==='integrated'&&!chatActive
+     ? <button className="dock-decisions dock-notifications" data-pending={props.counts.decision>0} aria-label="프로젝트 알림 열기" aria-haspopup="dialog" onClick={props.onDecisions}>
+         <Bell size={16}/><span>프로젝트 알림</span>
+         {props.counts.decision>0&&<small>결정 {props.counts.decision}건</small>}
+         {Boolean(props.attentionCount)&&<small>읽지 않음 {props.attentionCount}건</small>}
+         <ChevronRight size={15}/>
+       </button>
+     : props.counts.decision>0&&<button className="dock-decisions" onClick={props.onDecisions}><ShieldCheck size={16}/><span>확인할 결정 {props.counts.decision}건</span><ChevronRight size={15}/></button>}
    <div className="dock-body">{scope==='assistant'&&!isMinimized&&<div className="dock-page dock-dots">{props.assistantContent}</div>}
     <MotionPresence open={!chatActive&&scope!=='assistant'&&!isMinimized} durationMs={220}>{innerPhase=><div className="dock-page dock-browser" data-phase={innerPhase} inert={innerPhase==='exit'}>
      {scope==='home'&&props.filter==='all'?<>
