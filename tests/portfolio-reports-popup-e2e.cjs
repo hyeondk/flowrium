@@ -12,7 +12,7 @@ async function run() {
     const profile = path.join(temp, '검증 프로필'), log = path.join(temp, '모델 요청.jsonl'), fake = path.join(temp, '검증 모델.cjs');
     const fixture = (await fs.readFile(path.join(__dirname, 'backend-fake-codex.cjs'), 'utf8'))
       .replace('const request = JSON.parse(line);', 'const request = JSON.parse(line); require("node:fs").appendFileSync(' + JSON.stringify(log) + ', JSON.stringify(request) + "\\n");')
-      .replace('{ id: "test-model", model: "test-model", displayName: "검증 모델" },', '{id:"test-model",model:"test-model",displayName:"깊이 검증 모델",isDefault:true,defaultReasoningEffort:"medium",supportedReasoningEfforts:[{reasoningEffort:"medium",description:"균형"},{reasoningEffort:"xhigh",description:"깊이"}]},{id:"fast-model",model:"fast-model",displayName:"빠른 검증 모델",supportedReasoningEfforts:[{reasoningEffort:"minimal"}]}')
+      .replace('{ id: "test-model", model: "test-model", displayName: "검증 모델" }', '{id:"test-model",model:"test-model",displayName:"깊이 검증 모델",isDefault:true,defaultReasoningEffort:"medium",supportedReasoningEfforts:[{reasoningEffort:"medium",description:"균형"},{reasoningEffort:"xhigh",description:"깊이"}]},{id:"fast-model",model:"fast-model",displayName:"빠른 검증 모델",supportedReasoningEfforts:[{reasoningEffort:"minimal"}]}')
       .replace('require("./teams-fake-response.cjs")', 'require(' + JSON.stringify(path.join(__dirname, 'teams-fake-response.cjs')) + ')');
     await fs.writeFile(fake, fixture);
     const store = new Store(profile); await store.load(); await store.saveSettings({ codexPath: fake, theme: 'light' });
