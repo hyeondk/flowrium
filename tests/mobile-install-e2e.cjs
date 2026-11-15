@@ -110,6 +110,8 @@ async function main() {
     assert.equal(await helpDialog.locator('[data-install-details]').isVisible(),false);
     await helpDialog.getByRole('button',{name:'도움말 닫기'}).click();
     await mobile.waitForFunction(()=>document.activeElement?.dataset.settingsGuide==='help');
+    await mobile.evaluate(()=>document.dispatchEvent(new Event('flowrium-install-state')));
+    assert.equal(await mobile.evaluate(()=>document.activeElement?.dataset.settingsGuide),'help','설정 갱신 후에도 원래 도움말 행의 초점을 유지');
     const install=mobile.getByRole('button',{name:'홈 화면에 설치',exact:true});
     await install.click();
     const guide=mobile.getByRole('dialog',{name:'홈 화면에 설치'});

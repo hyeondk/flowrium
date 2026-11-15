@@ -6,4 +6,4 @@
 - **휴대폰 대시보드**에서 오늘 할 일, 최근 7일 흐름, 프로젝트 현황을 보고 **작업중 / 대기 / 결정**에서 해당 대화로 이동할 수 있습니다. 대화 상태는 화면을 보는 동안 2초마다, 다른 앱에서 돌아오면 즉시 확인합니다. [휴대폰 대시보드](https://github.com/hyeondk/flowrium/blob/261115_06/docs/mobile-dashboard-261115_06.png)
 - 휴대폰 카메라로 컴퓨터에 표시된 QR 코드를 스캔하세요. 휴대폰의 하단 **설정**에 **도움말**과 **홈 화면에 설치**가 있습니다. 연결을 다시 켜 임시 주소가 바뀌면 새 주소로 홈 화면에 추가하세요. [휴대폰 설정](https://github.com/hyeondk/flowrium/blob/261115_06/docs/mobile-settings-261115_06.png)
 
-Apple Silicon 맥과 64비트 윈도우용입니다. 맥 공개본은 Apple 미공증 상태로 수동 설치할 수 있습니다. [다운로드](https://hyeondk.github.io/flowrium/) / [터미널 설치](https://github.com/hyeondk/flowrium/blob/261115_06/docs/TERMINAL-INSTALL.md) / [기능 검증 기록](https://github.com/hyeondk/flowrium/blob/261115_06/docs/VALIDATION-261115_06.md)
+Apple Silicon 맥과 64비트 윈도우용입니다. 맥 공개본은 Apple 미공증 상태로 수동 설치할 수 있습니다. [다운로드](https://hyeondk.github.io/flowrium/) / [터미널 설치](https://github.com/hyeondk/flowrium/blob/261115_06/docs/TERMINAL-INSTALL.md) / [기능 검증 기록](https://github.com/hyeondk/flowrium/blob/main/docs/VALIDATION-261115_06.md)
