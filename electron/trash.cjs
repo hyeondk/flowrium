@@ -17,17 +17,38 @@ class TrashRuntime{
  view(entry){return{id:entry.id,kind:entry.kind,title:entry.title,projectName:entry.project.name,deletedAt:entry.deletedAt,native:entry.native.mode,nativeStatus:entry.native.status,notice:entry.notice,...(entry.restoredAt&&{restoredAt:entry.restoredAt})};}
  target(kind,id){if(!['session','project'].includes(kind)||!UUID.test(id||''))throw Error('삭제할 프로젝트 또는 대화를 선택해 주세요.');if(kind==='project'){const project=this.store.state.projects.find(p=>p.id===id);if(!project)throw Error('연결한 프로젝트를 선택해 주세요.');return{kind,id,title:project.name,project,sessions:this.store.state.sessions.filter(s=>s.projectId===id)};}const session=this.store.session(id);return{kind,id,title:session.title,project:this.store.project(session.projectId),sessions:[session]};}
  idle(target){if(this.controller.codexTransfer?.isBusy()||this.controller.history?.pending.has(target.project.id))throw Error('대화 연결 작업을 마친 뒤 삭제해 주세요.');for(const session of target.sessions){if(this.controller.runs.has(session.id)||this.controller.editingSessions.has(session.id)||session.compacting||this.controller.messageQueue?.busy.has(session.id))throw Error('실행 중인 대화는 삭제할 수 없습니다. 먼저 작업을 중지해 주세요.');if(this.controller.messageQueue?.pending(session.id))throw Error('대기 지시를 취소하거나 완료한 뒤 대화를 삭제해 주세요.');}if(this.options.isProjectBusy?.(target.project.id))throw Error('프로젝트에서 실행 중인 작업을 마친 뒤 삭제해 주세요.');}
- fingerprint(target){return hash(JSON.stringify({project:target.project,sessions:target.sessions.map(s=>({id:s.id,title:s.title,updatedAt:s.updatedAt,threadId:s.threadId,codexLink:s.codexLink,queuedMessages:s.queuedMessages,messages:s.messages.length}))}));}
+ fingerprint(target){return hash(JSON.stringify({project:target.project,sessions:target.sessions.map(s=>({id:s.id,title:s.title,updatedAt:s.updatedAt,threadId:s.threadId,codexLink:s.codexLink,desktopThread:s.desktopThread,queuedMessages:s.queuedMessages,messages:s.messages.length}))}));}
  async nativeImpact(target,context){
-  const sessions=target.sessions.filter(s=>s.codexLink?.mode==='linked');
+  const sessions=target.sessions.filter(s=>s.codexLink?.mode==='linked'||!s.codexLink&&s.desktopThread);
   if(!sessions.length)return{available:false,reason:'원래 Codex와 직접 연결된 대화가 없습니다.',roots:[],descendants:[],notice:'ChatGPT 웹 대화의 동기 삭제는 지원하지 않습니다.'};
   const transfer=this.controller.codexTransfer;if(!transfer)throw Error('Codex 대화 연결 기능을 먼저 준비해 주세요.');
   const connected=await transfer.ready(true),device=await transfer.device();this.guard(context);
-  for(const session of sessions)if(session.codexLink.ownerHash!==connected.owner||session.codexLink.deviceHash!==device||session.threadId!==session.codexLink.sourceThreadId)throw Error('원래 계정과 기기에서 연결한 대화만 원본을 처리할 수 있습니다.');
-  const client=transfer.client,roots=[],descendants=new Map(),rootIds=new Set(sessions.map(s=>s.threadId)),archivedRoots=new Set();
-  for(const row of await pages(client,'thread/list',{cwd:target.project.path,archived:true,limit:100,modelProviders:['openai'],useStateDbOnly:true}))if(rootIds.has(row.id))archivedRoots.add(row.id);
+  const client=transfer.client,roots=[],descendants=new Map(),rootIds=new Set(sessions.map(s=>s.threadId)),missing=[],folders=new Map();
   for(const session of sessions){
-   const thread=await D.readThread(client,session.threadId,target.project.path);this.guard(context);roots.push({id:thread.id,title:thread.name||thread.preview||session.title,archived:archivedRoots.has(thread.id),active:D.active(thread)});
+   const link=session.codexLink;
+   const authorized=link?link.ownerHash===connected.owner&&link.deviceHash===device&&link.sourceThreadId===session.threadId
+    :session.desktopThread.ownerHash===connected.owner&&session.desktopThread.threadId===session.threadId;
+   if(!session.threadId||!authorized)throw Error('원래 계정과 기기에서 연결한 대화만 원본을 처리할 수 있습니다.');
+   const cwd=link?target.project.path:session.desktopThread.cwd;
+   if(typeof cwd!=='string'||!path.isAbsolute(cwd))throw Error('연결한 작업 폴더를 확인해 주세요.');
+   folders.set(session.threadId,cwd);
+  }
+  const archivedRoots=new Set();
+  for(const cwd of new Set(folders.values())){
+   for(const row of await pages(client,'thread/list',{cwd,archived:true,limit:100,modelProviders:['openai'],useStateDbOnly:true})){
+    if(rootIds.has(row.id))archivedRoots.add(row.id);
+   }
+   this.guard(context);
+  }
+  for(const session of sessions){
+   const cwd=folders.get(session.threadId);
+   let thread;
+   try{thread=await D.readThread(client,session.threadId,cwd);}
+   catch(error){
+    if(!await this.absentThread(client,session.threadId,error,context))throw error;
+    missing.push({id:session.threadId,title:session.title});continue;
+   }
+   this.guard(context);roots.push({id:thread.id,title:thread.name||thread.preview||session.title,archived:archivedRoots.has(thread.id),active:D.active(thread)});
    for(const archived of [false,true])for(const row of await pages(client,'thread/list',{ancestorThreadId:thread.id,archived,limit:100,modelProviders:['openai'],useStateDbOnly:true})){
     if(!row||typeof row.id!=='string'||!row.parentThreadId||row.ephemeral)throw Error('함께 처리되는 하위 대화 목록을 확인하지 못했습니다. 원본은 보존됩니다.');
     descendants.set(row.id,{id:row.id,title:row.name||row.preview||'하위 작업 대화',parentId:row.parentThreadId,archived,active:D.active(row)});if(descendants.size>5000)throw Error('하위 대화가 많아 한 번에 처리할 수 없습니다. 원래 Codex에서 확인해 주세요.');
@@ -37,9 +58,18 @@ class TrashRuntime{
   const affected=new Set([...rootIds,...descendants.keys()]),selected=new Set(target.sessions.map(s=>s.id));
   if(this.store.visibleSessions().some(s=>!selected.has(s.id)&&(affected.has(s.threadId)||s.codexLink?.mode==='linked'&&affected.has(s.codexLink.sourceThreadId))))throw Error('다른 Flowrium 항목도 같은 원본과 연결되어 있습니다. 해당 연결을 먼저 정리해 주세요.');
   if([...roots,...descendants.values()].some(item=>item.active))throw Error('원래 Codex 또는 하위 작업 대화가 실행 중입니다. 작업을 마친 뒤 다시 확인해 주세요.');
-  this.guard(context);return{available:true,roots:[...new Map(roots.map(r=>[r.id,r])).values()],descendants:[...descendants.values()],notice:'원래 Codex 대화와 그 대화에서 자동 생성된 하위 작업 대화에 함께 적용됩니다. 영구 삭제한 원본은 복원할 수 없습니다. 별도로 만든 분기는 이 목록에 없으면 대상이 아닙니다.',client};
+  this.guard(context);return{available:roots.length>0,missing,ownerHash:connected.owner,deviceHash:device,...(!roots.length&&{reason:'현재 계정의 일반 목록과 보관 목록에서 원본을 찾지 못했습니다. 이 기기의 항목은 휴지통으로 옮길 수 있습니다.'}),roots:[...new Map(roots.map(r=>[r.id,r])).values()],descendants:[...descendants.values()],notice:'원래 Codex 대화와 그 대화에서 자동 생성된 하위 작업 대화에 함께 적용됩니다. 영구 삭제한 원본은 복원할 수 없습니다. 별도로 만든 분기는 이 목록에 없으면 대상이 아닙니다.',client};
  }
- signature(impact){return hash(JSON.stringify([...impact.roots,...impact.descendants].map(r=>({id:r.id,parentId:r.parentId,archived:r.archived,active:r.active})).sort((a,b)=>a.id.localeCompare(b.id))));}
+ async absentThread(client,id,error,context){
+  if(error.rpcCode!==-32600||!['thread not loaded: '+id,'no rollout found for thread id '+id].includes(error.rpcMessage))return false;
+  for(const archived of [false,true]){
+   this.guard(context);
+   const rows=await pages(client,'thread/list',{archived,limit:100,sourceKinds:['cli','vscode','exec','appServer','unknown'],useStateDbOnly:true,modelProviders:[]});
+   if(rows.some(row=>row.id===id))return false;
+  }
+  this.guard(context);return true;
+ }
+ signature(impact){return hash(JSON.stringify([...impact.roots,...impact.descendants,...(impact.missing||[]).map(r=>({...r,missing:true}))].map(r=>({missing:r.missing,id:r.id,parentId:r.parentId,archived:r.archived,active:r.active})).sort((a,b)=>a.id.localeCompare(b.id))));}
  localKey(entry){return entry.kind+':'+entry.project.id+':'+(entry.kind==='session'?entry.session.id:entry.project.id);}
  async trashDirectory(context){this.guard(context);const directory=await this.folder(context.owner),stat=await fs.lstat(directory);if(!stat.isDirectory()||stat.isSymbolicLink()||!sameFilesystemPath(await fs.realpath(directory),directory))throw Error('휴지통 저장 위치가 바뀌었습니다. 자료를 보존했습니다.');this.guard(context);return{directory,dev:stat.dev,ino:stat.ino};}
  async purgeSnapshot(id,context){const directory=await this.trashDirectory(context),file=path.join(directory.directory,id+'.json');if(!UUID.test(id||''))throw Error('휴지통 항목을 선택해 주세요.');const stat=await fs.lstat(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>MAX_BYTES)throw Error('휴지통 기록이 일반 파일이 아니거나 읽기 한도를 넘었습니다. 자료를 보존했습니다.');const handle=await fs.open(file,require('node:fs').constants.O_RDONLY|(require('node:fs').constants.O_NOFOLLOW||0));let bytes;try{const before=await handle.stat();if(before.dev!==stat.dev||before.ino!==stat.ino||before.size!==stat.size)throw Error('휴지통 기록이 변경됐습니다. 다시 확인해 주세요.');bytes=await handle.readFile();const after=await handle.stat();if(after.dev!==before.dev||after.ino!==before.ino||after.size!==before.size||after.mtimeMs!==before.mtimeMs)throw Error('휴지통 기록이 변경됐습니다. 다시 확인해 주세요.');}finally{await handle.close();}const entry=await this.read(id,context);if(hash(JSON.stringify(entry))!==hash(JSON.stringify(JSON.parse(bytes.toString('utf8')))))throw Error('휴지통 기록이 변경됐습니다. 다시 확인해 주세요.');this.guard(context);return{entry,file,directory,sha256:hash(bytes),bytes:bytes.length};}
@@ -62,36 +92,58 @@ class TrashRuntime{
   for(const row of selected){try{this.guard(plan.context);this.purgeIdle(row.entry);const actual=await this.purgeSnapshot(row.entry.id,plan.context);if(actual.sha256!==row.sha256||actual.directory.dev!==row.directory.dev||actual.directory.ino!==row.directory.ino)throw Error('휴지통 기록이 변경돼 보존했습니다.');this.guard(plan.context);await fs.unlink(actual.file);deletedIds.push(row.entry.id);}catch(error){try{this.guard(plan.context);}catch{throw Error('계정이나 잠금 상태가 바뀌어 정리를 중지했습니다. 이미 처리한 '+deletedIds.length+'개 기록은 복원할 수 없습니다. 현재 계정에서 다시 확인해 주세요.');}failed.push({id:row.entry.id,title:row.entry.title,message:error.code==='EACCES'||error.code==='EPERM'?'파일 권한으로 삭제하지 못했습니다. 기록을 보존했습니다.':String(error.message)});}}
   this.guard(plan.context);return{deletedIds,failed,notice:failed.length?'휴지통 기록 '+deletedIds.length+'개를 영구 삭제하고 '+failed.length+'개는 처리하지 못했습니다. 남은 항목을 다시 확인해 주세요.':'휴지통 기록 '+deletedIds.length+'개를 영구 삭제했습니다. 원래 대화와 프로젝트 파일은 보존했습니다.'};
  }
- async preview(input){const context=this.context();this.guard(context);await this.store.syncConversationOwner();const target=this.target(input.kind,input.id);this.idle(target);let native;try{native=await this.nativeImpact(target,context);}catch(error){this.guard(context);native={available:false,reason:String(error.message),roots:[],descendants:[],notice:'원본은 변경하지 않습니다. Flowrium 항목만 휴지통으로 옮길 수 있습니다.'};}this.guard(context);const token=randomUUID(),{client,...safe}=native;const result={token,kind:target.kind,id:target.id,title:target.title,projectName:target.project.name,conversations:target.sessions.length,native:safe,notice:target.kind==='project'?'Flowrium의 프로젝트 연결과 목록만 휴지통으로 옮깁니다. 작업 폴더와 원래 앱의 프로젝트는 보존됩니다.':'Flowrium 대화 항목을 휴지통으로 옮깁니다. 첨부와 프로젝트 파일은 보존되며 휴지통에서 복원할 수 있습니다.'};for(const [id,plan]of this.plans)if(plan.expires<Date.now())this.plans.delete(id);this.plans.set(token,{context,expires:Date.now()+5*60000,kind:target.kind,id:target.id,fingerprint:this.fingerprint(target),native:safe});return result;}
+ present(kind,id){return kind==='session'?this.store.peekSession(id):this.store.state.projects.find(project=>project.id===id);}
+ async previousRemoval(kind,id,context){
+  if(!['project','session'].includes(kind)||!UUID.test(id||'')||this.present(kind,id))return;
+  const records=await this.purgeRecords(context);
+  return records.map(row=>row.entry).filter(entry=>entry.kind===kind&&(kind==='session'?entry.session.id:entry.project.id)===id&&this.purgeVisible(entry)).sort((a,b)=>b.deletedAt.localeCompare(a.deletedAt))[0];
+ }
+ async preview(input){const context=this.context();this.guard(context);await this.store.syncConversationOwner();for(const [id,plan] of this.plans)if(plan.expires<Date.now())this.plans.delete(id);const removed=await this.previousRemoval(input.kind,input.id,context);
+  if(removed){
+   const token=randomUUID(),notice='이 항목은 이미 휴지통으로 이동했습니다. 목록을 갱신하면 반영됩니다.';
+   this.guard(context);this.plans.set(token,{context,expires:Date.now()+5*60000,receipt:removed.id,kind:input.kind,id:input.id});
+   return {token,id:input.id,kind:input.kind,title:removed.title,projectName:removed.project.name,conversations:0,alreadyRemoved:true,notice,native:{available:false,roots:[],descendants:[],notice}};
+  }
+  const target=this.target(input.kind,input.id);this.idle(target);let native;try{native=await this.nativeImpact(target,context);}catch(error){this.guard(context);native={available:false,reason:String(error.message),roots:[],descendants:[],notice:'원본은 변경하지 않습니다. Flowrium 항목만 휴지통으로 옮길 수 있습니다.'};}this.guard(context);const token=randomUUID(),{client,ownerHash,deviceHash,...safe}=native;const result={token,kind:target.kind,id:target.id,title:target.title,projectName:target.project.name,conversations:target.sessions.length,native:safe,notice:target.kind==='project'?'Flowrium의 프로젝트 연결과 목록만 휴지통으로 옮깁니다. 작업 폴더와 원래 앱의 프로젝트는 보존됩니다.':'Flowrium 대화 항목을 휴지통으로 옮깁니다. 첨부와 프로젝트 파일은 보존되며 휴지통에서 복원할 수 있습니다.'};this.plans.set(token,{context,expires:Date.now()+5*60000,kind:target.kind,id:target.id,fingerprint:this.fingerprint(target),native:safe});return result;}
  async list(){const context=this.context();this.guard(context);await this.store.syncConversationOwner();const directory=await this.folder(context.owner),result=[];for(const file of await fs.readdir(directory)){if(!/^[a-f0-9-]{36}\.json$/i.test(file))continue;const entry=await this.read(file.slice(0,-5),context),present=entry.kind==='session'?this.store.peekSession(entry.session.id):this.store.state.projects.find(p=>p.id===entry.project.id);if(entry.status==='deleted'||entry.status==='prepared'&&!present)result.push(this.view(entry));}this.guard(context);return result.sort((a,b)=>b.deletedAt.localeCompare(a.deletedAt));}
  async delete(input){
   const plan=this.plans.get(input.token);if(!plan||plan.expires<Date.now())throw Error('삭제 확인이 만료됐습니다. 대상과 영향을 다시 확인해 주세요.');this.guard(plan.context);
+  if(plan.receipt){
+   const entry=await this.read(plan.receipt,plan.context);this.guard(plan.context);
+   if(input.native!==(plan.mode||'keep')||input.native==='delete'&&input.confirmTitle!==entry.title||this.present(plan.kind,plan.id)||!this.purgeVisible(entry))throw Error('항목 상태가 바뀌었습니다. 목록을 다시 확인해 주세요.');
+   return {entry:this.view(entry),notice:plan.mode?entry.notice:'이미 휴지통에 있는 항목입니다. 목록을 갱신했습니다.'};
+  }
   if(!['keep','archive','delete'].includes(input.native))throw Error('원래 대화의 처리 방법을 선택해 주세요.');const target=this.target(plan.kind,plan.id);this.idle(target);if(plan.fingerprint!==this.fingerprint(target))throw Error('확인 후 항목이 바뀌었습니다. 변경된 내용을 다시 확인해 주세요.');
   let impact;if(input.native!=='keep'){if(!plan.native.available)throw Error('이 항목은 원래 Codex 대화를 처리할 수 없습니다.');if(input.native==='delete'&&input.confirmTitle!==target.title)throw Error('영구 삭제하려면 대상 이름을 정확히 입력해 주세요.');impact=await this.nativeImpact(target,plan.context);if(this.signature(impact)!==this.signature(plan.native))throw Error('하위 대화나 보관 상태가 바뀌었습니다. 전체 영향을 다시 확인해 주세요.');}
   this.guard(plan.context);this.idle(target);
-  const repository=this.store.repositories.get(target.project.id),link=target.sessions.find(s=>s.codexLink?.mode==='linked')?.codexLink,entry={version:1,id:randomUUID(),owner:plan.context.owner,kind:target.kind,title:target.title,project:clone(target.project),deletedAt:stamp(),status:'prepared',native:{mode:input.native,status:input.native==='keep'?'kept':'failed',roots:impact?.roots||[],descendants:impact?.descendants||[],ownerHash:link?.ownerHash,deviceHash:link?.deviceHash,attempted:[],completed:[],archivedIds:[]},...(target.kind==='session'?{session:clone(target.sessions[0])}:{bindings:target.sessions.filter(s=>s.threadId).map(s=>({id:s.id,threadId:s.threadId,revision:repository?.heads.get(s.id)}))})};
+  const repository=this.store.repositories.get(target.project.id),entry={version:1,id:randomUUID(),owner:plan.context.owner,kind:target.kind,title:target.title,project:clone(target.project),deletedAt:stamp(),status:'prepared',native:{mode:input.native,status:input.native==='keep'?'kept':'failed',roots:impact?.roots||[],descendants:impact?.descendants||[],ownerHash:impact?.ownerHash,deviceHash:impact?.deviceHash,missing:impact?.missing?.map(row=>row.id)||[],attempted:[],completed:[],archivedIds:[]},...(target.kind==='session'?{session:clone(target.sessions[0])}:{bindings:target.sessions.filter(s=>s.threadId).map(s=>({id:s.id,threadId:s.threadId,...(s.desktopThread&&{desktopThread:clone(s.desktopThread)}),revision:repository?.heads.get(s.id)}))})};
   // 먼저 복원 자료를 보존한다. 프로젝트 원본 폴더에는 삭제 명령을 보내지 않는다.
   await this.write(entry,true);this.guard(plan.context);
   try{if(target.kind==='session')await this.store.deleteSession(target.id);else await this.store.disconnectProject(target.id);}
   catch(error){entry.status='restored';entry.notice='삭제가 반영되지 않아 기존 항목을 유지했습니다.';await this.write(entry);throw error;}
-  entry.status='deleted';await this.write(entry);this.plans.delete(input.token);
+  entry.status='deleted';await this.write(entry);
   if(impact){
-   for(const root of impact.roots){try{this.guard(plan.context);entry.native.attempted.push(root.id);await this.write(entry);this.guard(plan.context);await impact.client.request(input.native==='archive'?'thread/archive':'thread/delete',{threadId:root.id});entry.native.completed.push(root.id);this.controller.loadedThreads.delete(root.id);
+   for(const root of impact.roots){try{this.guard(plan.context);entry.native.attempted.push(root.id);await this.write(entry);this.guard(plan.context);try{await impact.client.request(input.native==='archive'?'thread/archive':'thread/delete',{threadId:root.id});}catch(error){
+     if(input.native!=='delete'||impact.descendants.length||!await this.absentThread(impact.client,root.id,error,plan.context))throw error;
+     entry.native.missing.push(root.id);this.controller.loadedThreads.delete(root.id);await this.write(entry);continue;
+    }entry.native.completed.push(root.id);this.controller.loadedThreads.delete(root.id);
     if(input.native==='archive'){if(!root.archived)entry.native.archivedIds.push(root.id);const before=new Map(impact.descendants.map(d=>[d.id,d])),archived=await pages(impact.client,'thread/list',{ancestorThreadId:root.id,archived:true,limit:100,modelProviders:['openai'],useStateDbOnly:true});for(const row of archived)if(before.has(row.id)&&!before.get(row.id).archived)entry.native.archivedIds.push(row.id);const nowArchived=new Set(archived.map(row=>row.id));if(impact.descendants.some(row=>row.parentId===root.id&&!row.archived&&!nowArchived.has(row.id)))entry.notice='원래 Codex 대화는 보관했지만 일부 하위 대화의 보관을 확인하지 못했습니다. 원래 앱에서 해당 목록을 확인해 주세요.';}
     await this.write(entry);
    }catch(error){entry.notice='Flowrium 항목은 휴지통으로 옮겼지만 원래 Codex 처리에서 오류가 발생했습니다. '+String(error.message);break;}}
-   entry.native.status=entry.native.completed.length===impact.roots.length&&!entry.notice?'completed':entry.native.completed.length?'partial':'failed';
+   entry.native.status=impact.roots.every(root=>entry.native.completed.includes(root.id)||entry.native.missing.includes(root.id))&&!entry.notice?'completed':entry.native.completed.length?'partial':'failed';
   }
+  if(!entry.notice&&entry.native.missing.length)entry.notice='Flowrium 항목을 휴지통으로 옮겼습니다. 원래 대화 '+entry.native.completed.length+'개를 처리했고 '+entry.native.missing.length+'개는 Codex 목록에 없습니다.';
   entry.notice||=input.native==='delete'?'Flowrium 항목을 휴지통으로 옮기고 원래 Codex 대화를 영구 삭제했습니다. 복원하면 Flowrium의 독립 사본만 복원됩니다.':input.native==='archive'?'Flowrium 항목을 휴지통으로 옮기고 원래 Codex 대화를 보관했습니다. 복원하면 이번에 보관한 대화도 다시 표시합니다.':'휴지통으로 옮겼습니다. 원래 대화와 작업 폴더는 보존했습니다.';
-  await this.write(entry);this.guard(plan.context);return{entry:this.view(entry),notice:entry.notice};
+  await this.write(entry);this.guard(plan.context);plan.receipt=entry.id;plan.mode=input.native;return{entry:this.view(entry),notice:entry.notice};
  }
- detached(session,entry){const value=clone(session),deleted=new Set(entry.native.mode==='delete'?[...entry.native.completed,...entry.native.attempted||[]]:[]);if(deleted.has(value.threadId)||value.codexLink?.mode==='linked'&&deleted.has(value.codexLink.sourceThreadId)){delete value.threadId;if(value.codexLink)value.codexLink.mode='copy';}return value;}
+ detached(session,entry){const value=clone(session),deleted=new Set(entry.native.mode==='delete'?[...entry.native.completed,...entry.native.attempted||[],...entry.native.missing||[]]:[]);if(deleted.has(value.threadId)||value.codexLink?.mode==='linked'&&deleted.has(value.codexLink.sourceThreadId)){delete value.threadId;delete value.desktopThread;if(value.codexLink)value.codexLink.mode='copy';}return value;}
  async restore(input){const context=this.context();this.guard(context);await this.store.syncConversationOwner();const entry=await this.read(input.id,context);this.guard(context);if(entry.status==='restored')throw Error('이미 복원한 항목입니다. 기존 자료를 보존했습니다.');
   let restored;if(entry.kind==='session'){if(this.store.peekSession(entry.session.id))throw Error('같은 대화가 이미 있습니다. 기존 대화를 보존했습니다.');this.store.project(entry.project.id);restored=await this.store.restoreSession(this.detached(entry.session,entry));}
-  else{if(this.store.state.projects.some(p=>p.id===entry.project.id||samePath(p.path,entry.project.path)))throw Error('같은 프로젝트가 이미 연결되어 있습니다. 기존 자료를 보존했습니다.');const metadata=await readJSON(path.join(entry.project.path,'.flowrium','project.json'));if(metadata.id!==entry.project.id)throw Error('프로젝트 식별자가 바뀌었습니다. 현재 자료를 보존했습니다.');restored=await this.store.addProject(entry.project.path);const repository=this.store.repositories.get(restored.id);for(const binding of entry.bindings||[]){const session=this.store.state.sessions.find(s=>s.id===binding.id);if(session&&repository?.heads.get(binding.id)===binding.revision)session.threadId=binding.threadId;}for(const session of this.store.state.sessions.filter(s=>s.projectId===restored.id)){const detached=this.detached(session,entry);if(!detached.threadId)delete session.threadId;Object.assign(session,detached);for(const queued of session.queuedMessages||[])if(['queued','sending'].includes(queued.status))queued.status='cancelled';}await this.store.save();}
+  else{if(this.store.state.projects.some(p=>p.id===entry.project.id||samePath(p.path,entry.project.path)))throw Error('같은 프로젝트가 이미 연결되어 있습니다. 기존 자료를 보존했습니다.');const metadata=await readJSON(path.join(entry.project.path,'.flowrium','project.json'));if(metadata.id!==entry.project.id)throw Error('프로젝트 식별자가 바뀌었습니다. 현재 자료를 보존했습니다.');restored=await this.store.addProject(entry.project.path);const repository=this.store.repositories.get(restored.id);for(const binding of entry.bindings||[]){const session=this.store.state.sessions.find(s=>s.id===binding.id);if(session&&repository?.heads.get(binding.id)===binding.revision){session.threadId=binding.threadId;if(binding.desktopThread?.threadId===binding.threadId&&binding.desktopThread.ownerHash===context.owner)session.desktopThread=clone(binding.desktopThread);}}for(const session of this.store.state.sessions.filter(s=>s.projectId===restored.id)){const detached=this.detached(session,entry);if(!detached.threadId){delete session.threadId;delete session.desktopThread;}Object.assign(session,detached);for(const queued of session.queuedMessages||[])if(['queued','sending'].includes(queued.status))queued.status='cancelled';}await this.store.save();}
   let notice='휴지통 항목을 복원했습니다. 대기 지시는 자동 실행하지 않습니다.';
   if(entry.native.mode==='archive'&&entry.native.archivedIds.length){try{const transfer=this.controller.codexTransfer;if(!transfer)throw Error('Codex 연결을 확인해 주세요.');const connected=await transfer.ready(true);if(connected.owner!==entry.native.ownerHash||await transfer.device()!==entry.native.deviceHash)throw Error('원래 계정과 기기에서 보관을 해제해 주세요.');for(const threadId of [...new Set(entry.native.archivedIds)]){this.guard(context);await transfer.client.request('thread/unarchive',{threadId});}}catch(error){notice+=' Flowrium 기록은 복원했지만 원래 Codex 보관 해제는 직접 확인해 주세요. '+String(error.message);}}
   if(entry.native.mode==='delete'&&entry.native.completed.length)notice+=' 영구 삭제한 원래 Codex 대화는 돌아오지 않으며 독립 사본으로 복원했습니다.';
+  else if(entry.native.mode==='delete'&&entry.native.missing?.length)notice+=' Codex 목록에 없던 원본은 독립 사본으로 복원했습니다.';
   else if(entry.native.mode==='delete'&&entry.native.attempted?.length)notice+=' 원본 영구 삭제 요청의 결과가 확인되지 않아 안전하게 독립 사본으로 복원했습니다. 원래 Codex의 상태는 직접 확인해 주세요.';
   entry.status='restored';entry.restoredAt=stamp();entry.notice=notice;await this.write(entry);this.guard(context);return{entry:this.view(entry),notice,...(entry.kind==='session'?{restoredSessionId:restored.id}:{restoredProjectId:restored.id})};
  }

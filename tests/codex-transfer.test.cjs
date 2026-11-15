@@ -9,7 +9,7 @@ class Client extends EventEmitter{
   if(method==='account/read')return{account:{type:'chatgpt'}};
   if(method==='thread/list')return{data:[...this.threads.values()].filter(t=>!params.cwd||t.cwd===params.cwd),nextCursor:null};
   if(method==='thread/read'){const thread=this.threads.get(params.threadId);if(!thread)throw Error('대화 없음');return{thread:structuredClone(thread)};}
-  if(method==='thread/turns/list')return{data:structuredClone(this.turns.get(params.threadId)||[]).map(turn=>params.itemsView==='notLoaded'?{...turn,itemsView:'notLoaded',items:[]}:turn),nextCursor:null};
+  if(method==='thread/turns/list'){let turns=structuredClone(this.turns.get(params.threadId)||[]);if(params.sortDirection==='desc')turns.reverse();return{data:turns.slice(0,params.limit||turns.length).map(turn=>params.itemsView==='notLoaded'?{...turn,itemsView:'notLoaded',items:[]}:turn),nextCursor:null};}
   if(method==='thread/items/list'){const turn=this.turns.get(params.threadId).find(t=>t.id===params.turnId),items=turn.extraItems||turn.items.map(item=>({item})),offset=Number(params.cursor||0),data=items.slice(offset,offset+params.limit);return{data:structuredClone(data),nextCursor:offset+data.length<items.length?String(offset+data.length):null};}
   if(method==='thread/fork'){const original=this.threads.get(params.threadId),id='사본-'+this.calls.length;this.threads.set(id,{...original,id,status:{type:'idle'}});this.turns.set(id,structuredClone(this.turns.get(params.threadId)));return{thread:{...original,id}};}
   if(method==='thread/resume')return{thread:this.threads.get(params.threadId)};
@@ -26,7 +26,18 @@ client.turns.set('원본대화',[{id:'첫작업',status:'completed',startedAt:17
 t.after(async()=>{await runtime.shutdown();await store.queue;await fs.rm(root,{recursive:true,force:true})});return{root,folder,store,project,client,controller,runtime,setRevision:v=>revision=v,setEpoch:v=>epoch=v,setOwner:v=>owner=v,setAllowed:v=>allowed=v,preview:()=>runtime.action({action:'preview',projects:[{name:'지정한 프로젝트 이름',path:folder,threadIds:['원본대화']}]})};}
 test('프로젝트 대화의 본문 / 도구 / 첨부 참조 / 모든 항목을 읽고 원문 사본과 원래 실행 연결을 보존한다',async t=>{const f=await fixture(t),plan=await f.preview();assert.equal(plan.entries[0].messages,5);assert.equal(plan.entries[0].attachments,1);assert(f.client.calls.every(c=>['account/read','thread/read','thread/turns/list','thread/items/list'].includes(c.method)));const original=JSON.stringify(f.client.turns.get('원본대화'));const result=await f.runtime.action({action:'apply',planId:plan.id});assert.equal(result.imported,1);assert.equal(result.failed,0);assert.equal(f.store.state.projects[0].name,'지정한 프로젝트 이름');const session=f.store.state.sessions[0];assert.equal(session.threadId,'원본대화');assert.equal(session.sourceThreadId,'원본대화');assert.equal(session.title,'원래 대화 제목');assert.equal(session.messages[1].text.includes('원래 도구 결과'),true);assert.equal(session.createdAt,'2023-11-14T22:13:20.000Z');const raw=await f.runtime.action({action:'readOriginal',receiptId:result.id,threadId:'원본대화'});assert(raw.text.includes('원래첨부.png'));assert.equal(JSON.stringify(f.client.turns.get('원본대화')),original);assert.equal(f.client.calls.some(c=>['thread/resume','thread/fork','turn/start','thread/archive','thread/delete'].includes(c.method)),false);const reload=new Store(path.join(f.root,'설정'));await reload.load();assert.equal(reload.state.sessions[0].threadId,'원본대화');assert.equal(reload.state.sessions[0].messages.length,5);});
 test('동일 대화 재시도는 중복을 만들지 않고 원본 추가 본문은 명시적 새로고침으로 반영한다',async t=>{const f=await fixture(t);let p=await f.preview();await f.runtime.apply({planId:p.id});p=await f.preview();const repeated=await f.runtime.apply({planId:p.id});assert.equal(repeated.skipped,1);assert.equal(f.store.state.sessions.length,1);const session=f.store.state.sessions[0],oldArchive=session.codexLink.archivePath;f.client.turns.get('원본대화').push({id:'외부작업',status:'completed',startedAt:1700000050,completedAt:1700000051,itemsView:'full',items:[{type:'agentMessage',id:'외부답변',text:'다른 앱에서 추가한 답변'}]});f.client.threads.get('원본대화').updatedAt=1700000051;f.controller.loadedThreads.add('원본대화');await f.runtime.beforeSend(session.id);assert.equal(session.messages.at(-1).text,'다른 앱에서 추가한 답변');assert.equal(session.threadId,'원본대화');assert.equal(f.controller.loadedThreads.has('원본대화'),false);assert.notEqual(session.codexLink.archivePath,oldArchive);await fs.access(path.join(f.folder,oldArchive));});
-test('원래 앱에서 실행 중인 대화는 이관만 하고 다음 실행은 명시적 완료 확인과 새로고침 뒤 허용한다',async t=>{const f=await fixture(t),p=await f.runtime.preview({projects:[{name:'프로젝트',path:f.folder,threadIds:['원본대화']}],activeThreadIds:['원본대화']});await f.runtime.apply({planId:p.id});const session=f.store.state.sessions[0];await assert.rejects(f.runtime.beforeSend(session.id),/원래 앱/);await assert.rejects(f.runtime.refresh(session.id),/가져올 때/);f.client.threads.get('원본대화').status={type:'active'};await assert.rejects(f.runtime.refresh(session.id,{externalFinished:true}),/다른 앱/);f.client.threads.get('원본대화').status={type:'idle'};await f.runtime.refresh(session.id,{externalFinished:true});assert.equal(session.codexLink.activeAtImport,false);await f.runtime.beforeSend(session.id);});
+test('실행 중에 연결한 대화는 실제 작업 종료를 확인한 뒤 별도 버튼 없이 이어 쓴다',async t=>{
+ const f=await fixture(t),p=await f.runtime.preview({projects:[{name:'프로젝트',path:f.folder,threadIds:['원본대화']}],activeThreadIds:['원본대화']});
+ await f.runtime.apply({planId:p.id});const session=f.store.state.sessions[0],source=f.client.threads.get('원본대화');
+ source.status={type:'active'};
+ assert.deepEqual(await f.runtime.action({action:'sync',sessionId:session.id}),{sync:'active'});
+ await assert.rejects(f.runtime.beforeSend(session.id),/다른 앱/);
+ source.status={type:'notLoaded'};const last=f.client.turns.get('원본대화').at(-1);last.status='inProgress';
+ assert.deepEqual(await f.runtime.action({action:'sync',sessionId:session.id}),{sync:'active'});
+ await assert.rejects(f.runtime.beforeSend(session.id),/다른 앱/);
+ last.status='completed';assert.deepEqual(await f.runtime.action({action:'sync',sessionId:session.id}),{sync:'current'});
+ assert.equal(session.codexLink.activeAtImport,false);await f.runtime.beforeSend(session.id);
+});
 test('선택한 독립 사본만 fork하고 진행 중인 대화는 마지막 완료 작업까지 복사한다',async t=>{const f=await fixture(t),p=await f.runtime.preview({projects:[{name:'프로젝트',path:f.folder,threadIds:['원본대화']}],activeThreadIds:['원본대화']});const r=await f.runtime.apply({planId:p.id,mode:'copy'});assert.equal(r.imported,1);assert.notEqual(f.store.state.sessions[0].threadId,'원본대화');assert.equal(f.store.state.sessions[0].codexLink.mode,'copy');const call=f.client.calls.find(c=>c.method==='thread/fork');assert.equal(call.params.lastTurnId,'둘째작업');assert.equal(call.params.excludeTurns,true);assert.equal(f.client.calls.some(c=>['turn/start','thread/delete','thread/archive'].includes(c.method)),false);});
 test('다른 프로젝트와 하위 에이전트는 원문 저장 전 차단하고 계정 변경은 연결 갱신을 거절한다',async t=>{const f=await fixture(t);f.client.threads.set('하위대화',{...f.client.threads.get('원본대화'),id:'하위대화',parentThreadId:'원본대화',source:{subAgent:{threadSpawn:{parent_thread_id:'원본대화'}}}});const p=await f.runtime.preview({projects:[{name:'프로젝트',path:f.folder,threadIds:['원본대화','하위대화']}]});assert.match(p.entries[1].error,/사용자 대화/);await assert.rejects(f.runtime.apply({planId:p.id}),/읽을 수 있는/);const r=await f.runtime.apply({planId:p.id,threadIds:['원본대화']});assert.equal(r.imported,1);f.setOwner('다른 계정');await assert.rejects(f.runtime.refresh(f.store.state.sessions[0].id),/원래 계정/);assert.equal((await f.runtime.receipts()).length,0);await assert.rejects(f.runtime.readOriginal(r.id,'원본대화'),/현재 계정/);});
 test('본문 조회 중 계정이 바뀌면 미리보기를 저장하지 않고 실패한 저장은 기존 사본을 유지한다',async t=>{const f=await fixture(t);f.client.hook=async method=>{if(method==='thread/items/list')f.setRevision(1)};await assert.rejects(f.preview(),/계정/);assert.equal(f.store.state.sessions.length,0);f.client.hook=null;const p=await f.preview(),save=f.store.save.bind(f.store);let failed=false;f.store.save=async()=>{if(f.store.state.sessions.length&&!failed){failed=true;throw Error('합성 저장 실패')}return save()};const r=await f.runtime.apply({planId:p.id});assert.equal(r.failed,1);assert.equal(f.store.state.sessions.length,0);assert.equal(f.client.calls.some(c=>c.method==='thread/delete'),false);});
@@ -51,4 +62,38 @@ test('이미 연결한 대화의 사라진 첨부는 명시적 재시도로 복�
  await fs.writeFile(image,Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==','base64'));
  plan=await f.preview();const result=await f.runtime.apply({planId:plan.id,retryAttachments:true});assert.equal(result.updated,1);assert.equal(result.attachments.copied,1);assert.equal(session.messages.length,count);assert.equal(session.messages[0].attachments.length,1);const saved=session.messages[0].attachments[0].id;
  plan=await f.preview();const repeated=await f.runtime.apply({planId:plan.id,retryAttachments:true});assert.equal(repeated.skipped,1);assert.equal(repeated.attachments.copied,0);assert.equal(session.messages.length,count);assert.equal(session.messages[0].attachments[0].id,saved);
+});
+
+test('같은 시각에 완료된 외부 작업도 자동으로 반영하고 빈 갱신은 메타데이터만 조회한다',async t=>{
+ const f=await fixture(t),p=await f.preview();await f.runtime.apply({planId:p.id});
+ const session=f.store.state.sessions[0],sync=()=>f.runtime.action({action:'sync',sessionId:session.id});
+ await sync();f.client.calls.length=0;await sync();assert(!f.client.calls.some(c=>c.method==='thread/items/list'));
+ f.client.turns.get(session.threadId).push({id:'같은시각',status:'completed',itemsView:'full',items:[{id:'외부',type:'agentMessage',text:'같은 초의 새 답변'}]});
+ await sync();assert.equal(session.messages.at(-1).text,'같은 초의 새 답변');
+});
+test('Flowrium에서 시작한 연결은 로컬에만 저장하고 외부 본문을 중복 없이 받아 원래 입력과 좋아요를 보존한다',async t=>{
+ const f=await fixture(t),id=require('node:crypto').randomUUID(),session=await f.store.createSession(f.project.id);
+ f.client.threads.set(id,{...f.client.threads.get('원본대화'),id});
+ const first=f.client.turns.get('원본대화')[0];f.client.turns.set(id,[first]);
+ const stored=f.store.session(session.id);
+ stored.threadId=id;stored.messages=[{id:require('node:crypto').randomUUID(),role:'user',text:'화면에 입력한 순수 요청',turnId:first.id,createdAt:stored.createdAt},{id:require('node:crypto').randomUUID(),role:'assistant',reaction:'like',text:'로컬 답변',turnId:first.id,createdAt:stored.updatedAt}];
+ f.runtime.bindNative(stored,id,f.folder);await f.store.save();
+ const fresh=new Store(path.dirname(f.store.file));await fresh.load();assert.equal(fresh.session(stored.id).desktopThread.threadId,id);
+ assert.equal(f.store.repositories.get(f.project.id).saved.get(stored.id).desktopThread,undefined);
+ const outgoing=[];f.runtime.options.openDesktopThread=async url=>outgoing.push(url);
+ await f.runtime.action({action:'openDesktop',sessionId:stored.id});assert.deepEqual(outgoing,['codex://threads/'+id]);
+ f.client.turns.get(id).push({id:'외부',status:'completed',startedAt:Date.now()/1000+3,itemsView:'full',items:[{id:'사용자',type:'userMessage',content:[{type:'text',text:'다른 앱에서 보낸 요청'}]},{id:'응답',type:'agentMessage',text:'다른 앱에서 받은 답변'}]});
+ await f.runtime.action({action:'sync',sessionId:stored.id});await f.runtime.action({action:'sync',sessionId:stored.id,force:true});
+ assert.deepEqual(stored.messages.filter(m=>m.role!=='system').map(m=>m.text),['화면에 입력한 순수 요청','원래 답변 전체','다른 앱에서 보낸 요청','다른 앱에서 받은 답변']);assert.equal(stored.messages.find(m=>m.role==='assistant').reaction,'like');
+ f.setOwner('다른계정');await assert.rejects(f.runtime.action({action:'sync',sessionId:stored.id}),/기기에서 대화를/);await assert.rejects(f.runtime.action({action:'openDesktop',sessionId:stored.id}),/기기에서 대화를/);assert.equal(outgoing.length,1);
+});
+
+test('로컬 요청과 같은 작업에 도착한 추가 지시·완료 답변도 보존하고 두 번째 갱신은 중복을 만들지 않는다',()=>{
+ const {mergeNative}=require('../electron/chat-sync.cjs'),createdAt='2026-10-01T01:00:00Z',turnId='same';
+ const rows=[{id:'u',role:'user',text:'원래 입력',turnId,createdAt},{id:'a',role:'assistant',text:'일부 응답',turnId,createdAt,reaction:'like'}];
+ const remote=[{id:'r1',role:'user',text:'이전 버전의 원문과 앱 문맥',turnId,createdAt},{id:'r2',role:'user',text:'같은 작업의 추가 입력',turnId,createdAt},{id:'r3',role:'assistant',text:'최종 답변',turnId,createdAt}];
+ const first=mergeNative(rows,remote);
+ assert.deepEqual(first.map(m=>m.text),['원래 입력','같은 작업의 추가 입력','최종 답변']);
+ assert.deepEqual(mergeNative(rows.slice(0,1),remote).map(m=>m.text),['원래 입력','같은 작업의 추가 입력','최종 답변']);
+ assert.equal(first.find(m=>m.id==='a').reaction,'like');assert.deepEqual(mergeNative(first,remote),first);
 });

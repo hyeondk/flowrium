@@ -77,6 +77,7 @@ export interface Message {
   createdAt: string;
 }
 export interface Session {
+  desktopThread?: {threadId:string;cwd:string;ownerHash:string};
   codexLink?:CodexTransferLink;
   scope?: ConversationScope;
   restoredDraft?:{text:string;attachments:ChatAttachment[]};

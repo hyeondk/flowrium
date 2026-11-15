@@ -183,7 +183,13 @@ class Store {
             binding?.revision === repository.heads.get(session.id) &&
             typeof binding.threadId === "string"
           )
+          {
             session.threadId = binding.threadId;
+            if(binding.desktopThread?.threadId===binding.threadId){
+              session.desktopThread=binding.desktopThread;
+              validateSession(session,session.projectId);
+            }
+          }
           next.sessions.push(session);
         }
       }
@@ -227,6 +233,7 @@ class Store {
           if (session.threadId)
             localThreads[session.id] = {
               threadId: session.threadId,
+              ...(session.desktopThread?.threadId===session.threadId && {desktopThread:session.desktopThread}),
               revision: repository.heads.get(session.id),
             };
       }

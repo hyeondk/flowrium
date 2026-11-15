@@ -1,6 +1,16 @@
 const { contextBridge, ipcRenderer } = require("electron");
-const invoke = (method, ...args) =>
-  ipcRenderer.invoke(`flowrium:${method}`, ...args);
+async function invoke(method, ...args) {
+  const channel = `flowrium:${method}`;
+  try {
+    return await ipcRenderer.invoke(channel, ...args);
+  } catch (error) {
+    const prefix = `Error invoking remote method '${channel}': `;
+    const raw = String(error?.message ?? '');
+    if (!raw.startsWith(prefix)) throw error;
+    const message = raw.slice(prefix.length).replace(/^Error: /, '');
+    throw new Error(/[가-힣]/u.test(message) ? message : '요청을 처리하지 못했습니다. 다시 시도해 주세요.');
+  }
+}
 contextBridge.exposeInMainWorld(
   "flowrium",
   Object.freeze({

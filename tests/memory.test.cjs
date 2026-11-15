@@ -184,7 +184,7 @@ test("한 번 고른 보관 프로젝트의 단일 비서 대화를 반복/동�
   let prompt;
   const original = controller.client.request.bind(controller.client);
   controller.client.request = (method, params, ...rest) => {
-    if (method === "turn/start") prompt = params.input[0].text;
+    if (method === "turn/start") {assert.equal(params.input[0].text,"지시 확인");prompt = Object.values(params.additionalContext).map(entry=>entry.value).join("\n");}
     return original(method, params, ...rest);
   };
   await controller.send({ sessionId: one.id, mode: "plan", text: "지시 확인" });

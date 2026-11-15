@@ -136,15 +136,17 @@ export function VoiceComposer({onText,onSubmit,disabled=false,suspend=false}:{on
   </span>;
 }
 
-export function SpeakButton({text}:{text:string}) {
-  const [speaking,setSpeaking]=useState(false),[message,setMessage]=useState("");
+type SpeechProps = { text: string; onError(error: unknown): void };
+
+function SpeakButton({text, onError}: SpeechProps) {
+  const [speaking,setSpeaking]=useState(false);
   const generation=useRef(0),audio=useRef<HTMLAudioElement|null>(null),objectUrl=useRef<string|undefined>(undefined),alive=useRef(true),loading=useRef(false);
   function release(){audio.current?.pause();audio.current=null;if(objectUrl.current)URL.revokeObjectURL(objectUrl.current);objectUrl.current=undefined;speechSynthesis.cancel();}
   function stop(){generation.current++;release();if(loading.current)void window.flowrium?.cancelVoiceCapture().catch(()=>{});loading.current=false;if(alive.current)setSpeaking(false);}
   useEffect(()=>{alive.current=true;const hide=()=>{if(document.hidden)stop();};document.addEventListener("visibilitychange",hide);return()=>{alive.current=false;stop();document.removeEventListener("visibilitychange",hide);};},[]);
   async function play(){
     if(speaking){stop();return;}
-    const token=++generation.current;release();setSpeaking(true);setMessage("");loading.current=true;
+    const token=++generation.current;release();setSpeaking(true);loading.current=true;
     const valid=()=>alive.current&&generation.current===token;
     try {
       const prefs=await window.flowrium!.voicePreferences();if(!valid())return;
@@ -154,16 +156,19 @@ export function SpeakButton({text}:{text:string}) {
         objectUrl.current=URL.createObjectURL(new Blob([bytes],{type:value.mime}));
         const player=new Audio(objectUrl.current);audio.current=player;
         player.onended=()=>{if(valid()){release();setSpeaking(false);}};
-        player.onerror=()=>{if(valid()){release();setSpeaking(false);setMessage("음성을 재생하지 못했습니다.");}};
+        player.onerror=()=>{if(valid()){release();setSpeaking(false);onError(new Error("음성을 재생하지 못했습니다."));}};
         loading.current=false;
         try{await player.play();}catch{throw Error("음성을 재생하지 못했습니다. 음성 서버 응답과 재생 상태를 확인해 주세요.");}
       }else{
         loading.current=false;const chunks=text.match(/[\s\S]{1,900}(?:[。.!?\n]|$)|[\s\S]{1,900}/g)||[];let index=0;
         const next=()=>{if(!valid())return;if(index>=chunks.length){setSpeaking(false);return;}const utterance=new SpeechSynthesisUtterance(chunks[index++]);utterance.lang="ko-KR";utterance.onend=next;utterance.onerror=()=>{if(valid())setSpeaking(false);};speechSynthesis.speak(utterance);};next();
       }
-    }catch(error){if(valid()){release();setSpeaking(false);setMessage(error instanceof Error?error.message:String(error));}}finally{if(valid())loading.current=false;}
+    }catch(error){if(valid()){release();setSpeaking(false);onError(error);}}finally{if(valid())loading.current=false;}
   }
-  return <span className="voice-read"><button className="icon-button" aria-label={speaking?"읽기 중단":"답변 읽어주기"} onClick={()=>void play()}>{speaking?<VolumeX size={14}/>:<Volume2 size={14}/>}</button>{message&&<span role="status">{message}</span>}</span>;
+  return <span className="voice-read"><button className="icon-button" aria-label={speaking?"읽기 중단":"답변 읽어주기"} onClick={()=>void play()}>{speaking?<VolumeX size={14}/>:<Volume2 size={14}/>}</button></span>;
 }
 
-export function SpeakMessageButton({text}:{text:string}){const body=useMemo(()=>speakableMessage(text,"assistant"),[text]);return body?<SpeakButton text={body}/>:null}
+export function SpeakMessageButton({text, onError}: SpeechProps) {
+  const body = useMemo(() => speakableMessage(text, "assistant"), [text]);
+  return body ? <SpeakButton text={body} onError={onError}/> : null;
+}

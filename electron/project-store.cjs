@@ -41,6 +41,10 @@ function validateSession(session, projectId) {
   )
     throw new Error("가져온 대화의 원본 식별자가 올바르지 않습니다.");
   if (session.personalAssistant !== undefined && session.personalAssistant !== true) throw new Error("개인 비서 대화 형식이 올바르지 않습니다.");
+  if(session.desktopThread!==undefined){
+    const link=session.desktopThread;
+    if(!link || typeof link.threadId!=='string' || !link.threadId || link.threadId.length>300 || typeof link.cwd!=='string' || !path.isAbsolute(link.cwd) || !/^[a-f0-9]{64}$/.test(link.ownerHash))throw Error('로컬 대화 연결 정보를 확인해 주세요.');
+  }
   if(session.codexLink!==undefined)require("./codex-transfer-link.cjs").validateLink(session.codexLink);
   if(session.scope!==undefined&&!['general','integrated'].includes(session.scope))throw Error('대화 종류를 확인해 주세요.');
   if (session.preferences !== undefined) require("./chat-preferences.cjs").preferences(session.preferences);
@@ -254,7 +258,7 @@ class ProjectStore {
       sessions.map((session) => {
         validateSession(session, this.id);
         const portable = copy(session);
-        if (!options.local) delete portable.threadId;
+        if (!options.local) { delete portable.threadId; delete portable.desktopThread; }
         return [session.id, portable];
       }),
     );

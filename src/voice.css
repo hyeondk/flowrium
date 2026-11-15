@@ -10,5 +10,5 @@
 :is(.app-shell,.settings-modal,.motion-overlay) .voice-settings > button { display: flex; margin: 20px 0 16px auto; }
 :is(.app-shell,.settings-modal,.motion-overlay) .voice-settings > [role=status] { border-radius: 10px; padding: 12px 14px; margin: 16px 0 0; background: var(--card-subtle); color: var(--muted); }
 .voice-read { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; }
-.voice-read [role=status], .voice-composer .voice-message { font-size: 11px; line-height: 18px; color: var(--muted); word-break: keep-all; overflow-wrap: normal; }
+.voice-composer .voice-message { font-size: 11px; line-height: 18px; color: var(--muted); word-break: keep-all; overflow-wrap: normal; }
 @media(max-width:600px) { :is(.app-shell,.settings-modal,.motion-overlay) .voice-settings-grid { grid-template-columns: minmax(0,1fr); gap: 0; } }

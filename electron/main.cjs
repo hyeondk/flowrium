@@ -351,6 +351,7 @@ async function launch() {
     }},
   });
   codexTransfer=require('./codex-transfer.cjs').registerCodexTransfer(register,store,controller,{
+    openDesktopThread:url=>shell.openExternal(url),
     accountRevision:()=>security.accountRevision,
     accountOwner:()=>security.data.accountOwner||'unverified:'+security.accountRevision,
     stateEpoch:()=>security.epoch,

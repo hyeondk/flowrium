@@ -83,3 +83,74 @@ test('처리 도중 계정이 바뀌면 이미 처리한 수를 알리고 다음
 test('삭제 전 중단되어 남은 준비 사본도 비우기 영향에 표시하고 현재 항목은 보존한다',async t=>{
  const s=await fixture(t),entry=await trashSession(s);await s.action({action:'restore',id:entry.id});const file=trashFile(s,entry.id),record=JSON.parse(await fs.readFile(file,'utf8'));record.status='prepared';delete record.restoredAt;await fs.writeFile(file,JSON.stringify(record));assert.deepEqual(await s.action({action:'list'}),[]);const preview=await s.action({action:'purgePreview',scope:'all'});assert.equal(preview.entries.length,0);assert.equal(preview.unfinishedRecords,1);assert.equal(preview.records,1);await purge(s,preview);assert.equal(s.store.session(s.session.id).messages[0].text,'합성 본문');await assert.rejects(fs.stat(file),{code:'ENOENT'});
 });
+
+test('원본이 목록에서 사라진 프로젝트도 남은 원본만 확인해 정리하고 독립 사본을 복원한다',async t=>{
+ const f=await fixture(t);
+ await f.linked();
+ const missing=f.session.id;
+ const second=await f.store.createSession(f.project.id,{title:'두 번째 합성 항목'});
+ await f.linked(second.id,'second');
+ f.rows.delete('root-synthetic');
+ const client=f.controller.codexTransfer.client,request=client.request;
+ client.request=async(method,args)=>{
+  if(method==='thread/read'&&args.threadId==='root-synthetic')throw Object.assign(Error('읽기 연결에 없음'),{rpcCode:-32600,rpcMessage:'thread not loaded: root-synthetic'});
+  return request(method,args);
+ };
+ const p=await f.action({action:'preview',kind:'project',id:f.project.id});
+ assert.deepEqual(p.native.missing.map(row=>row.id),['root-synthetic']);
+ assert.deepEqual(p.native.roots.map(row=>row.id),['second']);
+ const r=await f.action({action:'delete',token:p.token,native:'delete',confirmTitle:p.title});
+ assert.equal(r.entry.nativeStatus,'completed');
+ assert.deepEqual(f.calls.filter(c=>c.method==='thread/delete').map(c=>c.args.threadId),['second']);
+ await f.action({action:'restore',id:r.entry.id});
+ assert.equal(f.store.session(missing).codexLink.mode,'copy');
+ assert.equal(f.store.session(missing).threadId,undefined);
+});
+
+test('삭제 요청 사이에 원본이 이미 사라지면 성공으로 정리하지만 목록에 남은 원본은 성공 처리하지 않는다',async t=>{
+ for(const remains of [false,true]){
+  const f=await fixture(t);await f.linked();
+  const client=f.controller.codexTransfer.client,request=client.request;
+  client.request=async(method,args)=>{
+   if(method==='thread/delete'){
+    if(!remains)f.rows.delete(args.threadId);
+    throw Object.assign(Error('원본 기록 없음'),{rpcCode:-32600,rpcMessage:'no rollout found for thread id '+args.threadId});
+   }
+   return request(method,args);
+  };
+  const p=await f.action({action:'preview',kind:'session',id:f.session.id});
+  const r=await f.action({action:'delete',token:p.token,native:'delete',confirmTitle:p.title});
+  assert.equal(r.entry.nativeStatus,remains?'failed':'completed');
+  if(!remains)assert.match(r.notice,/0개를 처리했고 1개는 Codex 목록에 없습니다/);
+ }
+});
+
+test('이 기기에서 생성한 대화의 원본 삭제는 소유자와 경로를 재검사하고 복원 시 연결을 해제한다',async t=>{
+ const f=await fixture(t),s=f.store.session(f.session.id);
+ s.desktopThread={threadId:s.threadId,ownerHash:hash(f.account),cwd:f.project.path};
+ f.rows.set(s.threadId,{id:s.threadId,name:s.title,active:false,archived:false});
+ await f.store.save();
+ s.desktopThread.ownerHash=hash('다른 합성 계정');
+ assert.equal((await f.action({action:'preview',kind:'session',id:s.id})).native.available,false);
+ s.desktopThread.ownerHash=hash(f.account);
+ const p=await f.action({action:'preview',kind:'session',id:s.id});assert.equal(p.native.available,true);
+ const r=await f.action({action:'delete',token:p.token,native:'delete',confirmTitle:p.title});
+ assert.equal(r.entry.nativeStatus,'completed');
+ await f.action({action:'restore',id:r.entry.id});
+ assert.equal(f.store.session(s.id).desktopThread,undefined);
+ assert.equal(f.store.session(s.id).threadId,undefined);
+});
+
+test('이미 지운 화면 항목의 재요청은 원본 재삭제 없이 목록만 갱신하며 복원과 경합하면 거절한다',async t=>{
+ const f=await fixture(t);await f.linked();const kind='session',id=f.session.id;
+ const first=await f.action({action:'preview',kind,id});
+ const removed=await f.action({action:'delete',token:first.token,native:'delete',confirmTitle:first.title});
+ const retry=await f.action({action:'delete',token:first.token,native:'delete',confirmTitle:first.title});assert.deepEqual(retry,removed);
+ await assert.rejects(f.action({action:'delete',token:first.token,native:'archive'}),/바뀌/);
+ const stale=await f.action({action:'preview',kind,id});assert.equal(stale.alreadyRemoved,true);
+ const result=await f.action({action:'delete',token:stale.token,native:'keep'});assert.equal(result.entry.id,removed.entry.id);
+ assert.equal(f.calls.filter(c=>c.method==='thread/delete').length,1);
+ await f.action({action:'restore',id:removed.entry.id});
+ await assert.rejects(f.action({action:'delete',token:stale.token,native:'keep'}),/바뀌/);
+ assert(f.store.peekSession(id));
+});

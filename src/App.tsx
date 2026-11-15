@@ -3,7 +3,7 @@ import CommandCenter from "./CommandCenter";
 import {AttachmentComposer,ChatAttachmentList,ChatQueuePanel} from "./ChatAttachments";
 import InputRequestPanel from "./InputRequestPanel";
 import DecisionRequestPanel from './DecisionRequestPanel';
-import ChatContinuation from './ChatContinuation';
+import ChatContinuation, {type SuggestionCache} from './ChatContinuation';
 import { useWorkspaceDrafts } from "./useWorkspaceDrafts";
 import WorkspaceSidebar from "./WorkspaceSidebar";
 import ConversationDock from "./ConversationDock";
@@ -300,6 +300,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [reacting,setReacting]=useState<Record<string,boolean>>({});
   const [snackbar,setSnackbar]=useState("");
   const composer = useRef<HTMLTextAreaElement>(null);
+  const suggestionCache = useRef<SuggestionCache>(new Map());
   useEffect(()=>{
     let frame=0,target:HTMLElement|null=null,x=0,y=0;
     const move=(event:PointerEvent)=>{if(event.pointerType==='touch')return;target=(event.target as Element)?.closest<HTMLElement>('.pf-card')||null;if(!target)return;x=event.clientX;y=event.clientY;cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(!target?.isConnected)return;const box=target.getBoundingClientRect();target.style.setProperty('--surface-x',(x-box.left)+'px');target.style.setProperty('--surface-y',(y-box.top)+'px');});};
@@ -982,7 +983,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       </button>
                     </div>
                   </div>
-                  <CodexLinkBar key={session.id} session={session} running={running} onChange={rememberSession}/>
+                  <CodexLinkBar key={session.id} session={session} running={running}/>
                   {session.context&&<div className="chat-context">문맥 {session.context.percent}% ({session.context.used.toLocaleString("ko-KR")} / {session.context.max.toLocaleString("ko-KR")} 토큰) <progress max={100} value={session.context.percent}/>{session.compacting&&<span>문맥 압축 중</span>}</div>}
                   <ChatQueuePanel session={session} onCancel={id=>{void api!.cancelQueuedMessage(session.id,id).catch(fail);}} onResume={()=>{void api!.resumeQueuedMessages(session.id).catch(fail);}}/>
                   {session.workflow && <WorkSessionControls key={session.id} session={session} onSessionChange={rememberSession} running={running} />}
@@ -1034,27 +1035,35 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                               )}
                             </time>
                             <span className="message-meta-actions">
-                            {message.role==="assistant" && <SpeakMessageButton text={message.text}/>}
-                            {message.role==='assistant'&&<LikeButton active={message.reaction==='like'} disabled={reacting[message.id]||!api} onClick={()=>{
-                              setReacting(previous=>({...previous,[message.id]:true}));
-                              void api!.reactMessage({sessionId:session.id,messageId:message.id,liked:message.reaction!=='like'}).then(rememberSession).catch(fail).finally(()=>setReacting(previous=>({...previous,[message.id]:false})));
-                            }}/>}
-                            {message.role !== "system" && (
-                              <button
-                                className="icon-button copy-message"
-                                aria-label="메시지 복사"
-                                onClick={async () => {
-                                  try {
-                                    await api?.copyText(message.text);
-                                    notify("메시지를 복사했습니다.");
-                                  } catch (error) {
-                                    fail(error);
-                                  }
-                                }}
-                              >
-                                <Copy size={13} />
-                              </button>
-                            )}
+                              {message.role !== "system" && (
+                                <button
+                                  className="icon-button copy-message"
+                                  aria-label="메시지 복사"
+                                  onClick={async () => {
+                                    try {
+                                      await api?.copyText(message.text);
+                                      notify("메시지를 복사했습니다.");
+                                    } catch (error) {
+                                      fail(error);
+                                    }
+                                  }}
+                                >
+                                  <Copy size={13} />
+                                </button>
+                              )}
+                              {message.role === "assistant" && <>
+                                <SpeakMessageButton text={message.text} onError={fail}/>
+                                <LikeButton
+                                  active={message.reaction === 'like'}
+                                  disabled={reacting[message.id] || !api}
+                                  onClick={() => {
+                                    setReacting(previous => ({ ...previous, [message.id]: true }));
+                                    void api!.reactMessage({ sessionId: session.id, messageId: message.id, liked: message.reaction !== 'like' })
+                                      .then(rememberSession).catch(fail)
+                                      .finally(() => setReacting(previous => ({ ...previous, [message.id]: false })));
+                                  }}
+                                />
+                              </>}
                             </span>
                           </div>
                           {message.attachments?.length&&project&&<ChatAttachmentList projectId={project.id} items={message.attachments}/>}
@@ -1184,25 +1193,18 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       </button>
                     )}
                   </div>
-                  <textarea
-                    ref={composer}
-                    aria-label="Codex에 보낼 작업 요청"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    placeholder={
-                      project
-                        ? "어떤 작업을 함께 해볼까요?"
-                        : "만들고 싶은 것, 풀고 싶은 문제를 적어 주세요."
-                    }
-                    onKeyDown={(e) => {
-                      if (
-                        e.key === "Enter" &&
-                        !e.shiftKey &&
-                        !e.nativeEvent.isComposing
-                      ) {
-                        e.preventDefault();
-                        send();
-                      }
+                  <ChatContinuation session={session} running={running || sessionApprovals.length > 0}
+                    authenticated={connection.authenticated} busy={submitting} draft={input} textareaRef={composer}
+                    active={chatActive && dockOpen && !settingsOpen && !attentionOpen} cache={suggestionCache.current}
+                    placeholder={project ? "어떤 작업을 함께 해볼까요?" : "만들고 싶은 것, 풀고 싶은 문제를 적어 주세요."}
+                    onChange={setInput} onSend={() => void send()} onContinue={continueWaitingSession}
+                    onChoose={prompt => {
+                      setDrafts(previous => {
+                        const draft = previous[draftKey];
+                        return {...previous, [draftKey]: {...draft, mode: draft?.mode || mode,
+                          text: draft?.text.trim() ? draft.text + "\n\n" + prompt : prompt}};
+                      });
+                      composer.current?.focus();
                     }}
                   />
                   <div className="composer-toolbar">
@@ -1267,7 +1269,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </div>
                 </div>)}
                 </AttachmentComposer>
-                {session&&<ChatContinuation key={session.id} session={session} running={running||sessionApprovals.length>0} authenticated={connection.authenticated} busy={submitting} onContinue={continueWaitingSession} onChoose={prompt=>{setInput(input.trim()?input+'\n\n'+prompt:prompt);composer.current?.focus()}}/>}
                 <div className="composer-footnote">
                   <span>
                     <ShieldCheck size={12} />

@@ -30,9 +30,9 @@ export default function ProjectShortcuts({ project, data, editable = false, onCh
   }
   return <section className="pf-panel project-shortcuts" aria-label={editable ? '프로젝트 바로가기 설정' : '프로젝트 바로가기'}>
     <div className="pf-section-header"><h2>프로젝트 바로가기</h2>{!editable && onManage && <button onClick={onManage}>바로가기 관리</button>}</div>
-    <p className="pf-muted">프로젝트에 쓰는 운영 주소와 폴더를 한곳에서 엽니다.</p>
+    {editable && <p className="pf-muted">프로젝트에 쓰는 운영 주소와 폴더를 한곳에서 엽니다.</p>}
     {!rows.length && <p className="pf-empty">아직 저장한 바로가기가 없습니다.</p>}
-    <div className="project-shortcut-list">{rows.map((row, index) => <article key={row.id}>
+    {rows.length > 0 && <div className="project-shortcut-list">{rows.map((row, index) => <article key={row.id}>
       <div className="project-shortcut-summary">{row.kind === 'local' ? <FolderOpen size={17}/> : row.kind === 'drive' ? <Link size={17}/> : <ExternalLink size={17}/>}
         {editable ? <label><span className="sr-only">바로가기 이름 {index + 1}</span><input aria-label={'바로가기 이름 ' + (index + 1)} maxLength={100} value={row.label} disabled={busy} onChange={event => setRows(values => values.map(item => item.id === row.id ? { ...item, label: event.target.value } : item))}/></label> : <strong>{row.label}</strong>}
         <span className="project-shortcut-kind">{names[row.kind]}</span>
@@ -43,7 +43,7 @@ export default function ProjectShortcuts({ project, data, editable = false, onCh
         <button disabled={busy || row.disabled} onClick={() => void run(async () => { await window.flowrium!.projectShortcutAction(project.id, { action: 'open', id: row.id }); })}>{row.kind === 'local' ? '폴더 열기' : '주소 열기'}</button>
         {editable && <button disabled={busy} aria-label={row.label + ' 바로가기 제거'} onClick={() => void run(() => save(rows.filter(item => item.id !== row.id)))}><Trash2 size={14}/>제거</button>}
       </div>
-    </article>)}</div>
+    </article>)}</div>}
     {editable && <><div className="pf-actions"><button disabled={busy || rows.length >= 32} onClick={() => void run(() => choose())}><FolderOpen size={15}/>로컬 폴더 선택</button><button className="primary" disabled={busy || rows.some(row => !row.label.trim())} onClick={() => void run(() => save(rows))}>바로가기 이름 저장</button></div>
       <form className="project-shortcut-form" onSubmit={event => { event.preventDefault(); void run(async () => { await save([...rows, { id: crypto.randomUUID(), kind, label: label.trim(), target: target.trim() }]); setLabel(''); setTarget(''); }); }}>
         <label>이름<input aria-label="새 바로가기 이름" disabled={busy} value={label} maxLength={100} onChange={event => setLabel(event.target.value)}/></label>

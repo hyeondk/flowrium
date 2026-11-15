@@ -447,9 +447,7 @@ export function ProjectOverview({
         <header className="pf-heading">
           <div>
             <h1>{name}</h1>
-            <p>
-              {data?.goal || "프로젝트 홈에서 목표, 업무, 자료를 관리하세요."}
-            </p>
+            {data?.goal && <p>{data.goal}</p>}
           </div>
           <span
             className="pf-status"
@@ -484,7 +482,6 @@ export function ProjectOverview({
         {isNative && <div className="pf-native-pane">{renderPanel(tab)}</div>}
         {tab === "home" && (
           <>
-            {data && <ProjectShortcuts project={project} data={data} onChange={change} onManage={() => onTabChange('settings')}/>}
             <div className="pf-stats">
               <button onClick={() => onTabChange("work")}>
                 <span>진행 및 검토 업무</span>
@@ -499,7 +496,38 @@ export function ProjectOverview({
                 <strong>{overview?.artifacts.length ?? "…"}</strong>
               </button>
             </div>
-            <div className="pf-columns">
+            <div className="pf-columns pf-project-summary">
+              <section className="pf-panel">
+                <div className="pf-section-header">
+                  <h2>다음 업무</h2>
+                  <button onClick={() => onTabChange("work")}>
+                    업무 열기 <ArrowRight size={14} />
+                  </button>
+                </div>
+                {incomplete.slice(0, 4).map((s) => (
+                  <button
+                    className="pf-row"
+                    key={s.id}
+                    onClick={() => onOpenSession(s)}
+                  >
+                    <span>
+                      <strong>{s.title}</strong>
+                      <small>
+                        {s.workflow?.checklist.find((c) => !c.done)?.text ||
+                          s.workflow?.brief ||
+                          "대화 이어가기"}
+                      </small>
+                    </span>
+                    <ChevronRight size={15} />
+                  </button>
+                ))}
+                {!incomplete.length && (
+                  <p className="pf-empty">
+                    진행 중인 업무가 없습니다. 업무 현황에서 담당할 일을
+                    선택하세요.
+                  </p>
+                )}
+              </section>
               <section className="pf-panel">
                 <div className="pf-section-header">
                   <h2>프로젝트 개요</h2>
@@ -532,38 +560,8 @@ export function ProjectOverview({
                 </dl>
                 {meta.notes && <p className="pf-note-text">{meta.notes}</p>}
               </section>
-              <section className="pf-panel">
-                <div className="pf-section-header">
-                  <h2>다음 업무</h2>
-                  <button onClick={() => onTabChange("work")}>
-                    업무 열기 <ArrowRight size={14} />
-                  </button>
-                </div>
-                {incomplete.slice(0, 4).map((s) => (
-                  <button
-                    className="pf-row"
-                    key={s.id}
-                    onClick={() => onOpenSession(s)}
-                  >
-                    <span>
-                      <strong>{s.title}</strong>
-                      <small>
-                        {s.workflow?.checklist.find((c) => !c.done)?.text ||
-                          s.workflow?.brief ||
-                          "대화 이어가기"}
-                      </small>
-                    </span>
-                    <ChevronRight size={15} />
-                  </button>
-                ))}
-                {!incomplete.length && (
-                  <p className="pf-empty">
-                    진행 중인 업무가 없습니다. 업무 현황에서 담당할 일을
-                    선택하세요.
-                  </p>
-                )}
-              </section>
             </div>
+            {data && <ProjectShortcuts project={project} data={data} onChange={change} onManage={() => onTabChange('settings')}/>}
             {data && <AdvancedGoals data={data} onChange={change} />}
             <ProjectAIActions project={project} purpose="goals" onOpen={onOpenSession}/>
             <div className="pf-columns">

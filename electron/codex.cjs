@@ -155,7 +155,7 @@ class CodexClient extends EventEmitter {
     delete env.OPENAI_BASE_URL;
     const proc = (this.options.spawn || spawn)(
       descriptor.command,
-      [...descriptor.prefix, "app-server", "-c", 'model_provider="openai"', "-c", "features.default_mode_request_user_input=true",...Object.entries(this.options.configOverrides||{}).flatMap(([key,value])=>["-c",key+"="+JSON.stringify(value)])],
+      [...descriptor.prefix, "app-server", "-c", 'model_provider="openai"', "-c", "features.default_mode_request_user_input=true", "-c", "thread_unload_delay_secs=0",...Object.entries(this.options.configOverrides||{}).flatMap(([key,value])=>["-c",key+"="+JSON.stringify(value)])],
       { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, shell: false, env },
     );
     this.proc = proc;

@@ -14,7 +14,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{let input;try{i
  if(method==='account/rateLimits/read')return reply({rateLimits:{}});
  if(method==='thread/list')return reply({data:params.archived?[]:[thread(data)],nextCursor:null});
  if(method==='thread/read'||method==='thread/resume')return reply({thread:{...thread(data),...(params.includeTurns?{turns:data.turns}:{})},model:'test-model'});
- if(method==='thread/turns/list')return reply({data:data.turns,nextCursor:null});
+ if(method==='thread/turns/list')return reply({data:(params.sortDirection==='desc'?[...data.turns].reverse():data.turns).slice(0,params.limit),nextCursor:null});
  if(method==='thread/items/list')return reply({data:data.turns.filter(t=>!params.turnId||t.id===params.turnId).flatMap(t=>t.items.map(item=>({item}))),nextCursor:null});
  if(method==='turn/start'){
   const text=(params.input||[]).filter(part=>part.type==='text').map(part=>part.text).join('\n'),turnId=crypto.randomUUID(),userId=crypto.randomUUID(),answerId=crypto.randomUUID();

@@ -9,6 +9,8 @@ export type CodexTransferAction=
  |{action:'status'|'receipts'}
  |{action:'preview';projects?:CodexProjectInput[];activeThreadIds?:string[]}
  |{action:'apply';planId:string;threadIds?:string[];mode?:CodexTransferMode;retryAttachments?:boolean}
+ |{action:'sync';sessionId:string;force?:boolean}
+ |{action:'openDesktop';sessionId:string}
  |{action:'refresh';sessionId:string;externalFinished?:boolean;background?:boolean}
  |{action:'readOriginal';receiptId:string;threadId:string};
-export interface CodexTransferAPI {codexTransferAction(input:CodexTransferAction):Promise<CodexTransferPlan|CodexTransferResult|CodexTransferResult[]|Session|{busy:boolean;plans:number;linked:number;copies:number}|{text:string;sha256:string}>}
+export interface CodexTransferAPI {codexTransferAction(input:CodexTransferAction):Promise<CodexTransferPlan|CodexTransferResult|CodexTransferResult[]|Session|{sync:'current'|'active'|'deferred'}|{opened:boolean}|{busy:boolean;plans:number;linked:number;copies:number}|{text:string;sha256:string}>}
