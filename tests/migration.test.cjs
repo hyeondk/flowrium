@@ -89,6 +89,52 @@ test('기존 프로젝트와 충돌하는 포트는 새 사본에서 비활성�
 test('최초 설치의 없는 프로필은 허용하고 복구 미완료 결과는 다음 기동에서도 실행 차단 대상으로 유지한다',async t=>{
  const x=await fixture(t);assert.deepEqual(await recoverMigrations(path.join(x.root,'아직 없는 프로필')),[]);const base=path.dirname(x.store.file),id=randomUUID(),root=path.join(base,'migration-records',id);await fs.mkdir(root,{recursive:true});await fs.writeFile(path.join(root,'receipt.json'),JSON.stringify({id,status:'recovery-required',at:new Date().toISOString(),projects:[],path:root,rollbackErrors:['확인할 복구 자료']}));assert.equal((await recoverMigrations(base))[0].status,'recovery-required');assert.equal((await recoverMigrations(base))[0].status,'recovery-required');
 });
+test('원본 대기열로 보낸 지시를 취소한 뒤 과거 개정까지 이관하며 원본에 재전송하지 않는다',async t=>{
+ const x=await fixture(t),session=x.store.session(x.s.id),threadId=randomUUID(),owner='a'.repeat(64),device='b'.repeat(64);
+ const calls=[],rows=[];
+ const client={request:async(method,input)=>{
+   calls.push(method);
+   switch(method){
+     case 'thread/read': return {thread:{id:threadId,cwd:x.p.path}};
+     case 'thread/turns/list': return {data:[],nextCursor:null};
+     case 'thread/queue/list': return {data:[...rows],nextCursor:null};
+     case 'thread/queue/add': {
+       const added={...input,id:randomUUID()};rows.push(added);return {queuedSubmission:added};
+     }
+     case 'thread/queue/delete': assert.equal(input.queuedSubmissionId,rows[0].id);rows.pop();return {deleted:true};
+     default: throw Error(method);
+   }
+ }};
+ const runtime={store:x.store,client,owner:()=>owner,device:async()=>device,ready:async()=>({owner,revision:0,epoch:0}),guard:()=>{}};
+ const controller={store:x.store,codexTransfer:runtime,status:{authenticated:true},options:{},runs:new Map(),emitEvent:()=>{}};
+ const {ChatQueue}=require('../electron/chat-queue.cjs'),queue=new ChatQueue(controller);t.after(()=>queue.stopTimers());
+ session.threadId=threadId;require('../electron/chat-sync.cjs').bindNative(runtime,session,threadId,x.p.path);await x.store.save();
+ const text='이전에 원본 대기열에 등록한 작업',request=await queue.enqueue({sessionId:session.id,text,mode:'plan',waitingForWriter:true});
+ await queue.sendToCodex(session.id,request.queueId);
+ assert.equal(session.queuedMessages[0].nativeDelivery,'queued');
+ await queue.cancel(session.id,request.queueId);
+ assert.equal(session.queuedMessages[0].status,'cancelled');assert.equal(rows.length,0);
+ const before=await F.walk(x.source),exp=new Migration(x.store,{chooseDirectory:async()=>x.exports});
+ const exportPlan=await exp.action({action:'previewExport'}),bundle=await exp.action({action:'export',id:exportPlan.id});
+ const other=new Store(path.join(x.root,'새 기기'));await other.load();
+ const imp=new Migration(other,{chooseDirectory:async k=>k==='source'?bundle.path:x.target});
+ const plan=await imp.action({action:'previewImport'});await imp.action({action:'target',id:plan.id});
+ const result=await imp.action({action:'applyImport',id:plan.id});assert.equal(result.status,'completed');
+ const restored=new Store(path.dirname(other.file));await restored.load();
+ const imported=restored.state.sessions[0].queuedMessages[0];
+ assert.equal(imported.status,'cancelled');assert.equal(imported.text,text);assert.equal(imported.nativeThreadId,undefined);
+ const repository=restored.repositories.values().next().value;let cleared=0;
+ for(const name of await fs.readdir(repository.history)){
+   const record=JSON.parse(await fs.readFile(path.join(repository.history,name),'utf8'));
+   for(const item of record.session?.queuedMessages||[]){
+     assert.equal(item.status,'cancelled');assert.equal(item.nativeDelivery,undefined);assert.equal(item.nativeQueueId,undefined);
+     if(item.nativeCleared)cleared++;
+   }
+ }
+ assert(cleared>=2,'원본 접수 중과 접수 완료 개정을 모두 복원한다');
+ assert.deepEqual(await F.walk(x.source),before,'원래 프로젝트의 개정과 원문을 보존한다');
+ assert.deepEqual(calls.filter(m=>m==='thread/queue/add'||m==='thread/queue/delete'),['thread/queue/add','thread/queue/delete']);
+});
 test('대기 지시는 취소 상태로 보존하며 팀의 원래 개정은 유지하고 정지 개정만 추가한다',async t=>{
  const x=await fixture(t),session=x.store.session(x.s.id);session.queuedMessages=[{id:randomUUID(),text:'추가 지시',mode:'plan',status:'queued',createdAt:new Date().toISOString(),owner:'원본기기:0'}];await x.store.save();const run=randomUUID(),team=randomUUID(),folder=path.join(x.source,'.flowrium','teams','directed',run);await fs.mkdir(folder,{recursive:true});const record={version:2,id:run,teamId:team,name:'합성 팀',createdAt:new Date().toISOString(),prompt:'검증',roles:[{name:'담당',instruction:'검증',mode:'build'}],directed:{revision:1,phase:'running',autoDispatch:true,autoPM:true,lead:{status:'done'},nodes:[{index:0,title:'업무',task:'검증',steps:[],status:'running',sessionId:session.id}]}};await fs.writeFile(path.join(folder,'00000001.json'),JSON.stringify(record));const snap=await nativeSnapshot(x.store),other=new Store(path.join(x.root,'다른 설정'));await other.load();const m=new Migration(other),plan=m.plan(snap,'import');m.plans.get(plan.id).targets[snap.projects[0].key]=path.join(x.target,'팀 사본');const result=await m.action({action:'applyImport',id:plan.id});const loaded=new Store(path.dirname(other.file));await loaded.load();assert.equal(loaded.state.sessions[0].queuedMessages[0].text,'추가 지시');assert.equal(loaded.state.sessions[0].queuedMessages[0].status,'cancelled');const parent=path.join(result.projects[0].path,'.flowrium','teams','directed',run),original=JSON.parse(await fs.readFile(path.join(parent,'00000001.json'),'utf8')),stopped=JSON.parse(await fs.readFile(path.join(parent,'00000002.json'),'utf8'));assert.equal(original.directed.phase,'running');assert.equal(stopped.directed.phase,'paused');assert.equal(stopped.directed.autoDispatch,false);assert.equal(stopped.directed.nodes[0].status,'interrupted');assert.equal(stopped.directed.nodes[0].sessionId,loaded.state.sessions[0].id);
 });

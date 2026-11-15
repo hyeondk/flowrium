@@ -22,10 +22,15 @@ function remap(value,ids,paths={},key=''){
  }
  const out={};for(const [k,v]of Object.entries(value)){if(['__proto__','constructor','prototype'].includes(k))throw Error('이관 문서에 예약된 키가 있습니다.');out[k]=remap(v,ids,paths,k);}return out;
 }
+function inactiveQueueItem(item){
+ const {nativeDelivery,nativeQueueId,nativeThreadId,nativeDeviceHash,nativeAfterTurnId,nativeQueueAvailable,waitingForWriter,...copy}=item;
+ if(copy.status!=='queued' && copy.status!=='sending')return copy;
+ return {...copy,status:'cancelled',owner:'migration-archive',...(nativeDelivery&&{nativeCleared:true}),error:'이관한 대기 지시는 자동으로 전송하지 않습니다.'};
+}
 function inactive(value){
  if(!value||typeof value!=='object')return value;
  if(Array.isArray(value))return value.map(inactive);
- const out={};for(const [k,v]of Object.entries(value)){if(['threadId','turnId','sourceThreadId','encryptedEnvironment'].includes(k))continue;if(k==='queuedMessages'&&Array.isArray(v)){out[k]=v.map(q=>({...q,...(['queued','sending'].includes(q.status)?{status:'cancelled',owner:'migration-archive',error:'이관한 대기 지시는 자동으로 전송하지 않습니다.'}:{})}));continue;}out[k]=inactive(v);}
+ const out={};for(const [k,v]of Object.entries(value)){if(['threadId','turnId','sourceThreadId','encryptedEnvironment'].includes(k))continue;if(k==='queuedMessages'&&Array.isArray(v)){out[k]=v.map(inactiveQueueItem);continue;}out[k]=inactive(v);}
  if(Object.hasOwn(out,'enabled')&&Object.hasOwn(out,'intervalMinutes'))out.enabled=false;
  if(Object.hasOwn(out,'autoStart'))out.autoStart=false;
  if(Object.hasOwn(out,'automatic'))out.automatic=false;
