@@ -72,7 +72,9 @@ jobs:
       - name: 후속 작업 실제 프로토콜 검사
         run: node tests/chat-continuation-native-e2e.cjs
       - name: 두 앱이 같은 대화를 번갈아 쓰는지 확인
-        run: node tests/desktop-chat-sync-native.cjs
+        run: |
+          node tests/desktop-chat-sync-native.cjs
+          node tests/trash-sync-native-e2e.cjs
   build:
     if: inputs.test_scope != 'scopes' && inputs.test_scope != 'features'
     name: ${{ matrix.label }}
@@ -336,7 +338,9 @@ jobs:
       - name: 데스크톱 대화 왕복과 자동 갱신
         id: verify_42
         continue-on-error: true
-        run: node tests/desktop-chat-sync-native.cjs
+        run: |
+          node tests/desktop-chat-sync-native.cjs
+          node tests/trash-sync-native-e2e.cjs
       - name: 프로젝트 카드 여백과 채팅 도구 정렬
         id: verify_41
         continue-on-error: true

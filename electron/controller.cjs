@@ -91,6 +91,11 @@ class Controller extends EventEmitter {
   }
   emitEvent(event) {
     if(event.sessionId&&this.store.isCurrentConversation?.(event.sessionId)===false)return;
+    if(event.type==='session' && event.session){
+      const source=this.store.peekSession?.(event.sessionId);
+      const preview=source&&this.codexTransfer?.liveTurn?.(source);
+      if(preview)event={...event,session:{...event.session,messages:require('./mobile/live-turn.js').withLiveTurn(event.session.messages,preview.turnId,preview.rows)}};
+    }
     this.emit("event", event);
   }
   clients(){return [...new Set([this.client,...[...(this.scopeClients?.values()||[])].map(entry=>entry.client),...[...(this.linkedClients?.values()||[])]].filter(Boolean))];}
@@ -366,10 +371,13 @@ class Controller extends EventEmitter {
       session.title = Array.from(message.trimStart().replace(/\s+/g, " ").slice(0, 100))
         .slice(0, 42)
         .join("");
+    const generatedName=!!this.codexTransfer?.bindNative && !session.pendingThreadName && !session.threadId && !session.codexLink && !session.sourceThreadId && session.messages.filter(m=>m.role==='user').length===1;
+    if(generatedName)session.pendingThreadName=session.title;
     session.updatedAt = new Date().toISOString();
     try {
       await this.store.save();
     } catch (error) {
+      if(generatedName)delete session.pendingThreadName;
       session.messages = session.messages.filter(
         (item) => item.id !== userMessage.id,
       );
@@ -476,7 +484,14 @@ class Controller extends EventEmitter {
           )
           .join("\n\n")
           .slice(-40_000)}\n\n현재 요청:\n`;
-      const result = await client.request("thread/start", {...threadParams,...(dynamicTools.length?{dynamicTools:dynamicTools.map(t=>({type:"function",...t}))}:{})});
+      const binding = project.codexNameLink;
+      const inRegisteredProject = binding && binding.owner === this.codexTransfer?.owner?.() &&
+        require('./path-boundary.cjs').samePath(cwd, project.path);
+      const result = await client.request("thread/start", {
+        ...threadParams,
+        ...(inRegisteredProject && {projectId:binding.id}),
+        ...(dynamicTools.length && {dynamicTools:dynamicTools.map(t=>({type:"function",...t}))}),
+      });
       if(dynamicTools.length)this.store.session(run.sessionId).applicationTools=true;
       if (!result.thread?.id)
         throw new Error("Codex 대화를 생성하지 못했습니다.");

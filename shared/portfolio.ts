@@ -48,7 +48,8 @@ export interface ProjectNote {
   size: number;
   preview: boolean;
 }
-export interface ProjectNavigationState {order:string[]; names:Record<string,string>; titles:Record<string,string>}
+export type ProjectNameLink='linked'|'local'|'ambiguous'|'offline'|'unsupported'|'unavailable'|'differentAccount'|'conflict'|'queued'|'longName';
+export interface ProjectNavigationState {order:string[]; names:Record<string,string>; titles:Record<string,string>; nameLinks:Record<string,ProjectNameLink>}
 export interface PortfolioAPI {
   portfolioAction(input: {action:"navigation"; sync?:boolean} | {action:"move"; id:string; target:string; sync?:boolean}): Promise<ProjectNavigationState>;
   readPortfolio(): Promise<PortfolioCard[]>;
@@ -79,7 +80,6 @@ export interface PortfolioAPI {
 
 export interface PortfolioPreferences { revision: string | null; columns: string[]; order: string[]; shortcuts: Record<string,string> }
 export interface PortfolioInsights { at:string; commits7:number; dirtyRepositories:number; openPulls:number; projects: { projectId:string; name:string; days:{day:string;count:number}[]; repositories:{id:string;name:string;dirty:number;pulls:number|null}[]; errors:string[] }[] }
-export interface ProjectNavigationState {order:string[]; names:Record<string,string>; titles:Record<string,string>}
 export interface PortfolioAPI {
   portfolioAction(input: {action:"navigation"; sync?:boolean} | {action:"move"; id:string; target:string; sync?:boolean}): Promise<ProjectNavigationState>;
   portfolioAction(input: {action:"read"}): Promise<PortfolioPreferences>;

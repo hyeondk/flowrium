@@ -7,16 +7,18 @@ export const projectOrderChanged = 'flowrium-project-order-changed';
 export type MoveProject = (id:string, target:string) => void;
 
 export function useProjectOrder(projects:Project[], connected:boolean, onCatalog:(value:ProjectNavigationState)=>void, onError:(e:unknown)=>void) {
+  const [nameLinks,setNameLinks]=useState<ProjectNavigationState['nameLinks']>({});
   const [order,setOrder] = useState<string[]>([]);
   const request = useRef(0);
   const ids = projects.map(p=>p.id).join(',');
   const receive = useCallback((value:ProjectNavigationState) => {
     setOrder(value.order);
+    setNameLinks(value.nameLinks);
     onCatalog(value);
   }, [onCatalog]);
   useEffect(()=>{
     const api = window.flowrium;
-    if (!api || !ids) return;
+    if (!api || (!ids && !connected)) return;
     let active=true, polling=false;
     async function refresh() {
       if (!active || polling || document.hidden) return;
@@ -48,7 +50,7 @@ export function useProjectOrder(projects:Project[], connected:boolean, onCatalog
     }).catch(onError);
   };
   const positions=new Map(order.map((id,i)=>[id,i]));
-  return {projects:[...projects].sort((a,b)=>(positions.get(a.id)??order.length)-(positions.get(b.id)??order.length)),move};
+  return {nameLinks,projects:[...projects].sort((a,b)=>(positions.get(a.id)??order.length)-(positions.get(b.id)??order.length)),move};
 }
 
 type Grip = {

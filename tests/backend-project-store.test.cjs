@@ -30,6 +30,24 @@ function message(value) {
   };
 }
 
+test("과거 개정 본문은 메모리에 누적하지 않고 파일이 바뀌면 다시 검증한다", async t => {
+  const {store, project, session} = await fixture(t);
+  const repository = store.repositories.get(project.id);
+  for (let i=0; i<4; i++) {
+    store.session(session.id).messages.push(message("보관 자료 ".repeat(1000)));
+    await store.save();
+  }
+  const read = t.mock.method(repository, "readRevision");
+  const heads = await repository.inspect();
+  assert.equal(read.mock.callCount(),1);
+  assert.equal(heads.get(session.id).session.messages.length,4);
+  const old = [...repository.revisionHeaders.values()].find(row=>row.revision!==heads.get(session.id).revision);
+  assert.ok(old);
+  assert.ok([...repository.revisionHeaders.values()].every(row=>!Object.hasOwn(row,"session")));
+  await fs.writeFile(path.join(repository.history,old.name),"{}");
+  await assert.rejects(repository.inspect(false),/기록 형식/);
+});
+
 test("대화 본문은 선택한 프로젝트에만 저장하고 다른 경로의 컴퓨터에서 복원한다", async (t) => {
   const { root, directory, store, project, session } = await fixture(t);
   const saved = store.session(session.id);

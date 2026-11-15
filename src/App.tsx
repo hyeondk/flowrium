@@ -1,3 +1,4 @@
+import {withLiveTurn} from '../electron/mobile/live-turn.js';
 import {RequestSource} from './RequestSource';
 import {maxChatInput, exceedsChatSize, chatLengthError} from '../electron/mobile/chat-input.js';
 import ChatAccessHint from './ChatAccessHint';
@@ -391,9 +392,45 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         if (alive) { setConnection(value.status); modelCatalog.accept(value); }
       })
       .catch(fail);
+    let projectListRevision=0;
+    const removedBySync=new Set<string>();
+    const restoredProjects=new Set<string>();
     const handleEvent = (event:FlowriumEvent) => {
       if (!alive) return;
       if(["done","approval","input","inputResolved","error"].includes(event.type))window.dispatchEvent(new Event("flowrium-attention-refresh"));
+      if(event.type==='externalTurn'&&event.turnId&&event.turnMessages){
+        setData(previous=>({...previous,sessions:previous.sessions.map(s=>s.id===event.sessionId?{
+          ...s,messages:withLiveTurn(s.messages,event.turnId!,event.turnMessages!)
+        }:s)}));
+      }
+      if(event.type==='sessionList'){
+        const removed=new Set(event.removedSessionIds||[]);
+        for(const id of removed)removedBySync.add(id);
+        for(const restored of event.restoredSessions||[])removedBySync.delete(restored.id);
+        setData(previous=>({...previous,sessions:(event.restoredSessions||[]).reduce(
+          (sessions,restored)=>upsert(sessions,restored),previous.sessions.filter(s=>!removed.has(s.id))
+        )}));
+        setSessionId(current=>current&&removed.has(current)?undefined:current);
+        if(event.projectsChanged){
+          for(const id of event.restoredProjectIds||[])restoredProjects.add(id);
+          const revision=++projectListRevision;
+          void api.bootstrap().then(snapshot=>{
+            if(!alive||revision!==projectListRevision)return;
+            const projects=new Set(snapshot.projects.map(p=>p.id));
+            for(const session of snapshot.sessions)if(restoredProjects.has(session.projectId))removedBySync.delete(session.id);
+            restoredProjects.clear();
+            const scopes=new Set(snapshot.conversationProjects?.map(p=>p.id));
+            setData(previous=>{
+              const sessions=previous.sessions.filter(s=>projects.has(s.projectId)||scopes.has(s.projectId));
+              const known=new Set(sessions.map(s=>s.id));
+              const missing=snapshot.sessions.filter(s=>!known.has(s.id)&&!removedBySync.has(s.id));
+              return {...previous,projects:snapshot.projects,sessions:[...sessions,...missing]};
+            });
+            setProjectId(current=>current&&!projects.has(current)?snapshot.projects[0]?.id:current);
+            setSessionId(current=>current&&!snapshot.sessions.some(s=>s.id===current)?undefined:current);
+          }).catch(error=>{if(alive)fail(error);});
+        }
+      }
       if (event.type === "session" && event.session) {
         setData((prev) => ({
           ...prev,
@@ -1094,7 +1131,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                               {message.role === "assistant"
                                 ? "Codex"
                                 : message.role === "user"
-                                  ? "나"
+                                  ? (message.delegated ? "전달된 요청" : "나")
                                   : "작업 상태"}
                             </strong>
                             <time>
@@ -1482,7 +1519,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               try { if(api) setData(await api.bootstrap()); selectProject(p); } catch(error){fail(error);}
             }}/>
         ) : view==="overview" && project ? (
-          <ProjectOverview key={project.id} project={project} sessions={projectSessions} tab={projectTab}
+          <ProjectOverview key={project.id} project={project} nameLink={navigation.nameLinks?.[project.id]} sessions={projectSessions} tab={projectTab}
             onTabChange={setProjectTab} onOpenSession={openWork} onBack={()=>setView("dashboard")}
             onDetailsChange={d=>{setArchived(prev=>({...prev,[d.projectId]:!!d.archivedAt}));if(d.kickoff?.name){const name=d.kickoff.name;setData(prev=>prev.projects.some(p=>p.id===d.projectId&&p.name!==name)?{...prev,projects:prev.projects.map(p=>p.id===d.projectId?{...p,name}:p)}:prev);}window.dispatchEvent(new Event(projectOrderChanged));}}
             renderPanel={tab=>tab==="work"?<Workbench project={project} sessions={projectSessions} onChooseProject={chooseProject} onOpen={openWork} onSessionChange={rememberSession}/>:

@@ -2,13 +2,13 @@ const { samePath: sameFilesystemPath } = require('./path-boundary.cjs');
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const {randomUUID}=require('node:crypto');
 const {pages,samePath}=require('./history.cjs');
-const {projectDirectory,createJSON,readJSON,validateSession,UUID}=require('./project-store.cjs');
+const {projectDirectory,createJSON,readJSON,UUID}=require('./project-store.cjs');
 const D=require('./codex-transfer-data.cjs');
 const {mergeMessages}=require('./codex-transfer-merge.cjs');
 const {materialize}=require('./codex-transfer-attachments.cjs');
 const clone=v=>structuredClone(v),now=()=>new Date().toISOString();
 const roots=['cli','vscode','appServer','unknown'];
-function importSize(session){if(Buffer.byteLength(JSON.stringify(session,null,2))>120*1024*1024)throw Error('대화의 표시 기록이 120MB를 넘었습니다. 원문은 보관했으며 본문을 잘라 저장하지 않았습니다.');}
+const {importedSession,checkImportSize:importSize}=require('./codex-transfer-record.cjs');
 class CodexTransfer {
  constructor(store,controller,options={}){this.store=store;this.controller=controller;this.client=options.readClient||(controller.client instanceof require('./codex.cjs').CodexClient?new (require('./codex.cjs').CodexClient)({...controller.client.options,maxProtocolLineBytes:128*1024*1024}):controller.client);this.ownsClient=this.client!==controller.client;this.options=options;this.base=path.dirname(store.file);this.directory=path.join(this.base,'codex-transfers');this.plans=new Map();this.busy=false;this.closed=false;controller.codexTransfer=this;
   for(const name of ['action','preview','apply','refresh','receipts','readOriginal']){
@@ -19,13 +19,14 @@ class CodexTransfer {
     while(name==='refresh' && this.refreshDone) await this.refreshDone;
     this.guard(context.owner,context.revision,context.epoch);
     if(exclusive && this.isBusy())throw Error('대화 연결을 처리 중입니다. 끝난 뒤 다시 확인해 주세요.');
-    if(exclusive)this.operation=true;
+    const completion=exclusive?Promise.withResolvers():null;
+    if(exclusive){this.operation=true;this.operationDone=completion.promise;}
     const finish=name==='refresh' ? this.beginRefresh() : undefined;
     try{
      const result=await operation(...args);
      this.guard(context.owner,context.revision,context.epoch);
      return result;
-    }finally{if(exclusive)this.operation=false;finish?.();}
+    }finally{if(exclusive){this.operation=false;this.operationDone=null;completion.resolve();}finish?.();}
    };
   }
  }
@@ -53,6 +54,7 @@ class CodexTransfer {
   if(input.action==='readOriginal')return this.readOriginal(input.receiptId,input.threadId);
   if(input.action==='preview')return this.preview(input);
   if(input.action==='apply')return this.apply(input);
+  if(input.action==='sync'&&!input.force&&this.options.foregroundBusy?.())return {sync:'deferred'};
   if(input.action==='sync')return require('./chat-sync.cjs').sync(this,input.sessionId,input.force===true);
   if(input.action==='openDesktop')return require('./chat-sync.cjs').openDesktop(this,input.sessionId);
   if(input.action==='refresh')return this.refresh(input.sessionId,{externalFinished:input.externalFinished===true,background:input.background===true});
@@ -87,8 +89,7 @@ class CodexTransfer {
     if(existing?.codexLink&&(mode==='copy'||existing.codexLink.snapshotHash===data.contentHash&&!input.retryAttachments)){receipt.skipped++;receipt.entries.push({threadId,sessionId:existing.id,projectId:project.id,status:'skipped'});continue;}
     let targetId=threadId;
     if(mode==='copy'){if(data.active&&!data.lastCompleteTurnId)throw Error('아직 완료된 작업이 없어 독립 사본을 만들 수 없습니다. 원래 작업이 끝난 뒤 다시 복사해 주세요.');const fork=await this.client.request('thread/fork',{threadId,excludeTurns:true,cwd:project.path,...(data.active?{lastTurnId:data.lastCompleteTurnId}:{})});targetId=D.id(fork.thread?.id);if(targetId===threadId)throw Error('독립 사본 식별자가 원본과 같습니다.');this.guard(context.owner,context.revision,context.epoch);}
-    const unchanged=existing?.codexLink?.snapshotHash===data.contentHash,archivePath=unchanged?existing.codexLink.archivePath:await this.archive(project,data);const media=await materialize(this.store,project,data,()=>this.guard(context.owner,context.revision,context.epoch),{resolveHistoryBase:id=>this.historyThread(id,data,context)});receipt.attachments.copied+=media.copied;receipt.attachments.recovered+=media.recovered;receipt.attachments.missing+=media.missing;data.messages=media.messages;data.warnings.push(...media.warnings);if(unchanged&&input.retryAttachments&&!media.copied){receipt.skipped++;receipt.entries.push({threadId,sessionId:existing.id,projectId:project.id,status:'skipped'});receipt.warnings.push(...data.warnings);continue;}const old=existing&&clone(existing);const session=existing||{id:D.stable('flowrium:codex:'+project.id+':'+threadId+':'+mode),projectId:project.id,messages:[],title:'가져온 대화',createdAt:D.at(data.thread.createdAt),updatedAt:D.at(data.thread.updatedAt)};
-    session.messages=mergeMessages(session.messages,data.messages);session.title=String(data.thread.name||data.thread.preview||'제목 없는 대화').slice(0,300);session.threadId=targetId;session.sourceThreadId=threadId;session.createdAt=D.at(data.thread.createdAt);session.updatedAt=D.at(data.thread.updatedAt);session.codexLink={version:1,mode,sourceThreadId:threadId,ownerHash:context.owner,deviceHash,importedAt:old?.codexLink?.importedAt||now(),sourceUpdatedAt:session.updatedAt,snapshotHash:data.contentHash,archivePath,activeAtImport:data.active,sourceMessageIds:data.messages.map(m=>m.id)};require('./codex-transfer-link.cjs').validateLink(session.codexLink);validateSession(session,project.id);importSize(session);this.guard(context.owner,context.revision,context.epoch);if(!existing)this.store.state.sessions.unshift(session);
+    const unchanged=existing?.codexLink?.snapshotHash===data.contentHash,archivePath=unchanged?existing.codexLink.archivePath:await this.archive(project,data);const media=await materialize(this.store,project,data,()=>this.guard(context.owner,context.revision,context.epoch),{resolveHistoryBase:id=>this.historyThread(id,data,context)});receipt.attachments.copied+=media.copied;receipt.attachments.recovered+=media.recovered;receipt.attachments.missing+=media.missing;data.messages=media.messages;data.warnings.push(...media.warnings);if(unchanged&&input.retryAttachments&&!media.copied){receipt.skipped++;receipt.entries.push({threadId,sessionId:existing.id,projectId:project.id,status:'skipped'});receipt.warnings.push(...data.warnings);continue;}const old=existing&&clone(existing);const record=importedSession({project,data,existing,targetId,mode,ownerHash:context.owner,deviceHash,archivePath});const session=existing?Object.assign(existing,record):record;this.guard(context.owner,context.revision,context.epoch);if(!existing)this.store.state.sessions.unshift(session);
     try{await this.store.save();this.guard(context.owner,context.revision,context.epoch);}catch(error){if(old)Object.assign(session,old);else this.store.state.sessions=this.store.state.sessions.filter(s=>s!==session);await this.store.save().catch(()=>{});throw error;}
     this.controller.loadedThreads.delete(targetId);this.controller.emitEvent?.({type:'session',sessionId:session.id,session:clone(session)});const status=existing?'updated':'imported';receipt[status]++;result={threadId,sessionId:session.id,projectId:project.id,status};receipt.entries.push(result);receipt.warnings.push(...data.warnings);await this.writeReceipt(receiptRoot,receipt);
    }catch(error){receipt.failed++;receipt.entries.push({threadId,status:'failed',error:String(error.message)});await this.writeReceipt(receiptRoot,receipt);if(this.closed||this.options.canRun?.()===false||context.owner!==this.owner()||context.revision!==this.revision())break;}}
@@ -127,8 +128,10 @@ class CodexTransfer {
   }
   await this.refresh(sessionId,{externalFinished:true});
  }
+ liveTurn(session){return require('./chat-sync.cjs').liveTurn(this,session);}
+ liveView(session){return require('./chat-sync.cjs').liveView(this,session);}
  isBusy(){return this.busy||!!this.operation;}
- async shutdown(){this.closed=true;while(this.busy||this.operation)await new Promise(resolve=>setTimeout(resolve,20));if(this.ownsClient)this.client.close();}
+ async shutdown(){this.closed=true;await require('./chat-sync-monitor.cjs').stop(this);while(this.busy||this.operation)await new Promise(resolve=>setTimeout(resolve,20));if(this.ownsClient)this.client.close();}
 }
-function registerCodexTransfer(register,store,controller,options={}){const runtime=new CodexTransfer(store,controller,options);register('codexTransferAction',input=>runtime.action(input));return runtime;}
+function registerCodexTransfer(register,store,controller,options={}){const runtime=new CodexTransfer(store,controller,options);register('codexTransferAction',input=>runtime.action(input));require('./chat-sync-monitor.cjs').start(runtime);return runtime;}
 module.exports={registerCodexTransfer,CodexTransfer};

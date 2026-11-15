@@ -47,6 +47,11 @@ function settings(input, current = DEFAULT_SETTINGS) {
   }
   return next;
 }
+function validProjectNameLink(value) {
+  return value && typeof value.owner==='string' && /^[a-f0-9]{64}$/.test(value.owner) &&
+    typeof value.id==='string' && value.id.length>0 && value.id.length<=300 &&
+    typeof value.name==='string' && !!value.name.trim() && value.name.length<=140;
+}
 function validateProject(project) {
   if (
     !project ||
@@ -56,7 +61,10 @@ function validateProject(project) {
     project.name.length > 300 ||
     typeof project.path !== "string" ||
     !path.isAbsolute(project.path) ||
-    !validateDate(project.createdAt)
+    !validateDate(project.createdAt) ||
+    (project.codexNameLink!==undefined && !validProjectNameLink(project.codexNameLink)) ||
+    (project.pendingCodexName!==undefined && (!validProjectNameLink(project.pendingCodexName) ||
+      typeof project.pendingCodexName.before!=='string' || project.pendingCodexName.before.length>140))
   )
     throw new Error("저장된 프로젝트 형식이 올바르지 않습니다.");
 }

@@ -1,5 +1,6 @@
 const D = require('./codex-transfer-data.cjs');
 const { UUID } = require('./project-store.cjs');
+const {withLiveTurn}=require('./mobile/live-turn.js');
 
 function bindNative(runtime, session, threadId, cwd) {
   if (!threadId || session.codexLink) return;
@@ -39,7 +40,6 @@ const unfinished = status => status === 'inProgress' || status === 'in_progress'
 
 async function probe(runtime, session, context, cwd) {
   const thread = await D.readThread(runtime.client, session.threadId, cwd);
-  if (D.active(thread)) return { active: true };
   let newest;
   try {
     const page = await runtime.client.request('thread/turns/list', { threadId: thread.id, sortDirection: 'desc', limit: 1, itemsView: 'notLoaded' });
@@ -48,11 +48,14 @@ async function probe(runtime, session, context, cwd) {
   } catch (error) {
     if (error.rpcCode !== -32601 && !/(?:does not support|unsupported).*(?:pagination|method)/i.test(error.rpcMessage || '')) throw error;
     // 이전 서버는 메타데이터에 최근 작업의 종료 여부가 없으므로 전체 기록에서 확인합니다.
-    return { thread };
+    return { thread, active: D.active(thread) };
   }
   guardSession(runtime, session, thread.id, context);
-  if (unfinished(newest?.status)) return { active: true };
-  return { thread, stamp: JSON.stringify([thread.updatedAt, thread.name, newest?.id, newest?.status, newest?.completedAt]) };
+  // A separate official server reconstructs a live writer's unfinished turn as
+  // interrupted with no completion time. It can still acquire a real final
+  // status later. Never persist these intermediate frames as final history.
+  const provisional=thread.status?.type==='notLoaded' && newest?.status==='interrupted' && newest.completedAt==null;
+  return { thread, newest, provisional, active: D.active(thread) || unfinished(newest?.status), stamp: JSON.stringify([thread.updatedAt, thread.name, newest?.id, newest?.status, newest?.completedAt]) };
 }
 
 function mergeNative(local, incoming) {
@@ -124,7 +127,79 @@ async function refreshNative(runtime, session, cwd, context, thread) {
   } finally { runtime.busy = false; finishRefresh(); }
 }
 
-async function sync(runtime, sessionId, force = false) {
+function sync(runtime,sessionId,force=false,background=false){
+  runtime.syncingSessions??=new Map();
+  const running=runtime.syncingSessions.get(sessionId);
+  if(running)return force?running.then(()=>sync(runtime,sessionId,true)):running;
+  const job=syncSession(runtime,sessionId,force,background).finally(()=>runtime.syncingSessions.delete(sessionId));
+  runtime.syncingSessions.set(sessionId,job);
+  return job;
+}
+
+// During another application's turn only mirror items that the official
+// reader has already published. Never resume the writer or start a turn.
+async function mirrorActiveTurn(runtime,session,latest,cwd,context){
+  const turn=latest.newest;
+  if(!turn?.id || !(unfinished(turn.status)||latest.provisional) || deferred(runtime,session))return;
+  const id=session.threadId;
+  const part=await D.snapshot(runtime.client,id,cwd,false,{
+    thread:latest.thread,turns:[turn],textOnly:true,recover:()=>runtime.recover(context)
+  });
+  guardSession(runtime,session,id,context);
+  if(deferred(runtime,session))return;
+  const incoming=part.messages.filter(m=>m.role==='user'||m.role==='assistant');
+  if(!incoming.length)return;
+  runtime.liveTurns??=new WeakMap();
+  const previous=liveTurn(runtime,session);
+  const saved=previous?.turnId===turn.id?previous.rows:session.messages.filter(m=>m.turnId===turn.id);
+  const merged=mergeNative(saved,incoming);
+  const existing=new Map(saved.map(m=>[m.id,m]));
+  for(let i=0;i<merged.length;i++){
+    const before=existing.get(merged[i].id);
+    if(before&&before.text.length>merged[i].text.length&&before.text.startsWith(merged[i].text))merged[i]=before;
+  }
+  if(JSON.stringify(merged)===JSON.stringify(saved))return;
+  const preview={...context,threadId:id,turnId:turn.id,rows:merged,version:(previous?.version||0)+1};
+  runtime.liveTurns.set(session,preview);
+  runtime.controller.emitEvent({type:'externalTurn',sessionId:session.id,turnId:turn.id,turnMessages:merged});
+}
+
+function liveTurn(runtime,session){
+  const preview=runtime.liveTurns?.get(session);
+  if(!preview||preview.threadId!==session.threadId||runtime.controller.runs.has(session.id))return;
+  try{runtime.guard(preview.owner,preview.revision,preview.epoch);}catch{return;}
+  return preview;
+}
+function liveView(runtime,session){
+  const preview=liveTurn(runtime,session);
+  return preview?{...session,messages:withLiveTurn(session.messages,preview.turnId,preview.rows)}:session;
+}
+function finishPreview(runtime,session){
+  const preview=runtime.liveTurns?.get(session);
+  if(!preview)return;
+  runtime.liveTurns.delete(session);
+  const rows=session.messages.filter(m=>m.turnId===preview.turnId);
+  runtime.controller.emitEvent({type:'externalTurn',sessionId:session.id,turnId:preview.turnId,turnMessages:rows});
+
+}
+
+// On startup an imported conversation already has a complete previous
+// snapshot. Check its last turn to catch updates sharing the same timestamp.
+async function importedTailUnchanged(runtime,session,latest,cwd,context){
+  const link=session.codexLink,turn=latest.newest;
+  if(link?.mode!=='linked'||link.activeAtImport||!turn||link.sourceUpdatedAt!==D.at(latest.thread.updatedAt)||
+     latest.thread.name&&latest.thread.name!==session.title)return false;
+  const saved=session.messages.filter(m=>m.turnId===turn.id);
+  if(!saved.length || session.messages.findLast(m=>m.turnId)?.turnId!==turn.id)return false;
+  const part=await D.snapshot(runtime.client,session.threadId,cwd,false,{
+    thread:latest.thread,turns:[turn],recover:()=>runtime.recover(context)
+  });
+  guardSession(runtime,session,latest.thread.id,context);
+  // Attachment bytes and records are reconciled by the complete refresh.
+  return !part.attachments.length && JSON.stringify(mergeNative(saved,part.messages))===JSON.stringify(saved);
+}
+
+async function syncSession(runtime, sessionId, force, background) {
   const session = runtime.store.session(D.id(sessionId));
   if (deferred(runtime, session)) return { sync: 'deferred' };
   if (!session.threadId && session.codexLink?.mode==='linked') {
@@ -137,11 +212,18 @@ async function sync(runtime, sessionId, force = false) {
   guardSession(runtime, session, id, context);
   const latest = await probe(runtime, session, context, cwd);
   guardSession(runtime, session, id, context);
-  if (latest.active) return { sync: 'active' };
+  if (latest.active||latest.provisional) {
+    await mirrorActiveTurn(runtime,session,latest,cwd,context);
+    return {sync:latest.active?'active':'deferred'};
+  }
   if (deferred(runtime, session)) return { sync: 'deferred' };
-  runtime.syncStamps ??= new Map();
-  const key = context.owner + ':' + session.id + ':' + id;
-  if (!force && latest.stamp && !session.codexLink?.activeAtImport && runtime.syncStamps.get(key) === latest.stamp) return { sync: 'current' };
+  runtime.syncStamps ??= new WeakMap();
+  const stamp=latest.stamp&&JSON.stringify([context.owner,id,latest.stamp]);
+  if (!force && stamp && !runtime.liveTurns?.has(session) && !session.codexLink?.activeAtImport && runtime.syncStamps.get(session)===stamp) return {sync:'current'};
+  if(background && !force && stamp && !runtime.liveTurns?.has(session) && !runtime.syncStamps.has(session) && await importedTailUnchanged(runtime,session,latest,cwd,context)){
+    runtime.syncStamps.set(session,stamp);
+    return {sync:'current'};
+  }
   if (session.codexLink) {
     try { await runtime.refresh(session.id, { externalFinished: true }); }
     catch (error) {
@@ -152,10 +234,8 @@ async function sync(runtime, sessionId, force = false) {
     const result = await refreshNative(runtime, session, cwd, context, latest.thread);
     if (result.sync !== 'current') return result;
   }
-  if (latest.stamp) {
-    runtime.syncStamps.set(key, latest.stamp);
-    if (runtime.syncStamps.size > 64) runtime.syncStamps.delete(runtime.syncStamps.keys().next().value);
-  }
+  finishPreview(runtime,session);
+  if(stamp)runtime.syncStamps.set(session,stamp);
   return { sync: 'current' };
 }
 
@@ -233,4 +313,4 @@ async function rename(runtime, session, name) {
   guardSession(runtime,session,id,context);
 }
 
-module.exports = { probe, bindNative, sync, openDesktop, mergeNative, listingTitles, rename };
+module.exports = { liveTurn, liveView, probe, bindNative, sync, openDesktop, mergeNative, listingTitles, rename };

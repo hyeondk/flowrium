@@ -177,7 +177,9 @@ function registerRemote(
   const answeredInputs = new Set();
   const runRevisions = new WeakMap();
   const runLabels = new WeakMap();
-  const revisionOf=id=>runRevisions.get(controller.runs.get(id))||0;
+  const externalPreview=s=>s&&controller.codexTransfer?.liveTurn?.(s);
+  const revisionOf=id=>runRevisions.get(controller.runs.get(id))||externalPreview(store.peekSession?.(id))?.version||0;
+  const display=s=>controller.codexTransfer?.liveView?.(s)||s;
   const handoffs = new Map();
   const scopeId = () => key ? createHash("sha256").update(key).digest("hex") : "";
   const checkScope = (scope, owner) => {
@@ -422,7 +424,7 @@ function registerRemote(
                 name: p.name,
                 createdAt: p.createdAt,
               })),
-              sessions: snapshot.sessions.map(s=>mobileSummary(s,controller.runs.has(s.id),deciding.has(s.id),revisionOf(s.id),runLabels.get(controller.runs.get(s.id)))),
+              sessions: snapshot.sessions.map(s=>mobileSummary(display(s),Boolean(controller.runs.get(s.id)&&!controller.runs.get(s.id).claimingWriter||externalPreview(s)),deciding.has(s.id),revisionOf(s.id),runLabels.get(controller.runs.get(s.id)))),
               settings: {
                 model: snapshot.settings.chatDefaults?.model || snapshot.settings.model,
                 effort: snapshot.settings.chatDefaults?.effort || snapshot.settings.effort,
@@ -467,7 +469,7 @@ function registerRemote(
               uuid.test(sessionRoute[1]) &&
               store.state.sessions.find((s) => s.id === sessionRoute[1]);
             return record
-              ? mobileMessages(record, u.searchParams, revisionOf(record.id))
+              ? mobileMessages(display(record), u.searchParams, revisionOf(record.id))
               : { code: 404, value: { error: "대화를 찾을 수 없습니다." } };
           });
           if (isLocked()) {

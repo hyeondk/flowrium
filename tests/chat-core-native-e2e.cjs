@@ -16,18 +16,22 @@ async function main(){
    if(number===1){const namespace=(body.tools||[]).find(t=>t.type==='namespace'&&t.tools?.some(v=>v.name==='flowrium_memory_save'));
     assert(namespace||(body.tools||[]).some(t=>t.name==='flowrium_memory_save'),'실제 모델에 앱 도구가 제공돼야 합니다.');
     item={id:itemId,type:'function_call',call_id:'call_echo',name:'flowrium_memory_save',...(namespace?{namespace:namespace.name}:{}),arguments:JSON.stringify({scope:'project',id:'',revision:'',title:'시험기억',body:'내부도구상태-A',role:''})};
-   }else if(longProbe && !longProbe.called){
+   }else if(longProbe && longProbe.calls<2){
     const all=(body.tools||[]).flatMap(t=>t.type==='namespace'?t.tools.map(tool=>({name:tool.name,namespace:t.name})): [{name:t.name}]);
     const tool=all.find(t=>t.name==='exec_command') || all.find(t=>t.name==='shell_command') || all.find(t=>t.name==='shell');
     assert(tool,'긴 요청 파일을 분할 읽을 명령 도구가 실제 프로젝트에서 제공돼야 합니다. '+all.map(x=>x.name));
     const prompt=JSON.stringify(body.input);
     const relative=prompt.match(/\.flowrium\/attachments\/[a-f0-9-]{36}\/request\.txt/)?.[0];
-    assert(relative);assert(prompt.includes('범위별'));assert(!prompt.includes(longProbe.head));
-    const reader="const fs=require('node:fs'),c=require('node:crypto'); const file="+JSON.stringify(relative)+"; const f=fs.openSync(file,'r'),n=fs.fstatSync(f).size;const read=(start,size)=>{const b=Buffer.alloc(size);fs.readSync(f,b,0,size,start);return b.toString()};const hash=c.createHash('sha256');for(let i=0;i<n;i+=4096){const b=Buffer.alloc(Math.min(4096,n-i));fs.readSync(f,b,0,b.length,i);hash.update(b);}console.log(JSON.stringify({head:read(0,20),middle:read(Math.floor(n/2)-9,18),tail:read(n-20,20),digest:hash.digest('hex')}));fs.closeSync(f)";
-    const command=(process.platform==='win32'?'node':JSON.stringify(process.execPath))+' -e '+JSON.stringify("eval(Buffer.from('"+Buffer.from(reader).toString('base64')+"','base64').toString())");
-    const args=tool.name==='exec_command'?{cmd:command}:tool.name==='shell_command'?{command}:{command:process.platform==='win32'?['cmd','/c',command]:['sh','-c',command]};
-    longProbe.called=true;
-    item={id:itemId,type:'function_call',call_id:'call_large_read',name:tool.name,...(tool.namespace&&{namespace:tool.namespace}),arguments:JSON.stringify(args)};
+    assert(relative);assert(prompt.includes('범위별'));
+    if(longProbe.calls===0)assert(!prompt.includes(longProbe.head));
+    const windows=process.platform==='win32';
+    const markers=longProbe.calls===0;
+    const command=windows
+     ? markers ? `Select-String -LiteralPath '${relative}' -Pattern '^(START|MIDDLE|END)_'` : `Get-FileHash -LiteralPath '${relative}' -Algorithm SHA256 | Select-Object -ExpandProperty Hash`
+     : markers ? `grep -E '^(START|MIDDLE|END)_' '${relative}'` : `shasum -a 256 '${relative}'`;
+    const args=tool.name==='exec_command'?{cmd:command}:tool.name==='shell_command'?{command}:{command:windows?['powershell','-NoProfile','-Command',command]:['sh','-c',command]};
+    longProbe.calls++;
+    item={id:itemId,type:'function_call',call_id:markers?'call_large_markers':'call_large_digest',name:tool.name,...(tool.namespace&&{namespace:tool.namespace}),arguments:JSON.stringify(args)};
    }else item={id:itemId,type:'message' ,role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify(body.input).includes('합성 프로세스 목록')?JSON.stringify({candidates:[{pid:12345,reason:'합성 실행 자료의 자원 사용 확인'}],summary:'합성 분석 결과'}):'합성 검증 응답 '+number,annotations:[]}]};
    const events=[{type:'response.created',response:{id,status:'in_progress'}},{type:'response.output_item.added',output_index:0,item:{...item,...(item.type==='function_call'?{arguments:''}:{content:[]})}},{type:'response.output_item.done',output_index:0,item},{type:'response.completed',response:{id,status:'completed',output:[item],usage:{input_tokens:20,output_tokens:10,total_tokens:30}}}];
    res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-cache'});res.end(events.map(e=>'data: '+JSON.stringify(e)+'\n\n').join(''));
@@ -70,15 +74,18 @@ async function main(){
   assert.equal(controller.analysisRuns.size,0);assert.equal(controller.editingSessions.size,0);
   const large=await store.createSession(project.id);
   const edge='START_REQUEST_LONG__',mid='MIDDLE_REQUEST____',end='END_REQUEST_________';
-  const source=edge+'a'.repeat(1_070_000)+mid+'b'.repeat(1_070_000)+end;
-  assert.equal(source.length%2,0);
+  const source=[edge,'a'.repeat(1_070_000),mid,'b'.repeat(1_070_000),end].join('\n');
+  assert.equal(source.indexOf(mid),(source.length-mid.length)/2);
   const digest=require('node:crypto').createHash('sha256').update(source).digest('hex');
-  longProbe={head:edge,called:false};
+  longProbe={head:edge,calls:0};
   const submissionId=require('node:crypto').randomUUID();
   await send(large.id,source,{submissionId});
-  assert(longProbe.called);
-  const output=bodies.at(-1).input.find(row=>row.type==='function_call_output' && row.call_id==='call_large_read');
-  for(const needle of [edge,mid,end,digest])assert(JSON.stringify(output?.output).includes(needle),'전체 원문의 앞/중간/끝과 파일 해시가 도구에서 합성 모델로 반환되어야 합니다: '+JSON.stringify(output?.output));
+  assert.equal(longProbe.calls,2);
+  const resultFor=id=>JSON.stringify(bodies.at(-1).input.find(row=>row.type==='function_call_output' && row.call_id===id)?.output || '');
+  const markerResult=resultFor('call_large_markers');
+  for(const needle of [edge,mid,end])assert(markerResult.includes(needle),'원문의 앞/중간/끝이 모델로 반환되어야 합니다: '+markerResult);
+  const hashResult=resultFor('call_large_digest');
+  assert(hashResult.toLowerCase().includes(digest),'원문 전체의 SHA-256이 모델로 반환되어야 합니다: '+hashResult);
   const row=store.session(large.id).messages.find(m=>m.id===submissionId);
   assert(row.sourceOnly && row.requestSource.sha256===digest);
   const repeat=await controller.send({sessionId:large.id,text:source,submissionId,mode:'plan'});assert(repeat.accepted);

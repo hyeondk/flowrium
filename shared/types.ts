@@ -73,6 +73,7 @@ export interface Message {
   reaction?: 'like';
   requestSource?: ChatAttachment;
   sourceOnly?: boolean;
+  delegated?: true;
   attachments?: ChatAttachment[];
   turnId?: string;
   id: string;
@@ -145,7 +146,13 @@ export interface FlowriumEvent {
   workProgress?: {messageId: string; step: WorkStep};
   questions?: InputQuestion[];
   isBlocking?: boolean;
-  type: "delta" | "status" | "error" | "done" | "approval" | "session" | "input" | "inputResolved";
+  projectsChanged?: boolean;
+  restoredProjectIds?: string[];
+  removedSessionIds?: string[];
+  restoredSessions?: Session[];
+  turnId?: string;
+  turnMessages?: Message[];
+  type: "externalTurn" | "sessionList" | "delta" | "status" | "error" | "done" | "approval" | "session" | "input" | "inputResolved";
   sessionId?: string;
   text?: string;
   status?: string;

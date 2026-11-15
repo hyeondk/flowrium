@@ -41,6 +41,7 @@ let codexTransfer;
 let migrationTransition=false;
 let importRestartRequired=false;
 let activeOperations=0;
+let foregroundOperations=0;
 const apiHandlers = new Map();
 let window;
 let controller;
@@ -76,11 +77,30 @@ function validateSender(event) {
 }
 async function invokeRegistered(name,handler,args){
   if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity','hideDotsView','readDotsState'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
-  if(codexTransfer?.refreshDone && ['send','createSession','createHubConversation'].includes(name))await codexTransfer.waitForRefresh();
-  if(codexTransfer?.isBusy()&&!/^(read|list)/.test(name)&&!['codexTransferAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('대화 연결을 처리 중입니다. 끝난 뒤 변경해 주세요.');
-  if(controller?.trashRuntime?.isBusy()&&!/^(read|list)/.test(name)&&!['trashAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','interrupt','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('삭제 또는 복원을 마친 뒤 변경해 주세요.');
-  activeOperations++;
-  try{return await security.guard(name,()=>handler(...args));}finally{activeOperations--;}
+  const independent=/^(read|list)/.test(name)||['bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name);
+  const query=args[0];
+  const passiveTransfer=name==='codexTransferAction'&&(query?.action==='sync'&&!query.force||query?.action==='receipts'||query?.action==='readOriginal'||query?.background===true);
+  const foreground=!independent&&!passiveTransfer;
+  if(foreground)foregroundOperations++;
+  try{
+    if(foreground&&name!=='chooseProject')await waitForTransferWrites();
+    if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity','hideDotsView','readDotsState'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
+    if(controller?.trashRuntime?.isBusy()&&!/^(read|list)/.test(name)&&!['chooseProject','trashAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','interrupt','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('삭제 또는 복원을 마친 뒤 변경해 주세요.');
+    activeOperations++;
+    try{return await security.guard(name,()=>handler(...args));}finally{activeOperations--;}
+  }finally{if(foreground)foregroundOperations--;}
+}
+async function waitForTransferWrites(){
+  const transfer=codexTransfer;
+  if(!transfer)return;
+  const current=[...(transfer.syncingSessions?.values()||[])];
+  if(transfer.syncMonitor?.flight)current.push(transfer.syncMonitor.flight);
+  if(!current.length&&!transfer.refreshDone&&!transfer.operationDone)return;
+  const context=transfer.context();
+  if(current.length)await Promise.allSettled(current);
+  while(transfer.refreshDone||transfer.operationDone)await (transfer.refreshDone||transfer.operationDone);
+  transfer.guard(context.owner,context.revision,context.epoch);
+
 }
 function register(name, handler) {
   apiHandlers.set(name, (...args) => invokeRegistered(name,handler,args));
@@ -310,7 +330,7 @@ async function launch() {
   });
   externalTools = require('./external-tools.cjs').createExternalTools({ handlers: apiHandlers, workflow: workflowRuntime, store });
   projectTools = require('./project-ai-tools.cjs').createProjectTools({ handlers: apiHandlers, store });
-  require("./portfolio.cjs").registerPortfolio(register, store, {
+  const portfolio=require("./portfolio.cjs").registerPortfolio(register, store, {
     getRuntime:()=>codexTransfer,
     chooseFolder: async (createFolder) => {
       const choice = await dialog.showOpenDialog(window, {
@@ -356,6 +376,9 @@ async function launch() {
     }},
   });
   codexTransfer=require('./codex-transfer.cjs').registerCodexTransfer(register,store,controller,{
+    foregroundBusy:()=>foregroundOperations>0,
+    discoverProjectThreads:require('./chat-discovery.cjs').discoverProjectThreads,
+    syncProjectNames:portfolio.syncProjectNames,
     openDesktopThread:url=>shell.openExternal(url),
     accountRevision:()=>security.accountRevision,
     accountOwner:()=>security.data.accountOwner||'unverified:'+security.accountRevision,
@@ -409,17 +432,25 @@ async function launch() {
   register("bootstrap", async () => {
     await store.syncConversationOwner?.();
     const snapshot = { ...store.snapshot(), version: displayVersion(app.getVersion()), platform: process.platform };
+    for(const session of snapshot.sessions){
+      const record=store.peekSession(session.id),preview=record&&codexTransfer?.liveTurn(record);
+      if(preview)session.messages=require('./mobile/live-turn.js').withLiveTurn(session.messages,preview.turnId,preview.rows);
+    }
     await acknowledgeUpdateLaunch(app, "ready");
     lifecycleDiagnostic('bootstrap-ready');
     return snapshot;
   });
   register("chooseProject", async () => {
+    const context=codexTransfer.context();
     const choice = await dialog.showOpenDialog(window, {
       title: "Flowrium에서 작업할 프로젝트 폴더 선택",
       properties: ["openDirectory", "createDirectory"],
       buttonLabel: "프로젝트 추가",
     });
     if (choice.canceled || !choice.filePaths[0]) return null;
+    await waitForTransferWrites();
+    codexTransfer.guard(context.owner,context.revision,context.epoch);
+    if(controller.trashRuntime?.isBusy())throw Error('삭제 또는 복원을 마친 뒤 프로젝트를 연결해 주세요.');
     return store.addProject(choice.filePaths[0]);
   });
   register("createSession", (projectId, model) =>

@@ -9,6 +9,7 @@ const { Store } = require('../electron/store.cjs');
 const { Controller } = require('../electron/controller.cjs');
 const { CodexTransfer } = require('../electron/codex-transfer.cjs');
 const D = require('../electron/codex-transfer-data.cjs');
+const monitor = require('../electron/chat-sync-monitor.cjs');
 
 function onceEvent(emitter, event, matches) {
   const result=new Promise((resolve, reject) => {
@@ -79,17 +80,40 @@ async function main() {
     assert.equal(live.desktopThread.threadId,id);
     await desktop.start();
     const first=await D.snapshot(desktop,id,cwd);
+    assert.equal(first.thread.name,'첫 번째 로컬 요청');
     assert.deepEqual(first.messages.filter(m=>m.role==='user').map(m=>m.text),['첫 번째 로컬 요청']);
     assert(first.messages.some(m=>m.text==='동기화 응답 1'));
     await resumeWhenReleased(desktop,{threadId:id,excludeTurns:true,cwd,approvalPolicy:'never',sandbox:'read-only'});
+    // There is no renderer and no selected chat. Only the main process monitor
+    // can bring the source user's request and the subsequent answer into view.
     const done=onceEvent(desktop,'notification',e=>e.method==='turn/completed'&&e.params.threadId===id);
-    await desktop.request('turn/start',{threadId:id,input:[{type:'text',text:'상대 앱에서 작성한 요청'}]});
+    const remoteStarted=Promise.withResolvers(),remoteRelease=Promise.withResolvers();
+    hold={started:remoteStarted,release:remoteRelease};
+    const externalText='상대 앱에서 작성한 요청';
+    const received=text=>onceEvent(controller,'event',e=>e.sessionId===session.id&&(
+      e.type==='session'&&e.session.messages.some(m=>m.text===text) ||
+      e.type==='externalTurn'&&e.turnMessages.some(m=>m.text===text)
+    ));
+    monitor.start(runtime);
+    const incomingUser=received(externalText);
+    await desktop.request('turn/start',{threadId:id,input:[{type:'text',text:externalText}]});
+    try{
+      await remoteStarted.promise;
+      assert.equal((await incomingUser).type,'externalTurn');
+      assert.equal(runtime.liveView(live).messages.filter(m=>m.text===externalText).length,1);
+      assert(!live.messages.some(m=>m.text===externalText));
+    }finally{remoteRelease.resolve();}
+    const incomingReply=received('동기화 응답 2');
     assert.equal((await done).params.turn.status,'completed');
+    await incomingReply;
+    await monitor.scan(runtime);
+    await monitor.stop(runtime);
+    assert.deepEqual(live.messages.filter(m=>m.role!=='system').map(m=>m.text),['첫 번째 로컬 요청','동기화 응답 1',externalText,'동기화 응답 2']);
     await desktop.request('thread/unsubscribe',{threadId:id});
-    assert.deepEqual(await runtime.action({action:'sync',sessionId:session.id}),{sync:'current'});
-    assert.deepEqual(live.messages.filter(m=>m.role!=='system').map(m=>m.text),['첫 번째 로컬 요청','동기화 응답 1','상대 앱에서 작성한 요청','동기화 응답 2']);
+    console.log('화면과 선택 대화 없는 자동 동기화 / 상대 작업 중 입력 수신 / 같은 원본에서 최종 답변과 정확한 순서 및 중복 없음');
     await send('다시 Flowrium에서 이어 쓰는 요청');
-    assert((await D.snapshot(desktop,id,cwd)).messages.some(m=>m.text==='동기화 응답 3'));
+    const roundTrip=(await D.snapshot(desktop,id,cwd)).messages.filter(m=>m.role!=='system').map(m=>m.text);
+    assert.deepEqual(roundTrip,['첫 번째 로컬 요청','동기화 응답 1',externalText,'동기화 응답 2','다시 Flowrium에서 이어 쓰는 요청','동기화 응답 3']);
     assert.equal(requests,3);
     // The other desktop connection is closed. Only Flowrium and its bundled
     // app server handle this request, real-time steering, and the resulting turn.
@@ -113,7 +137,8 @@ async function main() {
     const operations = {};
     const register=(name,method)=>{operations[name]=method;};
     require('../electron/conversation-tools.cjs').registerConversationTools(register,controller);
-    require('../electron/portfolio.cjs').registerPortfolio(register,store,{getRuntime:()=>runtime});
+    const portfolio=require('../electron/portfolio.cjs').registerPortfolio(register,store,{getRuntime:()=>runtime});
+    runtime.options.syncProjectNames=portfolio.syncProjectNames;
     await operations.editConversation(session.id,{action:'rename',title:'이름 변경 왕복'});
     assert.equal((await desktop.request('thread/read',{threadId:id,includeTurns:false})).thread.name,'이름 변경 왕복');
     await desktop.request('thread/name/set',{threadId:id,name:'상대 앱의 새 제목'});
@@ -137,7 +162,9 @@ async function main() {
     await controller.send({sessionId:blank.id,text:'새 대화의 첫 요청',mode:'plan'});
     assert.equal((await blankDone).status,'completed');
     const named=store.session(blank.id);
-    assert.equal((await desktop.request('thread/read',{threadId:named.threadId,includeTurns:false})).thread.name,'첫 실행 전에 정한 제목');
+    const desktopBlank=(await desktop.request('thread/read',{threadId:named.threadId,includeTurns:false})).thread;
+    assert.equal(desktopBlank.name,'첫 실행 전에 정한 제목');
+    assert.equal(desktopBlank.projectId,firstRemote.id);
     assert.equal(named.title,'첫 실행 전에 정한 제목');
     const moved=await operations.portfolioAction({action:'move',id:secondProject.id,target:project.id,sync:true});
     assert.deepEqual(moved.order,[secondProject.id,project.id]);
@@ -150,6 +177,56 @@ async function main() {
     assert.equal((await desktop.request('project/read',{projectId:foreign.id})).project.name,'다른 카드');
     const fresh=new Store(path.join(root,'flowrium'));await fresh.load();
     assert.equal(fresh.project(project.id).name,'Codex에서 바꾼 프로젝트');
+    // Only explicitly naming an unregistered project creates its Codex metadata.
+    const localFolder=path.join(root,'local-only');await fs.mkdir(localFolder);
+    const local=await store.addProject(localFolder);
+    assert.equal((await operations.portfolioAction({action:'navigation',sync:true})).nameLinks[local.id],'local');
+    assert(!(await desktop.request('project/list',{})).data.some(p=>p.roots.some(r=>r.path===localFolder)));
+    await operations.setKickoffDetails(local.id,null,{name:'새로 연결한 프로젝트'});
+    const registered=(await desktop.request('project/list',{})).data.find(p=>p.roots.some(r=>r.path===localFolder));
+    assert.equal(registered.name,'새로 연결한 프로젝트');
+    const readLocal=()=>operations.readPortfolio().then(cards=>cards.find(card=>card.project.id===local.id).details);
+    controller.status.authenticated=false;
+    await operations.setKickoffDetails(local.id,(await readLocal()).revision,{name:'오프라인에서 정한 이름'});
+    assert.equal((await operations.portfolioAction({action:'navigation'})).nameLinks[local.id],'queued');
+    const noMatches={status:'supported',context:{owner:'other'},matches:new Map(),remote:[],runtime};
+    assert.equal(require('../electron/project-navigation.cjs').nameStatus(store.project(local.id),noMatches),'differentAccount');
+    assert.equal((await desktop.request('project/read',{projectId:registered.id})).project.name,'새로 연결한 프로젝트');
+    controller.status.authenticated=true;
+    await operations.portfolioAction({action:'navigation',sync:true});
+    assert.equal((await desktop.request('project/read',{projectId:registered.id})).project.name,'오프라인에서 정한 이름');
+    controller.status.authenticated=false;
+    await operations.setKickoffDetails(local.id,(await readLocal()).revision,{name:'충돌한 로컬 제목'});
+    await desktop.request('project/update',{projectId:registered.id,name:'충돌한 Codex 제목'});
+    controller.status.authenticated=true;
+    const conflicted=await operations.portfolioAction({action:'navigation',sync:true});
+    assert.equal(conflicted.nameLinks[local.id],'conflict');
+    assert.equal(conflicted.names[local.id],'충돌한 로컬 제목');
+    assert.equal((await desktop.request('project/read',{projectId:registered.id})).project.name,'충돌한 Codex 제목');
+    await operations.setKickoffDetails(local.id,(await readLocal()).revision,{name:'최종 이름'});
+    assert.equal((await desktop.request('project/read',{projectId:registered.id})).project.name,'최종 이름');
+    await desktop.request('project/update',{projectId:registered.id,name:'닫힌 창에서 바꾼 이름'});
+    runtime.syncMonitor.projectNamesAt=0;
+    await require('../electron/chat-sync-monitor.cjs').scan(runtime);
+    assert.equal(store.project(local.id).name,'닫힌 창에서 바꾼 이름');
+    assert.equal((await readLocal()).kickoff.name,'닫힌 창에서 바꾼 이름');
+    const multiFolder=path.join(root,'multi-root');await fs.mkdir(multiFolder);
+    const multi=await store.addProject(multiFolder);
+    const remoteMulti=(await desktop.request('project/create',{name:'두 경로를 연결한 이름',roots:[{path:multiFolder},{path:other}],idempotencyKey:require('node:crypto').randomUUID()})).project;
+    assert.equal((await operations.portfolioAction({action:'navigation',sync:true})).nameLinks[multi.id],'ambiguous');
+    await operations.setKickoffDetails(multi.id,null,{name:'내 개별 폴더'});
+    assert.equal((await desktop.request('project/read',{projectId:remoteMulti.id})).project.name,'두 경로를 연결한 이름');
+    assert((await fs.stat(localFolder)).isDirectory() && (await fs.stat(multiFolder)).isDirectory());
+    const request=reader.request.bind(reader);
+    reader.request=(method,...args)=>method==='project/list'?Promise.reject(Object.assign(Error('unsupported'),{rpcCode:-32601})):request(method,...args);
+    try{
+      await desktop.request('thread/name/set',{threadId:id,name:'프로젝트 API가 없어도 수신한 제목'});
+      const legacy=await operations.portfolioAction({action:'navigation',sync:true});
+      assert.equal(legacy.nameLinks[local.id],'unsupported');
+      assert.equal(legacy.titles[session.id],'프로젝트 API가 없어도 수신한 제목');
+    }finally{reader.request=request;}
+    console.log('미등록 프로젝트 이름 저장과 첫 등록 / 오프라인 변경의 재연결·충돌 처리 / 여러 루트의 원본 보존 / 구형 프로젝트 API에서도 채팅 제목 수신 통과');
+
 
     // Keep the other app's server alive and subscribed to this conversation.
     // The model must not see an unsent message, even after a Flowrium restart.
@@ -179,6 +256,9 @@ async function main() {
       await controller.cancelQueuedMessage(shared.id,active.queueId);
     }finally{externalRelease.resolve();}
     await externalDone;
+    for(let i=0;i<4&&!shared.messages.some(m=>m.text==='동기화 응답 '+requests);i++)await monitor.scan(runtime);
+    assert.equal(shared.messages.filter(m=>m.text==='원래 앱에서 실행 중인 요청').length,1);
+    assert.equal(shared.messages.filter(m=>m.text==='동기화 응답 '+requests).length,1);
     const beforeCount=requests;
     const queued=await controller.send(draft);
     assert(queued.queued && queued.waitingForWriter);
@@ -198,7 +278,14 @@ async function main() {
     // Let at least one automatic retry encounter the busy writer again.
     await new Promise(resolve=>setTimeout(resolve,5500));
     assert.equal(requests,beforeCount);
-    assert.equal(controller.runs.size,0);
+    // A retry may be inside thread/resume (particularly on Windows). Inspect
+    // both the pending reservation and actual protocol/model delivery.
+    for(const run of controller.runs.values()){
+      assert(run.claimingWriter);
+      assert.equal(run.userMessageId,null);
+      assert.equal(run.turnId,null);
+    }
+    assert.equal(shared.queuedMessages.find(q=>q.id===queued.queueId).status,'queued');
     assert.equal(shared.messages.filter(m=>m.text===draft.text).length,0);
     const ended=onceEvent(controller,'event',e=>e.type==='done'&&e.sessionId===shared.id);
     await desktop.request('thread/unsubscribe',{threadId:source});

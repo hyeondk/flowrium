@@ -145,6 +145,7 @@ class ProjectStore {
     this.createdAt = metadata.createdAt;
     this.heads = new Map();
     this.saved = new Map();
+    this.revisionHeaders = new Map();
   }
   static async open(directory, preferredId) {
     const root = path.join(directory, ".flowrium");
@@ -190,7 +191,28 @@ class ProjectStore {
     await store.refresh();
     return store;
   }
-  async inspect() {
+  async readRevision(file, sessionId, revision) {
+    const record = await readJSON(file, {maxBytes:SESSION_REVISION_BYTES});
+    if (
+      !record ||
+      record.version !== 1 ||
+      record.projectId !== this.id ||
+      record.sessionId !== sessionId ||
+      record.revision !== revision ||
+      !UUID.test(record.sessionId) ||
+      !UUID.test(record.revision) ||
+      (record.parentRevision !== null && !UUID.test(record.parentRevision)) ||
+      typeof record.deleted !== "boolean"
+    )
+      throw new Error(
+        "프로젝트 기록 형식이 올바르지 않습니다. 원본은 보존됩니다.",
+      );
+    if (!record.deleted) validateSession(record.session, this.id);
+    if (!record.deleted && record.session.id !== record.sessionId)
+      throw new Error("대화 식별자가 일치하지 않습니다. 원본은 보존됩니다.");
+    return record;
+  }
+  async inspect(includeBodies = true) {
     await projectDirectory(this.root);
     await projectDirectory(this.history);
     const metadata = await readJSON(path.join(this.root, "project.json"));
@@ -209,26 +231,20 @@ class ProjectStore {
       const match = /^([0-9a-f-]{36})--([0-9a-f-]{36})\.json$/i.exec(name);
       if (!match || !UUID.test(match[1]) || !UUID.test(match[2]))
         throw conflict();
-      const record = await readJSON(path.join(this.history, name),{maxBytes:SESSION_REVISION_BYTES});
-      if (
-        !record ||
-        record.version !== 1 ||
-        record.projectId !== this.id ||
-        record.sessionId !== match[1] ||
-        record.revision !== match[2] ||
-        !UUID.test(record.sessionId) ||
-        !UUID.test(record.revision) ||
-        (record.parentRevision !== null && !UUID.test(record.parentRevision)) ||
-        typeof record.deleted !== "boolean"
-      )
-        throw new Error(
-          "프로젝트 기록 형식이 올바르지 않습니다. 원본은 보존됩니다.",
-        );
-      if (!record.deleted) validateSession(record.session, this.id);
-      if (!record.deleted && record.session.id !== record.sessionId)
-        throw new Error("대화 식별자가 일치하지 않습니다. 원본은 보존됩니다.");
-      records.set(record.revision, record);
+      const file = path.join(this.history, name);
+      const stat = await fs.lstat(file, {bigint:true});
+      if (!stat.isFile() || stat.isSymbolicLink()) throw conflict();
+      const fingerprint = [stat.dev,stat.ino,stat.size,stat.mtimeNs,stat.ctimeNs].join(':');
+      let header = this.revisionHeaders.get(name);
+      if (header?.fingerprint !== fingerprint) {
+        // Keep only ancestry in memory. A long chat can have gigabytes of
+        // previous revisions while its current body is a small fraction of that.
+        const {revision, sessionId, parentRevision, deleted} = await this.readRevision(file, match[1], match[2]);
+        header = {revision, sessionId, parentRevision, deleted, name, fingerprint};
+      }
+      records.set(header.revision, header);
     }
+    this.revisionHeaders = new Map([...records.values()].map(header => [header.name, header]));
     const parents = new Set();
     const allSessions = new Set();
     for (const record of records.values()) {
@@ -252,6 +268,13 @@ class ProjectStore {
       throw new Error(
         "프로젝트 기록의 연결 구조가 올바르지 않습니다. 원본은 보존됩니다.",
       );
+    if (includeBodies) {
+      for (const [id, header] of heads) {
+        const record = await this.readRevision(path.join(this.history,header.name), id, header.revision);
+        if (record.parentRevision !== header.parentRevision || record.deleted !== header.deleted) throw conflict();
+        heads.set(id, record);
+      }
+    }
     return heads;
   }
   async refresh() {
@@ -282,7 +305,7 @@ class ProjectStore {
     for (const id of this.saved.keys())
       if (!target.has(id)) changes.push({ id, session: null });
     if (!changes.length) return;
-    const actual = await this.inspect();
+    const actual = await this.inspect(false);
     for (const change of changes)
       if (
         (actual.get(change.id)?.revision || null) !==
@@ -311,7 +334,7 @@ class ProjectStore {
     }
     // A second scan reports a concurrently synchronized fork. Both immutable
     // revisions remain intact for manual reconciliation.
-    await this.inspect();
+    await this.inspect(false);
   }
 }
 async function projectDirectory(directory) {

@@ -76,7 +76,7 @@ export function CodexLinkBar({session,running}:{session:Session;running:boolean}
  const label=!linked?'독립 사본':error?'연결 상태 확인':status==='active'?'다른 앱에서 작업 중':'대화 자동 동기화';
  return <div className="codex-link-bar" role="region" aria-label="연결한 Codex 대화">
    <details className="codex-link-details"><summary><Link2 size={14}/>{label}</summary>
-     <p>{!linked?'원래 대화와 별개로 진행하는 사본입니다.':status==='active'?'현재 작업이 끝나면 새 답변이 여기에 표시됩니다.':'이 기기의 ChatGPT 데스크톱에서 같은 Codex 대화를 이어갈 수 있습니다.'}</p>
+     <p>{!linked?'원래 대화와 별개로 진행하는 사본입니다.':status==='active'?'Codex가 저장한 요청과 답변을 자동으로 표시합니다. 작업이 끝나면 전체 대화를 다시 맞춥니다.':'이 기기의 ChatGPT 데스크톱에서 같은 Codex 대화를 이어갈 수 있습니다.'}</p>
      {linked && <button className="button subtle" disabled={busy||running} onClick={()=>void openDesktop()}>데스크톱에서 이 대화 이어가기<ArrowRight size={13}/></button>}
      {error && <p role="status" className="codex-transfer-error">{error}</p>}
    </details>

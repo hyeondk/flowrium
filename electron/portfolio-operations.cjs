@@ -67,7 +67,8 @@ function registerPortfolioOperations(register,store,{chooseFolder,getRuntime}={}
         }
         await navigation.incomingNames(store,source);
         const titles = source ? await require('./chat-sync.cjs').listingTitles(source.runtime,source.context) : {};
-        return {order,names:Object.fromEntries(store.state.projects.map(p=>[p.id,p.name])),titles};
+        return {order,names:Object.fromEntries(store.state.projects.map(p=>[p.id,p.name])),
+          nameLinks:Object.fromEntries(store.state.projects.map(p=>[p.id,navigation.nameStatus(p,source)])),titles};
       }
       if(input.action==='save') {
         if(input.revision!==s.revision)throw new Error('보드 설정이 변경됐습니다. 새로고침해 주세요.');

@@ -68,11 +68,13 @@ const titleOf = (session: Session) =>
 export function KickoffForm({
   initial,
   editing = false,
+  nameLink,
   onSave,
   onCancel,
 }: {
   initial: Kickoff;
   editing?: boolean;
+  nameLink?: import("../shared/portfolio").ProjectNameLink;
   onSave(input: KickoffInput): Promise<void>;
   onCancel(): void;
 }) {
@@ -138,6 +140,18 @@ export function KickoffForm({
             </select>
           </label>
         </div>
+        {editing && nameLink && <small className="pf-muted">{{
+          longName:'Codex 프로젝트 이름이 140자를 넘습니다. 140자 안으로 줄여 저장하면 양쪽에 반영됩니다.',
+          queued:'이름 변경을 이 기기에 보관했습니다. 원래 Codex 계정에 연결하면 반영됩니다.',
+          linked:'같은 폴더에 연결된 Codex 프로젝트와 표시 이름을 공유합니다.',
+          local:'이름을 바꾸면 이 폴더를 Codex 프로젝트로 등록하고 표시 이름을 공유합니다.',
+          ambiguous:'이 폴더가 여러 프로젝트 또는 여러 폴더를 묶은 프로젝트에 포함돼 있어 표시 이름을 Flowrium에 저장합니다.',
+          offline:'Codex 연결을 확인하면 프로젝트 이름의 동기화 상태를 볼 수 있습니다.',
+          unsupported:'현재 연결한 Codex는 프로젝트 이름 연동을 지원하지 않아 표시 이름을 Flowrium에 저장합니다.',
+          unavailable:'Codex 프로젝트 목록을 불러오지 못했습니다. 연결을 확인해 주세요.',
+          conflict:'연결이 끊긴 동안 양쪽 이름이 변경됐습니다. 두 앱에 사용할 이름을 입력하고 저장해 주세요.',
+          differentAccount:'보관한 이름 변경은 원래 Codex 계정에 다시 연결하면 반영됩니다.'
+        }[nameLink]}</small>}
         <label>
           프로젝트 목표
           <textarea

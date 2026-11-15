@@ -6,7 +6,7 @@ async function main(){
   async function closeApp(){let child;try{child=app.process();}catch{return;}if(child.exitCode!==null||child.signalCode)return;let timer;try{await app.evaluate(()=>{globalThis.stopProbe=true;});await Promise.race([app.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('정상 앱 종료가 15초 안에 완료되지 않았습니다.')),15000);})]);}catch(error){console.error('종료 진단',await fs.readFile(path.join(temporary,'shutdown.log'),'utf8').catch(()=>''));child.kill('SIGKILL');throw error;}finally{clearTimeout(timer);}}
  try{
   const store=new Store(profile);await store.load();const first=path.join(temporary,'삭제 복원 프로젝트'),second=path.join(temporary,'유지할 프로젝트');await fs.mkdir(first);await fs.mkdir(second);await fs.writeFile(path.join(first,'원본.txt'),'원래 작업 파일');const a=await store.addProject(first),b=await store.addProject(second),conversation=await store.createSession(a.id,{title:'합성 삭제 대화'}),kept=await store.createSession(b.id,{title:'유지할 우측 대화'});await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
-  const probe=path.join(temporary,'startup-probe.cjs');await fs.writeFile(probe,`const {app,dialog,ipcMain}=require('electron'),fs=require('node:fs');const output=${JSON.stringify(path.join(temporary,'shutdown.log'))};const log=value=>fs.appendFileSync(output,JSON.stringify({at:Date.now(),pid:process.pid,...value})+'\\n');log({stage:'probe-loaded'});const handle=ipcMain.handle.bind(ipcMain);ipcMain.handle=(name,listener)=>handle(name,async(...args)=>{const traced=['flowrium:readAccountUsage','flowrium:connect','flowrium:readDrafts','flowrium:writeDrafts'].includes(name);if(traced)log({stage:'ipc-start',name});try{return await listener(...args);}finally{if(traced)log({stage:'ipc-done',name});}});dialog.showErrorBox=(title,message)=>log({stage:'startup-error',title,message});const native=Promise.allSettled;Promise.allSettled=function(values){const items=[...values];if(globalThis.stopProbe&&[10,11].includes(items.length)){log({stage:'shutdown-start',count:items.length});return native.call(this,items.map((value,index)=>Promise.resolve(value).then(result=>{log({stage:'shutdown-done',index});return result;},error=>{log({stage:'shutdown-error',index,error:String(error)});throw error;}))).then(result=>{log({stage:'shutdown-all-done'});return result;});}return native.call(this,items);};app.on('before-quit',()=>{globalThis.stopProbe=true;log({stage:'before-quit'});});app.on('will-quit',()=>log({stage:'will-quit'}));`);
+  const probe=path.join(temporary,'startup-probe.cjs');await fs.writeFile(probe,`const {app,dialog,ipcMain}=require('electron'),fs=require('node:fs');const output=${JSON.stringify(path.join(temporary,'shutdown.log'))};const transfer=require(${JSON.stringify(require.resolve('../electron/codex-transfer.cjs'))}).CodexTransfer;const captureContext=transfer.prototype.context;transfer.prototype.context=function(){globalThis.testTransfer=this;transfer.prototype.context=captureContext;return captureContext.call(this);};const log=value=>fs.appendFileSync(output,JSON.stringify({at:Date.now(),pid:process.pid,...value})+'\\n');log({stage:'probe-loaded'});const handle=ipcMain.handle.bind(ipcMain);ipcMain.handle=(name,listener)=>handle(name,async(...args)=>{const traced=['flowrium:readAccountUsage','flowrium:connect','flowrium:readDrafts','flowrium:writeDrafts'].includes(name);if(traced)log({stage:'ipc-start',name});try{return await listener(...args);}finally{if(traced)log({stage:'ipc-done',name});}});dialog.showErrorBox=(title,message)=>log({stage:'startup-error',title,message});const native=Promise.allSettled;Promise.allSettled=function(values){const items=[...values];if(globalThis.stopProbe&&[10,11].includes(items.length)){log({stage:'shutdown-start',count:items.length});return native.call(this,items.map((value,index)=>Promise.resolve(value).then(result=>{log({stage:'shutdown-done',index});return result;},error=>{log({stage:'shutdown-error',index,error:String(error)});throw error;}))).then(result=>{log({stage:'shutdown-all-done'});return result;});}return native.call(this,items);};app.on('before-quit',()=>{globalThis.stopProbe=true;log({stage:'before-quit'});});app.on('will-quit',()=>log({stage:'will-quit'}));`);
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temporary,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
 
   async function launch(){app=await _electron.launch({args:['-r',probe,path.resolve(__dirname,'..')],env,timeout:45000});page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});await page.bringToFront();page.setDefaultTimeout(16000);await page.locator('.workspace-side').waitFor();await page.waitForFunction(()=>!document.querySelector('.loading-page'));}
@@ -15,7 +15,44 @@ async function main(){
   async function projectMenu(name){await page.locator('.workspace-side').hover();const project=page.locator('.workspace-side .side-project').getByText(name,{exact:true});await project.click({button:'right'});await page.getByRole('menu',{name:'항목 메뉴'}).waitFor();}
   async function openTrash(){await projectMenu(b.name);await page.getByRole('menuitem',{name:'휴지통 열기',exact:true}).click();await page.getByRole('dialog',{name:'휴지통',exact:true}).waitFor();}
   async function closeTrash(){await button('휴지통 닫기').click();await page.getByRole('dialog',{name:'휴지통',exact:true}).waitFor({state:'hidden'});}
-  await launch();console.log('합성 앱 시작');await openConversation(page,kept.title);await composer(page).fill('옆에서 보존할 미전송 초안');
+  await launch();console.log('합성 앱 시작');
+  await page.evaluate(()=>window.flowrium.codexTransferAction({action:'receipts'}));
+  await app.evaluate(({dialog},folder)=>{
+    const runtime=globalThis.testTransfer;
+    const end=runtime.beginRefresh(),picker=dialog.showOpenDialog;
+    globalThis.probePickCount=0;
+    runtime.busy=true;
+    dialog.showOpenDialog=async()=>{globalThis.probePickCount++;return {canceled:false,filePaths:[folder]};};
+    globalThis.releaseProbeRefresh=()=>{runtime.busy=false;end();dialog.showOpenDialog=picker;};
+  },b.path);
+  try{
+    await button('기존 폴더 연결').click();
+    await until(()=>app.evaluate(()=>globalThis.probePickCount===1));
+    assert(await app.evaluate(()=>globalThis.testTransfer.options.foregroundBusy()));
+  }finally{await app.evaluate(()=>globalThis.releaseProbeRefresh());}
+  await until(()=>app.evaluate(()=>!globalThis.testTransfer.options.foregroundBusy()));
+  assert.equal((await snapshot()).projects.filter(p=>p.id===b.id).length,1);
+  console.log('동기화 중 기존 폴더 연결 버튼 / 즉시 선택창 / 저장 차례 후 한 번만 연결');
+  await openConversation(page,kept.title);await composer(page).fill('옆에서 보존할 미전송 초안');
+  // The backend of the isolated profile changes first, as it does for a
+  // remote deletion. Only the real main-to-renderer event can update this window.
+  async function catalogEvent(event){
+    await app.evaluate(({BrowserWindow},payload)=>BrowserWindow.getAllWindows()[0].webContents.send('flowrium:event',payload),event);
+  }
+  const removedProject=await page.evaluate(async id=>{
+    const plan=await window.flowrium.trashAction({action:'preview',kind:'project',id});
+    return window.flowrium.trashAction({action:'delete',token:plan.token,native:'keep'});
+  },a.id);
+  const projectLabel=page.locator('.workspace-side .side-project').getByText(a.name,{exact:true});
+  await catalogEvent({type:'sessionList',projectsChanged:true,removedSessionIds:[conversation.id]});
+  await projectLabel.waitFor({state:'detached'});
+  assert.equal(await composer(page).inputValue(),'옆에서 보존할 미전송 초안');
+  await page.evaluate(id=>window.flowrium.trashAction({action:'restore',id}),removedProject.entry.id);
+  await catalogEvent({type:'sessionList',projectsChanged:true,restoredProjectIds:[a.id]});
+  await projectLabel.waitFor({state:'attached'});
+  await page.locator('.conversation-dock').getByRole('heading',{name:kept.title,exact:true}).waitFor();
+  assert.equal(await composer(page).inputValue(),'옆에서 보존할 미전송 초안');
+  console.log('외부 삭제·복원 이벤트의 프로젝트 목록 즉시 반영 / 우측 선택과 초안 보존');
   await projectMenu(a.name);await page.keyboard.press('ArrowDown');assert.equal(await page.getByRole('menuitem',{name:'프로젝트 삭제…',exact:true}).evaluate(node=>node===document.activeElement),true);await page.keyboard.press('Escape');await page.getByRole('menu',{name:'항목 메뉴'}).waitFor({state:'hidden'});assert.equal((await snapshot()).projects.length,2);
   await projectMenu(a.name);await page.getByRole('menuitem',{name:'프로젝트 삭제…',exact:true}).click();let deletion=page.getByRole('dialog',{name:'삭제 범위 확인',exact:true});await deletion.getByRole('radio',{name:/Flowrium 항목만 휴지통/}).waitFor();assert.equal(await deletion.getByRole('radio',{name:/Flowrium 항목만 휴지통/}).isChecked(),true);await deletion.getByRole('button',{name:'휴지통으로 이동',exact:true}).click();await deletion.waitFor({state:'hidden'});await until(async()=>!(await snapshot()).projects.some(p=>p.id===a.id));
   assert.equal(await composer(page).inputValue(),'옆에서 보존할 미전송 초안');await page.locator('.conversation-dock').getByRole('heading',{name:kept.title,exact:true}).waitFor();assert.equal(await fs.readFile(path.join(first,'원본.txt'),'utf8'),'원래 작업 파일');

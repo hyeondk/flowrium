@@ -18,6 +18,50 @@ class Client extends EventEmitter{
  }
  close(){this.ready=false;}
 }
+test('공식 대화 만들기로 전달한 요청은 출처를 표시하고 일반 도구 결과는 요청으로 읽지 않는다',async t=>{
+ const {client,folder}=await fixture(t),thread=client.threads.get('원본대화');
+ const item={type:'functionCallOutput',id:'one',name:'create_thread',namespace:'codex_app',
+  output:'<codex_delegation>\n<source_thread_id>'+require('node:crypto').randomUUID()+'</source_thread_id>\n<input>연결 시험 요청</input>\n</codex_delegation>'};
+ const turn={id:'test',items:[item,{...item,id:'two',namespace:'other'},{...item,id:'three',output:'기타 응답'}]};
+ const {messages}=await require('../electron/codex-transfer-data.cjs').snapshot(client,thread.id,folder,false,{thread,turns:[turn],textOnly:true});
+ assert.deepEqual(messages.map(m=>[m.role,m.text,m.delegated]),[['user','연결 시험 요청',true]]);
+});
+test('등록 폴더의 새 Codex 요청과 응답이 자동 연결되고 휴지통·다른 계정의 과거·하위 작업은 제외한다',async t=>{
+ const f=await fixture(t),runtime=f.runtime,ctx=runtime.context(),excluded=new Set(),newId=()=>require('node:crypto').randomUUID();
+ f.controller.trashRuntime={isBusy:()=>false,excludedThreadIds:async()=>excluded};
+ const discover=(rows,page)=>require('../electron/chat-discovery.cjs').discoverProjectThreads(rows,ctx,runtime,page);
+ await discover([]);
+ const template=f.client.threads.get('원본대화'),turns=f.client.turns.get(template.id);
+ const add=(patch={})=>{
+  const row={...template,id:newId(),createdAt:runtime.discovery.since,updatedAt:runtime.discovery.since,...patch};
+  f.client.threads.set(row.id,row);f.client.turns.set(row.id,turns);return row;
+ };
+ const newChat=add(),trash=add(),other=add({cwd:path.dirname(f.folder)}),old=add({createdAt:runtime.discovery.since-3600}),sub=add({parentThreadId:newChat.id});
+ excluded.add(trash.id);
+ await discover([trash,other,old,sub,newChat]);
+ assert.deepEqual(f.store.state.sessions.map(s=>s.threadId),[newChat.id]);
+ const linked=f.store.state.sessions[0];
+ assert.equal(linked.codexLink.sourceThreadId,newChat.id);
+ assert(linked.messages.some(m=>m.role==='user'));assert(linked.messages.some(m=>m.role==='assistant'));
+ const next=add(),firstPage=[trash,other,old,sub,newChat];
+ await discover(firstPage,{nextCursor:'다음',params:{archived:false}});
+ const original=f.client.request.bind(f.client);
+ f.client.request=async(method,params)=>method==='thread/list'&&params.cursor==='다음'?{data:[next],nextCursor:null}:original(method,params);
+ await discover(firstPage,{nextCursor:'다음',params:{archived:false}});
+ assert.deepEqual(new Set(f.store.state.sessions.map(s=>s.threadId)),new Set([newChat.id,next.id]));
+ await discover([next,newChat]);assert.equal(f.store.state.sessions.length,2);
+ const project=f.store.state.projects[0], bound=newId();
+ project.codexNameLink={id:bound,name:project.name,owner:ctx.owner};
+ const marker=path.join(runtime.base,'codex-discovery',ctx.owner+'-'+ctx.revision+'-'+await runtime.device()+'.json');
+ await fs.writeFile(marker,JSON.stringify({since:runtime.discovery.since-120}));
+ const offline=add({projectId:bound,createdAt:runtime.discovery.since-30});
+ const wrong=add({projectId:newId(),createdAt:offline.createdAt}), noBinding=add({createdAt:offline.createdAt});
+ delete runtime.discovery;
+ await discover([offline,wrong,noBinding,old]);
+ assert.deepEqual(new Set(f.store.state.sessions.map(s=>s.threadId)),new Set([newChat.id,next.id,offline.id]));
+ const reloaded=new Store(path.dirname(f.store.file));await reloaded.load();
+ assert.equal(reloaded.session(linked.id).threadId,newChat.id);
+});
 test('자동 새로고침 중 들어온 채팅 전송은 최신 본문 확인까지 기다린다', async t => {
   const f = await fixture(t);
   const plan = await f.preview();
@@ -136,4 +180,37 @@ test('기기 식별자가 누락된 연결 대화를 검증된 원본으로 복�
   f.setOwner('별도계정');
   await assert.rejects(f.runtime.beforeSend(session.id),/원래 계정/);
   assert.equal(session.threadId,undefined);
+});
+
+test('다른 앱에서 기록한 작업 중 요청과 중간 답변을 같은 행에 반영하고 완료 뒤 순서와 개수를 보존한다',async t=>{
+ const f=await fixture(t),plan=await f.preview();
+ await f.runtime.apply({planId:plan.id});
+ const s=f.store.state.sessions[0],thread=f.client.threads.get(s.threadId);
+ const active={id:'진행중인원본',startedAt:1700000250,status:'inProgress',items:[
+  {id:'원래요청',type:'userMessage',content:[{type:'text',text:'원래 앱의 추가 요청'}]},
+  {id:'원래답변',type:'agentMessage',text:'첫 부분'}
+ ]};
+ f.client.turns.get(s.threadId).push(active);
+ thread.status={type:'active'};
+ const check=()=>f.runtime.action({action:'sync',sessionId:s.id});
+ const current=()=>f.runtime.liveView(s).messages.filter(m=>m.turnId===active.id&&m.role!=='system').map(m=>m.text);
+ const repository=f.store.repositories.get(s.projectId),savedRevision=repository.heads.get(s.id);
+ const before=s.messages.map(m=>m.id);
+ await Promise.all([check(),check()]);
+ assert.deepEqual(current(),['원래 앱의 추가 요청','첫 부분']);
+ const observed=f.runtime.liveView(s).messages.filter(m=>m.turnId===active.id).map(m=>m.id);
+ assert.deepEqual(s.messages.map(m=>m.id),before);
+ active.items[1].text='첫 부분과 다음 부분';
+ await check();assert.deepEqual(current(),['원래 앱의 추가 요청','첫 부분과 다음 부분']);
+ await f.store.save();
+ assert.equal(repository.heads.get(s.id),savedRevision);
+ assert.deepEqual(s.messages.map(m=>m.id),before);
+ active.status='completed';active.completedAt=1700000255;thread.updatedAt=1700000255;thread.status={type:'idle'};
+ active.items[1].text='첫 부분과 다음 부분, 최종 답변';
+ await check();await check();
+ assert.deepEqual(s.messages.map(m=>m.id),[...before,...observed]);
+ assert.notEqual(repository.heads.get(s.id),savedRevision);
+ assert.equal(f.runtime.liveTurn(s),undefined);
+ assert.deepEqual(current(),['원래 앱의 추가 요청','첫 부분과 다음 부분, 최종 답변']);
+ assert(!f.client.calls.some(c=>['thread/resume','turn/start'].includes(c.method)));
 });

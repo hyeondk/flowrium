@@ -44,6 +44,7 @@ export const projectTabs: [ProjectTab, string][] = [
 ];
 const noteNames = { rules: "규칙", design: "디자인 시안", meetings: "회의록" };
 interface Props {
+  nameLink?: import("../shared/portfolio").ProjectNameLink;
   project: Project;
   sessions: Session[];
   tab: ProjectTab;
@@ -371,7 +372,7 @@ function Goals({
 }
 
 export function ProjectOverview({
-  project,
+  project, nameLink,
   sessions,
   tab,
   onTabChange,
@@ -641,6 +642,7 @@ export function ProjectOverview({
             {editing && data ? (
               <KickoffForm
                 editing
+                nameLink={nameLink}
                 initial={meta}
                 onCancel={() => setEditing(false)}
                 onSave={async (values) => {

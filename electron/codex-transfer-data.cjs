@@ -32,10 +32,16 @@ async function itemPages(client,threadId,turnId,options={}){
  }
  return out;
 }
+function delegatedInput(item) {
+ if (item?.type!=='functionCallOutput' || item.namespace!=='codex_app' ||
+     !['create_thread','send_message_to_thread'].includes(item.name) || typeof item.output!=='string') return;
+ const match=/^<codex_delegation>\s*<source_thread_id>([\da-f-]+)<\/source_thread_id>\s*<input>([\s\S]*)<\/input>\s*<\/codex_delegation>$/.exec(item.output);
+ if (match && require('./project-store.cjs').UUID.test(match[1])) return match[2];
+}
 async function snapshot(client,threadId,cwd,forcedActive=false,options={}){
  const thread=options.thread?validateThread(options.thread,threadId,cwd):await readThread(client,threadId,cwd);
- let turns;
- try{turns=await pages(client,'thread/turns/list',{threadId,limit:25,sortDirection:'asc',itemsView:'notLoaded'});}
+ let turns=options.turns;
+ if(!turns)try{turns=await pages(client,'thread/turns/list',{threadId,limit:25,sortDirection:'asc',itemsView:'notLoaded'});}
  catch(error){if(!unsupported(error))throw error;const legacy=await client.request('thread/read',{threadId,includeTurns:true});if(!legacy.thread||legacy.thread.id!==threadId||!samePath(legacy.thread.cwd,cwd)||!Array.isArray(legacy.thread.turns))throw Error('전체 대화 본문을 읽지 못했습니다.');turns=legacy.thread.turns;}
  const records=[],messages=[],attachments=[],seen=new Set();let itemCount=0;
  for(const turn of turns){
@@ -44,9 +50,10 @@ async function snapshot(client,threadId,cwd,forcedActive=false,options={}){
   else entries=turn.items.map(item=>({item}));
   records.push({...turn,items:entries});
   for(const [index,entry]of entries.entries()){
-   const item=entry.item||entry;if(!item||typeof item!=='object')throw Error('대화 항목 형식을 확인하지 못했습니다.');const key=String(turn.id)+':'+(item.id||index);if(seen.has(key))continue;seen.add(key);itemCount++;
+   const item=entry.item||entry,forwarded=delegatedInput(item);if(options.textOnly&&!forwarded&&!['userMessage','agentMessage','plan','exitedReviewMode'].includes(item?.type))continue;if(!item||typeof item!=='object')throw Error('대화 항목 형식을 확인하지 못했습니다.');const key=String(turn.id)+':'+(item.id||index);if(seen.has(key))continue;seen.add(key);itemCount++;
    let role,body='',images=[];
    if(item.type==='userMessage'){role='user';for(const part of item.content||[]){if(part.type==='text'&&typeof part.text==='string')body+=(body?'\n':'')+part.text;else if(['localImage','image','file','localFile'].includes(part.type)){images.push(part);attachments.push({key,part});}}}
+   else if(forwarded){role='user';body=forwarded;}
    else if(['agentMessage','plan'].includes(item.type)){role='assistant';body=typeof item.text==='string'?item.text:'';}
    else if(item.type==='exitedReviewMode'){role='assistant';body=typeof item.review==='string'?item.review:'';}
    else if(item.type==='commandExecution'){role='system';body=['실행 도구 / 명령',item.command,item.aggregatedOutput].filter(v=>typeof v==='string'&&v).join('\n\n');}
@@ -57,9 +64,10 @@ async function snapshot(client,threadId,cwd,forcedActive=false,options={}){
    if(!body)continue;
    const stamp=at(role==='user'?(entry.startedAtMs??turn.startedAt):(entry.completedAtMs??turn.completedAt??turn.startedAt),at(thread.createdAt));
    // 프로젝트 기록의 메시지 크기 제한 안에서 여러 조각으로 보존하며 본문을 자르지 않습니다.
-   for(let offset=0;offset<body.length;offset+=1_900_000){messages.push({id:stable('codex-message:'+threadId+':'+key+':'+offset),role,text:body.slice(offset,offset+1_900_000),createdAt:stamp,...(turn.id&&{turnId:String(turn.id)})});}
+   for(let offset=0;offset<body.length;offset+=1_900_000){messages.push({id:stable('codex-message:'+threadId+':'+key+':'+offset),role,text:body.slice(offset,offset+1_900_000),createdAt:stamp,...(forwarded&&{delegated:true}),...(turn.id&&{turnId:String(turn.id)})});}
   }
  }
+ if(options.turns)return {thread,messages,attachments};
  const raw={format:'flowrium-codex-source',version:1,observedAt:new Date().toISOString(),thread,turns:records},data=Buffer.from(JSON.stringify(raw,null,2));
  if(data.length>512*1024*1024)throw Error('대화 원문이 512MB를 넘었습니다. 원본은 그대로 보존됩니다.');
  const sourceActive=forcedActive||active(thread)||turns.some(t=>t.status==='inProgress'||t.status==='in_progress');

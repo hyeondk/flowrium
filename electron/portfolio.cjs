@@ -180,17 +180,12 @@ function registerPortfolio(register, store, { chooseFolder, reveal, getRuntime }
     const project = store.project(id);
     const previous = await readDetails(store, id);
     if (previous.revision !== revision) throw Error('프로젝트 설정이 변경되었습니다. 다시 열어 주세요.');
-    if ((previous.kickoff?.name || project.name) !== values.name) {
-      const source = await require('./project-navigation.cjs').catalog(store,getRuntime);
-      const linked = source?.matches.get(id);
-      if (linked && linked.name !== values.name) {
-        source.guard();
-        await source.runtime.client.request('project/update', {projectId:linked.id, name:values.name});
-        source.guard();
-      }
-    }
+    const rename=(previous.kickoff?.name || project.name)!==values.name || !!project.pendingCodexName;
+    const result=rename ? await require('./project-navigation.cjs').renameProject(store,getRuntime,project,values.name) : undefined;
     const details = await updateDetails(store, id, revision, {action:'kickoff', input:values});
-    if (project.name !== values.name) {
+    if (project.name !== values.name || result) {
+      if(result?.link){project.codexNameLink=result.link;delete project.pendingCodexName;}
+      if(result?.pending)project.pendingCodexName=result.pending;
       project.name = values.name;
       await store.save();
     }
@@ -313,5 +308,10 @@ function registerPortfolio(register, store, { chooseFolder, reveal, getRuntime }
     }
     return (await noteAt(root, spec, spec.roots[0] + "/" + filename)).info;
   });
+  return {syncProjectNames:context=>serialize(async()=>{
+    if(!store.state.projects.length)return;
+    const navigation=require('./project-navigation.cjs');
+    await navigation.incomingNames(store,await navigation.catalog(store,getRuntime,context));
+  })};
 }
 module.exports = { registerPortfolio };

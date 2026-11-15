@@ -154,3 +154,67 @@ test('이미 지운 화면 항목의 재요청은 원본 재삭제 없이 목록
  await assert.rejects(f.action({action:'delete',token:stale.token,native:'keep'}),/바뀌/);
  assert(f.store.peekSession(id));
 });
+
+test('양방향 삭제는 부분 목록, 커서 오류, 인증 실패, 계정 변경을 삭제로 해석하지 않는다',async t=>{
+ const f=await fixture(t);await f.linked();const transfer=f.controller.codexTransfer,base=transfer.client.request;
+ const normal=async(method,args)=>{
+   if(method==='project/list')return {data:[],nextCursor:null};
+   return base(method,args);
+ };
+ const simulate=async handler=>{
+   transfer.client.request=handler;
+   return f.runtime.syncNative([],f.runtime.context(),transfer,{force:true});
+ };
+ for(const broken of [{data:[]},{data:[],nextCursor:3},{data:[],nextCursor:'같은 커서'}]){
+   await assert.rejects(simulate(async(method,args)=>method==='thread/list'?broken:normal(method,args)),/페이지/);
+   assert(f.store.peekSession(f.session.id));
+ }
+ await assert.rejects(simulate(async()=>{throw Error('일시적 연결 오류');}),/연결 오류/);
+ assert(f.store.peekSession(f.session.id));
+ await assert.rejects(simulate(async(method,args)=>{const value=await normal(method,args);f.setAccount('다른 계정');return value;}),/계정/);
+ assert(f.store.peekSession(f.session.id));assert.deepEqual(await f.runtime.excludedThreadIds(),new Set());
+ f.setAccount('합성 계정');
+ // Temporarily invisible on both lists, but metadata still exists in the current account.
+ await simulate(async(method,args)=>method==='thread/list'?{data:[],nextCursor:null}:normal(method,args));
+ assert(f.store.peekSession(f.session.id));assert.equal((await f.action({action:'list'})).length,0);
+});
+
+test('연결된 대화를 오프라인에서 휴지통으로 옮기거나 복원하면 현재 계정이 돌아온 뒤 원래 보관 상태를 일치시킨다',async t=>{
+ const f=await fixture(t);await f.linked();const transfer=f.controller.codexTransfer,ready=transfer.ready,request=transfer.client.request;
+ transfer.client.request=(method,args)=>method==='project/list'?{data:[],nextCursor:null}:request(method,args);
+ const sweep=()=>f.runtime.syncNative([],f.runtime.context(),transfer,{force:true});
+ transfer.ready=async()=>{throw Error('연결 끊김');};
+ const p=await f.action({action:'preview',kind:'session',id:f.session.id});assert.equal(p.deferredArchive,true);
+ const removed=await f.action({action:'delete',token:p.token,native:'archive'});assert(!f.store.peekSession(f.session.id));assert(!f.rows.get('root-synthetic').archived);
+ transfer.ready=ready;await sweep();assert.equal(f.rows.get('root-synthetic').archived,true);
+ transfer.ready=async()=>{throw Error('연결 끊김');};
+ await f.action({action:'restore',id:removed.entry.id});assert(f.store.peekSession(f.session.id));assert(f.rows.get('root-synthetic').archived);
+ transfer.ready=ready;await sweep();assert(f.store.peekSession(f.session.id));assert.equal(f.rows.get('root-synthetic').archived,false);
+});
+
+test('원래 대화가 살아 있는 로컬 전용 삭제의 제외 식별자는 휴지통 비우기·재시작을 지나 원래 계정에만 남는다',async t=>{
+ const f=await fixture(t);await f.linked();const p=await f.action({action:'preview',kind:'session',id:f.session.id});
+ await f.action({action:'delete',token:p.token,native:'keep'});assert((await f.runtime.excludedThreadIds()).has('root-synthetic'));
+ const confirmation=await f.action({action:'purgePreview',scope:'all'});await purge(f,confirmation);
+ assert.equal(f.rows.get('root-synthetic').archived,false);assert.deepEqual(await f.action({action:'list'}),[]);
+ const runtime=new(require('../electron/trash.cjs').TrashRuntime)(f.store,f.controller,{accountOwner:()=>f.account,canRun:()=>true});
+ assert((await runtime.excludedThreadIds()).has('root-synthetic'));f.setAccount('별도 계정');assert.equal((await runtime.excludedThreadIds()).size,0);
+});
+
+test('원본 삭제 확인이 느려도 전송을 막지 않고 그사이 시작된 작업은 휴지통으로 옮기지 않는다',async t=>{
+ const f=await fixture(t);await f.linked();
+ const transfer=f.controller.codexTransfer, entered=Promise.withResolvers(), release=Promise.withResolvers();
+ transfer.client.request=async(method,args)=>{
+   if(method==='thread/list'||method==='project/list')return {data:[],nextCursor:null};
+   if(method==='thread/read'){
+     entered.resolve();await release.promise;
+     throw Object.assign(Error('확인된 합성 삭제'),{rpcCode:-32600,rpcMessage:'thread not loaded: '+args.threadId});
+   }
+   throw Error(method);
+ };
+ const sweep=f.runtime.syncNative([],f.runtime.context(),transfer,{force:true});
+ try{await entered.promise;assert.equal(f.runtime.isBusy(),false);f.controller.runs.set(f.session.id,{});}
+ finally{release.resolve();}
+ const changes=await sweep;
+ assert.deepEqual(changes.removed,[]);assert(f.store.peekSession(f.session.id));assert.deepEqual(await f.action({action:'list'}),[]);
+});
