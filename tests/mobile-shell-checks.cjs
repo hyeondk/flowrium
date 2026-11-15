@@ -75,18 +75,47 @@ async function checkTouchAndWheel(page, nav) {
 async function checkMobileShell(page) {
   const nav = page.getByRole('navigation', {name:'모바일 메뉴'});
   await nav.waitFor();
-  for (const width of [320,390,768]) {
-    await page.setViewportSize({width,height:844});
-    const rects = await nav.evaluate(el => {
-      const bounds=el.getBoundingClientRect();
-      return {inset:bounds.left,bottom:innerHeight-bounds.bottom,overflow:document.documentElement.scrollWidth-innerWidth,
-        padding:parseFloat(getComputedStyle(document.querySelector('main')).paddingBottom),
-        height:bounds.height,buttons:[...el.querySelectorAll('button')].map(button=>[button.offsetWidth,button.offsetHeight])};
-    });
-    assert(rects.inset>=9 && rects.bottom>=8 && rects.overflow===0);
-    assert(rects.padding>rects.height+rects.bottom);
-    assert(rects.buttons.every(([w,h])=>w>=44 && h>=44));
+  const geometry = () => nav.evaluate(el => {
+    const bounds = el.getBoundingClientRect(), root = document.documentElement;
+    return {left:bounds.left,right:root.clientWidth-bounds.right,bottom:innerHeight-bounds.bottom,
+      viewport:innerWidth,available:root.clientWidth,content:root.scrollWidth,
+      padding:parseFloat(getComputedStyle(document.querySelector('main')).paddingBottom),
+      height:bounds.height,buttons:[...el.querySelectorAll('button')].map(button=>[button.offsetWidth,button.offsetHeight])};
+  });
+  // Windows reserves scrollbar space inside innerWidth. Preserve the native
+  // layout first, then exercise real classic-scrollbar geometry on every host.
+  const classic = await page.evaluateHandle(() => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync('html::-webkit-scrollbar {width:16px} html {overflow-y:scroll}');
+    sheet.disabled = true;
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets,sheet];
+    return sheet;
+  });
+  for (const fixed of [false,true]) {
+    await classic.evaluate((sheet, enabled) => sheet.disabled = !enabled, fixed);
+    for (const width of [320,390,768]) {
+      await page.setViewportSize({width,height:844});
+      const r = await geometry();
+      assert(r.left>=9 && r.right>=9 && r.bottom>=8,JSON.stringify(r));
+      assert.equal(r.content, r.available, '문서 가로 넘침 '+JSON.stringify(r));
+      if (fixed) assert.equal(r.viewport-r.available,16,'고정 스크롤바 공간 '+JSON.stringify(r));
+      assert(r.padding>r.height+r.bottom);
+      assert(r.buttons.every(([w,h])=>w>=44 && h>=44));
+    }
   }
+  // An 8px leak is smaller than the reserved 16px. It still must be detected.
+  const probe = await page.evaluateHandle(() => {
+    const sample = document.createElement('div');
+    sample.style.cssText='position:absolute;left:0;top:0;height:1px;pointer-events:none';
+    sample.style.width=(document.documentElement.clientWidth+8)+'px';
+    document.body.append(sample);
+    return sample;
+  });
+  try {
+    const r = await geometry();
+    assert.equal(r.content-r.available,8,JSON.stringify(r));
+    assert(r.content < r.viewport,'창 전체 폭을 쓰면 이 넘침을 놓칩니다.');
+  } finally { await probe.evaluate(el=>el.remove()); await probe.dispose(); }
   await page.setViewportSize({width:390,height:844});
   const home=nav.locator('[data-view=projects]'),approvals=nav.locator('[data-view=approvals]');
   await home.focus();await page.keyboard.press('ArrowRight');
@@ -108,9 +137,12 @@ async function checkMobileShell(page) {
   assert.equal(await page.locator('#content').evaluate(e=>e.getAnimations().length),0);
   await page.emulateMedia({reducedMotion:'no-preference'});
   if(process.env.FLOWRIUM_MOBILE_SCREENSHOT){
+    await classic.evaluate(sheet=>sheet.disabled=true);
     await page.evaluate(()=>document.fonts.ready);
     await page.screenshot({path:process.env.FLOWRIUM_MOBILE_SCREENSHOT,animations:'disabled'});
+    await classic.evaluate(sheet=>sheet.disabled=false);
   }
+  await classic.dispose();
   console.log('모바일 하단 바 320/390/768px, 44px 터치 영역, 선택 표시 연속 추적, 양 끝에서 단일 선택, 세로 및 취소 동작, 가로 휠 관성, 확대 글자에서 실제 스크롤, 키보드 탐색 및 동작 줄이기 통과');
 }
 module.exports={checkMobileShell};
