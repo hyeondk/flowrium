@@ -47,6 +47,9 @@ async function main() {
       .getByRole("heading", { name: "프로젝트 대시보드", exact: true })
       .waitFor();
     const nav = page.getByRole("navigation", { name: "주 메뉴" });
+    const toolGroups = page.locator(".pf-dashboard-tools [role=group]");
+    assert.deepEqual(await toolGroups.evaluateAll(groups => groups.map(group => group.getAttribute("aria-label"))), ["작성과 분석", "업무 관리", "프로젝트 관리"]);
+    assert.ok(await toolGroups.locator("button").evaluateAll(buttons => buttons.every(button => button.querySelector("svg") && button.textContent.trim())));
     assert.deepEqual(
       await nav
         .getByRole("button")
@@ -85,6 +88,20 @@ async function main() {
       .getByRole("button", { name: "프로젝트 추가" })
       .click();
     await page.getByLabel("프로젝트 이름", { exact: true }).fill(name);
+    await page.getByLabel("프로젝트 구분", { exact: true }).fill("개인");
+    const startDate=page.getByLabel("시작일",{exact:true}), dueDate=page.getByLabel("목표일",{exact:true});
+    await startDate.fill("2026-11-16");
+    await dueDate.fill("2026-11-18");
+    await dueDate.click();
+    const calendar=page.getByRole("dialog",{name:"날짜 선택"});
+    await calendar.waitFor();
+    assert.equal(await calendar.getByRole("button",{name:"2026-11-15",exact:true}).isDisabled(),true);
+    await calendar.getByRole("button",{name:"2026-11-19",exact:true}).click();
+    assert.equal(await dueDate.inputValue(),"2026-11-19");
+    await dueDate.press("Alt+ArrowDown");
+    await calendar.waitFor();
+    await page.keyboard.press("ArrowRight");await page.keyboard.press("Enter");
+    assert.equal(await dueDate.inputValue(),"2026-11-20");
     await page
       .getByLabel("프로젝트 목표", { exact: true })
       .fill("동네 안내 자료를 발간합니다.");
@@ -101,6 +118,16 @@ async function main() {
     }, parent);
     await button("폴더 선택 후 킥오프").click();
     await page.getByRole("heading", { name, exact: true }).waitFor();
+    const panels = page.locator(".pf-project-summary .pf-overview-group");
+    await panels.last().waitFor();
+    const bounds = await panels.evaluateAll(groups => groups.map(group => {
+      const title = group.querySelector(".pf-section-header").getBoundingClientRect();
+      const body = group.querySelector(".pf-overview-body").getBoundingClientRect();
+      return { titleBottom: title.bottom, top: body.top, bottom: body.bottom };
+    }));
+    assert.equal(bounds.length, 2);
+    assert.ok(bounds.every(panel => panel.titleBottom <= panel.top + 1));
+    if (Math.abs(bounds[0].top - bounds[1].top) < 1) assert.ok(Math.abs(bounds[0].bottom - bounds[1].bottom) < 1);
     assert.equal(
       await page
         .getByRole("navigation", { name: "프로젝트 상세 탭" })
@@ -206,10 +233,11 @@ async function main() {
       .first()
       .click();
     await page.getByLabel("프로젝트 검색").fill("지역 편집팀");
+    assert.equal(await page.locator(".pf-card").filter({ hasText: name }).locator(".pf-category").innerText(), "개인");
     await page.locator(".pf-card").filter({ hasText: name }).click();
     await tab("프로젝트 설정").click();
     await page.getByText("프로젝트 상세", { exact: true }).click();
-    await button("프로젝트 보관").click();
+    await button("프로젝트 완료").click();
     await button("프로젝트 재개").waitFor();
     await page
       .locator(".sidebar")

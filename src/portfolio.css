@@ -739,3 +739,46 @@
     height: 1px;
   }
 }
+
+/* 함께 쓰는 대시보드 도구와 프로젝트 홈의 읽기 순서 */
+.app-shell .pf-page .pf-content .portfolio-tools {
+  padding: 0; background: transparent; border: 0; box-shadow: none;
+}
+.app-shell .pf-content .portfolio-tools .pf-dashboard-tools {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  align-items: stretch; justify-content: start; gap: 1px; margin: 0; padding: 1px;
+  overflow: hidden; border: 1px solid var(--line-soft); border-radius: 14px; background: var(--line-soft);
+}
+.pf-dashboard-tools .pf-tool-group { min-width: 0; padding: 13px 15px; background: var(--panel); }
+.pf-dashboard-tools .pf-tool-group h3 { margin: 0 0 6px; color: var(--muted); font-size: 12px; line-height: 20px; }
+.app-shell .pf-dashboard-tools .pf-tool-group > div {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 2px 5px;
+}
+.app-shell .pf-dashboard-tools .pf-tool-group button {
+  display: inline-flex; align-items: center; justify-content: flex-start; min-height: 31px;
+  padding: 4px 6px; gap: 6px; border: 0; border-radius: 7px; box-shadow: none;
+  background: transparent; color: var(--text); font: inherit; font-size: 12px; line-height: 19px; text-align: start;
+}
+.pf-dashboard-tools .pf-tool-group button svg { color: var(--accent); flex: none; }
+.app-shell .pf-dashboard-tools .pf-tool-group button:is(:hover,:focus-visible,[aria-pressed=true]) {
+  color: var(--accent); background: var(--accent-bg);
+}
+.pf-card-top { justify-content: flex-start; }
+.pf-card-top .pf-status { margin-inline-start: auto; }
+.pf-card-top .pf-category {
+  max-width: 60%; overflow-wrap: anywhere; padding: 2px 8px; border-radius: 6px;
+  background: var(--accent-bg); color: var(--accent); font-size: 11px; font-weight: 800; line-height: 18px;
+}
+.pf-card-top .pf-category[data-personal=true] { color: var(--text); background: var(--panel-alt); }
+.app-shell .pf-overview .pf-content .pf-columns { align-items: stretch; }
+.pf-overview-group { display: flex; flex-direction: column; min-width: 0; }
+.app-shell .pf-overview .pf-content .pf-overview-group > .pf-section-header {
+  display: flex; align-items: center; justify-content: space-between; padding: 0 2px; min-height: 36px; margin: 0 0 6px;
+}
+.app-shell .pf-overview .pf-content .pf-overview-group > .pf-overview-body {
+  flex: 1; width: 100%; margin: 0; min-width: 0; padding: 16px;
+  background: var(--panel); border: 1px solid var(--line-soft); border-radius: 12px;
+}
+.app-shell .pf-overview .pf-content .pf-overview-group:nth-of-type(even) > .pf-overview-body {
+  background: var(--card-subtle);
+}

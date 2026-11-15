@@ -2,6 +2,14 @@ const test=require('node:test'),assert=require('node:assert/strict'),{CodexClien
 const catalog=[{model:'model-none',supportedReasoningEfforts:[{reasoningEffort:'none'}],defaultReasoningEffort:'none'},{model:'model-deep',isDefault:true,supportedReasoningEfforts:[{reasoningEffort:'low'},{reasoningEffort:'high'}],defaultReasoningEffort:'low'},{model:'model-empty',supportedReasoningEfforts:[]},{model:'model-missing'}];
 test('서버 model과 id가 다르면 어느 식별자로 요청해도 같은 지원 정보를 찾는다',()=>{const rows=[null,{model:'runtime-name',id:'catalog-id',supportedReasoningEfforts:[{reasoningEffort:'none'}],defaultReasoningEffort:'none'}];assert.equal(supportedEffort('high','runtime-name',rows),'none');assert.equal(supportedEffort('high','catalog-id',rows),'none');});
 function client(options={}){const c=new CodexClient(options),wire=[];c._write=request=>{wire.push(request);setImmediate(()=>{const result=request.method==='model/list'?{data:catalog}:request.method.startsWith('thread/')?{thread:{id:request.params.threadId||'thread'},model:request.params.model||'model-deep'}:{turn:{id:'turn',status:'inProgress'}};c._message({id:request.id,result});});};return{c,wire};}
+test('서비스의 다음 모델 페이지까지 반영하고 반복 커서가 오면 마지막 정상 목록을 보존한다',async()=>{
+ const {c}=client(),params=[];
+ c.rawRequest=async(method,input)=>{assert.equal(method,'model/list');params.push(input);return input.cursor?{data:[catalog[1]],nextCursor:null}:{data:[catalog[0]],nextCursor:'다음'};};
+ const result=await c.request('model/list',{limit:1,includeHidden:false});
+ assert.deepEqual(result.data,catalog.slice(0,2));assert.deepEqual(params,[{limit:1,includeHidden:false},{limit:1,includeHidden:false,cursor:'다음'}]);
+ c.rawRequest=async()=>({data:[],nextCursor:'같음'});
+ await assert.rejects(c.request('model/list'),/페이지/);assert.deepEqual(c.modelCatalog.data,result.data);
+});
 test('추천은 같은 계정의 최근 모델 목록으로 최저 지원 강도를 선택하고 재조회하지 않는다',async()=>{
  const {c,wire}=client({queueOwner:()=>4});
  const fresh={modelCatalog:{owner:4,at:Date.now(),data:[{model:'selected',defaultReasoningEffort:'high',supportedReasoningEfforts:['high','low','minimal'].map(reasoningEffort=>({reasoningEffort}))}]}};

@@ -21,6 +21,8 @@ function validateSession(session, projectId) {
     typeof session.title !== "string" ||
     !session.title.trim() ||
     session.title.length > 300 ||
+    (session.pendingThreadName !== undefined && (typeof session.pendingThreadName !== 'string' ||
+      session.pendingThreadName !== session.title)) ||
     !validateDate(session.createdAt) ||
     !validateDate(session.updatedAt) ||
     !Array.isArray(session.messages)
@@ -67,6 +69,11 @@ function validateSession(session, projectId) {
         "저장된 메시지 형식이 올바르지 않습니다. 원본은 보존됩니다.",
       );
     if(message.attachments!==undefined)require("./chat-attachments.cjs").checkedAttachments(message.attachments);
+    if (message.workSteps !== undefined && (!Array.isArray(message.workSteps) || message.workSteps.some(step =>
+      !step || typeof step.id !== 'string' || !step.id || step.id.length > 300 ||
+      typeof step.label !== 'string' || !step.label || step.label.length > 200 ||
+      !['running','completed','failed','interrupted'].includes(step.state) || !validateDate(step.createdAt)
+    ))) throw Error('저장된 작업 과정 형식을 확인해 주세요.');
     if(message.turnId!==undefined&&(typeof message.turnId!=="string"||message.turnId.length>300||!message.turnId))throw Error("메시지의 실행 식별자를 확인해 주세요.");
     if(message.reaction!==undefined&&message.reaction!=='like')throw Error('메시지 반응 형식을 확인해 주세요.');
     ids.add(message.id);

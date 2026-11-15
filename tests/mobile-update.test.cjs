@@ -13,6 +13,15 @@ const official = 'https://github.com/hyeondk/flowrium/releases/download/';
 const api = 'https://api.github.com/repos/hyeondk/flowrium/releases/';
 const marker = 'mobile-ui-cache.json';
 
+test('휴대폰 마크다운 엔진은 설치한 공식 배포본과 MIT 고지가 일치한다', async () => {
+  const dir=path.dirname(require.resolve('markdown-it/package.json'));
+  const read=async name=>(await fs.readFile(name,'utf8')).replace(/\r\n/g,'\n');
+  const license=await read(path.join(dir,'LICENSE'));
+  const source=await read(path.join(dir,'dist/browser/markdown-it.esm.min.mjs'));
+  const included=await read(path.resolve(__dirname,'../electron/mobile/markdown-engine.js'));
+  assert.equal(included,'/*\n'+license+'*/\n'+source.split('//# sourceMappingURL=')[0].trimEnd()+'\n');
+});
+
 async function mockRelease() {
   const files = {};
   const root = path.resolve(__dirname,'../electron/mobile');
@@ -75,6 +84,8 @@ test('운영체제가 보호한 파일 지문으로 오프라인 복원하고 �
   const offline=new MobileUpdater({...options,fetchImpl:()=>{throw Error('오프라인');}});
   await offline.restore();
   assert.equal(offline.version,next);
+  assert(offline.contents('markdown-engine.js').includes('Permission is hereby granted'));
+  assert(offline.contents('chat-reader.js').includes('groupMobileHistory'));
   const filename=path.join(directory,marker),saved=JSON.parse(await fs.readFile(filename,'utf8'));
   saved.bytes=Buffer.from('changed').toString('base64');await fs.writeFile(filename,JSON.stringify(saved));
   const damaged=new MobileUpdater({...options,fetchImpl:()=>{throw Error('오프라인');}});

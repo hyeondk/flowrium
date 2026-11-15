@@ -162,6 +162,7 @@ contextBridge.exposeInMainWorld(
     saveSettings: (input) => invoke("saveSettings", input),
     connectionStatus: () => invoke("connectionStatus"),
     connect: () => invoke("connect"),
+    listAvailableModels: () => invoke("listAvailableModels"),
     login: () => invoke("login"),
     send: (input) => invoke("send", input),
     interrupt: (id) => invoke("interrupt", id),

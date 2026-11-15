@@ -141,7 +141,7 @@ export function KickoffForm({
         <label>
           프로젝트 목표
           <textarea
-            required
+            required={!editing}
             rows={2}
             maxLength={4000}
             value={values.goal}
@@ -151,8 +151,9 @@ export function KickoffForm({
         </label>
         <div className="pf-grid2">
           {input("프로젝트 구분", "category", 80, {
-            placeholder: "예: 자체 서비스",
+            list: "flowrium-project-categories", placeholder: "구분을 선택하거나 직접 입력",
           })}
+          <datalist id="flowrium-project-categories"><option value="개인"/><option value="업무"/></datalist>
           {input("발주처 또는 대상", "client", 200)}
           {input("담당자 또는 내 역할", "owner", 150)}
           {input("참여자", "members", 1500)}
@@ -293,7 +294,7 @@ function OutputIndex({
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
     [revision, reload] = useState(0);
-  const keys = projects.map((p) => p.id + "@" + p.path).join("|");
+  const keys = projects.map((p) => p.id + "@" + p.path + "@" + p.name).join("|");
   useEffect(() => {
     let live = true;
     setLoading(true);
@@ -458,7 +459,7 @@ export function ProjectPortfolio({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, Session>>({});
-  const keys = projects.map((p) => p.id + "@" + p.path).join("|");
+  const keys = projects.map((p) => p.id + "@" + p.path + "@" + p.name).join("|");
   useEffect(() => {
     let live = true;
     if (api)
@@ -673,8 +674,7 @@ export function ProjectPortfolio({
               </button>
             </div>
             <DashboardInsights cards={cards} sessions={records} onOpen={onOpenSession} onProject={id=>{const p=projects.find(p=>p.id===id);if(p)onProject(p,"home");}}/>
-            {tools}
-            <PortfolioBoard cards={cards} onOpen={p=>onProject(p,"home")} onImported={onCreated} onChange={(id,archived)=>{if(id)onArchived?.(id,!!archived);reload(r=>r+1);}}/>
+            <PortfolioBoard tools={tools} cards={cards} onOpen={p=>onProject(p,"home")} onImported={onCreated} onChange={(id,archived)=>{if(id)onArchived?.(id,!!archived);reload(r=>r+1);}}/>
             <div className="pf-section-header">
               <h2>프로젝트</h2>
               <div className="pf-filter">
@@ -698,6 +698,7 @@ export function ProjectPortfolio({
                   >
                     <div className="pf-card-top">
                       <FolderOpen size={19} />
+                      <strong className="pf-category" data-personal={c.details?.kickoff?.category === "개인"}>{c.details?.kickoff?.category || "미분류"}</strong>
                       <small
                         className="pf-status"
                         data-phase={c.details?.kickoff?.phase || "진행"}

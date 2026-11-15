@@ -10,7 +10,7 @@ function active(thread){return thread.status?.type==='active'||thread.status==='
 function unsupported(error){return error.rpcCode===-32601||/(?:does not support|unsupported).*(?:pagination|method)/i.test(error.rpcMessage||'');}
 async function canonical(value){if(typeof value!=='string'||value.length>20000)throw Error('프로젝트 경로를 확인해 주세요.');const file=value.startsWith('file:')?fileURLToPath(value):value;if(!path.isAbsolute(file))throw Error('프로젝트의 절대 경로가 필요합니다.');const resolved=await fs.realpath(file);if(!(await fs.stat(resolved)).isDirectory())throw Error('프로젝트 폴더를 확인해 주세요.');return resolved;}
 function validateThread(thread,threadId,cwd){if(!thread||thread.id!==threadId||!samePath(thread.cwd,cwd)||thread.ephemeral||isSubagent(thread))throw Error('선택한 프로젝트의 사용자 대화가 아닙니다. 원본은 변경하지 않았습니다.');return thread;}
-async function readThread(client,threadId,cwd){return validateThread((await client.request('thread/read',{threadId,includeTurns:false})).thread,threadId,cwd);}
+async function readThread(client,threadId,cwd){id(threadId);return validateThread((await client.request('thread/read',{threadId,includeTurns:false})).thread,threadId,cwd);}
 async function itemPages(client,threadId,turnId,options={}){
  const out=[],seen=new Set();let cursor,limit=25;
  for(;;){

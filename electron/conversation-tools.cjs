@@ -92,7 +92,13 @@ function registerConversationTools(register,controller) {
     return result;
    }
    if(input?.action==='preferences')session.preferences=require('./chat-preferences.cjs').preferences(input.preferences);
-   else if(input?.action==='rename')session.title=text(input.title,'대화 이름',300);
+   else if(input?.action==='rename'){
+    const name = text(input.title,'대화 이름',300);
+    await require('./chat-sync.cjs').rename(controller.codexTransfer,session,name);
+    session.title = name;
+    if (!session.codexLink && (!session.threadId || !session.desktopThread)) session.pendingThreadName = name;
+    else delete session.pendingThreadName;
+   }
    else if(input?.action==='rewind'&&index>=0&&session.messages[index].role==='user'){
     const {turns,client}=await prepare(controller,session),target=session.messages[index];
     const turnIndex=turns.findIndex(t=>t.id===target.turnId);

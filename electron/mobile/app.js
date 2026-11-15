@@ -1,3 +1,5 @@
+import {markdownBody,draftPreview,groupMobileHistory,progressButton,syncProgress} from './chat-reader.js';
+import {installDatePicker} from './date-picker.js';
 import {settingsGuides, reconnectForm} from './install.js';
 import {mobileUpdateSection, resetUpdate, resumeUpdateSettings} from './mobile-update.js';
 import {confirmationButton, reconcileConfirmation} from './confirmation.js';
@@ -6,6 +8,7 @@ const content = document.querySelector("#content");
 const loadingTemplate = content.querySelector('.mobile-skeleton').cloneNode(true);
 const navigation = document.querySelector("#nav");
 const connection = document.querySelector("#status");
+installDatePicker();
 const notice = document.querySelector("#notice");
 const keyStorage = "flowrium.mobile.key";
 const rememberedKeyStorage="flowrium.mobile.rememberedKey",rememberFlag="flowrium.mobile.remember";
@@ -78,7 +81,8 @@ function resetHistory() {
 const drafts = new Map();
 const questionDrafts = new Map();
 const selectedProposals = new Map();
-const attachedDrafts = new Map(), attachmentPreviews = new Map();
+const attachedDrafts = new Map(), attachmentPreviews = new Map(), attachmentFlights = new Map();
+let photoObserver;
 let queueItems=[],workflowData,mobileSettings,usageData,pushData,extrasEpoch=0;
 const pendingExtras = new Map();
 const loadErrors = new Map();
@@ -115,7 +119,9 @@ const hideNotice = () => {
   notice.dataset.phase = "exit";
   noticeExitTimer = setTimeout(() => { notice.hidden = true; }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 240);
 };
-const showNotice = (message) => {
+const showNotice = (message, tone = "info") => {
+  notice.dataset.tone = tone;
+  notice.setAttribute("role", tone === "error" ? "alert" : "status");
   clearTimeout(errorTimer);
   clearTimeout(noticeExitTimer);
   notice.textContent = message;
@@ -237,7 +243,7 @@ function clearPrivateState(nextGate) {
   drafts.clear();
   questionDrafts.clear();
   selectedProposals.clear();
-  attachedDrafts.clear();attachmentPreviews.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;chatModels=chatModelRequest=undefined;extrasEpoch++;
+  attachedDrafts.clear();attachmentPreviews.clear();attachmentFlights.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;chatModels=chatModelRequest=undefined;extrasEpoch++;
   settingsDraft=undefined;
   selectedSession = selectedProject = "";
   statusFilter = "running";
@@ -326,7 +332,7 @@ async function run(callback) {
     await poll();
   } catch (error) {
     if (error.gate) clearPrivateState(error.gate);
-    else showNotice(error.message);
+    else showNotice(error.message, "error");
   } finally {
     busy = false;
     render();
@@ -374,7 +380,7 @@ async function loadMessages(older = false) {
   historyBusy = true;
   historyError = "";
   render();
-  const query = new URLSearchParams({ limit: "50" });
+  const query = new URLSearchParams({ limit: "50", progress: "1" });
   if (older) query.set("before", previous.before);
   let refresh = false;
   try {
@@ -464,7 +470,7 @@ async function loadAssets(announce = true) {
     else if (tab === 'team' ? !teamBoard : !files) {
       loadErrors.set(label, label + ' 정보를 불러오지 못했습니다.');
       render();
-    } else if (announce) showNotice(error.message);
+    } else if (announce) showNotice(error.message, "error");
   } finally {
     if(pendingAssetRequest===id)pendingAssetRequest=undefined;
   }
@@ -568,7 +574,7 @@ function inputCard(entry) {
           ? options[Number(draft.selection)]?.label
           : draft.text.trim();
       if (!answer || (options.length && draft.selection === "")) {
-        showNotice("각 질문에 답해 주세요.");
+        showNotice("각 질문에 답해 주세요.", "error");
         return;
       }
       answers.push([q.id, { answers: [answer] }]);
@@ -954,7 +960,11 @@ function chat(root) {
     more.disabled = historyBusy;
     root.append(more);
   }
-  for (const m of historyPage?.messages || []) {
+  const timeline=groupMobileHistory(historyPage?.messages||[],s,running(s.id));
+  syncProgress(timeline.groups);
+  for (const row of timeline.rows) {
+    if(row.group){root.append(progressButton(row.group));continue;}
+    const m=row.message;
     const block = node("article", undefined, "message");
     block.dataset.role = m.role;
     block.dataset.messageId = m.id;
@@ -963,16 +973,16 @@ function chat(root) {
         "small",
         (m.role === "user" ? "나" : m.role === "assistant" ? "Codex" : "작업 상태") + " / " + date(m.createdAt),
       ),
-      node("div", m.text, "body"),
+      markdownBody(m.text),
     );
-    for(const a of m.attachments||[]) block.append(attachmentCard(a,s.projectId));
+    appendAttachments(block,m.attachments||[],s.projectId,m.id);
     root.append(block);
   }
   if (running(s.id)) {
     const stop = confirmationButton('작업 중단', 'interrupt/' + s.id, '실행 중인 작업을 중단할까요?', s.title, () =>
       run(async () => { await call('interrupt', s.id); showNotice('작업 중단을 요청했습니다.'); }));
     stop.disabled = busy;
-    root.append(node("p", s.activity || "데스크톱에서 실행 중입니다.", "hint"), stop);
+    root.append(stop);
   }
   if(queueItems.length){
     const queue=node("section",undefined,"box");
@@ -1007,12 +1017,13 @@ function chat(root) {
     "mode/" + s.id,
     initialMode,
   );
-  const submit = node("button", running(s.id) ? "추가 지시 대기열에 넣기" : "요청 보내기", "main-action");
+  const canSteer = running(s.id) && data.canSteer;
+  const submit = node("button", canSteer ? "현재 작업에 전달" : running(s.id) ? "추가 지시 대기열에 넣기" : "요청 보내기", "main-action");
   submit.type = "submit";
   submit.disabled = busy || !data.connection?.authenticated;
   const options=node('div',undefined,'chat-options');
   options.append(label("작업 모드", mode),chatModelPicker(s));
-  form.append(label("요청", text), options);
+  form.append(label("요청", text), draftPreview(text), options);
   if (s.executionState) {
     const state=node('p',executionNames[s.executionState],'chat-state');
     state.dataset.state=s.executionState;
@@ -1030,7 +1041,13 @@ function chat(root) {
     }));
     proceed.disabled=busy||!data.connection?.authenticated;complete.disabled=busy;choices.append(proceed,complete);form.append(choices);
   }
-  attachmentComposer(form,s);form.append(submit);
+  attachmentComposer(form,s);
+  if (canSteer) {
+    const choices=node('div',undefined,'actions'), queue=node('button','다음 차례');
+    queue.type='submit'; queue.dataset.delivery='queue'; queue.disabled=submit.disabled;
+    queue.setAttribute('aria-label','추가 지시 대기열에 넣기');
+    choices.append(submit,queue);form.append(choices);
+  } else form.append(submit);
   if (!data.connection?.authenticated)
     form.append(
       node("p", "데스크톱 설정에서 본인의 ChatGPT 계정을 연결하세요.", "hint"),
@@ -1042,13 +1059,14 @@ function chat(root) {
     if (!value && !attachments.length) return;
     void run(async () => {
       const result=await call("send", {
+        ...(canSteer && e.submitter?.dataset.delivery!=='queue' && {delivery:'steer'}),
         sessionId: s.id,
         text: value,
         attachments:attachments.map(a=>a.id),
         mode: mode.value,
       });
       drafts.delete(draftId);attachedDrafts.delete(s.id);await loadQueue();
-      showNotice(result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
+      showNotice(result.steered ? "현재 작업에 추가 지시를 전달했습니다." : result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
     });
   });
   root.append(form);
@@ -1057,18 +1075,66 @@ async function loadQueue(){
   const id=selectedSession,epoch=accessEpoch;if(route!=='chat'||gate||!id)return;
   try{const rows=await call('listQueuedMessages',id);if(epoch!==accessEpoch||id!==selectedSession)return;if(JSON.stringify(rows)!==JSON.stringify(queueItems)){queueItems=rows;render()}}catch{}
 }
-function attachmentCard(a,projectId,remove){
-  const box=node('div',undefined,'attachment');const cached=attachmentPreviews.get(a.id);
-  if(cached){const img=node('img');img.src=cached;img.alt=a.name;box.append(img)}
-  box.append(node('span',a.name+' / '+Math.ceil(a.size/1024)+'KB'));
-  if(!cached&&a.type?.startsWith('image/'))box.append(action('이미지 보기',()=>run(async()=>{const result=await call('readChatAttachment',projectId,a.id);if(result.dataUrl)attachmentPreviews.set(a.id,result.dataUrl);else showNotice('이 이미지는 데스크톱에서 확인해 주세요.')})));
-  if(remove)box.append(action(a.name+' 첨부 해제',remove));return box;
+function observePhoto(img,attachment,projectId) {
+  const id=projectId+':'+attachment.id;
+  img.alt=attachment.name;
+  const cached=attachmentPreviews.get(id);
+  if(cached){img.src=cached;return;}
+  const epoch=accessEpoch;
+  img.loadPreview=async()=>{
+    if(epoch!==accessEpoch||gate)return;
+    if(!attachmentFlights.has(id)){
+      const flight=call('readChatAttachment',projectId,attachment.id).then(result=>{
+        if(epoch!==accessEpoch||gate)return;
+        if(result.dataUrl) {
+          if(attachmentPreviews.size>=48)attachmentPreviews.delete(attachmentPreviews.keys().next().value);
+          attachmentPreviews.set(id,result.dataUrl);
+        }
+        return result.dataUrl;
+      }).finally(()=>{if(attachmentFlights.get(id)===flight)attachmentFlights.delete(id)});
+      attachmentFlights.set(id,flight);
+    }
+    try {
+      const url=await attachmentFlights.get(id);
+      if(img.isConnected && epoch===accessEpoch && url)img.src=url;
+      else if(!url)img.alt='미리보기를 열 수 없습니다';
+    }catch(error){if(error.gate&&epoch===accessEpoch)clearPrivateState(error.gate);else img.alt='미리보기를 열 수 없습니다';}
+  };
+  photoObserver ||= new IntersectionObserver(entries=>{
+    for(const entry of entries)if(entry.isIntersecting){
+      photoObserver.unobserve(entry.target);
+      void entry.target.loadPreview();
+    }
+  },{rootMargin:'120px'});
+  photoObserver.observe(img);
+}
+function appendAttachments(parent,items,projectId,id,remove) {
+  if(!items.length)return;
+  const photos=items.filter(a=>a.type?.startsWith('image/'));
+  if(photos.length){
+    const strip=node('ul',undefined,'mobile-photo-strip');
+    strip.dataset.gallery=id;strip.tabIndex=0;strip.setAttribute('aria-label','첨부 사진');
+    for(const a of photos){
+      const tile=node('li',undefined,'attachment'),img=node('img');
+      observePhoto(img,a,projectId);tile.append(img);
+      if(remove){
+        const button=action('×',()=>remove(a.id),'mobile-photo-remove');
+        button.setAttribute('aria-label',a.name+' 첨부 해제');tile.append(button);
+      }
+      strip.append(tile);
+    }
+    parent.append(strip);
+  }
+  for(const a of items.filter(a=>!a.type?.startsWith('image/'))){
+    const box=node('div',undefined,'attachment');box.append(node('span',a.name+' / '+Math.ceil(a.size/1024)+'KB'));
+    if(remove)box.append(action(a.name+' 첨부 해제',()=>remove(a.id)));parent.append(box);
+  }
 }
 function attachmentComposer(form,s){
   const box=node('section',undefined,'attachments'),picker=node('input');picker.type='file';picker.multiple=true;picker.disabled=busy;picker.setAttribute('aria-label','파일 첨부');
   picker.addEventListener('change',()=>{const files=[...picker.files];void uploadAttachments(s,files)});
   box.append(label('파일 첨부',picker),node('p','사진을 붙여 넣거나 파일을 끌어 놓으세요.','hint'));
-  for(const a of attachedDrafts.get(s.id)||[])box.append(attachmentCard(a,s.projectId,()=>{attachedDrafts.set(s.id,(attachedDrafts.get(s.id)||[]).filter(x=>x.id!==a.id));render()}));
+  appendAttachments(box,attachedDrafts.get(s.id)||[],s.projectId,'draft:'+s.id,id=>{attachedDrafts.set(s.id,(attachedDrafts.get(s.id)||[]).filter(x=>x.id!==id));render()});
   form.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files'))e.preventDefault()});
   form.addEventListener('drop',e=>{if(e.dataTransfer?.files.length){e.preventDefault();void uploadAttachments(s,[...e.dataTransfer.files])}});
   form.addEventListener('paste',e=>{const files=[...(e.clipboardData?.files||[])];if(files.length){e.preventDefault();void uploadAttachments(s,files)}});
@@ -1090,7 +1156,7 @@ function uploadAttachments(s,files){
       if(epoch!==accessEpoch||gate)return;
       attachedDrafts.set(s.id,[...(attachedDrafts.get(s.id)||[]),...result.result]);render();
     }
-  }).catch(e=>{if(epoch===accessEpoch)showNotice(e.message)});
+  }).catch(e=>{if(epoch===accessEpoch)showNotice(e.message, "error")});
   return uploadTail;
 }
 function teamEditor(root){
@@ -1156,7 +1222,7 @@ async function loadExtras(announce=true){
     else if(target==='assistant' ? !workflowData : !mobileSettings){
       loadErrors.set(label, label+' 정보를 불러오지 못했습니다.');
       render();
-    }else if(announce) showNotice(error.message);
+    }else if(announce) showNotice(error.message, "error");
   }finally{if(pendingExtras.get(target)===ticket)pendingExtras.delete(target);}
 }
 function workflowDo(input){return run(async()=>{await call('workflowAction',input);await loadExtras();showNotice('반영했습니다.')})}
@@ -1233,7 +1299,7 @@ function settingsPage(root){
   const device=node('section',undefined,'settings-block');
   device.append(node('h2','기기 연결'));
   root.append(device);
-  const remember=node('input');remember.type='checkbox';remember.checked=rememberDevice;remember.addEventListener('change',()=>{try{rememberDevice=remember.checked;if(rememberDevice){localStorage.setItem(rememberFlag,'1');localStorage.setItem(rememberedKeyStorage,key)}else{localStorage.removeItem(rememberFlag);localStorage.removeItem(rememberedKeyStorage)}showNotice(rememberDevice?'이 기기에 연결을 보관했습니다.':'탭을 닫으면 연결 정보를 보관하지 않습니다.')}catch{rememberDevice=false;remember.checked=false;showNotice('이 브라우저에서 연결을 보관할 수 없습니다.')}});device.append(settingsSwitch('이 기기에서 연결 유지',remember),node('p','개인 기기에서만 켜세요. 알림으로 새 창을 열 때도 연결하며 데스크톱의 연결 종료로 언제든 취소할 수 있습니다.','hint'));
+  const remember=node('input');remember.type='checkbox';remember.checked=rememberDevice;remember.addEventListener('change',()=>{try{rememberDevice=remember.checked;if(rememberDevice){localStorage.setItem(rememberFlag,'1');localStorage.setItem(rememberedKeyStorage,key)}else{localStorage.removeItem(rememberFlag);localStorage.removeItem(rememberedKeyStorage)}showNotice(rememberDevice?'이 기기에 연결을 보관했습니다.':'탭을 닫으면 연결 정보를 보관하지 않습니다.')}catch{rememberDevice=false;remember.checked=false;showNotice('이 브라우저에서 연결을 보관할 수 없습니다.', 'error')}});device.append(settingsSwitch('이 기기에서 연결 유지',remember),node('p','개인 기기에서만 켜세요. 알림으로 새 창을 열 때도 연결하며 데스크톱의 연결 종료로 언제든 취소할 수 있습니다.','hint'));
   const account=node('section',undefined,'settings-block');
   const accountLine=node('div',undefined,'settings-account-line');
   accountLine.append(node('p',data.connection.accountLabel||'ChatGPT','hint'),action('설정과 사용량 새로 고침',()=>loadExtras()));
@@ -1287,7 +1353,7 @@ function pushSettings(root){
   }else{
     box.append(node('p',device.label));const chosen=new Set(device.kinds);
     for(const [kind,title]of Object.entries(pushLabels)){const check=node('input');check.type='checkbox';check.checked=chosen.has(kind);check.addEventListener('change',()=>check.checked?chosen.add(kind):chosen.delete(kind));box.append(settingsSwitch(title,check))}
-    box.append(action('알림 종류 저장',()=>run(async()=>{await call('webPushAction',{action:'preferences',id:device.id,kinds:[...chosen]});await loadExtras()})),action('이 기기에 시험 알림 보내기',()=>run(async()=>{const result=await call('webPushAction',{action:'test',id:device.id});showNotice(result.sent?'알림 서버에 발송했습니다.':'발송을 확인하지 못했습니다.');await loadExtras()})),confirmationButton('이 기기 알림 해제','push/'+device.id,'이 기기 알림을 해제할까요?','이 기기로 보내는 작업 알림이 중지됩니다.',()=>run(async()=>{await call('webPushAction',{action:'unsubscribe',id:device.id});const registration=await navigator.serviceWorker.ready;await(await registration.pushManager.getSubscription())?.unsubscribe();sessionStorage.removeItem('flowrium.mobile.pushId');await loadExtras();showNotice('기기 알림을 해제했습니다.')})));
+    box.append(action('알림 종류 저장',()=>run(async()=>{await call('webPushAction',{action:'preferences',id:device.id,kinds:[...chosen]});await loadExtras()})),action('이 기기에 시험 알림 보내기',()=>run(async()=>{const result=await call('webPushAction',{action:'test',id:device.id});showNotice(result.sent?'알림 서버에 발송했습니다.':'발송을 확인하지 못했습니다.',result.sent?'info':'error');await loadExtras()})),confirmationButton('이 기기 알림 해제','push/'+device.id,'이 기기 알림을 해제할까요?','이 기기로 보내는 작업 알림이 중지됩니다.',()=>run(async()=>{await call('webPushAction',{action:'unsubscribe',id:device.id});const registration=await navigator.serviceWorker.ready;await(await registration.pushManager.getSubscription())?.unsubscribe();sessionStorage.removeItem('flowrium.mobile.pushId');await loadExtras();showNotice('기기 알림을 해제했습니다.')})));
     if(device.lastError)box.append(node('p',device.lastError,'hint'));
   }
   box.append(node('p','연결을 종료하거나 계정을 바꾸면 알림도 중지됩니다. 새 연결 주소에서는 기기를 다시 등록하세요.','hint'));root.append(box);
@@ -1308,6 +1374,15 @@ function visibleMessageAnchor(){
   if(first && top<innerHeight)return {id:first.dataset.messageId,top};
 }
 function render() {
+  const calendar = document.querySelector('.flow-date-picker[open]');
+  if (calendar) {
+    if (!gate && key) return;
+    calendar.close();
+  }
+  photoObserver?.disconnect();
+  if(route!=='chat'||gate||!data)syncProgress();
+  const galleryPositions=new Map([...content.querySelectorAll('[data-gallery]')].map(strip=>[strip.dataset.gallery,strip.scrollLeft]));
+  const priorPreview=renderedChatId===selectedSession&&content.querySelector('.mobile-draft-preview');
   const active = document.activeElement,
     field = active?.dataset?.field,
     settingsGuide = route === 'settings' && active?.dataset?.settingsGuide,
@@ -1370,6 +1445,9 @@ function render() {
   else if (route === "new") newWork(root);
   else if (route === "chat") chat(root);
   content.replaceChildren(root);
+  for(const strip of content.querySelectorAll('[data-gallery]'))strip.scrollLeft=galleryPositions.get(strip.dataset.gallery)||0;
+  const nextPreview=content.querySelector('.mobile-draft-preview');
+  if(priorPreview&&nextPreview)nextPreview.open=priorPreview.open;
   reconcileConfirmation(Boolean(gate) || !data);
   if ((settingsGuide || confirmAction) && !gate && !document.querySelector('dialog[open]')) {
     const selector = confirmAction ? '[data-confirm-action="' + CSS.escape(confirmAction) + '"]' : '[data-settings-guide="' + CSS.escape(settingsGuide) + '"]';
@@ -1406,7 +1484,7 @@ async function initialize(){
       const response=await fetch('/api/mobile/handoff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({handoff}),credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(18000)});
       const result=await response.json();if(!response.ok)throw Error(result.error||'연결 주소가 만료됐습니다.');
       key=result.key;try{sessionStorage.setItem(keyStorage,key);if(rememberDevice)localStorage.setItem(rememberedKeyStorage,key)}catch{}
-    }catch(e){key=null;showNotice(e.message)}finally{handoff=null;render();}
+    }catch(e){key=null;showNotice(e.message, "error")}finally{handoff=null;render();}
   }
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(()=>{});
   void poll();

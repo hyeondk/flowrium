@@ -149,9 +149,9 @@ async function run() {
     await btn("항목 추가").click();
     await page.getByRole("checkbox",{name:"설치 확인"}).click();
     await page.locator(".project-details input:checked").waitFor();
-    await btn("프로젝트 보관").click();
+    await btn("프로젝트 완료").click();
     await btn("프로젝트 재개").click();
-    await btn("프로젝트 보관").waitFor();
+    await btn("프로젝트 완료").waitFor();
     await goDashboard();await btn("작업 현황").click();
     await page.getByText("전체 CPU 사용률", {exact:true}).waitFor();
     await page.keyboard.press(process.platform === "darwin" ? "Meta+1" : "Control+1");

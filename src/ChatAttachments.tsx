@@ -1,15 +1,36 @@
 import {useEffect,useRef,useState} from 'react';
-import {LoaderCircle,Paperclip} from 'lucide-react';
+import {FileText,Image as ImageIcon,LoaderCircle,Paperclip,X} from 'lucide-react';
 import type {ChatAttachment} from '../shared/types';
 import './chat-attachments.css';
+function ImageAttachment({item,projectId,onRemove}:{item:ChatAttachment;projectId:string;onRemove?:(id:string)=>void}) {
+ const [source,setSource]=useState<string>(),[failed,setFailed]=useState(false);
+ useEffect(()=>{
+  let current=true;
+  window.flowrium?.readChatAttachment(projectId,item.id).then(result=>{
+    if(!current)return;
+    setSource(result.dataUrl);
+    setFailed(!result.dataUrl);
+  }).catch(()=>{if(current)setFailed(true);});
+  return ()=>{current=false;};
+ },[projectId,item.id]);
+ return <li className="chat-image-tile">
+   {source?<img src={source} alt={item.name} draggable={false} onError={()=>{setFailed(true);setSource(undefined);}}/>:
+    <span className="chat-image-placeholder" role="img" aria-label={item.name+(failed?' 미리보기를 열 수 없습니다':' 불러오는 중')}><ImageIcon size={18}/></span>}
+   {onRemove&&<button type="button" className="chat-attachment-remove" aria-label={item.name+' 첨부 제거'} onClick={()=>onRemove(item.id)}><X size={12} aria-hidden="true"/></button>}
+ </li>;
+}
 export function ChatAttachmentList({projectId,items,onRemove}:{projectId:string;items:ChatAttachment[];onRemove?:(id:string)=>void}) {
- const [images,setImages]=useState<Record<string,string>>({});
- useEffect(()=>{let live=true;setImages({});for(const a of items)if(a.type.startsWith('image/'))window.flowrium?.readChatAttachment(projectId,a.id).then(v=>{if(live&&v.dataUrl)setImages(old=>({...old,[a.id]:v.dataUrl!}));}).catch(()=>{});return()=>{live=false;};},[projectId,items.map(a=>a.id).join(',')]);
- return <ul className="chat-attachment-list" aria-label="첨부 파일">{items.map(a=><li key={a.id}>
-  {images[a.id]&&<img src={images[a.id]} alt={a.name}/>}
-  <span><strong>{a.name}</strong><small>{Math.ceil(a.size/1024).toLocaleString('ko-KR')} KB</small></span>
-  {onRemove&&<button type="button" aria-label={a.name+' 첨부 제거'} onClick={()=>onRemove(a.id)}>제거</button>}
- </li>)}</ul>;
+ const photos=items.filter(item=>item.type.startsWith('image/'));
+ const files=items.filter(item=>!item.type.startsWith('image/'));
+ return <>
+  {photos.length>0&&<ul className="chat-attachment-list chat-image-strip" tabIndex={0} aria-label="첨부 사진">
+   {photos.map(item=><ImageAttachment key={projectId+':'+item.id} item={item} projectId={projectId} onRemove={onRemove}/>)}
+  </ul>}
+  {files.length>0&&<ul className="chat-attachment-list chat-file-list" aria-label="첨부 파일">{files.map(item=><li key={item.id}>
+    <FileText size={15} aria-hidden="true"/><span><strong>{item.name}</strong><small>{Math.ceil(item.size/1024).toLocaleString('ko-KR')} KB</small></span>
+    {onRemove&&<button type="button" aria-label={item.name+' 첨부 제거'} onClick={()=>onRemove(item.id)}><X size={12} aria-hidden="true"/></button>}
+  </li>)}</ul>}
+ </>;
 }
 export function AttachmentComposer({projectId,items,onChange,disabled,report,children}:{projectId?:string;items:ChatAttachment[];onChange:(items:ChatAttachment[])=>void;disabled:boolean;report:(text:string)=>void;children:React.ReactNode|((control:React.ReactNode)=>React.ReactNode)}) {
  const picker=useRef<HTMLInputElement>(null),alive=useRef(true),currentItems=useRef(items),pending=useRef(Promise.resolve()),count=useRef(0);

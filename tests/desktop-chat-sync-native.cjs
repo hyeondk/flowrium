@@ -23,12 +23,13 @@ async function main() {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'flowrium-desktop-sync-')));
   const profile = path.join(root,'codex'), cwd = path.join(root,'project');
   let server, controller, runtime, desktop, primary, reader;
-  let requests = 0;
+  let requests = 0, hold;
   try {
     await fs.mkdir(profile); await fs.mkdir(cwd);
     server = http.createServer(async (req,res) => {
       if (req.method !== 'POST' || !req.url.startsWith('/v1/responses')) {res.writeHead(404).end();return;}
       for await (const unused of req) {}
+      if(hold){const gate=hold;hold=undefined;gate.started.resolve();await gate.release.promise;}
       const id='resp_sync_'+(++requests);
       const item={id:'answer_'+requests,type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'동기화 응답 '+requests,annotations:[]}]};
       const events=[
@@ -76,6 +77,66 @@ async function main() {
     await send('다시 Flowrium에서 이어 쓰는 요청');
     assert((await D.snapshot(desktop,id,cwd)).messages.some(m=>m.text==='동기화 응답 3'));
     assert.equal(requests,3);
+    // The other desktop connection is closed. Only Flowrium and its bundled
+    // app server handle this request, real-time steering, and the resulting turn.
+    desktop.close();
+    const started=Promise.withResolvers(),release=Promise.withResolvers();hold={started,release};
+    const complete=onceEvent(controller,'event',e=>e.type==='done'&&e.sessionId===session.id);
+    await controller.send({sessionId:session.id,mode:'plan',text:'혼자 실행한 작업'});
+    try {
+      await started.promise;
+      const active=controller.runs.get(session.id);
+      assert(active.turnId);
+      const result=await controller.send({sessionId:session.id,mode:'plan',text:'현재 작업에 추가한 지시',delivery:'steer'});
+      assert(result.steered && !result.queued);
+      assert.equal(live.messages.at(-1).turnId,active.turnId);
+    } finally {release.resolve();}
+    assert.equal((await complete).status,'completed');
+    const updated=await D.snapshot(reader,id,cwd);
+    assert(updated.messages.some(m=>m.text==='현재 작업에 추가한 지시'));
+    console.log('상대 앱 종료 상태 / 독립 내장 Codex 실행 / 현재 작업에 추가 지시 / 같은 원본 기록으로 수신 확인');
+    await desktop.start();
+    const operations = {};
+    const register=(name,method)=>{operations[name]=method;};
+    require('../electron/conversation-tools.cjs').registerConversationTools(register,controller);
+    require('../electron/portfolio.cjs').registerPortfolio(register,store,{getRuntime:()=>runtime});
+    await operations.editConversation(session.id,{action:'rename',title:'이름 변경 왕복'});
+    assert.equal((await desktop.request('thread/read',{threadId:id,includeTurns:false})).thread.name,'이름 변경 왕복');
+    await desktop.request('thread/name/set',{threadId:id,name:'상대 앱의 새 제목'});
+    await runtime.action({action:'sync',sessionId:session.id});
+    assert.equal(live.title,'상대 앱의 새 제목');
+    await desktop.request('thread/name/set',{threadId:id,name:'열지 않은 대화 제목'});
+    controller.status.authenticated=true;
+    const second=path.join(root,'second'),other=path.join(root,'other');
+    await fs.mkdir(second);await fs.mkdir(other);
+    const secondProject=await store.addProject(second);
+    const create=(name,folder)=>desktop.request('project/create',{name,roots:[{path:folder}],idempotencyKey:require('node:crypto').randomUUID()}).then(r=>r.project);
+    const firstRemote=await create('첫 번째',cwd), foreign=await create('다른 카드',other), secondRemote=await create('두 번째',second);
+    await desktop.request('project/move',{projectId:firstRemote.id,beforeProjectId:foreign.id});
+    await desktop.request('project/move',{projectId:secondRemote.id,beforeProjectId:null});
+    const navigation=await operations.portfolioAction({action:'navigation',sync:true});
+    assert.deepEqual(navigation.order,[project.id,secondProject.id]);assert.equal(navigation.names[project.id],'첫 번째');
+    assert.equal(navigation.titles[session.id],'열지 않은 대화 제목');
+    const blank=await store.createSession(project.id);
+    await operations.editConversation(blank.id,{action:'rename',title:'첫 실행 전에 정한 제목'});
+    const blankDone=onceEvent(controller,'event',e=>e.type==='done'&&e.sessionId===blank.id);
+    await controller.send({sessionId:blank.id,text:'새 대화의 첫 요청',mode:'plan'});
+    assert.equal((await blankDone).status,'completed');
+    const named=store.session(blank.id);
+    assert.equal((await desktop.request('thread/read',{threadId:named.threadId,includeTurns:false})).thread.name,'첫 실행 전에 정한 제목');
+    assert.equal(named.title,'첫 실행 전에 정한 제목');
+    const moved=await operations.portfolioAction({action:'move',id:secondProject.id,target:project.id,sync:true});
+    assert.deepEqual(moved.order,[secondProject.id,project.id]);
+    assert.equal((await desktop.request('project/list',{sortKey:'position'})).data[0].id,secondRemote.id);
+    await operations.setKickoffDetails(project.id,null,{name:'Flowrium에서 바꾼 프로젝트'});
+    assert.equal((await desktop.request('project/read',{projectId:firstRemote.id})).project.name,'Flowrium에서 바꾼 프로젝트');
+    await desktop.request('project/update',{projectId:firstRemote.id,name:'Codex에서 바꾼 프로젝트'});
+    assert.equal((await operations.portfolioAction({action:'navigation',sync:true})).names[project.id],'Codex에서 바꾼 프로젝트');
+    assert.equal((await operations.readPortfolio()).find(card=>card.project.id===project.id).details.kickoff.name,'Codex에서 바꾼 프로젝트');
+    assert.equal((await desktop.request('project/read',{projectId:foreign.id})).project.name,'다른 카드');
+    const fresh=new Store(path.join(root,'flowrium'));await fresh.load();
+    assert.equal(fresh.project(project.id).name,'Codex에서 바꾼 프로젝트');
+    console.log('서로 다른 앱 서버의 대화 제목 왕복 / 미열람 대화 제목 수신 / 프로젝트 이름 왕복과 순서 이동 / 관련 없는 카드 및 파일 경로 보존 / 재실행 복원 통과');
     console.log('독립 Codex 앱 서버 두 개의 같은 대화 3회 왕복 / 원래 본문과 순서 보존 / 버튼 없는 수신 / 상대 프로세스를 종료하지 않고 재개 통과');
   } finally {
     await runtime?.shutdown();await controller?.shutdown();

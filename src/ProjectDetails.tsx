@@ -43,7 +43,7 @@ export default function ProjectDetails({ project, onChange }: { project: Project
     finally { writing.current = false; if (alive.current) setBusy(false); }
   }
   const dirty = data && (fields.owner !== data.owner || fields.goal !== data.goal || fields.dueDate !== data.dueDate);
-  return <details className="project-details"><summary>프로젝트 상세{data?.archivedAt && <span>보관됨</span>}</summary>
+  return <details className="project-details"><summary>프로젝트 상세{data?.archivedAt && <span>완료</span>}</summary>
     {error && <div role="alert" className="pd-error">{error}<button type="button" onClick={() => void load()}><RefreshCw size={13}/>새로고침</button></div>}
     {data && <div className="pd-body"><form onSubmit={(e) => { e.preventDefault(); void save({ action: "details", ...fields }); }}>
       <div className="pd-fields"><label>프로젝트 담당자<input maxLength={150} value={fields.owner} onChange={(e) => setFields({ ...fields, owner: e.target.value })}/></label>
@@ -61,6 +61,6 @@ export default function ProjectDetails({ project, onChange }: { project: Project
     </section>
     <button type="button" disabled={busy} onClick={() => void save({ action: data.archivedAt ? "resume" : "archive" })}>
       {data.archivedAt ? <ArchiveRestore size={14}/> : <Archive size={14}/>}
-      {data.archivedAt ? "프로젝트 재개" : "프로젝트 보관"}</button></div>}
+      {data.archivedAt ? "프로젝트 재개" : "프로젝트 완료"}</button></div>}
   </details>;
 }

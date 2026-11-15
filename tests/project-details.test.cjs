@@ -60,3 +60,12 @@ test("충돌 파일과 프로젝트 밖을 가리키는 상세 기록을 덮어�
     await assert.rejects(api.readProjectDetails(project.id), /다른 위치/);
   }
 });
+
+test('상태별 보드에서 완료된 프로젝트를 재개하면 양쪽 목록에서 진행 상태로 복귀한다', async t=>{
+  const {api,project}=await fixture(t);
+  const finished=await api.updateProjectDetails(project.id,null,{action:'phase',phase:'완료',name:project.name});
+  assert.ok(finished.archivedAt);
+  const resumed=await api.updateProjectDetails(project.id,finished.revision,{action:'resume'});
+  assert.equal(resumed.archivedAt,null);
+  assert.equal(resumed.kickoff.phase,'진행');
+});

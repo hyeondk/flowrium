@@ -158,8 +158,8 @@ async function notes(root, spec) {
       b.modifiedAt.localeCompare(a.modifiedAt) || a.path.localeCompare(b.path),
   );
 }
-function registerPortfolio(register, store, { chooseFolder, reveal }) {
-  require("./portfolio-operations.cjs").registerPortfolioOperations(register,store,{chooseFolder});
+function registerPortfolio(register, store, { chooseFolder, reveal, getRuntime }) {
+  const serialize = require("./portfolio-operations.cjs").registerPortfolioOperations(register,store,{chooseFolder,getRuntime});
   register("readPortfolio", async () =>
     Promise.all(
       store.state.projects.map(async (project) => {
@@ -175,12 +175,27 @@ function registerPortfolio(register, store, { chooseFolder, reveal }) {
       }),
     ),
   );
-  register("setKickoffDetails", (id, revision, input) =>
-    updateDetails(store, id, revision, {
-      action: "kickoff",
-      input: kickoffFields(input),
-    }),
-  );
+  register("setKickoffDetails", (id, revision, input) => serialize(async () => {
+    const values = kickoffFields(input);
+    const project = store.project(id);
+    const previous = await readDetails(store, id);
+    if (previous.revision !== revision) throw Error('프로젝트 설정이 변경되었습니다. 다시 열어 주세요.');
+    if ((previous.kickoff?.name || project.name) !== values.name) {
+      const source = await require('./project-navigation.cjs').catalog(store,getRuntime);
+      const linked = source?.matches.get(id);
+      if (linked && linked.name !== values.name) {
+        source.guard();
+        await source.runtime.client.request('project/update', {projectId:linked.id, name:values.name});
+        source.guard();
+      }
+    }
+    const details = await updateDetails(store, id, revision, {action:'kickoff', input:values});
+    if (project.name !== values.name) {
+      project.name = values.name;
+      await store.save();
+    }
+    return details;
+  }));
   register("kickoffProject", async (input) => {
     const settings = kickoffFields(input);
     const createFolder = input.createFolder === true,
@@ -244,6 +259,10 @@ function registerPortfolio(register, store, { chooseFolder, reveal }) {
       action: "kickoff",
       input: settings,
     });
+    if (project.name !== settings.name) {
+      project.name = settings.name;
+      await store.save();
+    }
     return project;
   });
   register("listProjectNotes", (id, kind) =>

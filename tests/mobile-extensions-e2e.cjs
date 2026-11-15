@@ -8,6 +8,8 @@ async function main(){
  try{
   const store=new Store(path.join(directory,'profile'));await store.load();await fs.mkdir(path.join(directory,'현장 업무'));const project=await store.addProject(path.join(directory,'현장 업무'));const chat=await store.createSession(project.id,{title:'휴대폰 요청'});
   const sibling=await store.createSession(project.id,{title:'별도 모델 비교'});
+  const {addReadingFixture,checkReading,checkDraftImages}=require('./mobile-chat-reading-checks.cjs');
+  const reading=await addReadingFixture(store,project.id);
   await store.saveSettings({model:'gpt-6.1-sol',effort:'high',chatDefaults:{compactAt:73,approval:'on-request'}});
   const handlers=new Map(),register=(name,fn)=>handlers.set(name,fn);let locked=false,owner=0;
   controller=new Controller(store,{descriptor:{command:process.execPath,prefix:[path.join(__dirname,'backend-fake-codex.cjs')],label:'격리 모형',node:false},canRun:()=>!locked,queueOwner:()=>owner});await controller.connect();
@@ -47,8 +49,12 @@ async function main(){
   const btn=name=>page.getByRole('button',{name,exact:true});
   const openProject=()=>page.getByRole('button',{name:/현장 업무.*업무/}).click();
   const oneTime=remote.issueLink({ttlMinutes:15}),oneHash=new URL(oneTime.url).hash;await page.goto(origin+'/'+oneHash);await openProject();assert.equal(new URL(page.url()).hash,'');
-  await page.getByRole('button',{name:/휴대폰 요청/}).click();await page.getByLabel('파일 첨부',{exact:true}).setInputFiles({name:'현장.png',mimeType:'image/png',buffer:png});await page.getByText('현장.png / 1KB',{exact:true}).waitFor();await btn('이미지 보기').click();await page.locator('.attachment img').waitFor();
+  await checkReading(page,reading,origin,key);
+  await page.getByRole('button',{name:/휴대폰 요청/}).click();
+  await checkDraftImages(page,png);
   await page.getByLabel('요청',{exact:true}).fill('대기검증');await btn('요청 보내기').click();await btn('추가 지시 대기열에 넣기').waitFor();assert.equal(store.session(chat.id).messages.find(m=>m.role==='user').attachments[0].name,'현장.png');
+  assert.equal(await page.locator('article .mobile-photo-strip li').count(),7);
+  assert(!(await page.locator('article .mobile-photo-strip').innerText()).includes('.png'));
   await page.getByLabel('요청',{exact:true}).fill('휴대폰 후속 지시');await btn('추가 지시 대기열에 넣기').click();await page.getByText('휴대폰 후속 지시',{exact:true}).waitFor();await confirmAction(page,'이 지시 취소');assert.equal(store.session(chat.id).queuedMessages.at(-1).status,'cancelled');await confirmAction(page,'작업 중단');await btn('요청 보내기').waitFor();
   const picker=page.getByLabel('이 채팅의 모델',{exact:true});
   async function choose(value){

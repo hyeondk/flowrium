@@ -48,7 +48,9 @@ export interface ProjectNote {
   size: number;
   preview: boolean;
 }
+export interface ProjectNavigationState {order:string[]; names:Record<string,string>; titles:Record<string,string>}
 export interface PortfolioAPI {
+  portfolioAction(input: {action:"navigation"; sync?:boolean} | {action:"move"; id:string; target:string; sync?:boolean}): Promise<ProjectNavigationState>;
   readPortfolio(): Promise<PortfolioCard[]>;
   kickoffProject(input: KickoffInput): Promise<Project | null>;
   setKickoffDetails(
@@ -77,9 +79,11 @@ export interface PortfolioAPI {
 
 export interface PortfolioPreferences { revision: string | null; columns: string[]; order: string[]; shortcuts: Record<string,string> }
 export interface PortfolioInsights { at:string; commits7:number; dirtyRepositories:number; openPulls:number; projects: { projectId:string; name:string; days:{day:string;count:number}[]; repositories:{id:string;name:string;dirty:number;pulls:number|null}[]; errors:string[] }[] }
+export interface ProjectNavigationState {order:string[]; names:Record<string,string>; titles:Record<string,string>}
 export interface PortfolioAPI {
+  portfolioAction(input: {action:"navigation"; sync?:boolean} | {action:"move"; id:string; target:string; sync?:boolean}): Promise<ProjectNavigationState>;
   portfolioAction(input: {action:"read"}): Promise<PortfolioPreferences>;
-  portfolioAction(input: {action:"save"; revision:string|null; columns?:string[]; order?:string[]; shortcuts?:Record<string,string>}): Promise<PortfolioPreferences>;
+  portfolioAction(input: {action:"save"; revision:string|null; columns?:string[]; order?:string[]; movedProjectId?:string; shortcuts?:Record<string,string>}): Promise<PortfolioPreferences>;
   portfolioAction(input: {action:"export"}): Promise<unknown>;
   portfolioAction(input: {action:"previewImport"; text:string}): Promise<{token:string; cards:{index:number;name:string;existingId:string|null;willReplace:boolean}[]}>;
   portfolioAction(input: {action:"applyImport"; token:string; selected:number[]; overwrite:boolean}): Promise<{applied:string[];skipped:string[];projects:Project[]}>;

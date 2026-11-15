@@ -44,6 +44,11 @@ function complete(threadId, turnId, message, policy) {
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
   const request = JSON.parse(line);
   const { id, method, params = {} } = request;
+  if (["thread/resume", "turn/start", "turn/steer"].includes(method) &&
+      (typeof params.threadId !== "string" || !params.threadId.trim())) {
+    write({ id, error: { code: -32600, message: "Invalid request: missing field `threadId`" } });
+    return;
+  }
   if (!method && inputTurns.has(id)) {
     const expected = inputTurns.get(id);inputTurns.delete(id);
     const answers=request.result?.answers;
@@ -93,6 +98,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     });
     return;
   }
+  if (method === 'project/list' || method === 'thread/list') {write({id,result:{data:[],nextCursor:null}});return;}
   if (method === "account/logout") {
     loggedOut = true;
     write({ id, result: {} });
@@ -108,6 +114,8 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       result: {
         data: [
           { id: "test-model", model: "test-model", displayName: "검증 모델" },
+          ...(process.env.FLOWRIUM_TEST_CATALOG_FILE && require('node:fs').existsSync(process.env.FLOWRIUM_TEST_CATALOG_FILE)
+            ? [{id:'catalog-preview',model:'catalog-preview',displayName:'추가된 시험 모델',defaultReasoningEffort:'high',supportedReasoningEfforts:[{reasoningEffort:'high'}]}] : []),
           ...(process.env.FLOWRIUM_TEST_CHAT_MODELS === '1' ? [
             {id:'gpt-6.1-terra', model:'gpt-6.1-terra', supportedReasoningEfforts:[{reasoningEffort:'low'}], defaultReasoningEffort:'low'},
             {id:'gpt-6.1-sol', model:'gpt-6.1-sol', supportedReasoningEfforts:[{reasoningEffort:'high'}], defaultReasoningEffort:'high'},
@@ -156,6 +164,17 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     write({ id, result: { turn: { id: turnId, status: "inProgress" } } });
     notify("turn/started", { threadId, turn: { id: turnId } });
     const prompt = params.input[0].text;
+    if (process.env.FLOWRIUM_TEST_STEP_GATE && prompt.includes('작업 단계 스트림 시험')) {
+      const item={id:turnId+'-tool',type:'commandExecution',status:'inProgress'};
+      notify('item/started',{threadId,turnId,item});
+      const timer=setInterval(()=>{
+        if(!require('node:fs').existsSync(process.env.FLOWRIUM_TEST_STEP_GATE))return;
+        clearInterval(timer);
+        notify('item/completed',{threadId,turnId,item:{...item,status:'completed',exitCode:0}});
+        complete(threadId,turnId,'작업 단계를 확인했습니다.');
+      },40);
+      return;
+    }
     if (process.env.FLOWRIUM_TEST_CHAT_MODELS === '1' && prompt.includes('전송 모델 확인')) {
       setTimeout(() => complete(threadId, turnId, `실제 전송 / ${params.model} / ${params.effort}`), 30);
       return;
@@ -195,6 +214,13 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       () => complete(threadId, turnId, require("./teams-fake-response.cjs").teamResponse(prompt, params.outputSchema), params.sandboxPolicy.type),
       30,
     );
+    return;
+  }
+  if(method === 'turn/steer') {
+    const turnId=params.expectedTurnId;
+    if(!turns.has(turnId))return write({id,error:{code:-32602,message:'no active turn'}});
+    write({id,result:{turnId}});
+    complete(params.threadId,turnId,'추가 지시 반영 / '+params.input[0].text);
     return;
   }
   if (method === "turn/interrupt") {

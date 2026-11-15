@@ -169,8 +169,15 @@ function apply(data, change) {
       data.kickoff.phase = change.phase;
       if(change.phase === '완료') data.archivedAt ||= new Date().toISOString(); else data.archivedAt=null;
       break;
+    case 'display-name':
+      if (!data.kickoff) throw invalid();
+      data.kickoff.name = field(change.name, 140);
+      break;
     case 'archive': data.archivedAt ||= new Date().toISOString(); break;
-    case 'resume': data.archivedAt = null; break;
+    case 'resume':
+      data.archivedAt = null;
+      if (data.kickoff?.phase === '완료') data.kickoff.phase = '진행';
+      break;
     case 'add': {
       const text = field(change.text, 500);
       if (!text) throw invalid();
@@ -218,7 +225,7 @@ async function updateDetails(store, projectId, previous, change) {
 function registerProjectDetails(register, store) {
   register('readProjectDetails', (projectId) => readDetails(store, projectId));
   register('updateProjectDetails', (projectId, previous, change) => {
-    if(change?.action==='shortcuts'||change?.action==='import')throw Error('바로가기 설정이나 카드 가져오기 화면에서 변경해 주세요.');
+    if(['shortcuts','import','display-name'].includes(change?.action))throw Error('바로가기 설정이나 카드 가져오기 화면에서 변경해 주세요.');
     return updateDetails(store, projectId, previous, change);
   });
 }

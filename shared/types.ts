@@ -69,12 +69,19 @@ export interface Project {
 export interface ChatAttachment {id:string;name:string;type:string;size:number;sha256:string}
 export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;error?:string}
 export interface Message {
+  workSteps?: WorkStep[];
   reaction?: 'like';
   attachments?: ChatAttachment[];
   turnId?: string;
   id: string;
   role: "user" | "assistant" | "system";
   text: string;
+  createdAt: string;
+}
+export interface WorkStep {
+  id: string;
+  label: string;
+  state: "running" | "completed" | "failed" | "interrupted";
   createdAt: string;
 }
 export interface Session {
@@ -133,6 +140,7 @@ export interface InputQuestion {
 }
 export type InputAnswers = Record<string, { answers: string[] }>;
 export interface FlowriumEvent {
+  workProgress?: {messageId: string; step: WorkStep};
   questions?: InputQuestion[];
   isBlocking?: boolean;
   type: "delta" | "status" | "error" | "done" | "approval" | "session" | "input" | "inputResolved";
@@ -197,20 +205,23 @@ export interface FlowriumAPI
   deleteSession(id: string): Promise<void>;
   saveSettings(settings: Partial<Settings>): Promise<Settings>;
   connectionStatus(): Promise<ConnectionStatus>;
+  listAvailableModels():ReturnType<FlowriumAPI['connect']>;
   connect(): Promise<{
+    modelAccount?:string;
     status: ConnectionStatus;
     models: Model[];
     accountLabel?: string;
   }>;
   login(): Promise<{ authUrl?: string }>;
   send(input: {
+    delivery?: "steer";
     sessionId: string;
     text: string;
     attachments?: string[];
     mode: Mode;
     model?: string;
     effort?: Effort;
-  }): Promise<{ accepted: boolean; queued?: boolean; queueId?:string }>;
+  }): Promise<{ accepted: boolean; steered?: boolean; queued?: boolean; queueId?:string }>;
   interrupt(sessionId: string): Promise<void>;
   answerInput(input: { requestId: string; answers: InputAnswers }): Promise<void>;
   approval(input: {

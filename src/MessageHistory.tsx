@@ -1,6 +1,7 @@
-import {useEffect,useLayoutEffect,useRef,useState,type MutableRefObject,type ReactNode,type RefObject} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState,type MutableRefObject,type ReactNode,type RefObject} from 'react';
 import {ArrowDown,History} from 'lucide-react';
 import type {Message} from '../shared/types';
+import {historyRows,TurnProgress} from './TurnProgress';
 import './message-history.css';
 const PAGE=100;
 type Anchor={id?:string;y:number;top:number;height:number};
@@ -10,6 +11,7 @@ export default function MessageHistory({messages,scrollRef,stickToBottom,renderM
  const [start,setStart]=useState(()=>Math.max(0,messages.length-PAGE));
  const content=useRef<HTMLDivElement>(null),controls=useRef<HTMLDivElement>(null),pending=useRef<Anchor|'bottom'|undefined>(undefined);
  const first=Math.min(start,Math.max(0,messages.length-PAGE));
+ const rows=useMemo(()=>historyRows(messages,first),[messages,first]);
  const latest=()=>{const el=scrollRef.current;if(el)el.scrollTop=el.scrollHeight;};
  useLayoutEffect(()=>{
   const el=scrollRef.current;if(!el)return;
@@ -46,6 +48,6 @@ export default function MessageHistory({messages,scrollRef,stickToBottom,renderM
   <div className="message-history-items" ref={content} onClickCapture={event=>{
    const target=event.target instanceof Element?event.target:undefined;
    if(target?.closest('[data-message-details]')&&target.closest('summary,[data-message-detail-control]'))stickToBottom.current=false;
-  }}>{messages.slice(first).map(renderMessage)}</div>
+  }}>{rows.map(row=>'message' in row?renderMessage(row.message):<TurnProgress key={'work:'+row.progress.key} progress={row.progress}/>)}</div>
  </>;
 }

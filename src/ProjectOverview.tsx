@@ -401,7 +401,7 @@ export function ProjectOverview({
     return () => {
       live = false;
     };
-  }, [project.id, rev, tab]);
+  }, [project.id, project.name, rev, tab]);
   useEffect(() => {
     let live = true;
     setOverview(undefined);
@@ -451,9 +451,9 @@ export function ProjectOverview({
           </div>
           <span
             className="pf-status"
-            data-phase={data?.archivedAt ? "보관" : meta.phase}
+            data-phase={data?.archivedAt ? "완료" : meta.phase}
           >
-            {data?.archivedAt ? "보관" : meta.phase || "진행"}
+            {data?.archivedAt ? "완료" : meta.phase || "진행"}
           </span>
         </header>
         <nav className="pf-tabs" aria-label="프로젝트 상세 탭">
@@ -497,13 +497,14 @@ export function ProjectOverview({
               </button>
             </div>
             <div className="pf-columns pf-project-summary">
-              <section className="pf-panel">
+              <section className="pf-overview-group">
                 <div className="pf-section-header">
                   <h2>다음 업무</h2>
                   <button onClick={() => onTabChange("work")}>
                     업무 열기 <ArrowRight size={14} />
                   </button>
                 </div>
+                <div className="pf-panel pf-overview-body">
                 {incomplete.slice(0, 4).map((s) => (
                   <button
                     className="pf-row"
@@ -527,14 +528,16 @@ export function ProjectOverview({
                     선택하세요.
                   </p>
                 )}
+                </div>
               </section>
-              <section className="pf-panel">
+              <section className="pf-overview-group">
                 <div className="pf-section-header">
                   <h2>프로젝트 개요</h2>
                   <button onClick={() => onTabChange("settings")}>
                     설정 <ArrowRight size={14} />
                   </button>
                 </div>
+                <div className="pf-panel pf-overview-body">
                 <dl className="pf-metadata">
                   {[
                     ["담당자", data?.owner],
@@ -559,19 +562,21 @@ export function ProjectOverview({
                     ))}
                 </dl>
                 {meta.notes && <p className="pf-note-text">{meta.notes}</p>}
+                </div>
               </section>
             </div>
             {data && <ProjectShortcuts project={project} data={data} onChange={change} onManage={() => onTabChange('settings')}/>}
             {data && <AdvancedGoals data={data} onChange={change} />}
             <ProjectAIActions project={project} purpose="goals" onOpen={onOpenSession}/>
             <div className="pf-columns">
-              <section className="pf-panel">
+              <section className="pf-overview-group">
                 <div className="pf-section-header">
                   <h2>킥오프 체크리스트</h2>
                   <button onClick={() => onTabChange("settings")}>
                     항목 관리
                   </button>
                 </div>
+                <div className="pf-panel pf-overview-body">
                 {(data?.checklist || []).map((c) => (
                   <p key={c.id}>
                     {c.done ? <Check size={14} /> : null} {c.text}
@@ -582,14 +587,16 @@ export function ProjectOverview({
                     프로젝트 설정에서 확인할 항목을 추가하세요.
                   </p>
                 )}
+                </div>
               </section>
-              <section className="pf-panel">
+              <section className="pf-overview-group">
                 <div className="pf-section-header">
                   <h2>최근 커밋</h2>
                   <button onClick={() => onTabChange("github")}>
                     저장소 열기
                   </button>
                 </div>
+                <div className="pf-panel pf-overview-body">
                 {overview?.git.commits.slice(0, 4).map((c) => (
                   <div key={c.hash} className="pf-row">
                     <code>{c.hash}</code>
@@ -602,6 +609,7 @@ export function ProjectOverview({
                     {overview.git.reason || "저장소에 기록된 커밋이 없습니다."}
                   </p>
                 )}
+                </div>
               </section>
             </div>
           </>

@@ -50,6 +50,10 @@ const {Store}=require("../electron/store.cjs");
   await button("작업 음악 삭제").click();
   await page.waitForFunction(()=>!document.querySelector(".music-list"));
   assert.equal((await page.evaluate(()=>window.flowrium.musicState())).lists.length,0);
+  assert.equal(await page.locator(".music-video iframe").count(),0,"삭제한 재생목록의 플레이어가 남아 있습니다.");
+  await page.locator(".music-controls").getByText("선택한 음악 없음",{exact:true}).waitFor();
+  await button("재생 순서").click();
+  assert.equal(await page.locator(".music-queue li").count(),0);
   console.log("실제 앱 뮤직 목록·메모 저장 / 외부 플레이어 모의 제어 / 가사 자동 검색·재생 동기화·줄 클릭 이동·스크롤 안정 / 화면 전환 유지·삭제 통과");
  }finally{if(app)await app.close();await fs.rm(temp,{recursive:true,force:true,maxRetries:5,retryDelay:200});}
 })().catch(e=>{console.error(e);process.exitCode=1;});

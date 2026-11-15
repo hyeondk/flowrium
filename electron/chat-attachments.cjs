@@ -84,6 +84,13 @@ function registerChatAttachments(register,store) {
   register('readChatAttachment',async(projectId,id)=>{
     const [file]=await resolveAttachments(store,projectId,[id]);
     const {path:_,image,dataUrl,...attachment}=file;
+    if (image && !dataUrl) {
+      // 큰 원본을 IPC로 보내지 않고 맥과 윈도우의 파일 미리보기를 사용한다.
+      const project=store.project(projectId);
+      const thumbnail=await require('electron').nativeImage.createThumbnailFromPath(file.path,{width:320,height:240});
+      if(store.project(projectId)!==project)throw Error('사진을 읽는 동안 프로젝트가 바뀌었습니다.');
+      if(!thumbnail.isEmpty())return {attachment,dataUrl:thumbnail.toDataURL()};
+    }
     return {attachment,...(dataUrl?{dataUrl}:{})};
   });
 }

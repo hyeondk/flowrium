@@ -14,22 +14,69 @@ async function atomic(file,value) {
   try { await fs.writeFile(tmp,JSON.stringify(value,null,2),{mode:0o600,flag:'wx'});await fs.rename(tmp,file); }
   finally { await fs.rm(tmp,{force:true}); }
 }
-function registerPortfolioOperations(register,store,{chooseFolder}={}) {
+const navigation = require('./project-navigation.cjs');
+function registerPortfolioOperations(register,store,{chooseFolder,getRuntime}={}) {
   const file=path.join(path.dirname(store.file),'portfolio-tools.json');
-  const previews=new Map();let queue=Promise.resolve();
+  const previews=new Map(), knownPaths=new Map();let queue=Promise.resolve();
+  async function restoreNames() {
+    const changed=[];
+    for (const project of store.state.projects) {
+      if (knownPaths.get(project.id)===project.path) continue;
+      let details;
+      try {details=await readDetails(store,project.id);} catch {continue;}
+      if (details.kickoff?.name && project.name!==details.kickoff.name) {
+        changed.push({project,before:project.name});
+        project.name=details.kickoff.name;
+      }
+      knownPaths.set(project.id,project.path);
+    }
+    if (changed.length) {
+      try {await store.save();}
+      catch(error){for(const {project,before} of changed){project.name=before;knownPaths.delete(project.id);}throw error;}
+    }
+  }
   async function read() {
     try {const s=JSON.parse(await fs.readFile(file,'utf8'));if(!s || !Array.isArray(s.order)||!Array.isArray(s.columns))throw Error();return {...defaults(),...s};}
     catch(e){if(e.code==='ENOENT')return defaults();throw new Error('프로젝트 보드 설정을 읽지 못했습니다.');}
   }
-  register('portfolioAction',(input)=>{
-    const task=queue.catch(()=>{}).then(async()=>{
+  function serialize(operation) {
+    const result = queue.then(operation);
+    queue = result.catch(() => {});
+    return result;
+  }
+  register('portfolioAction',(input)=>serialize(async()=>{
       if(!input||typeof input!=='object')throw new Error('프로젝트 도구 요청을 확인해 주세요.');
       const s=await read();
       if(input.action==='read')return s;
+      if (input.action === 'navigation' || input.action === 'move') {
+        await restoreNames();
+        const source = input.sync === true ? await navigation.catalog(store,getRuntime) : undefined;
+        let order = navigation.orderedIds(store.state.projects, s.order);
+        if (source) order = navigation.withRemoteOrder(order, source.matches);
+        if (input.action === 'move') {
+          const from = order.indexOf(input.id), to = order.indexOf(input.target);
+          if (from < 0 || to < 0) throw Error('이동할 프로젝트를 다시 선택해 주세요.');
+          order.splice(from,1);
+          order.splice(to,0,input.id);
+          await navigation.pushMove(source,order,input.id);
+        }
+        if ((source || input.action === 'move') && order.join() !== s.order.join()) {
+          s.order = order;
+          s.revision = randomUUID();
+          await atomic(file,s);
+        }
+        await navigation.incomingNames(store,source);
+        const titles = source ? await require('./chat-sync.cjs').listingTitles(source.runtime,source.context) : {};
+        return {order,names:Object.fromEntries(store.state.projects.map(p=>[p.id,p.name])),titles};
+      }
       if(input.action==='save') {
         if(input.revision!==s.revision)throw new Error('보드 설정이 변경됐습니다. 새로고침해 주세요.');
         if(input.order!==undefined){
           if(!Array.isArray(input.order)||input.order.length>1000||new Set(input.order).size!==input.order.length||input.order.some(id=>!store.state.projects.some(p=>p.id===id)))throw new Error('프로젝트 순서를 확인해 주세요.');
+          if (input.movedProjectId !== undefined) {
+            if (!input.order.includes(input.movedProjectId)) throw Error('순서를 옮길 카드를 확인해 주세요.');
+            await navigation.pushMove(await navigation.catalog(store,getRuntime),input.order,input.movedProjectId);
+          }
           s.order=input.order;
         }
         if(input.columns!==undefined){if(!Array.isArray(input.columns)||input.columns.length!==phases.length||new Set(input.columns).size!==phases.length||input.columns.some(c=>!phases.includes(c)))throw new Error('보드 칸을 확인해 주세요.');s.columns=input.columns;}
@@ -100,7 +147,7 @@ function registerPortfolioOperations(register,store,{chooseFolder}={}) {
         return {at:end.toISOString(),commits7,dirtyRepositories,openPulls,projects};
       }
       throw new Error('지원하지 않는 프로젝트 도구입니다.');
-    });queue=task;return task;
-  });
+    }));
+  return serialize;
 }
 module.exports={registerPortfolioOperations,atomic};

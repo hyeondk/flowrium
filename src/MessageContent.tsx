@@ -6,8 +6,14 @@ import {messageContent,safeLogPreview} from './message-content';
 import './message-content.css';
 
 type Props={text:string;role:'user'|'assistant'|'system';streaming?:boolean};
-function Markdown({text}:{text:string}){
- return <div className="markdown message-prose"><ReactMarkdown remarkPlugins={[remarkGfm]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={{a:({node:_,href,...props})=><a {...props} href={href} target={href?.startsWith('#')?undefined:'_blank'} rel="noopener noreferrer"/>,table:({node:_,...props})=><div className="message-table-wrap" role="region" aria-label="답변 표" tabIndex={0}><table {...props}/></div>}}>{text}</ReactMarkdown></div>;
+export function Markdown({text,draft=false}:{text:string;draft?:boolean}){
+ return <div className="markdown message-prose">
+  <ReactMarkdown remarkPlugins={[remarkGfm]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={{
+    a:({node:_,href,children,...props})=>draft?<span className="draft-link">{children}</span>:<a {...props} href={href} target={href?.startsWith('#')?undefined:'_blank'} rel="noopener noreferrer">{children}</a>,
+    ...(draft?{img:({alt}:{alt?:string})=><span>{alt||'이미지'}</span>}:{}),
+    table:({node:_,...props})=><div className="message-table-wrap" role="region" aria-label={draft?'입력한 표':'답변 표'} tabIndex={0}><table {...props}/></div>,
+  }}>{text}</ReactMarkdown>
+ </div>;
 }
 function LogDetails({raw,title,failed=false,pending=false}:{raw:string;title:string;failed?:boolean;pending?:boolean}){
  const [open,setOpen]=useState(false),[original,setOriginal]=useState(false),[copied,setCopied]=useState(false),[copyError,setCopyError]=useState('');

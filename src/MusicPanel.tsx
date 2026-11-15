@@ -28,6 +28,7 @@ const initial: MusicState = {
 };
 const clock = (n: number) =>
   Math.floor(n / 60) + ":" + String(Math.floor(n % 60)).padStart(2, "0");
+const idleTrack = { playing: false, time: 0, duration: 0, index: 0, title: "", author: "", queue: [] as string[] };
 export default function MusicPanel({
   visible,
   locked = false,
@@ -42,15 +43,7 @@ export default function MusicPanel({
     [tab, setTab] = useState("queue"),
     [error, setError] = useState(""),
     [ready, setReady] = useState(false);
-  const [track, setTrack] = useState({
-    playing: false,
-    time: 0,
-    duration: 0,
-    index: 0,
-    title: "",
-    author: "",
-    queue: [] as string[],
-  });
+  const [track, setTrack] = useState(idleTrack);
   const frame = useRef<HTMLIFrameElement>(null),
     lastSave = useRef(0),
     latest = useRef(state);
@@ -106,12 +99,33 @@ export default function MusicPanel({
       );
   }
   async function save(value: MusicState) {
+    const previous = latest.current;
+    latest.current = value;
     setState(value);
     try {
       await api?.saveMusic(value);
     } catch (e) {
+      if (latest.current === value) {
+        latest.current = previous;
+        setState(previous);
+      }
       setError(e instanceof Error ? e.message : String(e));
     }
+  }
+  function removeList(id: string) {
+    const current = latest.current;
+    const lists = current.lists.filter(item => item.id !== id);
+    if (current.selected !== id) {
+      void save({ ...current, lists });
+      return;
+    }
+    command("pause");
+    setURL("");
+    setReady(false);
+    setTrack(idleTrack);
+    setLyrics(undefined);
+    setTab("queue");
+    void save({ ...current, lists, selected: "", time: 0, index: 0 });
   }
   useEffect(() => {
     let live = true;
@@ -139,7 +153,7 @@ export default function MusicPanel({
         setError(e.data.error);
         return;
       }
-      if (typeof e.data.playing === "boolean") {
+      if (latest.current.selected && typeof e.data.playing === "boolean") {
         const data = e.data;
         setTrack(data);
         if (!locked && Date.now() - lastSave.current > 7000 && data.playing) {
@@ -171,8 +185,10 @@ export default function MusicPanel({
       index: state.selected === id ? track.index : 0,
     };
     await save(next);
+    if (latest.current.selected !== id) return;
     if (!url) {
-      setURL((await api.musicPlayer()).url);
+      const player = await api.musicPlayer();
+      if (latest.current.selected === id) setURL(player.url);
       return;
     }
     frame.current?.contentWindow?.postMessage(
@@ -426,18 +442,11 @@ export default function MusicPanel({
                 </button>
                 <button type="button" className="music-info-action" aria-label={item.title+' 이름과 이미지 자동 읽기'} title="실제 이름과 이미지로 바꾸기" disabled={adding} onClick={()=>void refreshEntry(item.id)}><RefreshCw size={15}/></button>
                 <button
+                  type="button"
                   aria-label={item.title + " 삭제"}
-                  onClick={() => {
-                    if (state.selected === item.id) command("pause");
-                    void save({
-                      ...state,
-                      selected:
-                        state.selected === item.id ? "" : state.selected,
-                      lists: state.lists.filter((v) => v.id !== item.id),
-                    });
-                  }}
+                  onClick={() => removeList(item.id)}
                 >
-                  <Trash2 size={15} />
+                  <Trash2 size={15} />삭제
                 </button>
               </div>
             ))}

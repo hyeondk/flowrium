@@ -56,29 +56,18 @@ async function probe(runtime, session, context, cwd) {
 }
 
 function mergeNative(local, incoming) {
-  const remoteIds=new Set(incoming.map(m=>m.id)), localById=new Map(local.map(m=>[m.id,m]));
+  const localById=new Map(local.map(m=>[m.id,m]));
   const byTurn=Map.groupBy(incoming,m=>m.turnId), localByTurn=new Map(), matches=new Map();
   let lastTurn;
   for(const message of local){
     if(message.role==='user' && message.turnId)lastTurn=message.turnId;
     const turn=message.turnId || (message.role==='assistant' && lastTurn);
-    if(!turn || remoteIds.has(message.id))continue;
+    if(!turn)continue;
     const group=localByTurn.get(turn)||[];group.push(message);localByTurn.set(turn,group);
   }
   for(const [turn,saved] of localByTurn){
-    const source=byTurn.get(turn)||[], users=source.filter(m=>m.role==='user');
-    const own=saved.filter(m=>m.role==='user');
-    if(!own.length)continue;
-    for(const input of own){
-      // 예전 사용자 항목에는 앱 지침이 덧붙어 있어도, 당시 화면에 입력한 원문을 보존합니다.
-      const counterpart=users.find(m=>!matches.has(m.id)&&m.text===input.text)||users.find(m=>!matches.has(m.id));
-      if(counterpart)matches.set(counterpart.id,input);
-    }
-    const answers=source.filter(m=>m.role==='assistant'), localAnswer=saved.find(m=>m.role==='assistant');
-    if(localAnswer && answers.length){
-      for(const part of answers.slice(0,-1))matches.set(part.id,null);
-      matches.set(answers.at(-1).id,{...localAnswer,text:answers.map(m=>m.text).join('\n\n')});
-    }
+    const source=byTurn.get(turn)||[];
+    require('./codex-transfer-merge.cjs').matchExchanges(saved,source,matches);
   }
   const result=[];
   for(const item of incoming){
@@ -103,6 +92,7 @@ async function refreshNative(runtime, session, cwd, context, thread) {
   guardSession(runtime, session, id, context);
   if (snapshot.active) return { sync: 'active' };
   if (deferred(runtime,session)) return { sync: 'deferred' };
+  const finishRefresh=runtime.beginRefresh();
   runtime.busy=true;
   try {
     let incoming=snapshot.messages;
@@ -118,23 +108,30 @@ async function refreshNative(runtime, session, cwd, context, thread) {
     }
     guardSession(runtime, session, id, context);
     const merged=mergeNative(session.messages,incoming);
-    if(JSON.stringify(merged)===JSON.stringify(session.messages))return {sync:'current'};
-    const oldMessages = session.messages, oldDate = session.updatedAt;
+    const title = snapshot.thread.name?.trim().slice(0,300) || session.title;
+    if(title===session.title && JSON.stringify(merged)===JSON.stringify(session.messages))return {sync:'current'};
+    const oldMessages = session.messages, oldDate = session.updatedAt, oldTitle = session.title;
+    session.title = title;
     session.messages = merged;
     session.updatedAt = [oldDate, D.at(snapshot.thread.updatedAt)].sort().at(-1);
     try { await runtime.store.save(); } catch (error) {
-      session.messages = oldMessages; session.updatedAt = oldDate;
+      session.messages = oldMessages; session.updatedAt = oldDate; session.title = oldTitle;
       throw error;
     }
     guardSession(runtime, session, id, context);
     runtime.controller.emitEvent({ type: 'session', sessionId: session.id, session: structuredClone(session) });
     return { sync: 'current' };
-  } finally { runtime.busy = false; }
+  } finally { runtime.busy = false; finishRefresh(); }
 }
 
 async function sync(runtime, sessionId, force = false) {
-  const session = runtime.store.session(D.id(sessionId)), id = session.threadId;
+  const session = runtime.store.session(D.id(sessionId));
   if (deferred(runtime, session)) return { sync: 'deferred' };
+  if (!session.threadId && session.codexLink?.mode==='linked') {
+    await runtime.refresh(session.id,{background:true});
+    if (deferred(runtime,session)) return {sync:'deferred'};
+  }
+  const id = session.threadId;
   const context = await runtime.ready(true);
   const cwd = await connection(runtime, session, context);
   guardSession(runtime, session, id, context);
@@ -174,4 +171,66 @@ async function openDesktop(runtime, sessionId) {
   return { opened: true };
 }
 
-module.exports = { bindNative, sync, openDesktop, mergeNative };
+// Read title metadata for the sidebar too. Only an attached session in the
+// current account and on this device may receive a title from the catalog.
+async function listingTitles(runtime, context) {
+  const sessions = (runtime.store.visibleSessions?.() || runtime.store.state.sessions).filter(session =>
+    session.threadId && !session.pendingThreadName && !deferred(runtime,session) &&
+    (session.codexLink?.mode === 'linked' && session.codexLink.ownerHash === context.owner ||
+     !session.codexLink && session.desktopThread?.ownerHash === context.owner));
+  if (!sessions.length) return {};
+  const previousTitles = new Map(sessions.map(session => [session.id,session.title]));
+  const hosts = new Map();
+  for (const session of sessions) {
+    try { hosts.set(session.threadId,{session,cwd:await connection(runtime,session,context)}); }
+    catch { /* A portable copy from another device has no shared local thread. */ }
+  }
+  const titles = {};
+  for (const archived of [false,true]) {
+    if (!hosts.size) break;
+    let cursor;
+    const cursors = new Set();
+    do {
+      const result = await runtime.client.request('thread/list',{archived,limit:100,sortKey:'updated_at',
+        sortDirection:'desc',sourceKinds:['appServer','cli','vscode','unknown'],useStateDbOnly:true,...(cursor?{cursor}:{})});
+      runtime.guard(context.owner,context.revision,context.epoch);
+      if (!Array.isArray(result.data)) throw Error('Codex 대화 목록을 확인할 수 없습니다.');
+      for (const row of result.data) {
+        const target = hosts.get(row.id);
+        if (!target || typeof row.cwd !== 'string' || !require('./path-boundary.cjs').samePath(row.cwd,target.cwd)) continue;
+        hosts.delete(row.id);
+        if (typeof row.name === 'string' && row.name.trim()) titles[target.session.id] = row.name.trim().slice(0,300);
+      }
+      cursor = result.nextCursor;
+      if (cursor && cursors.has(cursor)) throw Error('Codex 대화 목록의 다음 페이지를 확인할 수 없습니다.');
+      if (cursor) cursors.add(cursor);
+    } while (cursor && hosts.size);
+  }
+  const changed = [];
+  for (const session of sessions) {
+    const name = titles[session.id];
+    if (!name || session.title===name || session.title!==previousTitles.get(session.id) || deferred(runtime,session) || session.pendingThreadName) continue;
+    guardSession(runtime,session,session.threadId,context);
+    changed.push({session,previous:session.title,name});
+    session.title = name;
+  }
+  if (changed.length) {
+    try { await runtime.store.save(); }
+    catch(error){for(const {session,previous,name} of changed)if(session.title===name)session.title=previous;throw error;}
+    runtime.guard(context.owner,context.revision,context.epoch);
+  }
+  return Object.fromEntries(sessions.map(session=>[session.id,session.title]));
+}
+
+async function rename(runtime, session, name) {
+  if (!session.threadId || session.codexLink?.mode === 'copy' || !session.codexLink && !session.desktopThread) return;
+  if (!runtime) throw Error('Codex 연결을 확인한 뒤 대화 이름을 다시 저장해 주세요.');
+  const context = await runtime.ready(true), id = session.threadId;
+  const cwd = await connection(runtime,session,context);
+  await D.readThread(runtime.client,id,cwd);
+  guardSession(runtime,session,id,context);
+  await runtime.client.request('thread/name/set',{threadId:id,name});
+  guardSession(runtime,session,id,context);
+}
+
+module.exports = { bindNative, sync, openDesktop, mergeNative, listingTitles, rename };

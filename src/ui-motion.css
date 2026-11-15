@@ -112,3 +112,17 @@ dialog[data-phase=exit]::backdrop{animation:ui-fade-out var(--motion-duration) v
 
 :is(.memory-panel,.workflow-hub,.input-request)>header h2,:is(.memory-panel,.workflow-hub,.input-request)>header h3{animation:ui-title-in 280ms var(--ease-enter) both}
 :is(.memory-panel,.workflow-hub)>header p,.input-request>p{animation:ui-title-in 280ms var(--ease-enter) 60ms both}
+
+:root {--notice-fill:#e5f1fb;--notice-ink:#16466c;--notice-line:#a6c8e1;--notice-alert-fill:#fff0ef;--notice-alert-ink:#842e36;--notice-alert-line:#e3b1b5}
+:root[data-theme=dark] {--notice-fill:#243e52;--notice-ink:#e0f1ff;--notice-line:#4c7390;--notice-alert-fill:#492d35;--notice-alert-ink:#ffe0df;--notice-alert-line:#85535c}
+.flow-notice-stack {position:fixed;left:50%;bottom:max(22px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:1500;display:grid;justify-items:center;gap:6px;width:max-content;max-width:calc(100vw - 32px);pointer-events:none}
+.flow-notice-stack>.ui-notification {position:static;transform:none;max-width:100%;pointer-events:auto}
+.ui-notification .ui-notification-surface {background:var(--notice-fill);color:var(--notice-ink);border-color:var(--notice-line)}
+.ui-notification[data-tone=error] .ui-notification-surface {background:var(--notice-alert-fill);color:var(--notice-alert-ink);border-color:var(--notice-alert-line)}
+.ui-notification .ui-notice-indicator {background:color-mix(in srgb,currentColor 12%,transparent);color:inherit}
+.ui-notification .ui-notice-close {color:inherit}
+@keyframes ui-toast-rise {from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes ui-toast-fall {from{opacity:1;transform:none}to{opacity:0;transform:translateY(12px)}}
+.ui-notification [data-motion=toast][data-phase=enter]{animation:ui-toast-rise 240ms var(--ease-enter) both}
+.ui-notification [data-motion=toast][data-phase=exit]{animation:ui-toast-fall 220ms var(--ease-exit) both}
+@media(prefers-reduced-motion:reduce){.ui-notification [data-motion]{animation-duration:1ms!important;transform:none!important}}

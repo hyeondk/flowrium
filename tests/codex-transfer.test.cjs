@@ -18,6 +18,25 @@ class Client extends EventEmitter{
  }
  close(){this.ready=false;}
 }
+test('자동 새로고침 중 들어온 채팅 전송은 최신 본문 확인까지 기다린다', async t => {
+  const f = await fixture(t);
+  const plan = await f.preview();
+  await f.runtime.apply({planId:plan.id});
+  const session = f.store.state.sessions[0];
+  const started = Promise.withResolvers(), release = Promise.withResolvers();
+  f.client.hook = async method => {
+    if (method !== 'thread/read') return;
+    f.client.hook = null;
+    started.resolve();
+    await release.promise;
+  };
+  const sync = f.runtime.refresh(session.id,{background:true});
+  await started.promise;
+  const sending = f.runtime.beforeSend(session.id);
+  release.resolve();
+  await Promise.all([sync,sending]);
+  assert.equal(session.threadId,'원본대화');
+});
 async function fixture(t){const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-codex-transfer-'))),folder=path.join(root,'프로젝트');await fs.mkdir(folder);const store=new Store(path.join(root,'설정'));await store.load();const project=await store.addProject(folder),client=new Client(folder);let revision=0,epoch=0,owner='시험계정',allowed=true;
 const controller={client,runs:new Map(),editingSessions:new Set(),loadedThreads:new Set(),emitEvent(){}};
 const runtime=new CodexTransfer(store,controller,{accountRevision:()=>revision,stateEpoch:()=>epoch,accountOwner:()=>owner,canRun:()=>allowed,allowTemporaryProjects:true});
@@ -96,4 +115,25 @@ test('로컬 요청과 같은 작업에 도착한 추가 지시·완료 답변�
  assert.deepEqual(first.map(m=>m.text),['원래 입력','같은 작업의 추가 입력','최종 답변']);
  assert.deepEqual(mergeNative(rows.slice(0,1),remote).map(m=>m.text),['원래 입력','같은 작업의 추가 입력','최종 답변']);
  assert.equal(first.find(m=>m.id==='a').reaction,'like');assert.deepEqual(mergeNative(first,remote),first);
+});
+
+test('기기 식별자가 누락된 연결 대화를 검증된 원본으로 복구하고 재시작 뒤에도 보존한다',async t=>{
+  const f=await fixture(t),plan=await f.preview();
+  await f.runtime.apply({planId:plan.id});
+  const session=f.store.state.sessions[0];
+  delete session.threadId;
+  await f.store.save();
+  const before=f.client.calls.length;
+  await f.runtime.beforeSend(session.id);
+  assert.equal(session.threadId,session.codexLink.sourceThreadId);
+  assert(!f.client.calls.slice(before).some(call=>call.method.startsWith('thread/')&&!call.params.threadId));
+  const persisted=new Store(path.dirname(f.store.file));
+  await persisted.load();assert.equal(persisted.session(session.id).threadId,session.codexLink.sourceThreadId);
+  delete session.threadId;
+  f.client.threads.get('원본대화').cwd=path.dirname(f.folder);
+  await assert.rejects(f.runtime.beforeSend(session.id),/프로젝트/);
+  assert.equal(session.threadId,undefined);
+  f.setOwner('별도계정');
+  await assert.rejects(f.runtime.beforeSend(session.id),/원래 계정/);
+  assert.equal(session.threadId,undefined);
 });

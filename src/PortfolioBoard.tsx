@@ -1,29 +1,42 @@
+import {projectOrderChanged} from './ProjectOrder';
 import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useRef, useState } from 'react';
+import { ChartNoAxesColumn, Columns3, Download, List, Upload } from 'lucide-react';
+import type { ReactNode } from 'react';
 import type { PortfolioCard, PortfolioInsights, PortfolioPreferences } from '../shared/portfolio';
 import type { Project } from '../shared/types';
 import './portfolio-tools.css';
 
-export default function PortfolioBoard({cards,onOpen,onChange,onImported}:{cards:PortfolioCard[];onOpen(p:Project):void;onChange(id?:string,archived?:boolean):void;onImported?(p:Project):void}) {
+export default function PortfolioBoard({cards,tools,onOpen,onChange,onImported}:{cards:PortfolioCard[];tools?:ReactNode;onOpen(p:Project):void;onChange(id?:string,archived?:boolean):void;onImported?(p:Project):void}) {
   const api=window.flowrium;
   const [prefs,setPrefs]=useState<PortfolioPreferences>(),[insights,setInsights]=useState<PortfolioInsights>(),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const [mode,setMode]=useState<'list'|'board'>('list'),[preview,setPreview]=useState<{token:string;cards:{index:number;name:string;existingId:string|null;willReplace:boolean}[]}>(),[selected,setSelected]=useState<number[]>([]),[overwrite,setOverwrite]=useState(false);
   const picker=useRef<HTMLInputElement>(null);
-  useEffect(()=>{let alive=true;api?.portfolioAction({action:'read'}).then(v=>{if(alive)setPrefs(v);}).catch(e=>{if(alive)setError(e.message);});return()=>{alive=false;};},[api]);
+  useEffect(()=>{
+    let alive=true;
+    const refresh=()=>api?.portfolioAction({action:'read'}).then(v=>{if(alive)setPrefs(v);}).catch(e=>{if(alive)setError(e.message);});
+    void refresh();
+    window.addEventListener(projectOrderChanged,refresh);
+    return()=>{alive=false;window.removeEventListener(projectOrderChanged,refresh);};
+  },[api]);
   async function run(action:()=>Promise<void>){if(busy)return;setBusy(true);setError('');try{await action();}catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   async function drop(id:string,column:string,before?:string){await run(async()=>{
     const card=cards.find(c=>c.project.id===id);if(!card?.details)return;
     await api!.updateProjectDetails(id,card.details.revision,{action:'phase',phase:column,name:card.details.kickoff?.name||card.project.name});
-    const latest=await api!.portfolioAction({action:'read'}),order=[...latest.order,...cards.map(c=>c.project.id).filter(i=>!latest.order.includes(i))].filter(i=>i!==id);
+    const latest=await api!.portfolioAction({action:'read'}),valid=new Set(cards.map(c=>c.project.id)),order=[...latest.order.filter(key=>valid.has(key)),...cards.map(c=>c.project.id).filter(i=>!latest.order.includes(i))].filter(i=>i!==id);
     const at=before?order.indexOf(before):-1;order.splice(at<0?order.length:at,0,id);
-    setPrefs(await api!.portfolioAction({action:'save',revision:latest.revision,order}));onChange(id,column==='완료');
+    setPrefs(await api!.portfolioAction({action:'save',revision:latest.revision,order,movedProjectId:id}));window.dispatchEvent(new Event(projectOrderChanged));onChange(id,column==='완료');
   });}
   async function exportCards(){await run(async()=>{const value=await api!.portfolioAction({action:'export'});const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));try{const a=document.createElement('a');a.href=url;a.download='Flowrium-project-cards.json';a.click();}finally{URL.revokeObjectURL(url);}});}
   const sorted=[...cards].sort((a,b)=>{const index=(id:string)=>{const i=prefs?.order.indexOf(id)??-1;return i<0?100000:i;};return index(a.project.id)-index(b.project.id);});
   return <section className="portfolio-tools" aria-label="프로젝트 보드 도구">
-    <div className="pt-actions"><button aria-pressed={mode==='board'} onClick={()=>setMode(mode==='board'?'list':'board')}>{mode==='board'?'카드 목록':'상태별 보드'}</button>
-      <button disabled={busy} onClick={()=>void exportCards()}>프로젝트 카드 내보내기</button><button disabled={busy} onClick={()=>picker.current?.click()}>프로젝트 카드 가져오기</button>
-      <button disabled={busy} onClick={()=>void run(async()=>setInsights(await api!.portfolioAction({action:'insights'})))}>커밋과 변경 요청 집계</button>
+    <div className="pf-dashboard-tools" aria-label="작업 도구">
+      {tools}
+      <div className="pf-tool-group" role="group" aria-label="프로젝트 관리"><h3>프로젝트 관리</h3><div className="pt-actions">
+        <button aria-pressed={mode==='board'} onClick={()=>setMode(mode==='board'?'list':'board')}>{mode==='board'?<List size={15}/>:<Columns3 size={15}/>}{mode==='board'?'카드 목록':'상태별 보드'}</button>
+        <button disabled={busy} onClick={()=>void exportCards()}><Download size={15}/>프로젝트 카드 내보내기</button><button disabled={busy} onClick={()=>picker.current?.click()}><Upload size={15}/>프로젝트 카드 가져오기</button>
+        <button disabled={busy} onClick={()=>void run(async()=>setInsights(await api!.portfolioAction({action:'insights'})))}><ChartNoAxesColumn size={15}/>커밋과 변경 요청 집계</button>
+      </div></div>
       <input ref={picker} type="file" hidden accept=".json,application/json" aria-label="가져올 프로젝트 카드" onChange={e=>{const file=e.target.files?.[0];if(file)void run(async()=>{if(file.size>2*1024*1024)throw Error('카드 파일은 2MB까지 가능합니다.');const v=await api!.portfolioAction({action:'previewImport',text:await file.text()});setPreview(v);setSelected(v.cards.map(c=>c.index));setOverwrite(false);});e.currentTarget.value='';}}/>
     </div>
     {error&&<p role="alert">{error}</p>}

@@ -1,0 +1,40 @@
+.flow-date-picker {
+  --calendar-tint: var(--accent-bg,var(--selected,#dbeaf7));
+  --calendar-ink: var(--accent,var(--focus,#215989));
+  width: min(320px,calc(100vw - 32px)); max-height: min(90dvh,540px); overflow: auto; box-sizing: border-box;
+  position: fixed; inset: 0; margin: auto; padding: 16px; border-radius: 18px;
+  border: 1px solid var(--line,#cadae6); background: var(--panel,#fff); color: var(--text,#1b344b);
+  font: inherit; box-shadow: 0 12px 42px #16395536;
+}
+.flow-date-picker::backdrop {background: #102a4266;}
+.flow-date-picker[open] {animation: flow-calendar-open .24s ease-out both;}
+@keyframes flow-calendar-open {from{opacity:0;transform:translateY(-8px) scale(.96)}to{opacity:1;transform:none}}
+.flow-date-picker > header,.flow-date-picker > footer,.flow-date-picker > label {display:flex;align-items:center;gap:6px;}
+.flow-date-picker > header {justify-content:space-between;}
+.flow-date-picker button {font:inherit;font-size:13px;color:inherit;border:0;border-radius:9px;padding:4px;min-height:36px;min-width:0;background:transparent;cursor:pointer;}
+.flow-date-picker > header button {width:38px;font-size:20px;}
+.flow-date-picker :is(button:hover:enabled,button:focus-visible){background:var(--calendar-tint);color:var(--calendar-ink);}
+.flow-date-picker button:disabled{opacity:.36;cursor:default;}
+.flow-date-picker .flow-date-week,.flow-date-picker .flow-date-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));text-align:center;gap:2px;}
+.flow-date-week{font-size:11px;color:var(--muted,var(--soft));margin-block:10px 5px;}
+.flow-date-days button[aria-current=date]{box-shadow:inset 0 0 0 1px var(--calendar-ink);}
+.flow-date-days button[aria-pressed=true]{background:var(--calendar-tint);color:var(--calendar-ink);font-weight:800;}
+.flow-date-picker>footer,.flow-date-picker>label{border-top:1px solid var(--line);margin-top:10px;padding-top:8px;justify-content:flex-end;}
+.flow-date-picker>footer button{color:var(--calendar-ink);padding-inline:9px;}
+.flow-date-picker>footer button:first-child{margin-right:auto;}
+.flow-date-picker input[type=time]{width:130px;font:inherit;color:inherit;background:var(--calendar-tint);border:0;border-radius:8px;padding:5px;}
+@media(max-width:550px){.flow-date-picker{width:min(460px,100vw);margin:auto auto 0;border-radius:22px 22px 0 0;padding-bottom:max(14px,env(safe-area-inset-bottom))}.flow-date-picker button{min-height:42px}.flow-date-picker[open]{animation-name:flow-date-sheet}@keyframes flow-date-sheet{from{opacity:0;transform:translateY(28px)}to{opacity:1;transform:none}}}
+@media(prefers-reduced-motion:reduce){.flow-date-picker[open]{animation:none}}
+
+/* Markdown and dynamically generated checklists use the same palette as editable controls. */
+input[type=checkbox]:not(.ui-checkbox-control>input,.ui-switch-control>input,[role=switch],.mobile-switch input) {
+  appearance:none; -webkit-appearance:none; display:inline-grid; place-items:center; vertical-align:middle;
+  width:17px;height:17px;min-width:17px;min-height:17px;border-radius:5px;padding:0;
+  border:1.5px solid var(--line,#a7bbcb);background:var(--panel,#fff);color:var(--panel,#fff);
+}
+input[type=checkbox]:not(.ui-checkbox-control>input,.ui-switch-control>input,[role=switch],.mobile-switch input):checked{background:var(--accent-fill,var(--accent,#235886));border-color:transparent;}
+input[type=checkbox]:not(.ui-checkbox-control>input,.ui-switch-control>input,[role=switch],.mobile-switch input)::after{content:'';width:8px;height:5px;border:solid currentColor;border-width:0 0 2px 2px;transform:translateY(-1px) rotate(-45deg);clip-path:inset(0 100% 0 0);transition:clip-path 220ms ease-in-out}
+input[type=checkbox]:not(.ui-checkbox-control>input,.ui-switch-control>input,[role=switch],.mobile-switch input):checked::after{clip-path:inset(0)}
+@keyframes flow-details-drop{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+details[open]>:not(summary){animation:flow-details-drop .24s ease-out}
+@media(prefers-reduced-motion:reduce){details[open]>:not(summary){animation:none}}

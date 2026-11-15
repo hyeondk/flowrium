@@ -56,6 +56,7 @@ function mobileMessages(s, params, revision) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 100)
     return { code: 400, value: { error: "메시지 조회 개수는 1~100개입니다." } };
   const items = s.messages;
+  const progress = params.get('progress') === '1';
   let end = items.length;
   if (params.has("before")) {
     const parts = params.get("before").split(":");
@@ -83,17 +84,25 @@ function mobileMessages(s, params, revision) {
   while (start > 0 && end - start < limit) {
     const m = items[start - 1],
       visible = m.role === "assistant" || m.role === "user";
-    const size = visible ? Buffer.byteLength(m.text) : 0;
+    // 휴대폰에는 단계 이름, 상태, 시각만 전달한다. 명령과 도구 출력은 컴퓨터에 남긴다.
+    const toolLabel=progress && m.role==='system' && (
+      m.text.startsWith('실행 도구 / 명령') ? '명령 실행' :
+      m.text.startsWith('파일 변경 기록') ? '파일 변경' :
+      m.text.startsWith('도구 실행 기록') ? '도구 실행' : undefined);
+    const workSteps=progress&&visible&&m.workSteps?.map(({id,label,state,createdAt})=>({id,label,state,createdAt}));
+    const size = (visible ? Buffer.byteLength(m.text) : 0)+(workSteps?Buffer.byteLength(JSON.stringify(workSteps)):0);
     if (messages.length && bytes + size > 512 * 1024) break;
     start--;
-    if (visible) {
+    if (visible || toolLabel) {
       messages.push({
         id: m.id,
         createdAt: m.createdAt,
         role: m.role,
-        text: m.text,
+        text: visible ? m.text : toolLabel,
         index: start,
-        attachments: m.attachments,
+        attachments: visible ? m.attachments : undefined,
+        ...(progress && m.turnId && {turnId:m.turnId}),
+        ...(workSteps && {workSteps}),
       });
       bytes += size;
     }
@@ -279,7 +288,7 @@ function registerRemote(
   });
   function update(event) {
     const run=controller.runs.get(event.sessionId);
-    if(server && run && (event.type==='delta'||event.type==='session'))runRevisions.set(run,revisionOf(event.sessionId)+1);
+    if(server && run && (event.type==='delta'||event.type==='session'||event.workProgress))runRevisions.set(run,revisionOf(event.sessionId)+1);
     if(server && run && event.type==='status' && typeof event.text==='string')runLabels.set(run,event.text.slice(0,180));
     if (event.type === "approval" || event.type === "input")
       approvals.set(event.requestId, event);
@@ -400,6 +409,7 @@ function registerRemote(
               },
               version,
               mobileVersion:mobileUpdater.version,
+              canSteer:true,
               pushAvailable: !!handlers.get("webPushAction"),
               connection: {
                 available: connection.available,
@@ -535,7 +545,11 @@ function registerRemote(
     const files = {
       "/": "index.html",
       "/app.js": "app.js",
+      "/chat-reader.js": "chat-reader.js",
+      "/markdown-engine.js": "markdown-engine.js",
       "/navigation.js": "navigation.js",
+      "/date-picker.js": "date-picker.js",
+      "/date-picker.css": "date-picker.css",
       "/confirmation.js": "confirmation.js",
       "/chatgpt.svg": "chatgpt.svg",
       "/mobile-shell.css": "mobile-shell.css",

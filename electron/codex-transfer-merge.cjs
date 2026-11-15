@@ -1,11 +1,49 @@
 const copy=value=>structuredClone(value);
+function exchanges(messages) {
+ const rows=[];
+ for(const message of messages) {
+  if(message.role==='user')rows.push({user:message,answers:[]});
+  else if(message.role==='assistant' && rows.length)rows.at(-1).answers.push(message);
+ }
+ return rows;
+}
+function matchExchanges(local,incoming,matches) {
+ const remote=exchanges(incoming), own=exchanges(local);
+ const soleLocalAnswer=local.filter(message=>message.role==='assistant');
+ const soleRemoteAnswer=incoming.filter(message=>message.role==='assistant');
+ for(const {user,answers} of own) {
+  let index=remote.findIndex(row=>row.user.id===user.id || row.user.text===user.text);
+  if(index<0)index=0; // Older clients appended instructions to the original prompt.
+  const row=remote.splice(index,1)[0];
+  if(!row)continue;
+  if(row.user.id!==user.id)matches.set(row.user.id,user);
+  if(answers.length!==1 || !row.answers.length)continue;
+  const answer=answers[0];
+  if(row.answers.some(part=>part.id===answer.id))continue;
+  for(const part of row.answers.slice(0,-1))matches.set(part.id,null);
+  matches.set(row.answers.at(-1).id,{...answer,text:row.answers.map(part=>part.text).join('\n\n')});
+ }
+ // Some servers record a second input before finishing the original partial answer.
+ if(own.length && soleLocalAnswer.length===1 && soleRemoteAnswer.length===1) {
+  const [before]=soleLocalAnswer,[after]=soleRemoteAnswer;
+  if(after.id!==before.id && !matches.has(after.id))matches.set(after.id,{...before,text:after.text});
+ }
+}
 function mergeMessages(previous,incoming){
- const byId=new Map(previous.map(message=>[message.id,message])),byGroup=new Map(),incomingGroups=new Map();let latestTurn;
- for(const message of previous){if(message.role==='user'&&message.turnId)latestTurn=message.turnId;const turn=message.turnId||(message.role==='assistant'?latestTurn:undefined);if(!turn)continue;const key=turn+'|'+message.role;const rows=byGroup.get(key)||[];rows.push(message);byGroup.set(key,rows);}
+ const byId=new Map(previous.map(message=>[message.id,message])),byGroup=new Map(),previousTurns=new Map(),incomingGroups=new Map();let latestTurn;
+ for(const message of previous){if(message.role==='user'&&message.turnId)latestTurn=message.turnId;const turn=message.turnId||(message.role==='assistant'?latestTurn:undefined);if(!turn)continue;const key=turn+'|'+message.role;const rows=byGroup.get(key)||[];rows.push(message);byGroup.set(key,rows);if(!previousTurns.has(turn))previousTurns.set(turn,[]);previousTurns.get(turn).push(message);}
  for(const message of incoming){const key=message.turnId+'|'+message.role,rows=incomingGroups.get(key)||[];rows.push(message);incomingGroups.set(key,rows);}
- const used=new Set(),suppressed=new Set(),out=[];
- for(const message of incoming){if(suppressed.has(message.id))continue;let original=byId.get(message.id),next=message;const key=message.turnId+'|'+message.role,group=byGroup.get(key)||[],sources=incomingGroups.get(key)||[];
-  if(!original&&message.turnId&&group.length===1&&!used.has(group[0].id)){
+ const used=new Set(),suppressed=new Set(),out=[],steered=new Map(),multiUserTurns=new Set();
+ const turns=Map.groupBy(incoming,message=>message.turnId);
+ for(const [turn,source] of turns) {
+  if(!turn || source.filter(m=>m.role==='user').length<2)continue;
+  multiUserTurns.add(turn);
+  matchExchanges(previousTurns.get(turn)||[],source,steered);
+ }
+ for(const message of incoming){if(suppressed.has(message.id))continue;
+  if(steered.has(message.id)){const matched=steered.get(message.id);if(matched){used.add(matched.id);out.push(copy(matched));}continue;}
+  let original=byId.get(message.id),next=message;const key=message.turnId+'|'+message.role,group=byGroup.get(key)||[],sources=incomingGroups.get(key)||[];
+  if(!original&&message.turnId&&!multiUserTurns.has(message.turnId)&&group.length===1&&!used.has(group[0].id)){
    original=group[0];
    if(message.role==='assistant'&&sources.length>1){next={...message,text:sources.map(m=>m.text).join('\n\n')};for(const row of sources.slice(1))suppressed.add(row.id);}
   }
@@ -17,4 +55,4 @@ function mergeMessages(previous,incoming){
  for(const message of previous)if(!used.has(message.id)&&!out.some(row=>row.id===message.id))out.push(copy(message));
  return out;
 }
-module.exports={mergeMessages};
+module.exports={mergeMessages,matchExchanges};

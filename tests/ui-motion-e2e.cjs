@@ -40,7 +40,7 @@ async function run() {
           <AssistantShortcut projects={[]} onOpen={()=>{}}/>
           <MotionOverlay open={popup} onClose={()=>setPopup(false)} label={popup?"검증 팝업":"닫힘"}>{popup && <><h2>검증 팝업</h2><button>첫 버튼</button><button>끝 버튼</button></>}</MotionOverlay>
           <MotionOverlay open={sheet} onClose={()=>setSheet(false)} label="검증 시트" kind="sheet"><h2>검증 시트</h2><button onClick={()=>setSheet(false)}>시트 닫기</button></MotionOverlay>
-          <Toast message={toast} onClose={()=>setToast('')}/><Snackbar message={snack} onClose={()=>setSnack('')}/>
+          <Toast message={toast} onClose={()=>setToast('')}/><Snackbar tone="error" message={snack} onClose={()=>setSnack('')}/>
         </main>
       }
       createRoot(document.getElementById('root')).render(<Fixture/>);
@@ -98,9 +98,10 @@ async function run() {
     await page.evaluate(()=>window.motion.setPopup(true));await popup.waitFor();await page.evaluate(()=>window.motion.setPopup(false));await page.waitForTimeout(90);await page.evaluate(()=>window.motion.setPopup(true));await page.waitForTimeout(280);assert.equal(await popup.count(),1,'닫히던 팝업을 다시 열면 이전 종료 취소');await page.evaluate(()=>window.motion.setPopup(false));await popup.waitFor({state:'detached'});
     for(const [kind,label] of [['toast','토스트 표시'],['snackbar','스낵바 표시']]){
       await page.getByRole('button',{name:label}).click();const surface=page.locator('[data-motion='+kind+']');await surface.waitFor();
-      assert.equal(await surface.evaluate(e=>getComputedStyle(e).animationName),kind==='toast'?'ui-fade-in':'ui-snackbar-in');
+      assert.equal(await surface.evaluate(e=>getComputedStyle(e).animationName),kind==='toast'?'ui-toast-rise':'ui-snackbar-in');
+      assert.equal(await surface.evaluate(e=>getComputedStyle(e).backgroundColor), kind==='toast'?'rgb(229, 241, 251)':'rgb(255, 240, 239)');
       const exitName=await page.evaluate(async kind=>{window.motion[kind==='toast'?'setToast':'setSnack']('');await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return getComputedStyle(document.querySelector('[data-motion='+kind+']')).animationName;},kind);
-      assert.equal(exitName,kind==='toast'?'ui-fade-out':'ui-snackbar-out');await surface.waitFor({state:'detached'});
+      assert.equal(exitName,kind==='toast'?'ui-toast-fall':'ui-snackbar-out');await surface.waitFor({state:'detached'});
     }
     await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'하단 시트 열기'}).click();const sheet=page.locator('.motion-surface[aria-label="검증 시트"]');await sheet.waitFor();
     assert.equal(await sheet.evaluate(e=>getComputedStyle(e).animationName),'ui-sheet-in');

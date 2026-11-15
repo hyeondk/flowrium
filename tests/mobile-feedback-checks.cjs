@@ -70,7 +70,7 @@ async function observeToast(page) {
       const frames=animation.effect.getKeyframes();
       window.fixtureToastFrames[phase]={
         opacity:frames.map(f=>f.opacity),
-        positions:frames.map(f=>JSON.stringify([f.transform,f.translate,f.top,f.bottom])),
+        offsets:frames.map(f=>parseFloat(f.translate.split(' ').at(-1))),
         duration:animation.effect.getTiming().duration,
       };
     });
@@ -88,7 +88,8 @@ async function verifyToast(page, message, leave) {
   await notice.waitFor({state:'hidden'});
   const phases=await page.evaluate(()=>window.fixtureToastFrames);
   for(const [name,phase] of Object.entries(phases)){
-    assert.equal(new Set(phase.positions).size,1,'토스트는 제자리에서 표시 / '+name);
+    const [start,end]=[phase.offsets[0],phase.offsets.at(-1)];
+    assert(name==='enter' ? start>0 && end===0 : start===0 && end>0, '하단 알림의 이동 방향 / '+name);
     assert(Math.abs(Number(phase.opacity[0])-Number(phase.opacity.at(-1)))===1);
     assert(phase.duration>=200 && phase.duration<=400);
   }

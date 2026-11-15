@@ -71,6 +71,11 @@ async function checkMobileUpdate(page, release) {
   await page.waitForFunction(version => document.querySelector('meta[name="flowrium-mobile-version"]')?.content === version, nextVersion);
   await check.waitFor();
   assert.equal(await page.locator('meta[name="update-fixture"]').getAttribute('content'), 'applied');
+  for(const name of ['chat-reader.js','markdown-engine.js']){
+    const loaded=await page.request.get(new URL('/'+name,page.url()).href);
+    assert.equal(loaded.status(),200);
+    assert((await loaded.body()).length>1000);
+  }
   assert.equal(await page.locator('#nav [aria-current="page"]').getAttribute('data-view'), 'settings');
   assert.equal(await page.evaluate(() => Boolean(sessionStorage.getItem('flowrium.mobile.key') ||
     localStorage.getItem('flowrium.mobile.rememberedKey'))), true);

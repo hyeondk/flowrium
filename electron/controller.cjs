@@ -6,6 +6,12 @@ const { text } = require("./store.cjs");
 const { publicMessage } = require("./errors.cjs");
 const { HistoryImporter } = require("./history.cjs");
 
+const stepNames = {
+  commandExecution: "명령 실행", fileChange: "파일 변경", webSearch: "자료 검색",
+  mcpToolCall: "연결 도구", dynamicToolCall: "작업 도구", collabAgentToolCall: "작업 위임",
+  imageView: "이미지 확인", imageGeneration: "이미지 생성", contextCompaction: "문맥 정리",
+};
+
 const MODE_INSTRUCTIONS = {
   plan: "계획을 세우고 설명해 주세요. 파일을 수정하거나 변경 명령을 실행하지 마세요.",
   build:
@@ -127,14 +133,14 @@ class Controller extends EventEmitter {
       return { available: false, authenticated: false, error: error.message };
     }
   }
-  async connect() {
+  async connect(quiet=false) {
     await this.client.start(this.store.state.settings.codexPath);
-    const [account, models] = await Promise.all([
-      this.client.request("account/read", { refreshToken: false }),
-      this.client.request("model/list", { limit: 100, includeHidden: false }),
-    ]);
-    const record = account.account;
-    await this.accountObserved?.(record);
+    const {account:record}=await this.client.request("account/read",{refreshToken:false});
+    const changed=await this.accountObserved?.(record);
+    const owner=this.options.queueOwner?.();
+    const models=await this.client.request("model/list",{limit:100,includeHidden:false});
+    if(this.options.queueOwner?.()!==owner)throw Error('연결 계정이 바뀌었습니다. 다시 확인해 주세요.');
+    const previous=this.status.authenticated;
     const authenticated = record?.type === "chatgpt";
     const accountLabel = authenticated
       ? `ChatGPT${record.planType ? ` / ${record.planType}` : ""}`
@@ -146,16 +152,17 @@ class Controller extends EventEmitter {
       ...(accountLabel ? { accountLabel } : {}),
       ...(!authenticated ? { error: "ChatGPT 계정으로 로그인해 주세요." } : {}),
     };
-    this.emitEvent({
+    if(!quiet || changed || previous!==authenticated)this.emitEvent({
       type: "status",
       status: authenticated ? "connected" : "login-required",
       text: authenticated
         ? "Codex에 연결됐습니다."
         : "ChatGPT 계정으로 로그인해 주세요.",
     });
-    if(authenticated) setImmediate(()=>this.messageQueue.flushAll());
+    if(authenticated && (!quiet || !previous)) setImmediate(()=>this.messageQueue.flushAll());
     return {
       status: { ...this.status },
+      modelAccount:authenticated ? this.options.modelAccount?.() : undefined,
       models: (models.data || []).map((model) => ({
         id: model.model || model.id,
         displayName: model.displayName || model.id,
@@ -216,6 +223,7 @@ class Controller extends EventEmitter {
   }
   async send(input, internal = {}) {
     if(this.shuttingDown||this.options.canRun?.()===false)throw Error("잠금과 계정 전환 또는 업데이트를 마친 뒤 요청해 주세요.");
+    if(this.codexTransfer?.refreshDone)await this.codexTransfer.waitForRefresh();
     if(this.codexTransfer?.isBusy())throw Error('대화 연결 작업을 마친 뒤 보내 주세요.');
     const ownerRevision=this.options.queueOwner?.()??'local';
     if (!input || typeof input !== "object")
@@ -246,6 +254,12 @@ class Controller extends EventEmitter {
     checkContinuation();
     if (session.workflow?.status === "done") throw new Error("완료한 업무입니다. 다시 진행하려면 업무를 재개해 주세요.");
     if (this.editingSessions.has(session.id)) throw new Error("대화 편집을 마친 뒤 다시 보내 주세요.");
+    if (input.delivery === 'steer' && !internal.fromQueue) {
+      const currentRun=this.runs.get(session.id);
+      if(currentRun && await require('./chat-steer.cjs').steer(this,session,currentRun,input,message,ownerRevision))
+        return {accepted:true,steered:true};
+      if(currentRun) return this.messageQueue.enqueue({...input,text:message,ownerRevision});
+    }
     if (!internal.fromQueue && (this.runs.has(session.id) || session.compacting || this.messageQueue.pending(session.id)))
       return this.messageQueue.enqueue({...input,text:message,ownerRevision});
     if(session.codexLink){
@@ -292,7 +306,7 @@ class Controller extends EventEmitter {
     };
     run.userMessageId=userMessage.id;
     session.messages.push(userMessage);
-    if (!session.workflow && !session.personalAssistant && session.messages.filter((m) => m.role === "user").length === 1)
+    if (!session.pendingThreadName && !session.workflow && !session.personalAssistant && session.messages.filter((m) => m.role === "user").length === 1)
       session.title = Array.from(message.replace(/\s+/g, " "))
         .slice(0, 42)
         .join("");
@@ -410,6 +424,12 @@ class Controller extends EventEmitter {
     if (run.cancelled || run.finalized) return this.finish(run, "interrupted");
     const currentSession = this.store.session(run.sessionId);
     this.codexTransfer?.bindNative?.(currentSession, run.threadId, cwd);
+    if (currentSession.pendingThreadName && currentSession.desktopThread?.threadId === run.threadId) {
+      try {
+        await client.request('thread/name/set',{threadId:run.threadId,name:currentSession.pendingThreadName});
+        delete currentSession.pendingThreadName;
+      } catch { /* Retry after the first turn makes the thread persistent. */ }
+    }
     const memory = linked ? "" : await require("./memory.cjs").memoryContext(this.store, currentSession);
     const assistant = !linked && currentSession.personalAssistant ? "이 대화는 사용자가 지정한 개인 비서 대화입니다. 현재 요청에 직접 답하고 명시한 범위에서만 업무를 진행하세요.\n" : "";
     const workContext = !linked && currentSession.workflow
@@ -480,16 +500,14 @@ class Controller extends EventEmitter {
   updateText(run, itemId, value, append) {
     if (run.finalized || typeof value !== "string") return;
     const key = itemId || "reply";
-    const isNew = !run.items.has(key);
-    if (isNew) run.itemOrder.push(key);
-    const old = run.items.get(key) || "";
-    run.items.set(key, (append ? old + value : value).slice(0, 2_000_000));
-    const assistant = this.assistant(run);
-    assistant.text = run.itemOrder
-      .map((id) => run.items.get(id))
-      .join("\n\n")
-      .slice(0, 2_000_000);
-    if (append)
+    const segment=run.priorAnswers?.get(key) || run;
+    const isNew=!segment.items.has(key);
+    if(isNew)segment.itemOrder.push(key);
+    const old=segment.items.get(key) || "";
+    segment.items.set(key,(append ? old+value : value).slice(0,2_000_000));
+    const assistant=segment.assistant || this.assistant(run);
+    assistant.text=segment.itemOrder.map(id=>segment.items.get(id)).join("\n\n").slice(0,2_000_000);
+    if (append && segment===run)
       this.emitEvent({
         type: "delta",
         sessionId: run.sessionId,
@@ -570,22 +588,28 @@ class Controller extends EventEmitter {
       ["agentMessage", "plan"].includes(params.item?.type)
     )
       this.updateText(run, params.item.id, params.item.text, false);
-    if (method === "item/started") {
-      if (params.item?.id) run.toolItems.set(params.item.id, params.item);
-      const labels = {
-        commandExecution: "명령을 실행하고 있습니다.",
-        fileChange: "파일 변경을 적용하고 있습니다.",
-        webSearch: "자료를 검색하고 있습니다.",
-        mcpToolCall: "연결된 도구를 사용하고 있습니다.",
-      };
-      if (labels[params.item?.type])
-        this.emitEvent({
-          type: "status",
-          sessionId: run.sessionId,
-          status: "running",
-          text: labels[params.item.type],
-          details: params.item.command || undefined,
-        });
+    if (method === "item/started" && params.item?.id) run.toolItems.set(params.item.id, params.item);
+    if (method === "item/started" || method === "item/completed") {
+      const item = params.item;
+      const label = item && Object.hasOwn(stepNames, item.type) && stepNames[item.type];
+      if (label && typeof item.id === 'string' && item.id.length <= 300) {
+        const user = this.store.peekSession(run.sessionId).messages.find(message => message.id === run.userMessageId);
+        if (user) {
+          const steps = user.workSteps ||= [];
+          const previous = steps.find(step => step.id === item.id);
+          const state = method === 'item/started' ? 'running'
+            : ['failed','declined'].includes(item.status) || item.error || item.result?.isError || (typeof item.exitCode==='number' && item.exitCode!==0) ? 'failed' : 'completed';
+          if (!previous || (previous.state === 'running' && state !== 'running')) {
+            const tool = typeof item.tool === 'string' && /^[\w.-]{1,120}$/.test(item.tool) ? item.tool : '';
+            const step = {id:item.id, label:tool ? label+' ('+tool+')' : label, state, createdAt:previous?.createdAt || new Date().toISOString()};
+            if (previous) Object.assign(previous,step);
+            else steps.push(step);
+            this.emitEvent({type:'status',sessionId:run.sessionId,status:'running',
+              text:label+(state==='running'?' 중입니다.':state==='failed'?' 중 확인할 내용이 있습니다.':'이 끝났습니다.'),
+              workProgress:{messageId:user.id,step}});
+          }
+        }
+      }
     }
     if (method === "error")
       this.emitEvent({
@@ -682,6 +706,10 @@ class Controller extends EventEmitter {
       if (request.params?.threadId === run.threadId)
         client.approvals.delete(id);
     const session = this.store.peekSession(run.sessionId);
+    const user = session.messages.find(message => message.id === run.userMessageId);
+    for (const step of user?.workSteps || []) {
+      if (step.state === 'running') step.state = status === 'completed' && !error ? 'completed' : status === 'failed' || error ? 'failed' : 'interrupted';
+    }
     if (status === "failed" || error)
       session.messages.push({
         id: randomUUID(),
@@ -710,6 +738,13 @@ class Controller extends EventEmitter {
       try {
         if (run.releaseClient) await run.releaseClient();
         else if (session.desktopThread?.threadId === run.threadId && run.threadId && client.ready) {
+          if (session.pendingThreadName && run.ownerRevision === (this.options.queueOwner?.() ?? 'local')) {
+            try {
+              await client.request('thread/name/set',{threadId:run.threadId,name:session.pendingThreadName});
+              delete session.pendingThreadName;
+              await this.store.save();
+            } catch (error) { this.emitEvent({type:'error',sessionId:session.id,text:'Codex에서 대화 이름을 반영하지 못했습니다. 대화 관리에서 이름을 다시 저장해 주세요.'}); }
+          }
           const prefs=require('./chat-preferences.cjs').resolved(this.store.state.settings.chatDefaults,session.preferences);
           if (!(status === 'completed' && prefs.autoCompact && session.context?.percent >= prefs.compactAt)) {
             await client.request('thread/unsubscribe',{threadId:run.threadId},2500).catch(()=>{});

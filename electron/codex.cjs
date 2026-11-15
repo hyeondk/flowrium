@@ -236,13 +236,30 @@ class CodexClient extends EventEmitter {
       const owner=this.options.queueOwner?.()??'local',epoch=this.catalogEpoch;
       if(this.modelCatalogFlight?.owner===owner)return this.modelCatalogFlight.promise;
       const flight={owner,promise:null};
-      flight.promise=this.rawRequest(method,params,timeout).then(result=>{if(epoch===this.catalogEpoch&&owner===(this.options.queueOwner?.()??'local'))this.modelCatalog={owner,at:Date.now(),data:Array.isArray(result?.data)?result.data:[]};return result}).finally(()=>{if(this.modelCatalogFlight===flight)this.modelCatalogFlight=null});
+      flight.promise=this.readModelPages(params,timeout).then(result=>{
+        if(epoch===this.catalogEpoch&&owner===(this.options.queueOwner?.()??'local'))
+          this.modelCatalog={owner,at:Date.now(),data:result.data};
+        return result;
+      }).finally(()=>{if(this.modelCatalogFlight===flight)this.modelCatalogFlight=null});
       this.modelCatalogFlight=flight;return flight.promise;
     }
     const result=this.rawRequest(method,params,timeout);
     if(['thread/start','thread/resume','thread/fork'].includes(method))return result.then(value=>{const id=value?.thread?.id||params.threadId,model=value?.model||params.model;if(id&&model)this.threadModels.set(id,model);return value});
     if(method==='account/logout')return result.then(value=>{this.clearModelCatalog();return value});
     return result;
+  }
+  async readModelPages(params,timeout) {
+    const data=[], cursors=new Set();
+    let cursor;
+    do {
+      const page=await this.rawRequest('model/list',{...params,...(cursor && {cursor})},timeout);
+      if(!Array.isArray(page.data))throw Error('Codex 모델 목록을 확인하지 못했습니다.');
+      data.push(...page.data);
+      cursor=page.nextCursor;
+      if(cursor && (typeof cursor!=='string' || cursors.has(cursor)))throw Error('Codex 모델 목록의 다음 페이지를 확인하지 못했습니다.');
+      if(cursor)cursors.add(cursor);
+    } while(cursor);
+    return {data,nextCursor:null};
   }
   clearModelCatalog(){this.catalogEpoch++;this.modelCatalog=null;this.modelCatalogFlight=null;this.threadModels.clear();}
   async prepareAnalysisCatalog(source) {

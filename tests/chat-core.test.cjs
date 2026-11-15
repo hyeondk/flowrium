@@ -59,3 +59,34 @@ test('한글 첨부의 정규화 형식이 다른 실제 경로도 같은 파일
   const [resolved]=await resolveAttachments(store,project.id,[records[0].id]);assert.equal(resolved.name,name);assert.equal(resolved.sha256,records[0].sha256);assert.match(resolved.dataUrl,/^data:image\/png;base64,/);outside=true;await assert.rejects(resolveAttachments(store,project.id,[records[0].id]),/첨부 파일 원본/);
  }finally{fs.realpath=realpath;}
 });
+
+test('작업 중 추가 지시 수신과 기존 답변의 마지막 조각이 교차해도 말풍선 순서를 보존한다',async t=>{
+  const {store,session}=await fixture(t), s=store.session(session.id);
+  const controller=new Controller(store);
+  const run={sessionId:s.id,threadId:'thread',turnId:'turn',ownerRevision:'local',items:new Map(),itemOrder:[]};
+  controller.runs.set(s.id,run);
+  controller.updateText(run,'first','첫 답변',true);
+  run.client={request:async()=>{
+    controller.updateText(run,'second','둘째 ',true); // impatient transport issues deltas before its RPC reply
+    return {turnId:'turn'};
+  }};
+  await controller.send({sessionId:s.id,text:'추가 지시',mode:'plan',delivery:'steer'});
+  controller.updateText(run,'first','첫 답변의 완성',false);
+  controller.updateText(run,'second','답변',true);
+  assert.deepEqual(s.messages.map(m=>m.text),['첫 답변의 완성','추가 지시','둘째 답변']);
+  assert.equal(s.messages[1].turnId,'turn');
+  controller.runs.clear();await controller.shutdown();
+});
+
+test('같은 턴에서 추가한 지시마다 답변 조각을 합치고 자동 동기화 후에도 대화와 반응을 보존한다',()=>{
+ const {mergeNative}=require('../electron/chat-sync.cjs'),{mergeMessages}=require('../electron/codex-transfer-merge.cjs');
+ const row=(id,role,text)=>({id,role,text,turnId:'turn',createdAt:'2026-11-16T00:00:00.000Z'});
+ const local=[row('u','user','처음'),{...row('a','assistant','첫 응답'),reaction:'like'},row('u2','user','추가'),row('a2','assistant','뒤 응답')];
+ const remote=[row('remote-u','user','처음'),row('remote-a','assistant','첫 발언'),row('remote-b','assistant','첫 답변'),row('remote-u2','user','추가'),row('remote-a2','assistant','둘째 답변')];
+ for(const merge of [mergeNative,mergeMessages]){
+  const result=merge(local,remote);
+  assert.deepEqual(result.map(m=>m.id),['u','a','u2','a2']);
+  assert.deepEqual(result.map(m=>m.text),['처음','첫 발언\n\n첫 답변','추가','둘째 답변']);
+  assert.equal(result[1].reaction,'like');assert.deepEqual(merge(result,remote),result);
+ }
+});

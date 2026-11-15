@@ -76,6 +76,7 @@ function validateSender(event) {
 }
 async function invokeRegistered(name,handler,args){
   if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity','hideDotsView','readDotsState'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
+  if(codexTransfer?.refreshDone && ['send','createSession','createHubConversation'].includes(name))await codexTransfer.waitForRefresh();
   if(codexTransfer?.isBusy()&&!/^(read|list)/.test(name)&&!['codexTransferAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('대화 연결을 처리 중입니다. 끝난 뒤 변경해 주세요.');
   if(controller?.trashRuntime?.isBusy()&&!/^(read|list)/.test(name)&&!['trashAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','interrupt','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('삭제 또는 복원을 마친 뒤 변경해 주세요.');
   activeOperations++;
@@ -231,6 +232,7 @@ async function launch() {
   controller = new Controller(store, {
     canRun: () => !quitting && !migrationTransition && !importRestartRequired && !security.locked && !security.loggingOut && !updater?.isInstalling(),
     queueOwner: () => security.accountRevision,
+    modelAccount: () => security.data.accountOwner,
     applicationTools: async session => [...(await workflowRuntime?.toolsFor(session) || []), ...(externalTools?.definitions || []), ...(projectTools?.definitions || [])],
     callApplicationTool: async input => externalTools?.handles(input.name)
       ? externalTools.call(input) : projectTools?.handles(input.name) ? projectTools.call(input) : workflowRuntime?.callTool(input),
@@ -309,6 +311,7 @@ async function launch() {
   externalTools = require('./external-tools.cjs').createExternalTools({ handlers: apiHandlers, workflow: workflowRuntime, store });
   projectTools = require('./project-ai-tools.cjs').createProjectTools({ handlers: apiHandlers, store });
   require("./portfolio.cjs").registerPortfolio(register, store, {
+    getRuntime:()=>codexTransfer,
     chooseFolder: async (createFolder) => {
       const choice = await dialog.showOpenDialog(window, {
         title: createFolder ? "새 프로젝트를 만들 상위 폴더 선택" : "기존 프로젝트 폴더 선택",
@@ -434,6 +437,7 @@ async function launch() {
     controller.importCodexHistory(text(projectId, "프로젝트 식별자", 100), ids),
   );
   register("connect", () => controller.connect());
+  register("listAvailableModels", () => controller.connect(true));
   register("login", async () => {
     const result = await controller.login();
     if (result.authUrl) await shell.openExternal(result.authUrl);
