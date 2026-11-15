@@ -76,6 +76,7 @@ const drafts = new Map();
 const questionDrafts = new Map();
 const attachedDrafts = new Map(), attachmentPreviews = new Map();
 let queueItems=[],workflowData,mobileSettings,usageData,pushData,extrasBusy=false,extrasEpoch=0;
+let settingsDraft;
 let workflowTab='decisions',editingTeam=null;
 let teamDraft={name:'',roles:[{name:'',instruction:'',mode:'plan'},{name:'',instruction:'',mode:'review'}]};
 const pushLabels={decision:'결정 / 승인',done:'작업 완료',error:'오류',report:'보고서',reminder:'예약 알림',message:'업무 메시지'};
@@ -210,6 +211,7 @@ function clearPrivateState(nextGate) {
   drafts.clear();
   questionDrafts.clear();
   attachedDrafts.clear();attachmentPreviews.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;chatModels=chatModelRequest=undefined;extrasEpoch++;
+  settingsDraft=undefined;
   selectedSession = selectedProject = "";
   statusFilter = "running";
   chatOriginStatus = "";
@@ -302,6 +304,7 @@ function go(view, id) {
   assetRequest++;
   if(view==='chat')chatOriginStatus=route==='status'?statusFilter:'';
   const previousRoute=route,previousSession=selectedSession;
+  if(previousRoute==='settings' && view!=='settings')settingsDraft=undefined;
   route = view;
   if(view==='status') statusFilter=id;
   resetHistory();
@@ -1036,14 +1039,14 @@ function teamControls(card,entry){
 }
 async function loadExtras(announce=true){
   if(extrasBusy||gate||!['assistant','settings'].includes(route))return;
-  extrasBusy=true;const epoch=accessEpoch,target=route;
+  extrasBusy=true;const epoch=accessEpoch,settingsRevision=extrasEpoch,target=route;
   try{
     if(target==='assistant'){
       const result=await call('mobileWorkflowState');if(epoch!==accessEpoch||target!==route)return;
       if(JSON.stringify(result)!==JSON.stringify(workflowData)){workflowData=result;render()}
     }else if(!mobileSettings||announce){
       const [settings,usage,push]=await Promise.all([call('mobileSettings'),call('readAccountUsage').catch(()=>null),data.pushAvailable?call('webPushState').catch(()=>null):null]);
-      if(epoch!==accessEpoch||target!==route)return;mobileSettings=settings;usageData=usage;pushData=push;render();
+      if(epoch!==accessEpoch||settingsRevision!==extrasEpoch||target!==route)return;mobileSettings=settings;usageData=usage;pushData=push;render();
     }
   }catch(e){if(e.gate)clearPrivateState(e.gate);else if(announce)showNotice(e.message)}finally{extrasBusy=false;}
 }
@@ -1100,15 +1103,33 @@ function settingsPage(root){
   account.append(node('h2','계정과 모델'),accountLine);
   root.append(account);
   if(!mobileSettings){account.append(node('p','설정을 불러오는 중입니다.','hint'));return}
-  const form=node('form'),models=mobileSettings.models||[],model=select([['','계정 기본 모델'],...models.map(m=>[m.id,modelDisplayName(m)])],mobileSettings.model||''),effort=select([],''),answer=select([['short','짧게'],['normal','보통'],['detailed','자세히']],mobileSettings.chatDefaults?.answerLength||'normal');
+  const preferences=settingsDraft||mobileSettings;
+  const form=node('form'),models=mobileSettings.models||[],model=select([['','계정 기본 모델'],...models.map(m=>[m.id,modelDisplayName(m)])],preferences.model||''),effort=select([],''),answer=select([['short','짧게'],['normal','보통'],['detailed','자세히']],preferences.chatDefaults?.answerLength||'normal');
   function refreshEfforts(preferred=''){
     const selected=models.find(m=>m.id===model.value)||(!model.value?models.find(m=>m.isDefault):undefined),available=reasoningEffortOptions(selected);
     effort.replaceChildren(...[['','모델 기본값'],...available.map(row=>[row.reasoningEffort,effortDisplayName(row.reasoningEffort)])].map(([value,title])=>{const option=node('option',title);option.value=value;return option}));
     effort.value=available.some(row=>row.reasoningEffort===preferred)?preferred:'';
   }
-  refreshEfforts(mobileSettings.effort||'');model.addEventListener('change',()=>refreshEfforts());
-  const tests=node('input'),ask=node('input'),compact=node('input');tests.type=ask.type=compact.type='checkbox';tests.checked=mobileSettings.chatDefaults?.testing!==false;ask.checked=mobileSettings.chatDefaults?.askNext===true;compact.checked=mobileSettings.chatDefaults?.autoCompact!==false;
-  form.append(label('기본 ChatGPT 모델',model),label('추론 수준',effort),label('답변 길이',answer),settingsSwitch('작업 후 검증',tests),settingsSwitch('필요한 다음 질문',ask),settingsSwitch('문맥 자동 압축',compact));const save=node('button','기본 설정 저장','main-action');save.type='submit';save.disabled=busy||!models.length;form.append(save);form.addEventListener('submit',e=>{e.preventDefault();const value={model:model.value,...(effort.value?{effort:effort.value}:{}),chatDefaults:{answerLength:answer.value,testing:tests.checked,askNext:ask.checked,autoCompact:compact.checked}};void run(async()=>{await call('saveMobileSettings',value);await loadExtras();showNotice('기본 설정을 저장했습니다.')})});account.append(form);
+  refreshEfforts(preferences.effort||'');model.addEventListener('change',()=>refreshEfforts());
+  const tests=node('input'),ask=node('input'),compact=node('input');tests.type=ask.type=compact.type='checkbox';tests.checked=preferences.chatDefaults?.testing!==false;ask.checked=preferences.chatDefaults?.askNext===true;compact.checked=preferences.chatDefaults?.autoCompact!==false;
+  form.append(label('기본 ChatGPT 모델',model),label('추론 수준',effort),label('답변 길이',answer),settingsSwitch('작업 후 검증',tests),settingsSwitch('필요한 다음 질문',ask),settingsSwitch('문맥 자동 압축',compact));
+  for(const control of form.elements)control.dataset.field='setting/'+control.getAttribute('aria-label');
+  const readForm=()=>({model:model.value,...(effort.value?{effort:effort.value}:{}),chatDefaults:{answerLength:answer.value,testing:tests.checked,askNext:ask.checked,autoCompact:compact.checked}});
+  form.addEventListener('change',()=>{settingsDraft=readForm()});
+  const save=node('button','기본 설정 저장','main-action');save.type='submit';save.disabled=busy||!models.length;form.append(save);
+  form.addEventListener('submit',event=>{
+    event.preventDefault();
+    const value=settingsDraft||readForm(),epoch=accessEpoch;
+    void run(async()=>{
+      const saved=await call('saveMobileSettings',value);
+      if(epoch!==accessEpoch)return;
+      extrasEpoch++;
+      mobileSettings={...mobileSettings,...saved};
+      if(settingsDraft===value)settingsDraft=undefined;
+      if(route==='settings'){await loadExtras();showNotice('기본 설정을 저장했습니다.');}
+    });
+  });
+  account.append(form);
   const usage=node('section',undefined,'box');usage.append(node('h2','계정 사용량'));if(!usageData)usage.append(node('p','현재 사용량을 읽지 못했습니다.','hint'));for(const b of usageData?.buckets||[]){usage.append(node('strong',[b.name,b.plan].filter(Boolean).join(' / ')));for(const w of b.windows){const progress=node('progress');progress.max=100;progress.value=w.usedPercent;progress.setAttribute('aria-label',b.name+' 사용량');usage.append(node('p',(w.minutes?Math.round(w.minutes/60)+'시간':'사용 구간')+' / '+Math.round(w.usedPercent)+'% 사용','hint'),progress);if(w.resetsAt)usage.append(node('small','초기화 '+date(w.resetsAt*1000)))}}root.append(usage);
   pushSettings(root);
 }

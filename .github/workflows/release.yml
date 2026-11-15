@@ -272,9 +272,11 @@ jobs:
         id: verify_15
         continue-on-error: true
         run: |
-          node tests/mobile-e2e.cjs
-          node tests/mobile-extensions-e2e.cjs
-          node tests/mobile-install-e2e.cjs
+          result=0
+          node tests/mobile-install-e2e.cjs || result=1
+          node tests/mobile-e2e.cjs || result=1
+          node tests/mobile-extensions-e2e.cjs || result=1
+          exit "$result"
       - name: 터미널 설치 파일의 검증과 백업
         id: verify_16
         if: runner.os == 'macOS'

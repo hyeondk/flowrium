@@ -121,13 +121,20 @@ async function run() {
       .filter({ hasText: "일치하지 않습니다" })
       .waitFor();
     await unlock();
-    await page.getByRole("complementary",{name:"작업 공간 탐색"}).hover();
-    await page.locator(".side-project[title*='결정']").waitFor();
-    const approval = await page.evaluate(async () =>
+    const approval = await page.evaluate(async (id) =>
       (await window.flowrium.securityPending()).find(
-        (e) => e.type === "approval",
+        (e) => e.type === "approval" && e.sessionId === id,
       ),
+      session.id,
     );
+    assert.ok(approval?.requestId, "잠금을 해제하면 같은 대화의 승인 요청이 복원되어야 합니다.");
+    const sidebar = page.getByRole("complementary", { name: "작업 공간 탐색" });
+    await sidebar.getByRole("button", { name: "Flowrium 홈" }).hover();
+    const projectButton = sidebar.getByRole("button", { name: project.name, exact: true });
+    await projectButton.hover();
+    const decisionBadge = projectButton.locator('.side-state[data-state="decision"]');
+    await decisionBadge.waitFor({ state: "visible" });
+    assert.equal(await decisionBadge.innerText(), "결정 1");
     await page.evaluate(
       (q) =>
         window.flowrium.approval({

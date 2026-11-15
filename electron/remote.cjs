@@ -217,7 +217,10 @@ function registerRemote(
         throw Error("모바일에서 바꿀 수 없는 설정입니다.");
       if (input.chatDefaults && (typeof input.chatDefaults !== "object" || Array.isArray(input.chatDefaults) || Object.keys(input.chatDefaults).some(k => !["answerLength","testing","askNext","autoCompact","compactAt"].includes(k))))
         throw Error("실행 권한은 데스크톱에서 바꿔 주세요.");
-      const result = await handlers.get("saveSettings")(input);
+      const changes = input.chatDefaults
+        ? {...input,chatDefaults:{...store.state.settings.chatDefaults,...input.chatDefaults}}
+        : input;
+      const result = await handlers.get("saveSettings")(changes);
       return {model:result.model,effort:result.effort,chatDefaults:result.chatDefaults};
     }
     if (method === "mobileWorkflowState") return workflowView(await handlers.get("workflowState")());
