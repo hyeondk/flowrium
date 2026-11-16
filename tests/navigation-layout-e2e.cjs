@@ -140,7 +140,7 @@ async function run() {
           frames.push({ expanded: frame.expanded, navScrollTop: frame.nav.scrollTop, rowTops: frame.rows.map(r => r.top) });
         }
         await page.mouse.move(width - 60, 90);
-        await page.waitForTimeout(600);
+        await waitForPanel(false);
         assert.equal(await page.locator('.workspace-side').getAttribute('data-expanded'), 'false');
         await page.getByRole('button', { name: '완료', exact: true }).click();
         await page.locator('.main-shell[data-view=archive]').waitFor();
@@ -149,7 +149,7 @@ async function run() {
         measurements.at(-1).hoverStableFrames = frames;
         measurements.at(-1).collapsedImmediateArchiveClickPassed = true;
         await page.mouse.move(width - 60, 90);
-        await page.waitForTimeout(600);
+        await waitForPanel(false);
         await page.locator('.workspace-side').getByRole('button', { name: '프로젝트 추가', exact: true }).click();
         await page.locator('.main-shell[data-view=kickoff]').waitFor({ timeout: 3000 });
         await page.getByRole('button', { name: '대시보드', exact: true }).click();
@@ -159,7 +159,7 @@ async function run() {
     }
     await page.setViewportSize({ width: 1440, height: 800 });
     await page.mouse.move(30, 140);
-    await page.waitForTimeout(320);
+    await waitForPanel(true);
     await page.getByRole('button', { name: '메뉴 고정', exact: true }).click();
     await page.mouse.move(900, 90);
     await waitForPanel(true);

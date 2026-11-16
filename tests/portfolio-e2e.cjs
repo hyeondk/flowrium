@@ -100,11 +100,38 @@ async function main() {
     assert.equal(await dueDate.inputValue(),"2026-11-19");
     await dueDate.press("Alt+ArrowDown");
     await calendar.waitFor();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Escape");
+    await calendar.waitFor({state:"hidden"});
+    assert.equal(await dueDate.inputValue(),"2026-11-19");
+    assert.ok(await dueDate.evaluate(field => field === document.activeElement));
+    await dueDate.press("Alt+ArrowDown");
+    await calendar.waitFor();
+    // Exercise a native close event that arrives while the next field receives
+    // input. Windows can post the event on a later rendering frame.
+    await calendar.evaluate(dialog => {
+      const goal = document.querySelector(".pf-form textarea[required]");
+      function holdClose(event) {
+        if (event.target !== dialog) return;
+        document.removeEventListener("close", holdClose, true);
+        event.stopImmediatePropagation();
+        window.flowriumDateCloseHeld = true;
+        goal.addEventListener("focus", () => queueMicrotask(() => {
+          dialog.dispatchEvent(new Event("close"));
+          window.flowriumDateCloseReplayed = true;
+        }), {once:true});
+      }
+      document.addEventListener("close", holdClose, true);
+    });
     await page.keyboard.press("ArrowRight");await page.keyboard.press("Enter");
     assert.equal(await dueDate.inputValue(),"2026-11-20");
-    await page
-      .getByLabel("프로젝트 목표", { exact: true })
-      .fill("동네 안내 자료를 발간합니다.");
+    await page.waitForFunction(() => window.flowriumDateCloseHeld);
+    const goalField = page.getByLabel("프로젝트 목표", {exact:true});
+    const goalText = "동네 안내 자료를 발간합니다.";
+    await goalField.fill(goalText);
+    await page.waitForFunction(() => window.flowriumDateCloseReplayed);
+    assert.ok(await goalField.evaluate(field => field === document.activeElement));
+    assert.equal(await goalField.inputValue(), goalText);
     await page.getByLabel("담당자 또는 내 역할").fill("지역 편집팀");
     await page
       .getByLabel("킥오프 메모")
@@ -118,6 +145,11 @@ async function main() {
     }, parent);
     await button("폴더 선택 후 킥오프").click();
     await page.getByRole("heading", { name, exact: true }).waitFor();
+    const savedGoal = await page.evaluate(async title => {
+      const cards = await window.flowrium.readPortfolio();
+      return cards.find(card => card.project.name === title)?.details?.goal;
+    }, name);
+    assert.equal(savedGoal, goalText);
     const panels = page.locator(".pf-project-summary .pf-overview-group");
     await panels.last().waitFor();
     const bounds = await panels.evaluateAll(groups => groups.map(group => {

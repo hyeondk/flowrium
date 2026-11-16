@@ -43,6 +43,10 @@ export function installDatePicker() {
         field.dispatchEvent(new Event('change',{bubbles:true}));
       }
       dialog.close();
+      modal = null;
+      // Return keyboard focus as part of this interaction. The native close
+      // event can arrive after the user has started typing in another field.
+      if (field.isConnected && !field.matches(':disabled')) field.focus({preventScroll:true});
     }
     function moveMonth(amount) {
       const next = new Date(current);
@@ -110,7 +114,10 @@ export function installDatePicker() {
       }
     });
     dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect(); if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)finish();}});
-    dialog.addEventListener('close',()=>{modal=null;dialog.remove();if(field.isConnected) field.focus({preventScroll:true});},{once:true});
+    dialog.addEventListener('close',()=>{
+      if (modal === dialog) modal = null;
+      dialog.remove();
+    },{once:true});
     document.body.append(dialog); render(false); dialog.showModal(); grid.querySelector('button[tabindex="0"]')?.focus();
   }
   document.addEventListener('pointerdown',e=>{
