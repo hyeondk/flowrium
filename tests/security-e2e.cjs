@@ -3,6 +3,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const { _electron } = require("playwright");
+const {expect} = require("playwright/test");
 const {closeSettings}=require("./shell-test-helpers.cjs");
 const { Store } = require("../electron/store.cjs");
 
@@ -129,11 +130,9 @@ async function run() {
         text: "승인검증",
       });
     }, session.id);
-    await page.waitForFunction(async () =>
-      (await window.flowrium.securityPending()).some(
-        (e) => e.type === "approval",
-      ),
-    );
+    await expect.poll(()=>page.evaluate(async id=>
+      (await window.flowrium.securityPending()).some(e=>e.type==="approval"&&e.sessionId===id),
+      session.id),{timeout:15000}).toBe(true);
     await assert.rejects(
       page.evaluate(() => window.flowrium.logoutSecurity()),
       /진행 중/,
