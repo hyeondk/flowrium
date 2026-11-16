@@ -46,8 +46,16 @@ async function run() {
       await page.addStyleTag({ content: css });
     }
     assert.equal(path.relative(await fs.realpath(profile), await fs.realpath(await app.evaluate(({ app }) => app.getPath('userData')))), '', '개인 사용자 자료와 분리');
+    const waitForPanel = expanded => page.waitForFunction(async expected => {
+      const side=document.querySelector('.workspace-side'),surface=side?.querySelector('.sidebar-surface');
+      if(!surface||side.dataset.expanded!==String(expected))return false;
+      const width=surface.getBoundingClientRect().width;
+      if([side,surface].some(node=>node.getAnimations().some(animation=>animation.playState==='running')))return false;
+      await new Promise(requestAnimationFrame);
+      return side.dataset.expanded===String(expected)&&Math.abs(surface.getBoundingClientRect().width-width)<0.1;
+    }, expanded);
     await page.mouse.move(30, 140);
-    await page.waitForTimeout(360);
+    await waitForPanel(true);
     await page.evaluate(() => document.fonts.ready);
     const measure = () => page.evaluate(() => {
       const side = document.querySelector('.workspace-side'), nav = side.querySelector('nav');
@@ -90,8 +98,9 @@ async function run() {
     };
     for (const [width, height] of [[1440, 1000], [1440, 800], [1024, 640], [800, 480]]) {
       await page.setViewportSize({ width, height });
+      await page.mouse.move(width-40,90);
       await page.mouse.move(30, 140);
-      await page.waitForTimeout(360);
+      await waitForPanel(true);
       await page.locator('.workspace-side nav').evaluate(e => { e.scrollTop = 0; });
       await page.locator('.side-project-list').evaluate(e => { e.scrollTop = 0; });
       const m = await measure();
@@ -114,7 +123,7 @@ async function run() {
       assert.ok(stable[2].list.scrollTop > 0, `${width}×${height} 긴 프로젝트 목록 내부 스크롤`);
       measurements.push({ initial: m, scrollStable: stable.map(s => ({ nav: s.nav.scrollTop, list: s.list.scrollTop })), lastRow: stable[2].rows.at(-1) });
       await page.mouse.move(width - 60, 90);
-      await page.waitForTimeout(600);
+      await waitForPanel(false);
       assert.equal(await page.locator('.workspace-side').getAttribute('data-expanded'), 'false', '마우스 이탈 뒤 자동 접힘');
       const collapsed = await measure(); checkLogo(collapsed);
       measurements.at(-1).collapsedLogo = { logo: collapsed.logo, surface: collapsed.surface, brandRow: collapsed.brandRow };
@@ -152,7 +161,7 @@ async function run() {
     await page.waitForTimeout(320);
     await page.getByRole('button', { name: '메뉴 고정', exact: true }).click();
     await page.mouse.move(900, 90);
-    await page.waitForTimeout(350);
+    await waitForPanel(true);
     assert.equal(await page.locator('.workspace-side').getAttribute('data-expanded'), 'true', '메뉴 고정 뒤 펼침 유지');
     checkLayout(await measure());
     await page.reload();
@@ -164,7 +173,7 @@ async function run() {
       await page.setViewportSize({ width, height });
       await page.getByRole('button', { name: '메뉴 열기', exact: true }).click();
       await page.locator('.workspace-side.is-open').waitFor();
-      await page.waitForTimeout(340);
+      await waitForPanel(true);
       const m = await measure();
       checkLayout(m);
       assert.ok(m.surface.left >= 0 && m.surface.right <= width + 1, '모바일 메뉴 가로 경계');

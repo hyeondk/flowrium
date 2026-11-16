@@ -13,7 +13,10 @@ async function main(){
   await store.saveSettings({model:'gpt-6.1-sol',effort:'high',chatDefaults:{compactAt:73,approval:'on-request'}});
   const handlers=new Map(),register=(name,fn)=>handlers.set(name,fn);let locked=false,owner=0;
   controller=new Controller(store,{descriptor:{command:process.execPath,prefix:[path.join(__dirname,'backend-fake-codex.cjs')],label:'격리 모형',node:false},canRun:()=>!locked,queueOwner:()=>owner});await controller.connect();
-  for(const [name,fn]of Object.entries({send:i=>controller.send(i),interrupt:id=>controller.interrupt(id),connect:()=>controller.connect(),saveSettings:v=>controller.saveSettings(v),listQueuedMessages:id=>controller.listQueuedMessages(id),cancelQueuedMessage:(id,q)=>controller.cancelQueuedMessage(id,q),resumeQueuedMessages:id=>controller.resumeQueuedMessages(id),securityPending:()=>[],readAccountUsage:()=>({checkedAt:Date.now(),allowed:true,buckets:[{name:'Codex',plan:'시험',windows:[{key:'primary',usedPercent:24,minutes:300,resetsAt:null}]}]})}))register(name,fn);
+  const resetsAt=Date.UTC(2027,2,5,12,0);
+  let accountCredits={hasCredits:true,unlimited:false,balance:'1234.50'};
+  let resetCredits=2;
+  for(const [name,fn]of Object.entries({send:i=>controller.send(i),interrupt:id=>controller.interrupt(id),connect:()=>controller.connect(),saveSettings:v=>controller.saveSettings(v),listQueuedMessages:id=>controller.listQueuedMessages(id),cancelQueuedMessage:(id,q)=>controller.cancelQueuedMessage(id,q),resumeQueuedMessages:id=>controller.resumeQueuedMessages(id),securityPending:()=>[],readAccountUsage:()=>({checkedAt:Date.now(),allowed:true,credits:accountCredits,resetCredits,buckets:[{name:'Codex',plan:'시험',windows:[{key:'primary',usedPercent:24,minutes:300,resetsAt}]}]})}))register(name,fn);
   require('../electron/chat-attachments.cjs').registerChatAttachments(register,store);require('../electron/workbench.cjs').registerWorkbench(register,store,{});
   require('../electron/conversation-tools.cjs').registerConversationTools(register,controller);
   const teams=require('../electron/teams.cjs').registerTeams(register,store,controller,{canRun:()=>!locked});
@@ -84,6 +87,22 @@ async function main(){
   await page.getByLabel('모바일 운영팀의 목표',{exact:true}).fill('대기검증');await page.getByLabel('배정 방식',{exact:true}).selectOption('manual');await btn('팀 업무 시작').click();await page.getByLabel('배정 업무 1',{exact:true}).waitFor();await btn('배정하고 실행').click();await btn('일시 중지').click();await btn('다시 시작').waitFor();await btn('다시 시작').click();await confirmAction(page,'팀 중단');await btn('팀 다시 열기').waitFor();
   const board=await handlers.get('readTeams')(project.id);assert.equal(board.teams.length,1);assert.equal(board.runs[0].directed.phase,'stopped');
   await btn('설정').click();
+  await page.getByText('남은 크레딧 / 1,234.50',{exact:true}).waitFor();
+  await page.getByText('사용 한도 재설정 / 2회',{exact:true}).waitFor();
+  const resetLabel=await page.evaluate(stamp=>'초기화 '+new Date(stamp).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}),resetsAt);
+  await page.getByText(resetLabel,{exact:true}).waitFor();
+  for (const [credits,label] of [
+    [{hasCredits:false,unlimited:false,balance:'0'},'0'],
+    [undefined,'잔액 미제공'],
+    [{hasCredits:true,unlimited:true,balance:null},'무제한'],
+  ]) {
+    accountCredits=credits;
+    resetCredits=undefined;
+    await btn('홈').click();
+    await btn('설정').click();
+    await page.getByText('남은 크레딧 / '+label,{exact:true}).waitFor();
+    assert.equal(await page.getByText(/사용 한도 재설정/).count(),0);
+  }
   await btn('기본 설정 저장').waitFor();
   const answerLength=page.getByLabel('답변 길이',{exact:true});
   const testing=page.getByRole('switch',{name:'작업 후 검증',exact:true});

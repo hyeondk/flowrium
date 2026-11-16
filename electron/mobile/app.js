@@ -1,4 +1,5 @@
 import {maxChatInput,exceedsChatSize,chatLengthError,nativeQueueAction,nativeQueueQuestion,nativeQueueExplanation,nativeQueueNotice,queuedInputView,clearQueueAction,clearQueueQuestion,clearQueueExplanation} from './chat-input.js';
+import {creditBalance} from './usage-credits.js';
 import {attachComposerMarkdown} from './composer-markdown.js';
 import {attachmentDisplayText} from './attachment-text.js';
 import {markdownBody,groupMobileHistory,progressButton,syncProgress} from './chat-reader.js';
@@ -1377,7 +1378,30 @@ function settingsPage(root){
     });
   });
   account.append(form);
-  const usage=node('section',undefined,'box');usage.append(node('h2','계정 사용량'));if(!usageData)usage.append(node('p','현재 사용량을 읽지 못했습니다.','hint'));for(const b of usageData?.buckets||[]){usage.append(node('strong',[b.name,b.plan].filter(Boolean).join(' / ')));for(const w of b.windows){const progress=node('progress');progress.max=100;progress.value=w.usedPercent;progress.setAttribute('aria-label',b.name+' 사용량');usage.append(node('p',(w.minutes?Math.round(w.minutes/60)+'시간':'사용 구간')+' / '+Math.round(w.usedPercent)+'% 사용','hint'),progress);if(w.resetsAt)usage.append(node('small','초기화 '+date(w.resetsAt*1000)))}}root.append(usage);
+  const usage = node('section', undefined, 'box');
+  usage.append(node('h2', '계정 사용량'));
+  if (usageData) {
+    usage.append(node('p', '남은 크레딧 / ' + creditBalance(usageData.credits)));
+    if (Number.isSafeInteger(usageData.resetCredits))
+      usage.append(node('p', '사용 한도 재설정 / ' + usageData.resetCredits.toLocaleString('ko-KR') + '회'));
+  } else {
+    usage.append(node('p', '현재 사용량을 읽지 못했습니다.', 'hint'));
+  }
+  for (const bucket of usageData?.buckets || []) {
+    usage.append(node('strong', [bucket.name, bucket.plan].filter(Boolean).join(' / ')));
+    for (const window of bucket.windows) {
+      const progress = node('progress');
+      progress.max = 100;
+      progress.value = window.usedPercent;
+      progress.setAttribute('aria-label', bucket.name + ' 사용량');
+      const period = window.minutes ? Math.round(window.minutes / 60) + '시간' : '사용 구간';
+      usage.append(node('p', period + ' / ' + Math.round(window.usedPercent) + '% 사용', 'hint'), progress);
+      if (window.resetsAt) usage.append(node('small', '초기화 ' + date(window.resetsAt)));
+    }
+    if (usageData.buckets.length > 1 && bucket.credits)
+      usage.append(node('p', '이 한도의 크레딧 / ' + creditBalance(bucket.credits), 'hint'));
+  }
+  root.append(usage);
   pushSettings(root);
 }
 function pushSettings(root){

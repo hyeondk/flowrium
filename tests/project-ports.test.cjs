@@ -127,7 +127,7 @@ test('검사 중 계정 또는 잠금 상태가 바뀌면 배정하지 않는다
 });
 test('최종 기록 파일을 열거나 예약 저장을 준비하는 동안 잠금이 바뀌면 저장하지 않는다', async t => {
   let allowed = true, owner = 1; const { project, api, profile } = await fixture(t, { accountRevision: () => owner, canWrite: () => allowed });
-  const a = await project('최종 저장 취소'), originalOpen = fs.open; let release, entered;
+  const a = await project('최종 저장 취소'), originalOpen = fs.open, originalLink = fs.link; let release, entered;
   let gate = new Promise(resolve => { release = resolve; }), started = new Promise(resolve => { entered = resolve; });
   fs.open = async function (file, ...args) { const handle = await originalOpen.call(this, file, ...args); if (String(file).endsWith(path.join('ports', 'first.json'))) { entered(); await gate; } return handle; };
   try {
@@ -136,10 +136,10 @@ test('최종 기록 파일을 열거나 예약 저장을 준비하는 동안 잠
   await assert.rejects(fs.access(path.join(a.path, '.flowrium', 'ports', 'first.json')), { code: 'ENOENT' });
   allowed = true; await api.readProjectPorts(a.id);
   gate = new Promise(resolve => { release = resolve; }); started = new Promise(resolve => { entered = resolve; });
-  fs.open = async function (file, ...args) { const handle = await originalOpen.call(this, file, ...args); if (String(file).includes('project-ports.json.') && String(file).endsWith('.tmp')) { entered(); await gate; } return handle; };
+  fs.link = async (stage, file) => { if (file.includes('project-ports.json.') && file.endsWith('.tmp')) { entered(); await gate; } return originalLink(stage, file); };
   try {
     const pending = api.projectPortsAction(a.id, { action: 'reservations', revision: null, ports: [5200] }); pending.catch(() => {}); await started; allowed = false; owner++; release(); await assert.rejects(pending, /계정이나 잠금/);
-  } finally { fs.open = originalOpen; }
+  } finally { fs.link = originalLink; }
   await assert.rejects(fs.access(path.join(profile, 'project-ports.json')), { code: 'ENOENT' });
   assert(!(await fs.readdir(profile)).some(name => name.endsWith('.tmp')));
 });

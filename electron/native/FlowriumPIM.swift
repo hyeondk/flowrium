@@ -81,8 +81,9 @@ func run(_ input: [String: Any]) throws -> Any {
 // existing entry on volumes where a hard link cannot be created.
 if CommandLine.arguments.count == 4 && CommandLine.arguments[1] == "--publish-file" {
     if renamex_np(CommandLine.arguments[2], CommandLine.arguments[3], UInt32(RENAME_EXCL)) != 0 {
+        let status = errno
         perror("renamex_np")
-        exit(1)
+        exit(status)
     }
     exit(0)
 }

@@ -147,17 +147,24 @@ async function publishNewFile(stage, file) {
   try {
     if (process.platform === 'darwin') {
       const helper = path.join(__dirname, 'native', 'flowrium-pim').replace(/app\.asar([/\\])/, 'app.asar.unpacked$1');
-      await run(helper, ['--publish-file', stage, file]);
+      await run(helper, ['--publish-file', stage, file], {timeout:30_000});
     } else {
-      const command = "$ErrorActionPreference='Stop'; [System.IO.File]::Move($env:FLOWRIUM_STAGE_FILE,$env:FLOWRIUM_FINAL_FILE)";
+      const command = `
+        try { [System.IO.File]::Move($env:FLOWRIUM_STAGE_FILE, $env:FLOWRIUM_FINAL_FILE) }
+        catch {
+          $cause = $_.Exception.GetBaseException()
+          if (($cause.HResult -band 65535) -in 80, 183) { exit 17 }
+          [Console]::Error.WriteLine($cause.Message)
+          exit 1
+        }`;
       const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
       await run(powershell, ['-NoProfile','-NonInteractive','-Command',command], {
-        windowsHide:true, env:{...process.env,FLOWRIUM_STAGE_FILE:stage,FLOWRIUM_FINAL_FILE:file}
+        windowsHide:true, timeout:30_000, env:{...process.env,FLOWRIUM_STAGE_FILE:stage,FLOWRIUM_FINAL_FILE:file}
       });
     }
   } catch (error) {
     // Preserve the same EEXIST contract for racing writers on all volumes.
-    if (await fs.lstat(file).catch(() => null)) {
+    if (error.code === 17 || await fs.lstat(file).catch(() => null)) {
       throw Object.assign(new Error('같은 이름의 기록이 이미 있습니다.'), {code:'EEXIST',path:file});
     }
     throw error;
