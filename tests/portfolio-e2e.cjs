@@ -35,7 +35,7 @@ async function main() {
         if (!button) return;
         const row = { label: button.getAttribute('aria-label') || button.textContent.trim().slice(0, 80), before: document.querySelector('.main-shell')?.dataset.view };
         window.flowriumTestClicks.push(row);
-        setTimeout(() => { row.after = document.querySelector('.main-shell')?.dataset.view; row.focus = document.querySelector('.app-shell')?.dataset.chatFocus; }, 0);
+        setTimeout(() => { row.after = document.querySelector('.main-shell')?.dataset.view; row.chatFocus = document.querySelector('.app-shell')?.dataset.chatFocus; }, 0);
       }, true);
     });
     const button = (name) => page.getByRole("button", { name, exact: true });
@@ -126,9 +126,9 @@ async function main() {
     await page.keyboard.press("ArrowRight");await page.keyboard.press("Enter");
     assert.equal(await dueDate.inputValue(),"2026-11-20");
     await page.waitForFunction(() => window.flowriumDateCloseHeld);
-    const goalField = page.getByLabel("프로젝트 목표", {exact:true});
+    const goalField = page.locator(".pf-form textarea[required]");
     const goalText = "동네 안내 자료를 발간합니다.";
-    await goalField.fill(goalText);
+    await page.getByLabel("프로젝트 목표", {exact:true}).fill(goalText);
     await page.waitForFunction(() => window.flowriumDateCloseReplayed);
     assert.ok(await goalField.evaluate(field => field === document.activeElement));
     assert.equal(await goalField.inputValue(), goalText);
@@ -344,7 +344,13 @@ async function main() {
       "포트폴리오 실제 앱 검증 / 빈 대시보드 / 네이티브 폴더 킥오프 / 아홉 탭 / 기간 목표 / 세 문서 유형 / 업무와 프로젝트 재개 / 날짜와 본문 검색 / 전체 산출물",
     );
   } catch (error) {
-    if (page && !page.isClosed()) console.error('포트폴리오 화면 클릭과 상태', await page.evaluate(() => window.flowriumTestClicks?.slice(-15)));
+    if (page && !page.isClosed()) console.error('포트폴리오 화면 클릭과 상태', await page.evaluate(() => ({
+      clicks: window.flowriumTestClicks?.slice(-15),
+      view: document.querySelector('.main-shell')?.dataset.view,
+      alerts: [...document.querySelectorAll('[role=alert]')].map(el => el.textContent.trim()),
+      invalidFields: [...document.querySelectorAll('.pf-form input:invalid,.pf-form textarea:invalid')].map(el => el.labels?.[0]?.firstChild?.textContent.trim()),
+      focusedField: document.activeElement?.labels?.[0]?.firstChild?.textContent.trim()
+    })));
     throw error;
   } finally {
     if (app) await app.close();
