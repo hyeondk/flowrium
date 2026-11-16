@@ -1,6 +1,6 @@
 const D = require('./codex-transfer-data.cjs');
 const { UUID } = require('./project-store.cjs');
-const {withLiveTurn}=require('./mobile/live-turn.js');
+const {withLiveTurn,interleaveLocalMessages}=require('./mobile/live-turn.js');
 
 function bindNative(runtime, session, threadId, cwd) {
   if (!threadId || session.codexLink) return;
@@ -79,13 +79,7 @@ function mergeNative(local, incoming) {
     if(merged)result.push(merged);
   }
   const preserved=new Set(result.map(m=>m.id));
-  for(const own of local){
-    if(preserved.has(own.id))continue;
-    let at=result.length;
-    while(at>0 && result[at-1].createdAt>own.createdAt)at--;
-    result.splice(at,0,own);
-  }
-  return result;
+  return interleaveLocalMessages(result,local.filter(message=>!preserved.has(message.id)));
 }
 
 async function refreshNative(runtime, session, cwd, context, thread) {

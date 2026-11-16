@@ -55,12 +55,16 @@ function unsupported(error) {
 async function pages(client, method, params) {
   const all = [];
   const cursors = new Set();
-  let cursor;
-  do {
-    const result = await client.request(method, {
-      ...params,
-      ...(cursor ? { cursor } : {}),
-    });
+  let cursor, limit = params.limit;
+  while (true) {
+    let result;
+    try {
+      result = await client.request(method, {...params, ...(limit && {limit}), ...(cursor && {cursor})});
+    } catch (error) {
+      if (error.code !== "PROTOCOL_FRAME_TOO_LARGE" || !error.connectionPreserved || !(limit > 1)) throw error;
+      limit = Math.floor(limit / 2);
+      continue;
+    }
     if (!Array.isArray(result.data))
       throw new Error(
         "대화 목록 응답 형식이 올바르지 않습니다. 원본은 변경하지 않았습니다.",
@@ -74,9 +78,9 @@ async function pages(client, method, params) {
         "대화 목록의 페이지가 반복돼 가져오기를 중단했습니다. 원본은 변경하지 않았습니다.",
       );
     if (next) cursors.add(next);
+    if (!next) return all;
     cursor = next;
-  } while (cursor);
-  return all;
+  }
 }
 
 class HistoryImporter {
@@ -139,9 +143,9 @@ class HistoryImporter {
     try {
       turns = await pages(this.client, "thread/turns/list", {
         threadId: thread.id,
-        limit: 100,
+        limit: 25,
         sortDirection: "asc",
-        itemsView: "full",
+        itemsView: "notLoaded",
       });
     } catch (error) {
       if (!unsupported(error)) throw error;
@@ -164,11 +168,11 @@ class HistoryImporter {
     const seenItems = new Set();
     for (const turn of turns) {
       let entries;
-      if (turn.itemsView && turn.itemsView !== "full")
+      if ((turn.itemsView && turn.itemsView !== "full") || turn.itemsNextCursor)
         entries = await pages(this.client, "thread/items/list", {
           threadId: thread.id,
           turnId: turn.id,
-          limit: 100,
+          limit: 25,
           sortDirection: "asc",
         });
       else {

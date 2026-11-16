@@ -1,4 +1,5 @@
 const copy=value=>structuredClone(value);
+const {interleaveLocalMessages}=require('./mobile/live-turn.js');
 function exchanges(messages) {
  const rows=[];
  for(const message of messages) {
@@ -52,7 +53,20 @@ function mergeMessages(previous,incoming){
   else out.push(copy(next));
  }
  // 참조 중인 과거 메시지나 로컬 안내를 삭제하지 않습니다. 이전 원문 사본도 별도로 남깁니다.
- for(const message of previous)if(!used.has(message.id)&&!out.some(row=>row.id===message.id))out.push(copy(message));
- return out;
+ const sourceIds=new Set(out.map(row=>row.id));
+ const local=previous.filter(message=>!used.has(message.id)&&!sourceIds.has(message.id)).map(copy);
+ return interleaveLocalMessages(out,local);
 }
-module.exports={mergeMessages,matchExchanges};
+
+function restoreLinkedMessageOrder(session) {
+ const link=session.codexLink;
+ if(link?.mode!=='linked' || !session.messages.some(message=>!message.turnId))return;
+ const sourceIds=new Set(link.sourceMessageIds);
+ const source=[],local=[];
+ for(const message of session.messages) {
+  if(message.turnId || sourceIds.has(message.id))source.push(message);
+  else local.push(message);
+ }
+ if(local.length)session.messages=interleaveLocalMessages(source,local);
+}
+module.exports={mergeMessages,matchExchanges,restoreLinkedMessageOrder};

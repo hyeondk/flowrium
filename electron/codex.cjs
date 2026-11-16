@@ -4,6 +4,7 @@ const os = require("node:os");
 const { spawn } = require("node:child_process");
 const { EventEmitter } = require("node:events");
 const { randomUUID } = require("node:crypto");
+const MAX_PROTOCOL_FRAME_BYTES = 128 * 1024 * 1024;
 
 async function isFile(file) {
   try {
@@ -115,8 +116,8 @@ class CodexClient extends EventEmitter {
   constructor(options = {}) {
     super();
     this.options = options;
-    this.maxProtocolLineBytes=options.maxProtocolLineBytes??16*1024*1024;
-    if(!Number.isSafeInteger(this.maxProtocolLineBytes)||this.maxProtocolLineBytes<1024*1024||this.maxProtocolLineBytes>128*1024*1024)throw Error('Codex 응답 제한은 1MB에서 128MB 사이여야 합니다.');
+    this.maxProtocolLineBytes = options.maxProtocolLineBytes ?? MAX_PROTOCOL_FRAME_BYTES;
+    if(!Number.isSafeInteger(this.maxProtocolLineBytes)||this.maxProtocolLineBytes<1024*1024||this.maxProtocolLineBytes>MAX_PROTOCOL_FRAME_BYTES)throw Error('Codex 응답 제한은 1MB에서 128MB 사이여야 합니다.');
     this.proc = null;
     this.pending = new Map();
     this.approvals = new Map();
@@ -159,26 +160,52 @@ class CodexClient extends EventEmitter {
       { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, shell: false, env },
     );
     this.proc = proc;
-    let buffer = "",bufferBytes=0;
-    proc.stdout.setEncoding("utf8");
+    let parts = [], size = 0, skipping = false;
     proc.stdout.on("data", (chunk) => {
-      if(this.proc!==proc)return;
-      buffer += chunk;bufferBytes+=Buffer.byteLength(chunk);
-      for (;;) {
-        const end = buffer.indexOf("\n");
-        if (end < 0) {
-          if(bufferBytes>this.maxProtocolLineBytes){this._fail(Object.assign(new Error("Codex 응답 크기가 허용 범위를 초과했습니다."),{code:"PROTOCOL_FRAME_TOO_LARGE"}));proc.kill();}
-          break;
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      for (let start = 0; start < bytes.length && this.proc === proc;) {
+        const end = bytes.indexOf(0x0a, start);
+        const fragment = bytes.subarray(start, end < 0 ? bytes.length : end);
+        if (!skipping) {
+          if (fragment.length) parts.push(fragment);
+          size += fragment.length;
+          if (size > this.maxProtocolLineBytes) {
+            // Native replies start with their numeric request id and result/error.
+            // An oversized reply can be drained up to its newline independently.
+            // Never treat an approval request or notification as a disposable reply.
+            const header = Buffer.concat(parts, 512).toString("latin1");
+            const match = /^\s*\{\s*(?:"jsonrpc"\s*:\s*"2\.0"\s*,\s*)?"id"\s*:\s*(\d+)\s*,\s*"(?:result|error)"\s*:/.exec(header);
+            const limitMiB = this.maxProtocolLineBytes / (1024 * 1024);
+            const error = Object.assign(new Error(`Codex 응답 한 건이 수신 한도(${limitMiB}MiB)를 초과했습니다.`), {code:"PROTOCOL_FRAME_TOO_LARGE"});
+            parts = [];
+            size = 0;
+            if (!match || !Number.isSafeInteger(Number(match[1]))) {
+              error.message += " 요청이나 알림의 내용을 확인할 수 없어 이 연결을 종료했습니다.";
+              this.proc = null;
+              this._fail(error);
+              proc.kill();
+              return;
+            }
+            const id = Number(match[1]);
+            const pending = this.pending.get(id);
+            if (pending) {
+              clearTimeout(pending.timer);
+              this.pending.delete(id);
+              pending.reject(Object.assign(error, {connectionPreserved:true}));
+            }
+            skipping = true;
+          }
         }
-        const line = buffer.slice(0, end),lineBytes=Buffer.byteLength(line);
-        if(lineBytes>this.maxProtocolLineBytes){this._fail(Object.assign(new Error("Codex 응답 크기가 허용 범위를 초과했습니다."),{code:"PROTOCOL_FRAME_TOO_LARGE"}));proc.kill();return;}
-        buffer = buffer.slice(end + 1);bufferBytes-=lineBytes+1;
-        if (!line.trim()) continue;
-        try {
-          this._message(JSON.parse(line));
-        } catch {
-          /* Ignore non-protocol startup output. */
+        if (end < 0) break;
+        if (!skipping && size) {
+          const frame = parts.length === 1 ? parts[0] : Buffer.concat(parts, size);
+          try { this._message(JSON.parse(frame.toString("utf8"))); }
+          catch { /* Ignore non-protocol startup output. */ }
         }
+        parts = [];
+        size = 0;
+        skipping = false;
+        start = end + 1;
       }
     });
     // Drain diagnostics without persisting credentials or verbose logs.

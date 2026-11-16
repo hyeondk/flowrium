@@ -1,17 +1,39 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,type MutableRefObject,type ReactNode,type RefObject} from 'react';
 import {ArrowDown,History} from 'lucide-react';
 import type {Message} from '../shared/types';
+import {attachmentDisplayText} from '../electron/mobile/attachment-text.js';
 import {historyRows,TurnProgress} from './TurnProgress';
 import './message-history.css';
 const PAGE=100;
 type Anchor={id?:string;y:number;top:number;height:number};
-type Props={messages:Message[];scrollRef:RefObject<HTMLDivElement|null>;stickToBottom:MutableRefObject<boolean>;renderMessage(message:Message):ReactNode};
+type Props={messages:Message[];scrollRef:RefObject<HTMLDivElement|null>;stickToBottom:MutableRefObject<boolean>;renderMessage(message:Message,hasLaterRequest:boolean,failedRequest?:Message):ReactNode};
 /** 표시 범위만 줄이며 원래 Session과 모델의 실행 문맥은 변경하지 않습니다. */
 export default function MessageHistory({messages,scrollRef,stickToBottom,renderMessage}:Props){
  const [start,setStart]=useState(()=>Math.max(0,messages.length-PAGE));
  const content=useRef<HTMLDivElement>(null),controls=useRef<HTMLDivElement>(null),pending=useRef<Anchor|'bottom'|undefined>(undefined);
  const first=Math.min(start,Math.max(0,messages.length-PAGE));
  const rows=useMemo(()=>historyRows(messages,first),[messages,first]);
+ const {lastRequestAt,failedRequests}=useMemo(()=>{
+  let lastRequestAt=0;
+  const failedRequests=new Map<string,Message>();
+  for(let i=0;i<messages.length;i++){
+   const message=messages[i];
+   if(message.role==='user'){
+    const at=Date.parse(message.createdAt);
+    if(at>lastRequestAt)lastRequestAt=at;
+   }else if(message.role==='system'&&message.text.startsWith('작업을 완료하지 못했습니다')){
+    const previous=messages[i-1];
+    if(previous?.role==='user'&&!previous.delegated&&!previous.sourceOnly&&
+        (!message.turnId||!previous.turnId||previous.turnId===message.turnId)&&
+        Date.parse(previous.createdAt)<=Date.parse(message.createdAt)&&
+        (previous.attachments?.length||attachmentDisplayText(previous.text)===previous.text)&&
+        (previous.text.trim()||previous.attachments?.length)){
+     failedRequests.set(message.id,previous);
+    }
+   }
+  }
+  return {lastRequestAt,failedRequests};
+ },[messages]);
  const latest=()=>{const el=scrollRef.current;if(el)el.scrollTop=el.scrollHeight;};
  useLayoutEffect(()=>{
   const el=scrollRef.current;if(!el)return;
@@ -48,6 +70,6 @@ export default function MessageHistory({messages,scrollRef,stickToBottom,renderM
   <div className="message-history-items" ref={content} onClickCapture={event=>{
    const target=event.target instanceof Element?event.target:undefined;
    if(target?.closest('[data-message-details]')&&target.closest('summary,[data-message-detail-control]'))stickToBottom.current=false;
-  }}>{rows.map(row=>'message' in row?renderMessage(row.message):<TurnProgress key={'work:'+row.progress.key} progress={row.progress}/>)}</div>
+  }}>{rows.map(row=>'message' in row?renderMessage(row.message,row.message.role==='system'&&Date.parse(row.message.createdAt)<lastRequestAt,failedRequests.get(row.message.id)):<TurnProgress key={'work:'+row.progress.key} progress={row.progress}/>)}</div>
  </>;
 }

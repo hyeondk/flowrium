@@ -18,8 +18,10 @@ async function itemPages(client,threadId,turnId,options={}){
   try{result=await client.request('thread/items/list',{threadId,turnId,limit,sortDirection:'asc',...(cursor?{cursor}:{})});}
   catch(error){
    if(error.code!=='PROTOCOL_FRAME_TOO_LARGE')throw error;
-   if(!options.recover)throw error;
-   await options.recover();
+   if(!error.connectionPreserved){
+    if(!options.recover)throw error;
+    await options.recover();
+   }
    if(limit===1)throw Error('대화의 단일 항목이 128MB를 넘어 안전한 읽기 한도를 초과했습니다. 원본을 변경하거나 본문을 잘라 저장하지 않았습니다.');
    limit=Math.max(1,Math.floor(limit/2));continue;
   }

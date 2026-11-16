@@ -291,6 +291,11 @@ class ProjectStore {
         .filter(([, record]) => !record.deleted)
         .map(([id, record]) => [id, copy(record.session)]),
     );
+    // Older versions put local send failures after the entire source transcript.
+    // Restore their position even when the source hasn't changed since saving.
+    for (const session of this.saved.values()) {
+      require('./codex-transfer-merge.cjs').restoreLinkedMessageOrder(session);
+    }
     return [...this.saved.values()].map(copy);
   }
   async commit(sessions, options = {}) {

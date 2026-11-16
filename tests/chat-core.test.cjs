@@ -135,14 +135,15 @@ test('첫 자동 이름의 전송이 지연되어도 사용자가 이어 저장�
   assert.equal(session.pendingThreadName,undefined);
 });
 
-test('원본 대기열 전송은 프로젝트의 일반 짧은 글과 이 기기의 원본 연결만 허용한다', () => {
+test('원본 대기열 전송은 연결한 프로젝트의 짧은 글과 지원하는 사진을 받는다', () => {
   const {eligible} = require('../electron/codex-native-queue.cjs');
   const session={codexLink:{mode:'linked'}}, input={text:'확인할 일',attachments:[]};
   assert(eligible(session,input));assert(eligible({desktopThread:{}},input));
+  assert(eligible(session,{...input,attachments:[{type:'image/png'},{type:'image/jpeg'}]}));
   for(const changes of [{codexLink:{mode:'copy'}},{scope:'general'},{scope:'integrated'},
     {workflow:{kind:'report'}},{personalAssistant:true},{applicationTools:true}])
     assert(!eligible({...session,...changes},input));
   assert(!eligible({},input));
-  for(const changes of [{attachments:[{id:'a'}]},{text:'가'.repeat(32001)},{requestSourceId:'source'},{text:' '}])
+  for(const changes of [{attachments:[{id:'a'}]},{attachments:[{type:'image/png'},{type:'text/plain'}]},{text:'가'.repeat(32001)},{requestSourceId:'source'},{text:' '}])
     assert(!eligible(session,{...input,...changes}));
 });

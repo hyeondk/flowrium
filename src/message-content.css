@@ -13,6 +13,9 @@
 .message-detail[open]>summary>.message-detail-chevron{transform:rotate(180deg)}
 .message-detail-state{font-size:10px;line-height:18px;padding:0 5px;border-radius:4px;background:var(--accent-bg,var(--panel));color:var(--accent,var(--muted));white-space:nowrap}
 .message-detail-failed .message-detail-state{color:var(--danger,#aa503b);background:var(--danger-bg,#ad4c3410)}
+.message-detail[data-request-failure] .message-detail-chevron{margin-inline-start:auto}
+.message-detail[data-request-failure=failed]>summary{color:var(--danger,#aa503b);background:var(--danger-bg,#ad4c3410)}
+.message-detail[data-request-failure=previous]>summary{color:var(--muted)}
 .message-detail-body{min-width:0;padding:10px}
 .message-detail-hint{margin:0 0 8px;font-size:11px;line-height:20px;color:var(--muted);word-break:keep-all}
 .message-detail-actions{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}

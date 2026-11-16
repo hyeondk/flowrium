@@ -1,12 +1,14 @@
 const D = require('./codex-transfer-data.cjs');
-const {pages} = require('./history.cjs');
 const {projectInlineLimit} = require('./chat-long-request.cjs');
 const {UUID} = require('./project-store.cjs');
+const {createHash} = require('node:crypto');
+const {resolveAttachments} = require('./chat-attachments.cjs');
 
 function eligible(session, entry) {
   const shared = session.codexLink?.mode === 'linked' || !session.codexLink && session.desktopThread;
   return Boolean(shared && !session.scope && !session.workflow && !session.personalAssistant &&
-    !session.applicationTools && !entry.requestSourceId && !entry.attachments?.length &&
+    !session.applicationTools && !entry.requestSourceId &&
+    (entry.attachments || []).every(a => ['image/png','image/jpeg','image/webp','image/gif'].includes(a.type)) &&
     entry.text.trim() && entry.text.length <= projectInlineLimit);
 }
 
@@ -42,16 +44,37 @@ async function access(queue, session, entry) {
   return {client:runtime.client,threadId,deviceHash,guard};
 }
 
+function matchesInput(input,entry) {
+  const photos=entry.attachments||[];
+  if(!Array.isArray(input)||input.length!==1+photos.length||input[0]?.type!=='text'||input[0].text!==entry.text)return false;
+  return photos.every((photo,index)=>{
+    const part=input[index+1],prefix='data:'+photo.type+';base64,';
+    if(part?.type!=='image'||typeof part.url!=='string'||!part.url.startsWith(prefix)||
+       part.url.length-prefix.length!==4*Math.ceil(photo.size/3))return false;
+    return createHash('sha256').update(part.url.slice(prefix.length),'base64').digest('hex')===photo.sha256;
+  });
+}
+
 async function queuedItem(connection, entry) {
   const {client,threadId,guard} = connection;
-  const rows = await pages(client,'thread/queue/list',{threadId,limit:100});
-  guard();
-  const matches = rows.filter(row=>row.clientUserMessageId === entry.id);
-  if (matches.length > 1 || matches.some(row => !UUID.test(row.id) ||
-      entry.nativeQueueId && entry.nativeQueueId !== row.id || !Array.isArray(row.input) ||
-      row.input.length !== 1 || row.input[0].type !== 'text' || row.input[0].text !== entry.text))
-    throw Error('원본 대기열의 접수 정보가 일치하지 않습니다.');
-  return matches[0];
+  // Each submission can contain 50 MiB of images. Release its page before reading the next.
+  let cursor,match;
+  const seen=new Set();
+  do {
+    const page=await client.request('thread/queue/list',{threadId,limit:1,...(cursor&&{cursor})});
+    guard();
+    if(!Array.isArray(page.data))throw Error('원본 대기열 목록을 확인하지 못했습니다.');
+    for(const row of page.data) {
+      if(row.clientUserMessageId!==entry.id)continue;
+      if(match||!UUID.test(row.id)||entry.nativeQueueId && entry.nativeQueueId!==row.id||!matchesInput(row.input,entry))
+        throw Error('원본 대기열의 접수 정보가 일치하지 않습니다.');
+      match={id:row.id};
+    }
+    cursor=page.nextCursor;
+    if(cursor!=null && (typeof cursor!=='string'||!cursor||seen.has(cursor)))throw Error('원본 대기열의 다음 위치를 확인하지 못했습니다.');
+    seen.add(cursor);
+  } while(cursor);
+  return match;
 }
 
 async function delivered(connection, entry) {
@@ -120,6 +143,14 @@ async function submit(queue, session, entry) {
     await save(queue,session,entry,{nativeThreadId:connection.threadId,nativeDeviceHash:connection.deviceHash,nativeDelivery:'queued',nativeQueueId:existing.id,nativeQueueAvailable:undefined});
     return;
   }
+  const input=[{type:'text',text:entry.text}];
+  if (entry.attachments?.length) {
+    const files = await resolveAttachments(queue.store,session.projectId,entry.attachments.map(a=>a.id),true);
+    if (files.some((file,index)=>!file.image || file.sha256!==entry.attachments[index].sha256 || file.type!==entry.attachments[index].type))
+      throw Error('대기 중인 첨부 사진의 원본을 확인해 주세요.');
+    for(const file of files)input.push({type:'image',url:file.dataUrl || 'data:'+file.type+';base64,'+file.bytes.toString('base64')});
+    connection.guard();
+  }
   const recent=await connection.client.request('thread/turns/list',{threadId:connection.threadId,limit:1,sortDirection:'desc',itemsView:'notLoaded'});
   connection.guard();
   if(!Array.isArray(recent.data))throw Error('원본 대화의 현재 작업 위치를 확인하지 못했습니다.');
@@ -128,7 +159,7 @@ async function submit(queue, session, entry) {
   connection.guard();
   try {
     const {queuedSubmission:row}=await connection.client.request('thread/queue/add',{
-      threadId:connection.threadId,clientUserMessageId:entry.id,input:[{type:'text',text:entry.text}]
+      threadId:connection.threadId,clientUserMessageId:entry.id,input
     });
     connection.guard();
     if(!UUID.test(row?.id)||row.clientUserMessageId!==entry.id)throw Error('원본 접수 식별자를 확인하지 못했습니다.');

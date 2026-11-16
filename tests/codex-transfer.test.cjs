@@ -81,6 +81,33 @@ test('자동 새로고침 중 들어온 채팅 전송은 최신 본문 확인까
   await Promise.all([sync,sending]);
   assert.equal(session.threadId,'원본대화');
 });
+test('과거 전송 실패가 마지막에 저장된 대화도 오프라인 재실행과 원본 갱신에서 시간순으로 표시한다',async t=>{
+ const f=await fixture(t), plan=await f.preview();
+ await f.runtime.apply({planId:plan.id});
+ const session=f.store.state.sessions[0], source=[...session.messages];
+ const local=(role,text,second)=>({id:require('node:crypto').randomUUID(),role,text,createdAt:new Date(second*1000).toISOString()});
+ const failed=[local('user','전송하지 못한 요청',1700000005),local('system','Codex 응답 크기가 허용 범위를 초과했습니다.',1700000006)];
+ session.messages.push(...failed);
+ await f.store.save();
+ const expected=[...source.slice(0,3),...failed,...source.slice(3)];
+ const reopened=new Store(path.dirname(f.store.file));
+ await reopened.load();
+ assert.deepEqual(reopened.session(session.id).messages,expected);
+ assert.equal(reopened.repositories.get(f.project.id).heads.get(session.id),f.store.repositories.get(f.project.id).heads.get(session.id));
+
+ f.client.turns.get('원본대화').push({id:'새작업',status:'completed',startedAt:1700000030,completedAt:1700000031,
+  items:[{id:'새답변',type:'agentMessage',text:'이어서 받은 답변'}]});
+ await f.runtime.refresh(session.id);
+ assert.deepEqual(session.messages.slice(0,-1),expected);
+ assert.equal(session.messages.at(-1).text,'이어서 받은 답변');
+});
+test('진행 중인 원본 답변이 갱신될 때에도 중간에 있었던 로컬 실패를 끝으로 이동하지 않는다',()=>{
+ const {withLiveTurn}=require('../electron/mobile/live-turn.js');
+ const row=(text,seconds,turnId)=>({text,createdAt:new Date(seconds*1000).toISOString(),turnId});
+ const user=row('진행 중 요청',10,'turn'),error=row('로컬 실패',12),partial=row('이전 부분',13,'turn');
+ const final=row('나중 부분',17,'turn');
+ assert.deepEqual(withLiveTurn([user,error,partial],'turn',[user,final]),[user,error,final]);
+});
 async function fixture(t){const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-codex-transfer-'))),folder=path.join(root,'프로젝트');await fs.mkdir(folder);const store=new Store(path.join(root,'설정'));await store.load();const project=await store.addProject(folder),client=new Client(folder);let revision=0,epoch=0,owner='시험계정',allowed=true;
 const controller={client,runs:new Map(),editingSessions:new Set(),loadedThreads:new Set(),emitEvent(){}};
 const runtime=new CodexTransfer(store,controller,{accountRevision:()=>revision,stateEpoch:()=>epoch,accountOwner:()=>owner,canRun:()=>allowed,allowTemporaryProjects:true});

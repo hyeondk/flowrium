@@ -32,6 +32,7 @@ import SettingsLayout,{SettingsGroup} from "./SettingsLayout";
 import CodexTransferPanel,{CodexLinkBar} from "./CodexTransferPanel";
 import MessageHistory from "./MessageHistory";
 import MessageContent from "./MessageContent";
+import {attachmentDisplayText} from "../electron/mobile/attachment-text.js";
 import IconTooltips from "./IconTooltips";
 import DotsPanel from "./DotsPanel";
 import AttentionCenter from "./AttentionCenter";
@@ -99,6 +100,7 @@ import type {
   ConnectionStatus,
   Effort,
   FlowriumEvent,
+  Message,
   Mode,
   Model,
   Project,
@@ -115,6 +117,8 @@ type CodexHistoryItem = {
   imported: boolean;
 };
 const api = window.flowrium;
+const messageTime = {hour: "2-digit", minute: "2-digit"} as const;
+const statusTime = {...messageTime, month: "long", day: "numeric"} as const;
 const initial: Bootstrap = {
   projects: [],
   sessions: [],
@@ -797,6 +801,15 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     setTimeout(() => composer.current?.focus(), 0);
   }
   const submissionReceipts=useRef(new Map<string,{id:string;text:string}>());
+  function restoreFailedRequest(message:Message){
+    if(submittingRef.current||currentDraftKey.current!==draftKey)return;
+    setDrafts(previous=>{
+      const draft=previous[draftKey];
+      if(draft?.text||draft?.attachments?.length)return previous;
+      return {...previous,[draftKey]:{mode:draft?.mode||mode,text:attachmentDisplayText(message.text),attachments:message.attachments||[]}};
+    });
+    composer.current?.focus();
+  }
   function longSubmission(key:string,text:string) {
     if(text.length<=maxChatInput)return {};
     const prior=submissionReceipts.current.get(key);
@@ -1112,7 +1125,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       }
                     }}
                   >
-                    <MessageHistory key={session.id} messages={session.messages} scrollRef={messages} stickToBottom={stickToBottom} renderMessage={(message) => (
+                    <MessageHistory key={session.id} messages={session.messages} scrollRef={messages} stickToBottom={stickToBottom} renderMessage={(message,hasLaterRequest,failedRequest) => (
                       <article
                         className={`message ${message.role}`}
                         data-message-id={message.id}
@@ -1136,10 +1149,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                   ? (message.delegated ? "전달된 요청" : "나")
                                   : "작업 상태"}
                             </strong>
-                            <time>
-                              {new Date(message.createdAt).toLocaleTimeString(
+                            <time dateTime={message.createdAt}>
+                              {new Date(message.createdAt).toLocaleString(
                                 "ko-KR",
-                                { hour: "2-digit", minute: "2-digit" },
+                                message.role === "system" ? statusTime : messageTime,
                               )}
                             </time>
                             <span className="message-meta-actions">
@@ -1177,7 +1190,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                           </div>
                           {Boolean(message.attachments?.length)&&project&&<ChatAttachmentList projectId={project.id} items={message.attachments!}/>}
                           <div className="markdown">
-                            <MessageContent text={message.text} role={message.role}/>
+                            <MessageContent text={message.text} role={message.role} hasLaterRequest={hasLaterRequest}
+                              retryAction={failedRequest&&<button type="button" className="button subtle" data-message-detail-control
+                                disabled={submitting||Boolean(input.length||attachments.length)}
+                                title={input.length||attachments.length?"입력창을 비우면 이 요청을 다시 담을 수 있습니다.":"요청을 입력창에 담아 다시 확인합니다."}
+                                onClick={()=>restoreFailedRequest(failedRequest)}>입력창에 다시 담기</button>}/>
                             {message.sourceOnly && <RequestSource sessionId={session.id} messageId={message.id}/>}
                           </div>
                         </div>

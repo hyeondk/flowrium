@@ -37,12 +37,20 @@ async function main() {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'flowrium-desktop-sync-')));
   const profile = path.join(root,'codex'), cwd = path.join(root,'project');
   let server, controller, runtime, desktop, primary, reader;
-  let requests = 0, hold;
+  let requests = 0, hold, imageRequestText;
+  const imageDeliveries=[];
   try {
     await fs.mkdir(profile); await fs.mkdir(cwd);
     server = http.createServer(async (req,res) => {
       if (req.method !== 'POST' || !req.url.startsWith('/v1/responses')) {res.writeHead(404).end();return;}
-      for await (const unused of req) {}
+      if (imageRequestText) {
+        const chunks=[];
+        for await (const chunk of req) chunks.push(chunk);
+        const body=JSON.parse(Buffer.concat(chunks));
+        const user=body.input?.filter(item=>item.role==='user').at(-1);
+        if (user?.content?.some(part=>part.type==='input_text' && part.text.includes(imageRequestText)))
+          imageDeliveries.push(user.content.filter(part=>part.type==='input_image' && part.image_url?.startsWith('data:image/')).length);
+      } else for await (const unused of req) {}
       if(hold){const gate=hold;hold=undefined;gate.started.resolve();await gate.release.promise;}
       const id='resp_sync_'+(++requests);
       const item={id:'answer_'+requests,type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'동기화 응답 '+requests,annotations:[]}]};
@@ -58,8 +66,8 @@ async function main() {
     const address='http://127.0.0.1:'+server.address().port+'/v1';
     await fs.writeFile(path.join(profile,'config.toml'),['cli_auth_credentials_store = "file"','model = "gpt-5.5"','[model_providers.flowrium_test]','name = "Flowrium local test"','base_url = '+JSON.stringify(address),'wire_api = "responses"','env_key = "FLOWRIUM_OFFLINE_KEY"','supports_websockets = false','[analytics]','enabled = false',''].join('\n'));
     const descriptor=await resolveCodex();assert(descriptor);
-    function makeClient() {
-      const client=new CodexClient({descriptor,spawn:(cmd,args,opts)=>spawn(cmd,[...args,'-c','model_provider="flowrium_test"'],{...opts,env:{...opts.env,CODEX_HOME:profile,FLOWRIUM_OFFLINE_KEY:'synthetic-local-only',OPENAI_BASE_URL:address}})});
+    function makeClient(options = {}) {
+      const client=new CodexClient({...options,descriptor,spawn:(cmd,args,opts)=>spawn(cmd,[...args,'-c','model_provider="flowrium_test"'],{...opts,env:{...opts.env,CODEX_HOME:profile,FLOWRIUM_OFFLINE_KEY:'synthetic-local-only',OPENAI_BASE_URL:address}})});
       const request=client.request.bind(client);
       client.request=(method,...args)=>method==='account/read'?Promise.resolve({account:{type:'chatgpt',planType:'test'}}):request(method,...args);
       return client;
@@ -324,14 +332,19 @@ async function main() {
     const longText='가'.repeat(1024*1024-32);
     for(let i=0;i<6;i++)await originalTurn(longText+i);
     await desktop.request('thread/unsubscribe',{threadId:source});
-    const detached=makeClient();
+    const detached=makeClient({maxProtocolLineBytes:16*1024*1024});
     try{
       await detached.start();
-      // Full-history hydration exceeds the production 16 MiB frame limit.
+      // Reproduce the old default with a real Codex response, without claiming a writer.
       let baseline;
-      try {await resumeWhenReleased(detached,{threadId:source});}
+      try {await detached.request('thread/read',{threadId:source,includeTurns:true});}
       catch(error){baseline=error;}
       assert.equal(baseline?.code,'PROTOCOL_FRAME_TOO_LARGE');
+      assert.equal(baseline?.connectionPreserved,true);
+      assert.equal((await detached.request('thread/read',{threadId:source,includeTurns:false})).thread.id,source);
+      const hydrated=await desktop.request('thread/read',{threadId:source,includeTurns:true});
+      assert.equal(hydrated.thread.id,source);
+      assert(Buffer.byteLength(JSON.stringify(hydrated))>16*1024*1024);
     }finally{detached.close();}
     const afterLarge=onceEvent(controller,'event',e=>e.type==='done'&&e.sessionId===shared.id);
     await controller.send({...draft,text:'긴 원본을 이어 쓰는 요청'});
@@ -354,11 +367,15 @@ async function main() {
     hold={started:startedWork,release:releaseWork};
     const originalDone=onceEvent(desktop,'notification',e=>e.method==='turn/completed'&&e.params.threadId===queueThread);
     await desktop.request('turn/start',{threadId:queueThread,input:[{type:'text',text:'작업을 잠시 보류합니다'}]});
-    const handed=queueInput('원본 설정으로 실행할 지시');
+    const [picture]=await require('../electron/chat-attachments.cjs').addAttachments(store,queueSession.projectId,[{
+      name:'첨부 시험.png',type:'image/png',bytes:await fs.readFile(path.join(__dirname,'../public/flowrium.png'))
+    }]);
+    const handed={...queueInput('원본 설정으로 실행할 지시'),attachments:[picture.id]};
+    imageRequestText=handed.text;
     let nativeAdds=0;
     try {
       await startedWork.promise;
-      const toCancel=queueInput('원본에서 취소할 지시');
+      const toCancel={...queueInput('원본에서 취소할 지시'),attachments:[picture.id]};
       const kept=await controller.send(toCancel);
       assert(kept.nativeQueueAvailable && kept.waitingForWriter);
       assert.equal((await getQueue()).length,0);
@@ -370,6 +387,8 @@ async function main() {
       await controller.messageQueue.sendToCodex(queueSession.id,kept.queueId);
       const [toRemove]=await getQueue();
       assert.equal(toRemove.clientUserMessageId,toCancel.submissionId);
+      assert.equal(toRemove.input[1].type,'image');
+      assert.equal(toRemove.input[1].url,'data:image/png;base64,'+(await fs.readFile(path.join(__dirname,'../public/flowrium.png'))).toString('base64'));
       const unrelated=await desktop.request('thread/queue/add',{threadId:queueThread,input:[{type:'text',text:'원본 자체 대기'}],clientUserMessageId:require('node:crypto').randomUUID()});
       await controller.cancelQueuedMessage(queueSession.id,kept.queueId);
       assert.deepEqual((await getQueue()).map(q=>q.id),[unrelated.queuedSubmission.id]);
@@ -426,6 +445,8 @@ async function main() {
       assert.equal(data.flatMap(t=>t.items||[]).filter(i=>i.type==='userMessage'&&i.clientId===request.submissionId).length,1);
     }
     await settle(handed);
+    assert.deepEqual(imageDeliveries,[1],'사진과 지시가 같은 모델 요청에 한 번 전달되어야 합니다.');
+    imageRequestText=undefined;
     const idleQueue=queueInput('원래 창이 대기 중일 때 보내기');
     const idleResult=await controller.send(idleQueue);
     assert(idleResult.waitingForWriter && idleResult.nativeQueueAvailable);

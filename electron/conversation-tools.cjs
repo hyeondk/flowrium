@@ -3,7 +3,7 @@ const {text}=require('./store.cjs');
 async function threadTurns(client,threadId) {
   const all=[];let cursor;
   for(let page=0;page<100;page++) {
-    const result=await client.request('thread/turns/list',{threadId,sortDirection:'asc',limit:100,...(cursor?{cursor}:{})});
+    const result=await client.request('thread/turns/list',{threadId,sortDirection:'asc',itemsView:'summary',limit:100,...(cursor?{cursor}:{})});
     all.push(...(result.data||[]));
     if(!result.nextCursor)return all;
     if(result.nextCursor===cursor)throw Error('Codex 대화 기록의 페이지가 반복됐습니다.');
@@ -81,7 +81,7 @@ function registerConversationTools(register,controller) {
     const target=input.messageId?session.messages[index]:null;
     if(target&&!turns.some(t=>t.id===target.turnId))throw Error('선택한 요청의 Codex 내부 기록을 찾지 못했습니다. 원본 기록은 유지됩니다.');
     const scopeParams=await controller.conversationThreadParams?.(session)||{};
-    const fork=await client.request('thread/fork',{threadId:session.threadId,...scopeParams,...(target?{lastTurnId:target.turnId}:{})});
+    const fork=await client.request('thread/fork',{threadId:session.threadId,...scopeParams,excludeTurns:true,...(target?{lastTurnId:target.turnId}:{})});
     if(session.scope&&fork.activePermissionProfile?.id!==scopeParams.permissions)throw Error('분기 대화의 파일 접근 제한을 확인하지 못했습니다.');
     if(!fork.thread?.id)throw Error('Codex가 분기한 대화를 반환하지 않았습니다.');
     const nextUser=target?session.messages.findIndex((m,i)=>i>index&&m.role==='user'):-1;
@@ -100,7 +100,7 @@ function registerConversationTools(register,controller) {
     if(turnIndex<0)throw Error('선택한 요청의 Codex 실행 기록이 없습니다. 원본 기록을 유지했습니다.');
     // 먼저 원본을 실제로 분기한다. 이후 저장 실패가 나도 원래 Codex 대화는 변경하지 않는다.
     const scopeParams=await controller.conversationThreadParams?.(session)||{};
-    const fork=await client.request('thread/fork',{threadId:session.threadId,...scopeParams});
+    const fork=await client.request('thread/fork',{threadId:session.threadId,...scopeParams,excludeTurns:true});
     if(session.scope&&fork.activePermissionProfile?.id!==scopeParams.permissions)throw Error('보관 대화의 파일 접근 제한을 확인하지 못했습니다.');
     if(!fork.thread?.id)throw Error('되감기 전 원본 보관에 실패했습니다.');
     const forkTurns=await threadTurns(client,fork.thread.id);

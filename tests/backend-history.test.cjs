@@ -51,7 +51,7 @@ async function fixture(t) {
       }
       if (method === "thread/read") return { thread: thread(params.threadId) };
       if (method === "thread/turns/list") {
-        assert.equal(params.itemsView, "full");
+        assert.equal(params.itemsView, "notLoaded");
         assert.equal(params.sortDirection, "asc");
         if (!params.cursor)
           return {

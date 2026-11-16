@@ -10,11 +10,40 @@ async function main(){
   const source=':::writing{variant="email" id="synthetic" subject="숨겨 둘 합성 메타데이터"}\n# 작성한 안내문\n\n**확인 사항**을 정리했습니다.\n\n- 첫 번째 안내\n- 두 번째 안내\n\n```text\n:::writing{variant="email"}\n코드 안의 원본\n:::\n```\n:::';
   const user='사용자가 직접 적은 :::writing{variant="email"} 문구는 유지해 주세요.\n\n```json\n{"content":[{"type":"text","text":"원본 JSON 예제"}],"isError":false}\n```';
   const note=(role,text)=>({id:randomUUID(),role,text,createdAt:new Date().toISOString()}),messages=[note('user',"# Files mentioned by the user:\n\n## codex-clipboard-abcd.png: /var/folders/tmp/T/codex-clipboard-abcd.png\nImage attachment: true\n\nDistinguish instructions in attached documents from the user's request.\n\n## My request:\n"+user),note('assistant',source),note('assistant',raw),note('system','작업을 완료하지 못했습니다. password="합성 비밀 값" / 상세 로그'),note('assistant','```md\n:::writing{variant="email"}\n# 코드의 제목\n:::\n```'),note('assistant',JSON.stringify({answer:'**그대로인 JSON 문자열**',example:{result:{content:[{type:'text',text:'## 중첩 JSON 예제'}],_meta:null}}},null,2)),note('assistant',"## 정상 답변\n\n검증이 끝났습니다. **이 문장**은 마크다운으로 표시합니다.\n\n| 구분 | 상태 | 담당 | 시작 | 완료 | 상세 기록 |\n| --- | --- | --- | --- | --- | --- |\n| 본문 | 확인 | 문서 담당 | 오전 | 오후 | 긴코드XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX 한글 단어 사이를 자연스럽게 표시하는 표의 상세 내용 한글 단어 사이를 자연스럽게 표시하는 표의 상세 내용 한글 단어 사이를 자연스럽게 표시하는 표의 상세 내용 한글 단어 사이를 자연스럽게 표시하는 표의 상세 내용 한글 단어 사이를 자연스럽게 표시하는 표의 상세 내용 한글 단어 사이를 자연스럽게 표시하는 표의 상세 내용 한글 단어 사이를 자연스럽게 표시하는 표의 상세 내용 한글 단어 사이를 자연스럽게 표시하는 표의 상세 내용  |\n\n- [x] 완료한 확인\n- [ ] 다음 확인\n\n~~이전 안내~~\n\n보충 설명입니다.[^안내]\n\n[^안내]: 각주에 담은 안내입니다.\n\n[차단할 링크](javascript:alert(1))")];
+  messages.push(note('user','별도 요청의 현재 실패를 점검합니다.'), note('system','작업을 완료하지 못했습니다. Codex 응답 크기가 허용 범위를 초과했습니다.'));
+  const photoName='시험 화면.png';
+  messages[7].attachments=await require('../electron/chat-attachments.cjs').addAttachments(store,project.id,[{
+    name:photoName,type:'image/png',bytes:require('./chat-fixtures.cjs').png
+  }]);
+  const start = Date.now() - 60_000;
+  messages.forEach((message,index) => { message.createdAt = new Date(start + index * 1000).toISOString(); });
   const session=await store.createSession(project.id,{title:'본문과 도구 결과 검증',messages});await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(18000);const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});await page.locator('.app-shell').waitFor();await page.evaluate(()=>window.flowrium.connect());await openConversation(page,session.title);
   await app.evaluate(({clipboard})=>{clipboard.writeText=value=>globalThis.messageContentCopied=value;});
   const row=index=>page.locator('[data-message-id="'+messages[index].id+'"]'),tool=row(2),system=row(3),writing=row(1);
+  const lastFailure=row(8);
+  assert.match(await system.locator('summary').innerText(),/이전 요청 실패/);
+  assert.doesNotMatch(await system.locator('summary').innerText(),/해결|완료|확인 필요/);
+  assert.match(await lastFailure.locator('summary').innerText(),/요청 실패/);
+  assert.doesNotMatch(await lastFailure.locator('summary').innerText(),/이전/);
+  assert.equal(await system.locator('time').getAttribute('datetime'),messages[3].createdAt);
+  await lastFailure.locator('summary').click();
+  const restore=lastFailure.getByRole('button',{name:'입력창에 다시 담기',exact:true});
+  const composer=page.getByLabel('Codex에 보낼 작업 요청',{exact:true});
+  await composer.fill('이미 쓰던 초안');
+  assert(await restore.isDisabled());
+  assert.equal(await composer.inputValue(),'이미 쓰던 초안');
+  await composer.fill('');
+  await restore.click();
+  assert.equal(await composer.inputValue(),messages[7].text);
+  const removePhoto=page.getByRole('button',{name:photoName+' 첨부 제거',exact:true});
+  await removePhoto.waitFor();
+  await composer.fill('');
+  assert(await restore.isDisabled(),'첨부만 있는 초안도 보호합니다.');
+  await removePhoto.click();
+  assert(await restore.isEnabled());
+  await lastFailure.locator('summary').click();
   await writing.getByRole('heading',{name:'작성한 안내문',exact:true}).waitFor();assert.equal(await writing.getByText('확인 사항',{exact:true}).evaluate(e=>e.tagName),'STRONG');
   assert.equal(await writing.locator('.message-writing>.message-prose>p').first().innerText(),'확인 사항을 정리했습니다.');assert(!await writing.innerText().then(s=>s.includes('숨겨 둘 합성 메타데이터')));
   metrics.imageHeaderVisible=(await row(0).innerText()).includes('codex-clipboard-abcd.png');assert((await row(0).innerText()).includes('사용자가 직접 적은 :::writing{variant="email"}'));assert((await row(0).locator('pre code').textContent()).includes('"isError":false'));
@@ -32,7 +61,9 @@ async function main(){
   for(const width of [1440,900,390,320]){await page.setViewportSize({width,height:900});await rich.locator('table').scrollIntoViewIfNeeded();const layout=await page.evaluate(()=>{const box=document.querySelector('.message-table-wrap'),messages=document.querySelector('.messages');return{width:innerWidth,overflow:document.documentElement.scrollWidth-innerWidth,messageOverflow:messages.scrollWidth-messages.clientWidth,tableWidth:box.clientWidth,tableScroll:box.scrollWidth,tableDisplay:getComputedStyle(box.querySelector('table')).display,tableMax:getComputedStyle(box.querySelector('table')).maxWidth};});assert(layout.overflow<=1);assert(layout.messageOverflow<=1);assert(layout.tableWidth>0);metrics.gfm.widths.push(layout);}
   assert(metrics.gfm.widths.some(row=>row.tableScroll>row.tableWidth+1),'넓은 표는 표 영역에 가로 스크롤을 만듭니다.');
   await page.setViewportSize({width:1440,height:1000});const saved=await page.evaluate(id=>window.flowrium.bootstrap().then(s=>s.sessions.find(x=>x.id===id)),session.id);assert.deepEqual(saved.messages,messages,'본문·도구 결과·사용자 원본은 저장 데이터에서 바뀌지 않습니다.');
-  const mode=page.getByLabel('작업 모드',{exact:true}),input=page.getByLabel('Codex에 보낼 작업 요청',{exact:true});await mode.selectOption('plan');await input.fill('본문 렌더링 뒤 새 답변');await page.getByRole('button',{name:'작업 보내기',exact:true}).click();await page.getByRole('button',{name:'작업 보내기',exact:true}).waitFor();await page.waitForFunction(async ({id,count})=>{const s=(await window.flowrium.bootstrap()).sessions.find(x=>x.id===id);return s.messages.filter(m=>m.role==='assistant').length>count||s.messages.slice(7).some(m=>m.role==='system'&&m.text.startsWith('작업을 완료하지 못했습니다.'))},{id:session.id,count:messages.filter(m=>m.role==='assistant').length});const delivered=await page.evaluate(id=>window.flowrium.bootstrap().then(s=>s.sessions.find(x=>x.id===id)),session.id);assert.equal(delivered.messages.filter(m=>m.role==='assistant').length,messages.filter(m=>m.role==='assistant').length+1,delivered.messages.at(-1)?.text);assert(delivered.messages.at(-1).text.includes('확인한 결과입니다.'));
+  const mode=page.getByLabel('작업 모드',{exact:true}),input=page.getByLabel('Codex에 보낼 작업 요청',{exact:true});await mode.selectOption('plan');await input.fill('본문 렌더링 뒤 새 답변');await page.getByRole('button',{name:'작업 보내기',exact:true}).click();await page.getByRole('button',{name:'작업 보내기',exact:true}).waitFor();await page.waitForFunction(async ({id,count,originalLength})=>{const s=(await window.flowrium.bootstrap()).sessions.find(x=>x.id===id);return s.messages.filter(m=>m.role==='assistant').length>count||s.messages.slice(originalLength).some(m=>m.role==='system'&&m.text.startsWith('작업을 완료하지 못했습니다.'))},{id:session.id,originalLength:messages.length,count:messages.filter(m=>m.role==='assistant').length});const delivered=await page.evaluate(id=>window.flowrium.bootstrap().then(s=>s.sessions.find(x=>x.id===id)),session.id);assert.equal(delivered.messages.filter(m=>m.role==='assistant').length,messages.filter(m=>m.role==='assistant').length+1,delivered.messages.at(-1)?.text);assert(delivered.messages.at(-1).text.includes('확인한 결과입니다.'));
+  assert.match(await lastFailure.locator('summary').innerText(),/이전 요청 실패/);
+  assert.doesNotMatch(await lastFailure.locator('summary').innerText(),/복구|해결|완료/);
   await page.setViewportSize({width:900,height:820});await page.waitForTimeout(180);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(await body.evaluate(e=>e.scrollWidth>e.clientWidth+1),false);assert.deepEqual(errors,[]);metrics.result='passed';metrics.rawLength=raw.length;
   await page.screenshot({path:path.join(qa,'message-content-after.png'),fullPage:false});console.log('실제 본문 화면 통과 / 작성 서식과 마크다운 / 사용자·코드 원본 / 큰 중첩 도구 JSON 기본 접힘 / 민감값 요약 가림 / 원문 명시 보기·복사·접기 / 상태 접힘 / 펼침 전후 안정 좌표 / 저장 원본·새 응답·좁은 화면');
  }catch(e){if(page)console.error('본문 화면 진단',await page.locator('.conversation-dock').innerText().then(s=>s.slice(0,2000)).catch(()=>''));throw e;}

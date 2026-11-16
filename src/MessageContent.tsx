@@ -1,11 +1,15 @@
-import {useMemo,useState} from 'react';
-import {ChevronDown,Copy,FileText,TerminalSquare} from 'lucide-react';
+import {useMemo,useState,type ReactNode} from 'react';
+import {CircleAlert,ChevronDown,Copy,FileText,TerminalSquare} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {messageContent,safeLogPreview} from './message-content';
 import './message-content.css';
 
-type Props={text:string;role:'user'|'assistant'|'system';streaming?:boolean};
+type Props={text:string;role:'user'|'assistant'|'system';streaming?:boolean;hasLaterRequest?:boolean;retryAction?:ReactNode};
+function failureTitle(text:string,previous:boolean){
+ if(text.startsWith('답변은 보존했지만'))return previous?'이전 요청의 산출물 저장 실패':'산출물 저장 실패';
+ return previous?'이전 요청 실패':'요청 실패';
+}
 function Markdown({text}:{text:string}){
  return <div className="markdown message-prose">
   <ReactMarkdown remarkPlugins={[remarkGfm]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={{
@@ -14,20 +18,28 @@ function Markdown({text}:{text:string}){
   }}>{text}</ReactMarkdown>
  </div>;
 }
-function LogDetails({raw,title,failed=false,pending=false}:{raw:string;title:string;failed?:boolean;pending?:boolean}){
+function LogDetails({raw,title,failed=false,pending=false,requestFailure,children}:{raw:string;title:string;failed?:boolean;pending?:boolean;requestFailure?:'previous'|'failed';children?:ReactNode}){
  const [open,setOpen]=useState(false),[original,setOriginal]=useState(false),[copied,setCopied]=useState(false),[copyError,setCopyError]=useState('');
  const preview=useMemo(()=>open&&!original?safeLogPreview(raw):'',[raw,open,original]);
  async function copy(){
   try{if(window.flowrium)await window.flowrium.copyText(raw);else await navigator.clipboard.writeText(raw);setCopied(true);setCopyError('');}
   catch{setCopyError('원문을 복사하지 못했습니다. 내용을 선택해 복사하세요.');}
  }
- return <details open={open} className={`message-detail${failed?' message-detail-failed':''}`} data-message-details onToggle={event=>{setOpen(event.currentTarget.open);if(!event.currentTarget.open){setOriginal(false);setCopied(false);setCopyError('');}}}>
-  <summary onClick={event=>{event.preventDefault();setOpen(value=>!value);setOriginal(false);setCopied(false);setCopyError('');}}><TerminalSquare size={14} aria-hidden="true"/><span>{title}</span>{failed&&<span className="message-detail-state">확인 필요</span>}{pending&&<span className="message-detail-state">수신 중</span>}<small>{raw.length.toLocaleString('ko-KR')}자</small><ChevronDown className="message-detail-chevron" size={14} aria-hidden="true"/></summary>
+ return <details open={open} className={`message-detail${failed?' message-detail-failed':''}`} data-request-failure={requestFailure} data-message-details onToggle={event=>{setOpen(event.currentTarget.open);if(!event.currentTarget.open){setOriginal(false);setCopied(false);setCopyError('');}}}>
+  <summary onClick={event=>{event.preventDefault();setOpen(value=>!value);setOriginal(false);setCopied(false);setCopyError('');}}>
+   {requestFailure?<CircleAlert size={14} aria-hidden="true"/>:<TerminalSquare size={14} aria-hidden="true"/>}
+   <span>{title}</span>
+   {failed&&!requestFailure&&<span className="message-detail-state">확인 필요</span>}
+   {pending&&<span className="message-detail-state">수신 중</span>}
+   {!requestFailure&&<small>{raw.length.toLocaleString('ko-KR')}자</small>}
+   <ChevronDown className="message-detail-chevron" size={14} aria-hidden="true"/>
+  </summary>
   {open&&<div className="message-detail-body">
    <p className="message-detail-hint">요약에서는 민감값을 가립니다. 원문은 요청할 때 그대로 표시합니다.</p>
    <div className="message-detail-actions">
     <button type="button" className="button subtle" data-message-detail-control onClick={()=>setOriginal(value=>!value)}>{original?'요약으로 접기':'원문 보기'}</button>
     <button type="button" className="button subtle" data-message-detail-control onClick={()=>void copy()}><Copy size={12} aria-hidden="true"/>{copied?'원문 복사 완료':'원문 복사'}</button>
+    {children}
    </div>
    {copyError&&<p role="status">{copyError}</p>}
    {original?<div className="message-detail-text" role="region" aria-label="작업 원문" data-message-original="true" tabIndex={0}>{raw}</div>:
@@ -35,7 +47,7 @@ function LogDetails({raw,title,failed=false,pending=false}:{raw:string;title:str
   </div>}
  </details>;
 }
-export default function MessageContent({text,role,streaming=false}:Props){
+export default function MessageContent({text,role,streaming=false,hasLaterRequest=false,retryAction}:Props){
  const blocks=useMemo(()=>messageContent(text,role,streaming),[text,role,streaming]);
  return <div className="message-content">
   {blocks.map((block,index)=>block.kind==='markdown'?<Markdown key={index} text={block.text}/>:
@@ -44,6 +56,8 @@ export default function MessageContent({text,role,streaming=false}:Props){
     <div className="message-writing-label"><FileText size={13} aria-hidden="true"/>작성 내용</div>
     <Markdown text={block.text}/>
     <LogDetails raw={block.raw} title="작성 서식 원문"/>
-   </section>:<LogDetails key={index} raw={block.raw} title={role==='system'?'작업 상태':'도구 실행 결과'} failed={block.failed} pending={block.pending}/>) }
+   </section>:role==='system'&&block.failed
+    ?<LogDetails key={index} raw={block.raw} title={failureTitle(block.raw,hasLaterRequest)} failed requestFailure={hasLaterRequest?'previous':'failed'}>{retryAction}</LogDetails>
+    :<LogDetails key={index} raw={block.raw} title={role==='system'?'작업 상태':'도구 실행 결과'} failed={block.failed} pending={block.pending}/>) }
  </div>;
 }
