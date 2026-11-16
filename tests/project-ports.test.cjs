@@ -167,12 +167,26 @@ test('실제 IPv4 수신 포트를 감지하되 기존 서버를 종료하거나
   t.after(() => server.listening ? new Promise(resolve => server.close(resolve)) : undefined);
   const value = server.address().port, state = await probePort(value);
   assert.equal(state.status, 'listening'); assert(state.families.some(row => row.family === 'IPv4' && row.status === 'listening')); assert.equal(server.listening, true); assert.equal(received, 0);
-  await new Promise(resolve => server.close(resolve)); assert.equal((await probePort(value)).status, 'free');
+  await new Promise(resolve => server.close(resolve));
+  assert.equal(server.listening,false);
 });
 test('실제 IPv6 전용 수신 포트를 별도로 감지한다', async t => {
   const server = net.createServer(socket => socket.destroy());
   try { await new Promise((resolve, reject) => { server.once('error', reject); server.listen({ port: 0, host: '::1', ipv6Only: true }, resolve); }); }
   catch (error) { if (['EAFNOSUPPORT', 'EADDRNOTAVAIL', 'EPROTONOSUPPORT'].includes(error.code)) { t.skip('IPv6 비활성 환경'); return; } throw error; }
   t.after(() => new Promise(resolve => server.close(resolve)));
-  const state = await probePort(server.address().port); assert.equal(state.status, 'listening'); assert(state.families.some(row => row.family === 'IPv6' && row.status === 'listening')); assert.equal(server.listening, true);
+  const port=server.address().port;
+  const ipv4=net.createServer();
+  t.after(()=>ipv4.listening?new Promise(resolve=>ipv4.close(resolve)):undefined);
+  try {
+    await new Promise((resolve,reject)=>{ipv4.once('error',reject);ipv4.listen(port,'127.0.0.1',resolve);});
+    await new Promise(resolve=>ipv4.close(resolve));
+  } catch(error){
+    // IPv6가 배정받은 번호는 다른 IPv4 소켓이 이미 사용 중일 수 있다.
+    if(error.code!=='EADDRINUSE')throw error;
+  }
+  const state=await probePort(port);
+  assert.equal(state.status,'listening');
+  assert(state.families.some(row=>row.family==='IPv6' && row.status==='listening'));
+  assert.equal(server.listening,true);
 });

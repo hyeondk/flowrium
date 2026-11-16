@@ -4,9 +4,9 @@ import { LockKeyhole, ShieldCheck } from "lucide-react";
 import type {
   SecurityPreferences,
   SecurityState,
-  UsageSnapshot,
 } from "../shared/security";
 import "./security.css";
+import {creditBalance, type AccountUsage} from "./account-usage";
 
 const initial: SecurityState = {
   loaded: false,
@@ -180,7 +180,7 @@ const switches = [
   ["preventSleep", "Codex 작업 중 자동 절전 방지"],
 ] as const;
 
-export function SecurityPanel({ security }: Props) {
+export function SecurityPanel({ security, accountUsage }: Props & {accountUsage: AccountUsage}) {
   const { state } = security,
     prefs = state.preferences;
   const [current, setCurrent] = useState(""),
@@ -189,7 +189,7 @@ export function SecurityPanel({ security }: Props) {
   const [message, setMessage] = useState(""),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
-  const [usage, setUsage] = useState<UsageSnapshot>();
+  const usage = accountUsage.value;
   const api = window.flowrium;
   if (!api || !prefs) return null;
   async function run(action: () => Promise<unknown>, message = "") {
@@ -340,24 +340,25 @@ export function SecurityPanel({ security }: Props) {
       ))}
       <header>
         <div>
-          <h3>Codex 사용량과 한도</h3>
-          <p>로그인한 계정의 사용 비율과 다음 초기화 시각을 확인합니다.</p>
+          <h3>Codex 사용량과 크레딧</h3>
+          <p>남은 크레딧과 사용 비율, 다음 초기화 시각을 확인합니다.</p>
         </div>
         <button
           className="button subtle"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              const next = await api.readAccountUsage();
-              setUsage(next);
-            })
-          }
+          disabled={accountUsage.busy || !accountUsage.connected}
+          onClick={accountUsage.refresh}
         >
           사용량 조회
         </button>
       </header>
+      {accountUsage.error && <p role="status">{accountUsage.error}</p>}
+      {!usage && !accountUsage.error && <p>{accountUsage.connected ? '계정 정보를 확인하고 있습니다.' : '로그인 후 사용량과 크레딧을 확인할 수 있습니다.'}</p>}
       {usage && (
         <div className="security-usage">
+          <div className="security-credits" aria-label="계정 크레딧">
+            <p><span>남은 크레딧</span><strong>{creditBalance(usage.credits)}</strong></p>
+            {usage.resetCredits !== undefined && <p><span>사용 한도 재설정</span><strong>{usage.resetCredits.toLocaleString('ko-KR')}회</strong></p>}
+          </div>
           {usage.allowed === false && (
             <p>현재 계정에서 기본 사용량을 이용할 수 없습니다.</p>
           )}
@@ -385,14 +386,7 @@ export function SecurityPanel({ security }: Props) {
                   </small>
                 </div>
               ))}
-              {bucket.credits && (
-                <p>
-                  크레딧 /{" "}
-                  {bucket.credits.unlimited
-                    ? "무제한"
-                    : (bucket.credits.balance ?? "잔액 미제공")}
-                </p>
-              )}
+              {usage.buckets.length > 1 && bucket.credits && <p>이 한도의 크레딧 / {creditBalance(bucket.credits)}</p>}
               {!bucket.windows.length && (
                 <p>계정에서 시간대별 수치를 제공하지 않았습니다.</p>
               )}

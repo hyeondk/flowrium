@@ -4,11 +4,12 @@ import {Archive,ClipboardList,Coffee,FileText,Folder,LayoutDashboard,LockKeyhole
 import type {Project} from '../shared/types';
 import './workspace-sidebar.css';
 import SidebarUsage from './SidebarUsage';
+import type {AccountUsage} from './account-usage';
 export type SideDestination='dashboard'|'kickoff'|'archive'|'outputs'|'weekly'|'pause'|'terminal'|'music'|'workflow';
-type Props={current:string;mobileOpen:boolean;projects:Project[];onProjectMove:MoveProject;selected?:string;counts:Record<string,{running:number;waiting:number;decision:number}>;onGo(view:SideDestination):void;onProject(p:Project):void;onSettings():void;onTrash():void;onLock():void;onLogout():void;account?:string;onProjectMenu?(event:MouseEvent,project:Project):void};
+type Props={current:string;mobileOpen:boolean;projects:Project[];onProjectMove:MoveProject;selected?:string;counts:Record<string,{running:number;waiting:number;decision:number}>;onGo(view:SideDestination):void;onProject(p:Project):void;onSettings():void;onTrash():void;onLock():void;onLogout():void;accountUsage:AccountUsage;onProjectMenu?(event:MouseEvent,project:Project):void};
 function MenuRow({label,icon:Icon,active,onClick,extraClass=''}:{label:string;icon:LucideIcon;active?:boolean;onClick():void;extraClass?:string}){return <button type="button" title={label} aria-label={label} aria-current={active?'page':undefined} onClick={onClick} className={'side-row '+extraClass}><Icon size={20} strokeWidth={1.7}/><span>{label}</span></button>}
 function MenuGroup({label,children}:{label:string;children:ReactNode}){return <section className={'side-group '+(label==='도구'?'side-tools':'side-storage')} aria-label={label}><h2>{label}</h2>{children}</section>}
-export default function WorkspaceSidebar({current,mobileOpen,projects,selected,counts,onGo,onProject,onSettings,onLock,onLogout,account,onProjectMenu,onTrash,onProjectMove}:Props){
+export default function WorkspaceSidebar({current,mobileOpen,projects,selected,counts,onGo,onProject,onSettings,onLock,onLogout,accountUsage,onProjectMenu,onTrash,onProjectMove}:Props){
  const grip=useProjectGrip(projects,onProjectMove);
  const [narrow,setNarrow]=useState(()=>innerWidth<=760);
  useEffect(()=>{const query=matchMedia('(max-width:760px)'),update=()=>setNarrow(query.matches);query.addEventListener('change',update);return()=>query.removeEventListener('change',update)},[]);
@@ -29,7 +30,7 @@ export default function WorkspaceSidebar({current,mobileOpen,projects,selected,c
     </section>
     <MenuGroup label="보관">{row('outputs','산출물',FileText)}{row('archive','완료',Archive)}<MenuRow label="휴지통" icon={Trash2} onClick={onTrash}/></MenuGroup>
     <MenuGroup label="도구">{row('workflow','업무 연결 / 비서',MessagesSquare)}{row('weekly','주간업무보고',ClipboardList)}{row('pause','업무 마감',Coffee)}{row('terminal','터미널',SquareTerminal)}{row('music','뮤직',Music2)}<MenuRow label="설정" icon={Settings2} onClick={onSettings} extraClass="settings-button"/><MenuRow label="잠금" icon={LockKeyhole} onClick={onLock}/><MenuRow label="로그아웃" icon={LogOut} onClick={onLogout}/></MenuGroup>
-   </nav><div className="side-foot"><SidebarUsage connected={Boolean(account)}/><div className="side-account" title="제작자 hyeondk"><span className="side-copyright-icon">©</span><span><span className="side-copyright-year">2026 </span>hyeondk</span></div></div>
+   </nav><div className="side-foot"><SidebarUsage usage={accountUsage} expanded={expanded}/><div className="side-account" title="제작자 hyeondk"><span className="side-copyright-icon">©</span><span><span className="side-copyright-year">2026 </span>hyeondk</span></div></div>
   </div>
  </aside>
 }

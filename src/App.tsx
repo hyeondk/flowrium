@@ -14,6 +14,7 @@ import { useWorkspaceDrafts } from "./useWorkspaceDrafts";
 import {useProjectOrder,projectOrderChanged} from "./ProjectOrder";
 import type {ProjectNavigationState} from "../shared/portfolio";
 import WorkspaceSidebar from "./WorkspaceSidebar";
+import {useAccountUsage} from "./account-usage";
 import ConversationDock from "./ConversationDock";
 import {ExecutionSummary} from "./ExecutionStatus";
 import {sessionExecution,visibleProposals,type ExecutionState} from "../shared/execution-state";
@@ -354,6 +355,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   );
 
   const notify = useCallback((message: string) => setToast(message), []);
+  const accountUsage=useAccountUsage(Boolean(connection.authenticated));
   const modelCatalog=useModelCatalog(api,connection.authenticated&&!security.state.locked,setModels,notify);
   const fail = useCallback((error:unknown)=>setSnackbar(error instanceof Error?error.message:"작업을 처리하지 못했습니다."),[]);
   const receiveCatalog=useCallback((catalog:ProjectNavigationState)=>{
@@ -1442,7 +1444,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       )}
       <WorkspaceSidebar current={reportDialog||view} mobileOpen={sidebarOpen} projects={panelProjects} onProjectMove={navigation.move}
         selected={["overview","home","workspace","terminal"].includes(view)?projectId:undefined}
-        onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} counts={projectCounts} account={connection.authenticated?(connection.accountLabel||"ChatGPT 연결됨"):undefined}
+        onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} counts={projectCounts} accountUsage={accountUsage}
         onGo={value=>{if(value==='weekly'||value==='pause')setReportDialog(value);else if(value==='music')setMusicOpen(true);else setView(value);setSidebarOpen(false);}} onProject={selectProject}
         onTrash={()=>{setTrashOpen(true);setSidebarOpen(false);}} onSettings={()=>{setSettingsOpen(true);setSidebarOpen(false);}}
         onLock={()=>{setSidebarOpen(false);if(!security.state.hasPin){setSettingsOpen(true);notify("설정에서 잠금 번호를 정하세요.");return;}void security.lock().catch(fail);}}
@@ -1924,7 +1926,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             </div>
             <SettingsLayout>
               <SettingsGroup id="general"><UpdatePanel settings state={update} fail={fail}/></SettingsGroup>
-              <SettingsGroup id="security"><SecurityPanel security={security}/></SettingsGroup>
+              <SettingsGroup id="security"><SecurityPanel security={security} accountUsage={accountUsage}/></SettingsGroup>
               <SettingsGroup id="transfer"><CodexTransferPanel onChanged={async()=>{if(!api)return;const next=await api.bootstrap();setData(next);if(!projectId&&next.projects[0])setProjectId(next.projects[0].id);}} onOpen={id=>{void (async()=>{const next=await api!.bootstrap();setData(next);const found=next.sessions.find(row=>row.id===id);if(found){setSettingsOpen(false);selectSession(found);}})().catch(fail);}}/><MigrationPanel/></SettingsGroup>
               <SettingsGroup id="integrations"><IntegrationPanel projectId={projectId}/></SettingsGroup>
               <SettingsGroup id="remote"><RemotePanel/></SettingsGroup>

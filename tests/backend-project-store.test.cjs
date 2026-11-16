@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { Store } = require("../electron/store.cjs");
-const { ProjectStore } = require("../electron/project-store.cjs");
+const { ProjectStore, createJSON } = require("../electron/project-store.cjs");
 
 async function fixture(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "flowrium-portable-"));
@@ -28,6 +28,63 @@ function message(value) {
     text: value,
     createdAt: new Date().toISOString(),
   };
+}
+
+test('다른 창이 개정 쓰기 중에 열려도 완성된 개정만 읽는다', async t => {
+  const {root,directory,store,session} = await fixture(t);
+  const history = store.repositories.get(session.projectId).history;
+  const realOpen = fs.open;
+  const writing = Promise.withResolvers(), resume = Promise.withResolvers();
+  t.mock.method(fs, 'open', async (file, flags, ...rest) => {
+    const handle = await realOpen(file, flags, ...rest);
+    if (path.dirname(file) === history && flags === 'wx') {
+      const write = handle.writeFile.bind(handle);
+      handle.writeFile = async data => {
+        const cut = Math.floor(data.length / 2);
+        await write(data.slice(0,cut));
+        writing.resolve();
+        await resume.promise;
+        return write(data.slice(cut));
+      };
+    }
+    return handle;
+  });
+  store.session(session.id).messages.push(message('쓰기 완료 뒤에 볼 메시지'));
+  const save = store.save();
+  await writing.promise;
+  try {
+    const reopened = new Store(path.join(root,'컴퓨터A 설정'));
+    await reopened.load();
+    assert.equal(reopened.session(session.id).messages.length,0);
+  } finally {
+    resume.resolve();
+    await save;
+  }
+  const complete = await ProjectStore.open(directory);
+  assert.equal(complete.saved.get(session.id).messages.at(-1).text,'쓰기 완료 뒤에 볼 메시지');
+  assert((await fs.readdir(history)).every(name => name.endsWith('.json')));
+});
+
+for (const hardLinks of [true,false]) {
+  test('경합한 작성자 중 하나만 기록 게시 / '+(hardLinks?'기본 볼륨':'하드 링크 미지원 볼륨'), async t => {
+    const {root}=await fixture(t);
+    const file=path.join(root,'동시 기록.json');
+    if (!hardLinks) {
+      t.mock.method(fs,'link',async()=>{throw Object.assign(Error('하드 링크 미지원'),{code:'ENOTSUP'});});
+      if (process.platform==='darwin') require('../scripts/build-native.cjs').prepareMac();
+      if (!['darwin','win32'].includes(process.platform)) {
+        await assert.rejects(createJSON(file,{n:1}),{code:'ENOTSUP'});
+        await assert.rejects(fs.stat(file),{code:'ENOENT'});
+        return;
+      }
+    }
+    const replies=await Promise.allSettled([createJSON(file,{n:1}),createJSON(file,{n:2})]);
+    const winner=replies.findIndex(reply=>reply.status==='fulfilled');
+    assert.notEqual(winner,-1);
+    assert.equal(replies[1-winner].reason.code,'EEXIST');
+    assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),{n:winner+1});
+    assert(!(await fs.readdir(root)).some(name=>name.startsWith('.flowrium-write-')));
+  });
 }
 
 test("과거 개정 본문은 메모리에 누적하지 않고 파일이 바뀌면 다시 검증한다", async t => {

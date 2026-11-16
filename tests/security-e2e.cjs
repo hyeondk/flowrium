@@ -76,7 +76,26 @@ async function run() {
   }
   try {
     await launch();
+    const side=page.locator('.workspace-side'), credits=side.locator('.side-credit-row');
+    await page.mouse.move(900,80);
+    await side.getByText('63%',{exact:true}).first().waitFor();
+    assert.equal(await credits.count(),0);
+    const collapsedLock=await btn("잠금").boundingBox();
+    await side.hover();
+    await credits.getByText('1,234.50').waitFor();
+    const expandedLock=await btn("잠금").boundingBox();
+    assert(Math.abs(expandedLock.y-collapsedLock.y)<=1,'메뉴를 펼쳐도 도구 버튼의 세로 위치는 같아야 합니다.');
+    await btn('메뉴 고정').click();
+    await page.mouse.move(900,80);
+    assert(await credits.isVisible());
+    await btn('메뉴 자동 접기').click();
+    await page.mouse.move(900,80);
+    await credits.waitFor({state:'detached'});
+    await side.hover();
     await btn("설정").click();
+    const accountCredits=page.getByLabel('계정 크레딧',{exact:true});
+    await accountCredits.getByText('1,234.50').waitFor();
+    await accountCredits.getByText('2회',{exact:true}).waitFor();
     await btn("사용량 조회").click();
     await page.getByText("5시간 한도 / 37% 사용").waitFor();
     await page.getByLabel("새 잠금 번호", { exact: true }).fill("7904");

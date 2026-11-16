@@ -34,3 +34,13 @@
 /* 하단 도구가 패널 가장자리에 붙지 않도록 마지막 여백을 확보합니다. */
 .app-shell .workspace-side .sidebar-surface{padding-bottom:18px}
 @media(max-height:700px){.app-shell .workspace-side .sidebar-surface{padding-bottom:14px}}
+
+/* 메뉴를 펼치는 중에도 바로 위 도구 버튼의 클릭 위치를 유지합니다. */
+.workspace-side .side-usage{display:grid;grid-template-areas:"usage" "details";grid-template-rows:32px 32px;align-items:center}
+.workspace-side[data-expanded=true] .side-usage{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"usage credits" "details details"}
+.workspace-side .side-usage-refresh{grid-area:usage;gap:5px;min-width:0}
+.workspace-side .side-usage-details{grid-area:details;min-width:0}
+.workspace-side[data-expanded=true] .side-usage-details{height:32px}
+.workspace-side[data-expanded=true] .side-usage-details>div{height:16px}
+.side-credit-row{grid-area:credits;display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:4px;max-width:107px;margin-inline:5px 10px;color:var(--muted);font-size:10px;line-height:14px;word-break:keep-all}
+.side-credit-row strong{grid-column:1 / -1;color:var(--accent);font-size:11px;font-variant-numeric:tabular-nums;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

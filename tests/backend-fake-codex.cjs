@@ -105,7 +105,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     return;
   }
   if (method === "account/rateLimits/read") {
-    write({ id, result: { rateLimits: { limitId: "codex", planType: "pro", primary: { usedPercent: 37, windowDurationMins: 300, resetsAt: 1900000000 } } } });
+    write({ id, result: { rateLimits: { limitId: "codex", planType: "pro", primary: { usedPercent: 37, windowDurationMins: 300, resetsAt: 1900000000 }, credits:{hasCredits:true,unlimited:false,balance:"1234.50"} }, rateLimitResetCredits:{availableCount:2} } });
     return;
   }
   if (method === "model/list") {

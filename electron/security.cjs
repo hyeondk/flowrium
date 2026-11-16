@@ -300,12 +300,26 @@ class Security extends EventEmitter {
   }
 }
 
+function creditView(credits) {
+  if (typeof credits?.hasCredits !== "boolean" || typeof credits.unlimited !== "boolean") return;
+  const balance = typeof credits.balance === "string" ? credits.balance.trim() : "";
+  return {
+    hasCredits: credits.hasCredits,
+    unlimited: credits.unlimited,
+    balance: balance.length > 0 && balance.length <= 50 ? balance : null,
+  };
+}
+
 function usageView(response, now = Date.now()) {
   const multi = response?.rateLimitsByLimitId;
   const limits =
     multi && Object.keys(multi).length
       ? Object.entries(multi)
       : [["codex", response?.rateLimits]];
+  const codexLimits = limits.filter(([id, limit]) => id === "codex" || limit?.limitId === "codex");
+  const fallback = codexLimits.length === 1 ? codexLimits[0] : limits.length === 1 ? limits[0] : undefined;
+  const accountCredits = creditView(response?.rateLimits?.credits) ?? creditView(fallback?.[1]?.credits);
+  const availableCount = response?.rateLimitResetCredits?.availableCount;
   const buckets = [];
   for (const [id, limit] of limits.slice(0, 50)) {
     if (!limit || typeof limit !== "object") continue;
@@ -329,26 +343,20 @@ function usageView(response, now = Date.now()) {
             : null,
       });
     }
+    const credits = creditView(limit.credits);
     buckets.push({
       name: String(limit.limitName || limit.limitId || id).slice(0, 120),
       windows,
       plan:
         typeof limit.planType === "string" ? limit.planType.slice(0, 60) : null,
-      ...(limit.credits &&
-        typeof limit.credits.hasCredits === "boolean" && {
-          credits: {
-            unlimited: limit.credits.unlimited === true,
-            balance:
-              typeof limit.credits.balance === "string"
-                ? limit.credits.balance.slice(0, 50)
-                : null,
-          },
-        }),
+      ...(credits && {credits}),
     });
   }
   return {
     checkedAt: now,
     buckets,
+    ...(accountCredits && {credits:accountCredits}),
+    ...(Number.isSafeInteger(availableCount) && availableCount >= 0 && {resetCredits:availableCount}),
     allowed:
       typeof response?.ordinaryUsageAllowed === "boolean"
         ? response.ordinaryUsageAllowed

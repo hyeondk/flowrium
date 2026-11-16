@@ -181,6 +181,35 @@ test("잠금 전 시작한 비동기 응답과 오류도 화면으로 반환하�
   await assert.rejects(inflightError, /잠겼습니다/);
 });
 
+test("계정 크레딧은 대표 값을 우선하고 한도별 잔액과 초기화권을 합산하지 않는다", () => {
+  const credits = {hasCredits:true, unlimited:false, balance:"123456789.001"};
+  const empty = {hasCredits:false, unlimited:false, balance:null};
+  const unlimited = {hasCredits:true, unlimited:true, balance:null};
+  const limits = {codex:{credits:empty}, other:{credits:unlimited}};
+  const view = usageView({rateLimits:{credits}, rateLimitsByLimitId:limits,
+    rateLimitResetCredits:{availableCount:3, credits:[{id:"비공개 초기화권"}]}});
+  assert.deepEqual(view.credits, credits);
+  assert.deepEqual(view.buckets.map(row => row.credits), [empty, unlimited]);
+  assert.equal(view.resetCredits, 3);
+  assert(!JSON.stringify(view).includes("비공개 초기화권"));
+  assert.deepEqual(usageView({rateLimits:{credits:empty}, rateLimitsByLimitId:{codex:{credits}}}).credits, empty);
+  assert.deepEqual(usageView({rateLimitsByLimitId:limits}).credits, empty);
+  assert.deepEqual(usageView({rateLimitsByLimitId:{standard:{limitId:"codex", credits}, other:{credits:empty}}}).credits, credits);
+  assert.deepEqual(usageView({rateLimitsByLimitId:{only:{credits:unlimited}}}).credits, unlimited);
+  assert.equal(usageView({rateLimitsByLimitId:{a:{credits}, b:{credits}}}).credits, undefined);
+});
+
+test("크레딧이 없다는 응답과 조회 값 누락을 구분하고 공식 초기화권 수만 사용한다", () => {
+  const noCredit = {hasCredits:false, unlimited:false, balance:"0"};
+  assert.deepEqual(usageView({rateLimits:{credits:noCredit},rateLimitResetCredits:{availableCount:0}}).credits, noCredit);
+  assert.equal(usageView({rateLimitResetCredits:{availableCount:0}}).resetCredits, 0);
+  assert.equal(usageView({rateLimits:{credits:{unlimited:false, balance:"0"}}}).credits, undefined);
+  assert.equal(usageView({}).credits, undefined);
+  for (const availableCount of [undefined, null, -1, 0.5, "3", Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(usageView({rateLimitResetCredits:{availableCount,credits:[{status:"available"}]}}).resetCredits, undefined);
+  }
+});
+
 test("계정 한도는 허용 필드만 반환하고 로그아웃은 명시 요청 때 진행 중인 작업과 중복 요청을 확인한다", async (t) => {
   const { controller, security, api, calls } = await create(t);
   assert.equal(calls.length, 0);

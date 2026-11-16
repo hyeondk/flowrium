@@ -17,13 +17,20 @@ export interface SecurityState {
   accountRevision: number;
   preferences?: SecurityPreferences;
 }
+export interface UsageCredits {
+  hasCredits: boolean;
+  unlimited: boolean;
+  balance: string | null;
+}
 export interface UsageSnapshot {
   checkedAt: number;
   allowed: boolean | null;
+  credits?: UsageCredits;
+  resetCredits?: number;
   buckets: {
     name: string;
     plan: string | null;
-    credits?: { unlimited: boolean; balance: string | null };
+    credits?: UsageCredits;
     windows: {
       key: string;
       usedPercent: number;

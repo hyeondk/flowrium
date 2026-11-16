@@ -112,27 +112,55 @@ async function readJSON(file,options={}) {
 }
 async function createJSON(file, value,options={}) {
   const limit=jsonLimit(options);
-  // Exclusive creation ensures that neither another computer's revision nor an
-  // existing source file is replaced. Every update gets a fresh revision UUID.
-  let handle;
   const data = JSON.stringify(value, null, 2);
   if (Buffer.byteLength(data, "utf8") > limit)
     throw new Error(
       "대화 기록이 허용 크기에 도달했습니다. 현재 대화를 내보내고 새 대화를 시작해 주세요.",
     );
+  const stage = path.join(path.dirname(file), '.flowrium-write-' + randomUUID() + '.tmp');
+  const handle = await fs.open(stage, 'wx', 0o600);
   try {
-    handle = await fs.open(file, "wx", 0o600);
-    await handle.writeFile(data);
-    await handle.sync();
+    try {
+      await handle.writeFile(data);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    // A reader sees either no file or the finished JSON. In particular a
+    // simultaneous first open can never replace another device's project ID.
+    await publishNewFile(stage, file);
+  } finally {
+    await fs.rm(stage, {force:true}).catch(() => {});
+  }
+}
+
+async function publishNewFile(stage, file) {
+  try {
+    await fs.link(stage, file);
+    return;
   } catch (error) {
-    if (handle) {
-      await handle.close().catch(() => {});
-      handle = null;
-      await fs.rm(file, { force: true }).catch(() => {});
+    if (error.code === 'EEXIST' || !['darwin','win32'].includes(process.platform)) throw error;
+  }
+  // Some external and cloud volumes disallow hard links. Use an exclusive,
+  // same-directory move on those volumes; plain rename can replace a winner.
+  const run = require('node:util').promisify(require('node:child_process').execFile);
+  try {
+    if (process.platform === 'darwin') {
+      const helper = path.join(__dirname, 'native', 'flowrium-pim').replace(/app\.asar([/\\])/, 'app.asar.unpacked$1');
+      await run(helper, ['--publish-file', stage, file]);
+    } else {
+      const command = "$ErrorActionPreference='Stop'; [System.IO.File]::Move($env:FLOWRIUM_STAGE_FILE,$env:FLOWRIUM_FINAL_FILE)";
+      const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+      await run(powershell, ['-NoProfile','-NonInteractive','-Command',command], {
+        windowsHide:true, env:{...process.env,FLOWRIUM_STAGE_FILE:stage,FLOWRIUM_FINAL_FILE:file}
+      });
+    }
+  } catch (error) {
+    // Preserve the same EEXIST contract for racing writers on all volumes.
+    if (await fs.lstat(file).catch(() => null)) {
+      throw Object.assign(new Error('같은 이름의 기록이 이미 있습니다.'), {code:'EEXIST',path:file});
     }
     throw error;
-  } finally {
-    if (handle) await handle.close();
   }
 }
 

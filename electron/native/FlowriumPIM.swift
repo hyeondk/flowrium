@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import EventKit
 import CryptoKit
 
@@ -75,6 +76,15 @@ func run(_ input: [String: Any]) throws -> Any {
     if event.startDate == nil || event.endDate == nil || event.endDate <= event.startDate || (event.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { try fail("일정 제목과 시작 / 종료를 확인해 주세요.") }
     try store.save(event, span: .thisEvent, commit: true)
     return try eventView(event)
+}
+// The file is already flushed and closed. Publish its name without replacing an
+// existing entry on volumes where a hard link cannot be created.
+if CommandLine.arguments.count == 4 && CommandLine.arguments[1] == "--publish-file" {
+    if renamex_np(CommandLine.arguments[2], CommandLine.arguments[3], UInt32(RENAME_EXCL)) != 0 {
+        perror("renamex_np")
+        exit(1)
+    }
+    exit(0)
 }
 do {
     let value: Any

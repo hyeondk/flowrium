@@ -4,6 +4,8 @@
 
 [다운로드](https://hyeondk.github.io/flowrium/), [릴리스와 설치 파일](https://github.com/hyeondk/flowrium/releases), [터미널 설치](docs/TERMINAL-INSTALL.md), [기능별 지원 범위](docs/FEATURES.md), [Codex 대화 연결](docs/CODEX-CHAT-LINK.md), [사용 범위와 전환 상태](docs/REPLACEMENT-STATUS.md)
 
+왼쪽 메뉴를 펼치면 사용량과 크레딧 잔액을 함께 확인할 수 있습니다.
+
 **261116_04**에서는 예전에 실패한 요청을 원래 시각에 표시합니다. Codex가 같은 대화를 사용 중일 때에도 짧은 글과 사진은 **추가 지시 → Codex 대화 설정으로 보내기**로 이어 보낼 수 있습니다. [변경점](docs/release-notes.md)
 
 ![예시 프로젝트로 촬영한 실제 대시보드. 오늘의 할 일과 목표 진척, 최근 7일 업무 그래프를 표시합니다.](docs/workspace.png)
