@@ -17,7 +17,7 @@ const {Controller} = require('../electron/controller.cjs');
 const {CodexClient, resolveCodex} = require('../electron/codex.cjs');
 
 async function main() {
-  const temp = await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-edit-proof-'));
+  const temp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-edit-proof-')));
   const cwd = path.join(temp,'project'), profile = path.join(temp,'account');
   let current, server, controller, client, issue, variant;
   const external = path.join(process.env.GITHUB_WORKSPACE || process.cwd(),'.flowrium-probe-'+randomUUID());
@@ -104,7 +104,7 @@ async function main() {
         {preferences:{sandbox:'read-only',approval:'never'}});
       if(variant==='external') {
         const quoted = "'" + external.replaceAll("'","''") + "'";
-        writeCommand = 'Set-Content -LiteralPath '+quoted+' -Value ALTERED';
+        writeCommand = process.platform === 'win32' ? 'Set-Content -LiteralPath '+quoted+' -Value ALTERED' : 'echo ALTERED > '+quoted;
       }
       current={id:randomUUID(),marker:'INPUT_'+randomUUID()};
       await fs.writeFile(path.join(cwd,'input.txt'),current.marker+'\n');await fs.rm(path.join(cwd,'copy.txt'),{force:true});
@@ -129,7 +129,7 @@ async function main() {
         controller.on('event',listen);
       });
       await controller.send({sessionId:session.id,text:'프로젝트의 input.txt를 읽고 한 줄을 추가해 copy.txt에도 저장해줘.',mode:variant.includes('plan')?'plan':'build'},{fromComposer:true});
-      const result=await done; if(issue)throw issue;assert.equal(result.status,'completed',result.text);
+      const result=await done; if(issue)throw issue;assert.equal(result.status,'completed',store.session(session.id).messages.filter(m=>m.role==='system').at(-1)?.text || result.text);
       const source=await fs.readFile(path.join(cwd,'input.txt'),'utf8');
       if(writable){assert.match(source,/EDIT/);assert((await fs.readFile(path.join(cwd,'copy.txt'),'utf8')).includes(current.marker));}
       else{assert.equal(source,current.marker+'\n');await assert.rejects(fs.stat(path.join(cwd,'copy.txt')),{code:'ENOENT'});}
