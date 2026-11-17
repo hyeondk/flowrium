@@ -389,6 +389,7 @@ export default function MusicPanel({
             </button>
             <input
               aria-label="음량"
+              aria-valuetext={state.volume+"%"}
               type="range"
               min={0}
               max={100}
@@ -397,7 +398,8 @@ export default function MusicPanel({
                 setState({ ...state, volume: Number(e.target.value) });
                 command("volume", Number(e.target.value));
               }}
-              onPointerUp={() => void save(latest.current)}
+              onPointerUp={event => void save({...latest.current,volume:Number(event.currentTarget.value)})}
+              onKeyUp={event => {if (["ArrowLeft","ArrowRight","ArrowDown","ArrowUp","Home","End","PageUp","PageDown"].includes(event.key)) void save({...latest.current,volume:Number(event.currentTarget.value)});}}
             />
           </label>
         </div>

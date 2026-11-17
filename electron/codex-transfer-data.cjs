@@ -56,7 +56,7 @@ async function snapshot(client,threadId,cwd,forcedActive=false,options={}){
    let role,body='',images=[];
    if(item.type==='userMessage'){role='user';for(const part of item.content||[]){if(part.type==='text'&&typeof part.text==='string')body+=(body?'\n':'')+part.text;else if(['localImage','image','file','localFile'].includes(part.type)){images.push(part);attachments.push({key,part});}}}
    else if(forwarded){role='user';body=forwarded;}
-   else if(['agentMessage','plan'].includes(item.type)){role='assistant';body=typeof item.text==='string'?item.text:'';}
+   else if(['agentMessage','plan'].includes(item.type)){role=item.phase==='commentary'?'system':'assistant';body=typeof item.text==='string'?item.text:'';}
    else if(item.type==='exitedReviewMode'){role='assistant';body=typeof item.review==='string'?item.review:'';}
    else if(item.type==='commandExecution'){role='system';body=['실행 도구 / 명령',item.command,item.aggregatedOutput].filter(v=>typeof v==='string'&&v).join('\n\n');}
    else if(item.type==='fileChange'){role='system';body='파일 변경 기록\n'+JSON.stringify(item.changes||item,null,2);}
@@ -66,7 +66,14 @@ async function snapshot(client,threadId,cwd,forcedActive=false,options={}){
    if(!body)continue;
    const stamp=at(role==='user'?(entry.startedAtMs??turn.startedAt):(entry.completedAtMs??turn.completedAt??turn.startedAt),at(thread.createdAt));
    // 프로젝트 기록의 메시지 크기 제한 안에서 여러 조각으로 보존하며 본문을 자르지 않습니다.
-   for(let offset=0;offset<body.length;offset+=1_900_000){messages.push({id:stable('codex-message:'+threadId+':'+key+':'+offset),role,text:body.slice(offset,offset+1_900_000),createdAt:stamp,...(forwarded&&{delegated:true}),...(turn.id&&{turnId:String(turn.id)})});}
+   const timing = {};
+   if (role === 'user' && turn.startedAt != null) {
+    const started = at(turn.startedAt, null), ended = turn.completedAt != null && at(turn.completedAt, null);
+    if (started) timing.workStartedAt = started;
+    if (started && ended && ended >= started) timing.workCompletedAt = ended;
+   }
+   if (role === 'system' && item.type==='agentMessage' && item.phase==='commentary') timing.progressCommentary=true;
+   for(let offset=0;offset<body.length;offset+=1_900_000){messages.push({id:stable('codex-message:'+threadId+':'+key+':'+offset),role,text:body.slice(offset,offset+1_900_000),createdAt:stamp,...(offset===0&&timing),...(forwarded&&{delegated:true}),...(turn.id&&{turnId:String(turn.id)})});}
   }
  }
  if(options.turns)return {thread,messages,attachments};

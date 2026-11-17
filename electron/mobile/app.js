@@ -1,8 +1,11 @@
 import {maxChatInput,exceedsChatSize,chatLengthError,nativeQueueAction,nativeQueueQuestion,nativeQueueExplanation,nativeQueueNotice,queuedInputView,clearQueueAction,clearQueueQuestion,clearQueueExplanation} from './chat-input.js';
+import {originalAnswerFollowups} from './answer-followup.js';
+import {presentCitations} from './file-citations.js';
+import {projectMode} from './project-mode.js';
 import {creditBalance} from './usage-credits.js';
 import {attachComposerMarkdown} from './composer-markdown.js';
 import {attachmentDisplayText} from './attachment-text.js';
-import {markdownBody,groupMobileHistory,progressButton,syncProgress} from './chat-reader.js';
+import {markdownBody,groupMobileHistory,progressButton,clearProgressChoices} from './chat-reader.js';
 import {installDatePicker} from './date-picker.js';
 import {settingsGuides, reconnectForm} from './install.js';
 import {mobileUpdateSection, resetUpdate, resumeUpdateSettings} from './mobile-update.js';
@@ -85,7 +88,7 @@ function resetHistory() {
 const drafts = new Map();
 const questionDrafts = new Map();
 const selectedProposals = new Map();
-const attachedDrafts = new Map(), attachmentPreviews = new Map(), attachmentFlights = new Map();
+const attachedDrafts = new Map(), attachmentPreviews = new Map(), attachmentFlights = new Map(), missingCitations=new Set();
 let photoObserver;
 let queueItems=[],workflowData,mobileSettings,usageData,pushData,extrasEpoch=0;
 const pendingExtras = new Map();
@@ -241,7 +244,16 @@ async function loadDashboard(retry=false){
   }
   finally{if(dashboardRequest===work){dashboardRequest=undefined;dashboardFetched=Date.now();}}
 }
+function applyAppearance(settings={}) {
+  const html=document.documentElement, dark=settings.theme==='dark';
+  html.dataset.theme=dark?'dark':'light';
+  html.dataset.accent=['blue','green','purple'].includes(settings.accentColor)?settings.accentColor:'blue';
+  document.querySelector('meta[name="theme-color"]').content=dark?'#18212b':'#ffffff';
+}
 function clearPrivateState(nextGate) {
+  if(nextGate==='expired'){clearProgressChoices();applyAppearance();}
+
+  document.querySelector('dialog.citation-zoom[open]')?.close();
   submissionReceipts.clear();
   resetUpdate();
   connection.removeAttribute('data-connected');
@@ -258,12 +270,17 @@ function clearPrivateState(nextGate) {
   drafts.clear();
   questionDrafts.clear();
   selectedProposals.clear();
-  attachedDrafts.clear();attachmentPreviews.clear();attachmentFlights.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;chatModels=chatModelRequest=undefined;extrasEpoch++;
+  attachedDrafts.clear();missingCitations.clear();attachmentPreviews.clear();attachmentFlights.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;chatModels=chatModelRequest=undefined;extrasEpoch++;
   settingsDraft=undefined;
   selectedSession = selectedProject = "";
   statusFilter = "running";
   chatOriginStatus = "";
   route = "projects";
+  routePositions.clear();
+  recentRoutes.length = 0;
+  browserRoutes.splice(0, browserRoutes.length, routeEntry());
+  routeIndex = 0;
+  history.replaceState({flowriumIndex:0},'');
   clearTimeout(errorTimer);
   clearTimeout(noticeExitTimer);
   notice.hidden = true;
@@ -299,6 +316,7 @@ async function poll() {
     const fresh = JSON.stringify(next);
     const changed = gate || fresh !== signature;
     data = next;
+    applyAppearance(next.settings);
     signature = fresh;
     gate = "";
     connection.toggleAttribute('data-connected', Boolean(data.connection?.authenticated));
@@ -353,7 +371,38 @@ async function run(callback) {
     render();
   }
 }
-function go(view, id) {
+const routePositions = new Map(), recentRoutes=[],browserRoutes=[];
+let routeIndex=0;
+history.scrollRestoration='manual';
+history.replaceState({flowriumIndex:0},'');
+browserRoutes.push(routeEntry());
+addEventListener('popstate',event=>{
+  const index=event.state?.flowriumIndex,entry=browserRoutes[index];
+  if(!entry || !data || gate || !Number.isInteger(index))return;
+  const back=index<routeIndex;
+  if(back)recentRoutes.splice(Math.max(0,recentRoutes.length-(routeIndex-index)));
+  go(entry.view,entry.id,{back,tab:entry.tab,historyIndex:index});
+});
+function routeEntry() {
+  return {view:route,id:route==='project'||route==='new'?selectedProject:route==='chat'?selectedSession:route==='status'?statusFilter:'',tab:detailTab};
+}
+const routeKey = entry => entry.view+'|'+(entry.id||'');
+function goBack(fallback,id) {
+  const entry=recentRoutes.pop();
+  if(entry){
+    if(routeIndex>0 && routeKey(browserRoutes[routeIndex-1])===routeKey(entry)){recentRoutes.push(entry);history.back();return;}
+    go(entry.view,entry.id,{back:true,tab:entry.tab});
+  }
+  else go(fallback,id,{back:true});
+}
+function go(view, id, options={}) {
+  const previous=routeEntry(),focus=document.activeElement?.closest('.row');
+  browserRoutes[routeIndex]=previous;
+  routePositions.set(routeKey(previous),{y:scrollY,row:focus?[...content.querySelectorAll('.row')].indexOf(focus):-1});
+  if(['chat','project','new','status'].includes(view) && !options.replace && !options.back && routeKey(previous)!==routeKey({view,id}))recentRoutes.push(previous);
+  else if(!options.back && !['chat','project','new','status'].includes(view))recentRoutes.length=0;
+  if(recentRoutes.length>35)recentRoutes.shift();
+
   assetRequest++;
   if(view==='chat')chatOriginStatus=route==='status'?statusFilter:'';
   const previousRoute=route,previousSession=selectedSession;
@@ -366,7 +415,7 @@ function go(view, id) {
   hideNotice();
   if (view === "project") {
     selectedProject = id;
-    detailTab = "work";
+    detailTab = options.tab || "work";
     teamBoard = files = undefined;
     loadErrors.delete('팀'); loadErrors.delete('문서');
   }
@@ -375,8 +424,18 @@ function go(view, id) {
     queueItems=[];
     selectedProject = session(id)?.projectId || selectedProject;
   }
-  window.scrollTo(0, 0);
+  if(Number.isInteger(options.historyIndex))routeIndex=options.historyIndex;
+  else if(routeKey(previous)!==routeKey(routeEntry())){
+    if(!options.replace)routeIndex++;
+    browserRoutes.splice(routeIndex);
+    history[options.replace?'replaceState':'pushState']({flowriumIndex:routeIndex},'');
+  }
+  browserRoutes[routeIndex]=routeEntry();
   render();
+  if(view==='project' && detailTab!=='work')void loadAssets(false);
+  const restored=options.back && routePositions.get(routeKey(routeEntry()));
+  window.scrollTo({top:restored?.y||0,behavior:'instant'});
+  if(restored?.row>=0)content.querySelectorAll('.row')[restored.row]?.focus({preventScroll:true});
   if(previousRoute!==view || view==='chat' && previousSession!==id){
     content.getAnimations().forEach(animation=>animation.cancel());
     if(!matchMedia('(prefers-reduced-motion: reduce)').matches) content.animate([{opacity:.55,transform:'translateY(5px)'},{opacity:1,transform:'none'}],
@@ -653,12 +712,9 @@ function projects(root) {
   const today = new Date();
   const header = node('header', undefined, 'page-heading');
   const calendar = node('time', new Intl.DateTimeFormat('ko-KR', {month:'long',day:'numeric',weekday:'short'}).format(today));
-  header.append(node('h1','대시보드'), calendar);
-  root.append(header);
+  header.append(calendar,node('h1','대시보드'));
   const overview = node('section', undefined, 'workspace-overview');
-  const projectCount = node('p', String(data.projects.length), 'overview-count');
-  projectCount.append(node('small','개'));
-  overview.append(node('h2','연결된 프로젝트'), projectCount);
+  overview.append(header);
   const status=node('section',undefined,'mobile-execution');
   status.setAttribute('aria-label','프로젝트 대화 진행 상태');
   for(const [key,name] of Object.entries(executionNames)){
@@ -682,8 +738,10 @@ function projects(root) {
     if(loadErrors.has('오늘 할 일'))tasks.append(action('오늘 할 일 다시 불러오기',()=>loadDashboard(true)));
   }else if(!todo.length && !due.length && !goals.length)tasks.append(node('p','진행할 업무가 없습니다.','hint'));
   const projectList = node('section', undefined, 'mobile-list-panel');
-  projectList.append(node('h2','프로젝트 현황'));
-  root.append(tasks,activityChart(),projectList);
+  const projectsHeading=node('header',undefined,'list-heading');
+  projectsHeading.append(node('h2','프로젝트 현황'),node('small',data.projects.length+'개'));
+  projectList.append(projectsHeading);
+  root.append(tasks,projectList,activityChart());
   if(Object.keys(phases).length){
     const counts=node('p',undefined,'hint');
     counts.textContent=Object.entries(phases).map(([phase,count])=>phase+' '+count+'개').join(' / ');
@@ -735,7 +793,7 @@ function activityChart(){
   return chart;
 }
 function statusPage(root){
-  const label=executionNames[statusFilter];root.append(action('대시보드로',()=>go('projects')),node('h1',label+' 대화'));
+  const label=executionNames[statusFilter];root.append(action('대시보드로',()=>goBack('projects')),node('h1',label+' 대화'));
   const list=data.sessions.filter(s=>s.executionState===statusFilter).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
   if(list.length) root.append(sessionList(list));
   if(!list.length)root.append(node('p',label+' 상태의 대화가 없습니다.','hint'));
@@ -843,7 +901,7 @@ function projectPage(root) {
   const p = project(selectedProject);
   if (!p) return projects(root);
   root.append(
-    action("프로젝트 목록으로", () => go("projects")),
+    action("프로젝트 목록으로", () => goBack("projects")),
     node("h1", p.name),
   );
   const tabs = node("div", undefined, "tabs");
@@ -877,7 +935,7 @@ function newWork(root) {
   const p = project(selectedProject);
   if (!p) return projects(root);
   root.append(
-    action("프로젝트로", () => go("project", p.id)),
+    action("프로젝트로", () => goBack("project", p.id)),
     node("h1", "새 업무 대화"),
   );
   const form = node("form"),
@@ -915,7 +973,7 @@ function newWork(root) {
       data.sessions = [s, ...data.sessions.filter((v) => v.id !== s.id)];
       if (values.brief) drafts.set("chat/" + s.id, values.brief);
       for (const k of ["kind", "title", "brief"]) drafts.delete(prefix + k);
-      go("chat", s.id);
+      go("chat", s.id,{replace:true});
     });
   });
   root.append(form);
@@ -952,15 +1010,11 @@ function chatModelPicker(s){
 function chat(root) {
   const s = session(selectedSession);
   if (!s) return projects(root);
-  root.append(
-    chatOriginStatus ? action(executionNames[chatOriginStatus]+" 대화 목록으로",()=>go("status",chatOriginStatus)) : action("프로젝트로", () => go("project", s.projectId)),
-    node("h1", s.title),
-    node(
-      "p",
-      project(s.projectId)?.name + " / " + (kinds[s.workflow?.kind] || "대화"),
-      "hint",
-    ),
-  );
+  const heading=node('header',undefined,'mobile-chat-heading'),origin=recentRoutes.at(-1);
+  const backLabel=origin?.view==='projects'?'대시보드로':chatOriginStatus?executionNames[chatOriginStatus]+' 대화 목록으로':'프로젝트로';
+  const back=action('',()=>goBack('project',s.projectId));back.setAttribute('aria-label',backLabel);back.title=backLabel;
+  heading.append(back,node('h1',s.title));
+  root.append(heading,node('p',(project(s.projectId)?.name||'')+' / '+(kinds[s.workflow?.kind]||'대화'),'chat-context'));
   const pending = data.approvals.filter((a) => a.sessionId === s.id);
   if (pending.length) approvals(pending, root);
   if (historyError) {
@@ -976,21 +1030,25 @@ function chat(root) {
     root.append(more);
   }
   const timeline=groupMobileHistory(historyPage?.messages||[],s,running(s.id));
-  syncProgress(timeline.groups);
+  const history=node('div',undefined,'mobile-timeline');root.append(history);
   for (const row of timeline.rows) {
-    if(row.group){root.append(progressButton(row.group));continue;}
+    if(row.group){history.append(progressButton(row.group));continue;}
     const m=row.message;
     const block = node("article", undefined, "message");
     block.dataset.role = m.role;
     block.dataset.messageId = m.id;
+    const citations=presentCitations(m.text||'',m.role,running(s.id)&&m.id===s.lastMessageId);
+
     block.append(
       node(
         "small",
         (m.role === "user" ? "나" : m.role === "assistant" ? "Codex" : "작업 상태") + " / " + date(m.createdAt),
       ),
-      markdownBody(m.role==='user'&&!m.attachmentHeaderRemoved?attachmentDisplayText(m.text):m.text),
+      markdownBody(m.role==='user'&&!m.attachmentHeaderRemoved?attachmentDisplayText(citations.text):citations.text),
     );
-    appendAttachments(block,m.attachments||[],s.projectId,m.id);
+    const cited=new Set(citations.references?.map(ref=>ref.attachmentId).filter(Boolean));
+    appendAttachments(block,(m.attachments||[]).filter(file=>!cited.has(file.id)),s.projectId,m.id);
+    for(const group of citations.groups)block.append(citationCard(s,m,group));
     if(m.sourceOnly){
       const details=node('details'),summary=node('summary','요청 원문 읽기'),body=node('p'),buttons=node('div',undefined,'actions');
       let offset=0,next=null;const previous=[];
@@ -1001,7 +1059,7 @@ function chat(root) {
       details.addEventListener('toggle',()=>{if(details.open && !body.textContent)load().catch(error=>showNotice(error.message,'error'));});
       block.append(details);
     }
-    root.append(block);
+    history.append(block);
   }
   if (running(s.id)) {
     const stop = confirmationButton('작업 중단', 'interrupt/' + s.id, '실행 중인 작업을 중단할까요?', s.title, () =>
@@ -1030,45 +1088,54 @@ function chat(root) {
     if(queueItems.some(item=>queuedInputView(item).canResume))queue.append(action("대기 지시 이어 보내기",()=>run(async()=>{await call("resumeQueuedMessages",s.id);await loadQueue()})));
     root.append(queue);
   }
-  const form = node("form"),
+  const form = node("form",undefined,"chat-compose"),
     draftId = "chat/" + s.id,
     text = bindDraft(node("textarea"), draftId, "");
 
-  const initialMode =
-    s.workflow?.teamSlot?.mode ||
-    (s.workflow?.kind === "task" ? "build" : "plan");
-  const mode = bindDraft(
-    select(
-      [
-        ["plan", "계획"],
-        ["build", "구현"],
-        ["review", "검토"],
-      ],
-      initialMode,
-    ),
-    "mode/" + s.id,
-    initialMode,
-  );
+  const mode = projectMode(s,drafts.get('mode/'+s.id),data.settings);
   const canSteer = running(s.id) && data.canSteer;
   const submit = node("button", canSteer ? "현재 작업에 전달" : running(s.id) ? "추가 지시 대기열에 넣기" : "요청 보내기", "main-action");
   submit.type = "submit";
   submit.disabled = busy || !data.connection?.authenticated;
   const options=node('div',undefined,'chat-options');
-  options.append(label("작업 모드", mode),chatModelPicker(s));
+  const modelPicker=chatModelPicker(s);modelPicker.firstChild.remove();options.append(modelPicker);
   const textLabel=label('요청',text),editor=node('span',undefined,'markdown-input');
   const ink=node('span',undefined,'markdown-input-ink');ink.setAttribute('aria-hidden','true');
   text.replaceWith(editor);editor.append(text,ink);
-  form.append(textLabel,options);
+  text.rows=1;text.placeholder='이어서 요청하세요';textLabel.firstChild.remove();
+  form.append(textLabel);
+  if(historyPage && !running(s.id) && !pending.length && !busy) {
+    const suggested=originalAnswerFollowups({...s,messages:historyPage.messages})[0];
+    if(suggested){
+      const accept=()=>{
+        if(text.value || composingField || busy)return;
+        text.value=suggested.prompt;text.dispatchEvent(new Event('input',{bubbles:true}));
+        text.focus({preventScroll:true});text.setSelectionRange(text.value.length,text.value.length);
+      };
+      const button=action('',accept,'mobile-followup');
+      button.append(node('span',suggested.prompt),node('kbd','Tab'));
+      button.hidden=!!text.value;
+      const sync=()=>{button.hidden=!!text.value || !!composingField;};
+      text.addEventListener('input',sync);text.addEventListener('compositionstart',()=>button.hidden=true);text.addEventListener('compositionend',()=>queueMicrotask(sync));
+      text.addEventListener('keydown',event=>{
+        if(event.key==='Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing && !text.value && !button.hidden){
+          event.preventDefault();accept();
+        }
+      });
+      form.append(button);
+    }
+  }
+  form.append(options);
   if (s.executionState) {
     const state=node('p',executionNames[s.executionState],'chat-state');
     state.dataset.state=s.executionState;
-    root.insertBefore(state,root.querySelector('h1')?.nextSibling||null);
+    heading.append(state);
   }
   if(s.canCompleteWaiting){
     const choices=node('div',undefined,'actions');
     const proceed=action('진행하기',()=>run(async()=>{
       const attachments=attachedDrafts.get(s.id)||[];
-      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:s.lastMessageId,...await mobileChatInput(s,text.value),attachments:attachments.map(a=>a.id),mode:mode.value});
+      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:s.lastMessageId,...await mobileChatInput(s,text.value),attachments:attachments.map(a=>a.id),mode});
       submissionReceipts.delete(s.id);drafts.delete(draftId);attachedDrafts.delete(s.id);
     }));
     const complete=action('완료',()=>run(async()=>{
@@ -1077,6 +1144,7 @@ function chat(root) {
     proceed.disabled=busy||!data.connection?.authenticated;complete.disabled=busy;choices.append(proceed,complete);form.append(choices);
   }
   attachmentComposer(form,s);
+  form.insertBefore(form.querySelector('.attachments'),options);
   if (canSteer) {
     const choices=node('div',undefined,'actions'), queue=node('button','다음 차례');
     queue.type='submit'; queue.dataset.delivery='queue'; queue.disabled=submit.disabled;
@@ -1099,7 +1167,7 @@ function chat(root) {
         sessionId: s.id,
         ...await mobileChatInput(s,value),
         attachments:attachments.map(a=>a.id),
-        mode: mode.value,
+        mode,
       });
       submissionReceipts.delete(s.id);drafts.delete(draftId);attachedDrafts.delete(s.id);await loadQueue();
       showNotice(result.steered ? "현재 작업에 추가 지시를 전달했습니다." : result.waitingForWriter ? "요청을 보관했습니다. 채팅의 추가 지시에서 전달 상태를 확인할 수 있습니다." : result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
@@ -1119,7 +1187,49 @@ async function loadQueue(){
   const id=selectedSession,epoch=accessEpoch;if(route!=='chat'||gate||!id)return;
   try{const rows=await call('listQueuedMessages',id);if(epoch!==accessEpoch||id!==selectedSession)return;if(JSON.stringify(rows)!==JSON.stringify(queueItems)){queueItems=rows;render()}}catch{}
 }
-function observePhoto(img,attachment,projectId) {
+function citationCard(session,message,group) {
+  const card=node('section',undefined,'mobile-citation'),status=node('p',undefined,'hint');
+  const id=session.id+':'+message.id+':'+group.key;
+  const epoch=accessEpoch, readable=()=>epoch===accessEpoch && !gate && selectedSession===session.id;
+  const load=(file,action)=>call('readChatCitation',session.id,message.id,file.index,action);
+  const report=error=>{
+    if(epoch!==accessEpoch)return;
+    if(error.gate){clearPrivateState(error.gate);return;}
+    if(readable()){if(missingCitations.size>=128)missingCitations.delete(missingCitations.values().next().value);missingCitations.add(id);card.querySelector('.citation-preview')?.remove();status.hidden=false;status.textContent='파일을 열 수 없습니다. 컴퓨터에서 파일 위치를 확인하세요.';}
+  };
+  const picture=group.files.find(f=>f.image);
+  if(picture && !missingCitations.has(id)) {
+    const preview=node('button',undefined,'citation-preview'),image=node('img');
+    preview.type='button';preview.setAttribute('aria-label',picture.name+' 확대');image.alt=picture.name+' 미리보기';
+    preview.append(image);card.append(preview);
+    const cacheId='ref:'+session.id+':'+message.id+':'+picture.index+':'+picture.path;
+    observePhoto(image,{name:picture.name,id:cacheId},session.projectId,()=>load(picture,'preview'),report);
+    preview.addEventListener('click',()=>{
+      if(!readable()||!image.src)return;
+      const dialog=node('dialog',undefined,'citation-zoom');dialog.setAttribute('aria-label',picture.name+' 확대');
+      const full=node('img');full.src=image.src;full.alt=picture.name;
+      dialog.append(full,action('닫기',()=>dialog.close()));
+      dialog.addEventListener('close',()=>{dialog.remove();preview.focus({preventScroll:true});},{once:true});
+      document.body.append(dialog);dialog.showModal();
+    });
+  }
+  status.hidden=true;status.setAttribute('role','status');
+  if(missingCitations.has(id))report({});
+  for(const file of group.files){
+    const download=action(file.name+' 내려받기',async()=>{
+      download.disabled=true;
+      try{
+        const result=await load(file,'download');
+        if(!readable()||!result?.dataUrl?.startsWith('data:'))return;
+        const link=node('a');link.href=result.dataUrl;link.download=result.name;document.body.append(link);link.click();link.remove();
+        missingCitations.delete(id);status.hidden=true;
+      }catch(error){report(error);}finally{download.disabled=false;}
+    });
+    card.append(download);
+  }
+  card.append(status);return card;
+}
+function observePhoto(img,attachment,projectId,read=()=>call('readChatAttachment',projectId,attachment.id),onError) {
   const id=projectId+':'+attachment.id;
   img.alt='첨부 사진';
   img.setAttribute('aria-label',attachment.name);
@@ -1129,7 +1239,7 @@ function observePhoto(img,attachment,projectId) {
   img.loadPreview=async()=>{
     if(epoch!==accessEpoch||gate)return;
     if(!attachmentFlights.has(id)){
-      const flight=call('readChatAttachment',projectId,attachment.id).then(result=>{
+      const flight=read().then(result=>{
         if(epoch!==accessEpoch||gate)return;
         if(result.dataUrl) {
           if(attachmentPreviews.size>=48)attachmentPreviews.delete(attachmentPreviews.keys().next().value);
@@ -1143,7 +1253,7 @@ function observePhoto(img,attachment,projectId) {
       const url=await attachmentFlights.get(id);
       if(img.isConnected && epoch===accessEpoch && url)img.src=url;
       else if(!url)img.alt='미리보기를 열 수 없습니다';
-    }catch(error){if(error.gate&&epoch===accessEpoch)clearPrivateState(error.gate);else img.alt='미리보기를 열 수 없습니다';}
+    }catch(error){if(error.gate&&epoch===accessEpoch)clearPrivateState(error.gate);else {img.alt='미리보기를 열 수 없습니다';onError?.(error);}}
   };
   photoObserver ||= new IntersectionObserver(entries=>{
     for(const entry of entries)if(entry.isIntersecting){
@@ -1178,7 +1288,7 @@ function appendAttachments(parent,items,projectId,id,remove) {
 function attachmentComposer(form,s){
   const box=node('section',undefined,'attachments'),picker=node('input');picker.type='file';picker.multiple=true;picker.disabled=busy;picker.setAttribute('aria-label','파일 첨부');
   picker.addEventListener('change',()=>{const files=[...picker.files];void uploadAttachments(s,files)});
-  box.append(label('파일 첨부',picker),node('p','사진을 붙여 넣거나 파일을 끌어 놓으세요.','hint'));
+  const choose=label('파일 첨부',picker);choose.className='mobile-attach-button';box.append(choose);
   appendAttachments(box,attachedDrafts.get(s.id)||[],s.projectId,'draft:'+s.id,id=>{attachedDrafts.set(s.id,(attachedDrafts.get(s.id)||[]).filter(x=>x.id!==id));render()});
   form.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files'))e.preventDefault()});
   form.addEventListener('drop',e=>{if(e.dataTransfer?.files.length){e.preventDefault();void uploadAttachments(s,[...e.dataTransfer.files])}});
@@ -1271,6 +1381,55 @@ async function loadExtras(announce=true){
   }finally{if(pendingExtras.get(target)===ticket)pendingExtras.delete(target);}
 }
 function workflowDo(input){return run(async()=>{await call('workflowAction',input);await loadExtras();showNotice('반영했습니다.')})}
+function reminderRepeat() {
+  const group=node('fieldset',undefined,'repeat-segment');group.append(node('legend','반복'));
+  for(const [value,name] of [['0','반복 안 함'],['1','매일'],['7','매주']]){
+    const input=node('input');input.type='radio';input.name='repeatDays';input.value=value;
+    input.checked=value===(drafts.get('reminder/repeat')||'0');
+    input.addEventListener('change',()=>drafts.set('reminder/repeat',value));
+    const option=node('label');option.append(input,node('span',name));group.append(option);
+  }
+  return group;
+}
+function assistantPreferences(root) {
+  const prefs=workflowData.preferences,form=node('form');
+  const enabled=node('input'),report=node('input');
+  const prefKey=key=>'assistant/preferences/'+key;
+  for(const [field,key] of [[enabled,'enabled'],[report,'aiReports']]){
+    field.checked=drafts.get(prefKey(key))??prefs[key];
+    field.addEventListener('change',()=>drafts.set(prefKey(key),field.checked));
+  }
+  const interval=bindDraft(node('input'),prefKey('intervalMinutes'),String(prefs.intervalMinutes));
+  interval.type='text';interval.inputMode='numeric';interval.pattern='[0-9]{1,4}';interval.required=true;
+  interval.setAttribute('aria-label','확인 주기 (분)');
+  const group=node('div',undefined,'mobile-stepper'),step=delta=>{
+    const button=action(delta>0?'+':'−',()=>{
+      const value=Number(interval.value);
+      interval.value=String(Math.min(1440,Math.max(5,(Number.isInteger(value)?value:prefs.intervalMinutes)+delta)));
+      interval.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    button.setAttribute('aria-label','확인 주기 5분 '+(delta>0?'늘리기':'줄이기'));return button;
+  };
+  const minus=step(-5),plus=step(5);
+  const validate=()=>{const n=Number(interval.value);interval.setCustomValidity(Number.isInteger(n)&&n>=5&&n<=1440?'':'5분부터 1,440분까지 숫자로 입력하세요.');minus.disabled=n<=5;plus.disabled=n>=1440;};
+  interval.addEventListener('input',validate);validate();
+  group.append(minus,interval,plus);
+  form.append(settingsSwitch('자동 비서 사용',enabled),settingsSwitch('ChatGPT로 보고 생성',report),node('strong','확인 주기 (분)'),group);
+  const hours={};
+  for(const [key,name] of [['startHour','업무 시작 시간'],['endHour','업무 종료 시간']]){
+    const slider=node('input');slider.type='range';slider.min='0';slider.max='23';slider.step='1';
+    bindDraft(slider,prefKey(key),String(prefs[key]));
+    const control=label(name,slider),value=node('output');control.className='mobile-hour-range';
+    const update=()=>{value.textContent=slider.value+'시';slider.setAttribute('aria-valuetext',value.textContent);};
+    slider.addEventListener('input',update);update();control.append(value);form.append(control);hours[key]=slider;
+  }
+  const save=node('button','비서 설정 저장','main-action');save.type='submit';form.append(save);
+  form.addEventListener('submit',event=>{event.preventDefault();
+    const value={enabled:enabled.checked,aiReports:report.checked,intervalMinutes:Number(interval.value),startHour:Number(hours.startHour.value),endHour:Number(hours.endHour.value)};
+    void run(async()=>{await call('workflowAction',{action:'preferences',value});for(const key of Object.keys(value))drafts.delete(prefKey(key));await loadExtras();showNotice('반영했습니다.');});
+  });
+  root.append(form);
+}
 function assistantPage(root){
   root.append(node('h1','업무 연결 / 비서'),action('비서 상태 새로 고침',()=>loadExtras()));
   if(!workflowData){root.append(loadingRegion('비서 상태'));return}
@@ -1308,15 +1467,17 @@ function assistantPage(root){
     form.append(label('대상 대화',target),label('요청 제목',title),label('보낼 내용',text));const mode=select([['send','기존 대화에 메시지'],['request','업무 요청 제안']],'send');form.append(label('연결 방식',mode));const submit=node('button','업무 연결 보내기','main-action');submit.type='submit';submit.disabled=busy||!data.sessions.length;form.append(submit);form.addEventListener('submit',e=>{e.preventDefault();void workflowDo(mode.value==='send'?{action:'send',targetId:target.value,text:text.value}:{action:'request',targetId:target.value,title:title.value||'업무 요청',text:text.value})});root.append(form);
     for(const d of workflowData.deliveries.slice(0,30)){const card=node('section',undefined,'box');card.append(node('p',d.text,'body'),node('small',d.status));if(['failed','held'].includes(d.status))card.append(action('메시지 다시 전달',()=>workflowDo({action:'retryDelivery',id:d.id})));root.append(card)}
   }else if(workflowTab==='reminders'){
-    const form=node('form'),text=bindDraft(node('textarea'),'reminder/text',''),at=bindDraft(node('input'),'reminder/at',''),repeat=select([['0','반복 안 함'],['1','매일'],['7','매주']],'0');text.required=at.required=true;at.type='datetime-local';form.append(label('예약 알림 내용',text),label('알림 시간',at),label('반복',repeat));const submit=node('button','예약 알림 추가','main-action');submit.type='submit';form.append(submit);form.addEventListener('submit',e=>{e.preventDefault();void workflowDo({action:'reminderAdd',text:text.value,when:new Date(at.value).toISOString(),repeatDays:Number(repeat.value)})});root.append(form);
+    const form=node('form'),text=bindDraft(node('textarea'),'reminder/text',''),at=bindDraft(node('input'),'reminder/at','');
+    text.required=at.required=true;at.type='datetime-local';at.dataset.timeParts='';
+    form.append(label('예약 알림 내용',text),label('알림 시간',at),reminderRepeat());
+    const submit=node('button','예약 알림 추가','main-action');submit.type='submit';form.append(submit);
+    form.addEventListener('submit',e=>{e.preventDefault();void workflowDo({action:'reminderAdd',text:text.value,when:new Date(at.value).toISOString(),repeatDays:Number(form.elements.repeatDays.value)})});root.append(form);
     for(const r of workflowData.reminders.filter(r=>!r.cancelled)){const card=node('section',undefined,'box');card.append(node('p',r.text),node('small',date(r.nextAt)),confirmationButton('예약 취소','reminder/'+r.id,'예약 알림을 취소할까요?',r.text,()=>workflowDo({action:'reminderCancel',id:r.id})));root.append(card)}
   }else if(workflowTab==='reports'){
     root.append(action('AI 업무 보고 생성',()=>workflowDo({action:'reportNow'})),action('결정 추천 생성',()=>workflowDo({action:'recommend'})),action('프로젝트 현황 수집',()=>workflowDo({action:'collect'})));
     for(const report of workflowData.reports.slice(0,20)){const card=node('section',undefined,'box');card.append(node('h2',date(report.at)+' / '+(report.status||'보고')),node('p',report.body||report.error||'AI가 보고서를 작성하고 있습니다.','body'));if(report.sessionId&&session(report.sessionId))card.append(action('보고 대화 열기',()=>go('chat',report.sessionId)));root.append(card)}
   }else{
-    const form=node('form'),prefs=workflowData.preferences,enabled=node('input'),ai=node('input'),interval=select([['15','15분'],['30','30분'],['60','1시간'],['120','2시간'],['240','4시간']],String(prefs.intervalMinutes));enabled.type=ai.type='checkbox';enabled.checked=prefs.enabled;ai.checked=prefs.aiReports;
-    const start=select(Array.from({length:24},(_,i)=>[String(i),i+'시']),String(prefs.startHour)),end=select(Array.from({length:24},(_,i)=>[String(i),i+'시']),String(prefs.endHour));
-    form.append(label('자동 비서 사용',enabled),label('ChatGPT로 보고 생성',ai),label('확인 주기',interval),label('업무 시작 시간',start),label('업무 종료 시간',end));const submit=node('button','비서 설정 저장');submit.type='submit';form.append(submit);form.addEventListener('submit',e=>{e.preventDefault();void workflowDo({action:'preferences',value:{enabled:enabled.checked,aiReports:ai.checked,intervalMinutes:Number(interval.value),startHour:Number(start.value),endHour:Number(end.value)}})});root.append(form);
+    assistantPreferences(root);
   }
 }
 function settingsSwitch(name, input) {
@@ -1454,9 +1615,9 @@ function render() {
   mobileEditor?.dispose();mobileEditor=undefined;
   composingField=undefined;pendingComposerRender=false;
   photoObserver?.disconnect();
-  if(route!=='chat'||gate||!data)syncProgress();
   const galleryPositions=new Map([...content.querySelectorAll('[data-gallery]')].map(strip=>[strip.dataset.gallery,strip.scrollLeft]));
   const active = document.activeElement,
+    progressFocus=active?.dataset?.workGroup,
     field = active?.dataset?.field,
     settingsGuide = route === 'settings' && active?.dataset?.settingsGuide,
     confirmAction = active?.dataset?.confirmAction,
@@ -1537,6 +1698,7 @@ function render() {
   renderedChatId=data && !gate && route==='chat' ? selectedSession : undefined;
   const restored=anchor && content.querySelector('[data-message-id="'+CSS.escape(anchor.id)+'"]');
   if(restored)window.scrollBy(0,restored.getBoundingClientRect().top-anchor.top);
+  if(progressFocus)content.querySelector('[data-work-group="'+CSS.escape(progressFocus)+'"]')?.focus({preventScroll:true});
   if (field) {
     const next = [...content.querySelectorAll("[data-field]")].find(
       (el) => el.dataset.field === field,

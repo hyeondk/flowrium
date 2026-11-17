@@ -11,7 +11,7 @@ const {
   UUID,
 } = require("./project-store.cjs");
 
-const DEFAULT_SETTINGS = { effort: "medium", theme: "light" };
+const DEFAULT_SETTINGS = { effort: "medium", theme: "light", accentColor: "blue" };
 const MAX_TEXT = 200_000;
 function text(value, label, max = MAX_TEXT) {
   if (
@@ -28,11 +28,13 @@ function settings(input, current = DEFAULT_SETTINGS) {
     throw new Error("설정 형식이 올바르지 않습니다.");
   const next = { ...current };
   for (const key of Object.keys(input)) {
-    if (!["codexPath", "model", "effort", "theme", "chatDefaults"].includes(key))
+    if (!["codexPath", "model", "effort", "theme", "accentColor", "chatDefaults"].includes(key))
       throw new Error("지원하지 않는 설정입니다.");
     const value = input[key];
     if (key === "effort" && !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(value))
       throw new Error("추론 강도를 확인해 주세요.");
+    if (key === "accentColor" && !["blue", "green", "purple"].includes(value))
+      throw new Error("강조색을 확인해 주세요.");
     if (key === "theme" && !["dark", "light"].includes(value))
       throw new Error("화면 테마를 확인해 주세요.");
     if (key === "codexPath" || key === "model") {
@@ -128,7 +130,7 @@ class Store {
       const next = {
         projects: [],
         sessions: [],
-        settings: settings(raw.settings || {}),
+        settings: settings({...raw.settings,accentColor:["blue","green","purple"].includes(raw.settings?.accentColor)?raw.settings.accentColor:"blue"}),
       };
       for (const project of raw.projects) {
         try {
@@ -363,6 +365,7 @@ class Store {
     if(pool&&(extra.workflow||extra.personalAssistant||extra.scope&&extra.scope!==project.conversationScope))throw Error('프로젝트 업무는 프로젝트 대화에서 시작해 주세요.');
     const now = new Date().toISOString();
     let id = randomUUID();
+    if (extra.generalAssistant === true && project.conversationScope !== "general") throw new Error("개인 비서는 일반 대화에서 열 수 있습니다.");
     if (extra.personalAssistant === true) {
       const hex = createHash("sha256").update("flowrium:personal-assistant:" + projectId).digest("hex");
       id = [hex.slice(0,8),hex.slice(8,12),"8"+hex.slice(13,16),"a"+hex.slice(17,20),hex.slice(20,32)].join("-");
@@ -374,8 +377,10 @@ class Store {
       id,
       projectId,
       ...(pool&&{scope:project.conversationScope}),
+      ...(!pool && !extra.workflow && !extra.personalAssistant && (extra.defaultProjectMode === "build" || (!extra.threadId && !extra.messages)) && {defaultProjectMode:"build"}),
       title: extra.title || "새로운 작업",
       ...(extra.personalAssistant === true && { personalAssistant: true }),
+      ...(extra.generalAssistant === true && { generalAssistant: true }),
       ...(extra.workflow && { workflow: extra.workflow }),
       ...(extra.threadId && {threadId:extra.threadId}),
       ...(extra.preferences && {preferences:structuredClone(extra.preferences)}),

@@ -17,7 +17,7 @@ export default function ChatAccessHint({session,defaults,mode,running,onBuild}:P
       (approval==='on-request' ? '추가 권한이 필요한 요청은 승인 여부를 묻습니다.' : '추가 권한을 요청하지 않습니다.');
   }
   return <span title={detail}><ShieldCheck size={12}/>{description}
-    {!session?.scope && !sandbox && mode!=='build' && !running &&
-      <button type="button" className="chat-edit-mode" title="프로젝트 파일 변경을 AI에 허용합니다" onClick={onBuild}>구현 모드로 전환</button>}
+    {session && !session.scope && access==='read-only' && !running &&
+      <button type="button" className="chat-edit-mode" title="프로젝트 파일 변경을 AI에 허용합니다" onClick={onBuild}>이 대화에서 프로젝트 편집 허용</button>}
   </span>;
 }

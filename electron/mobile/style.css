@@ -3,7 +3,7 @@
 @font-face{font-family:NanumSquareRound;src:url("/fonts/NanumSquareRoundB.woff2") format("woff2");font-style:normal;font-weight:700;font-display:swap}
 @font-face{font-family:NanumSquareRound;src:url("/fonts/NanumSquareRoundEB.woff2") format("woff2");font-style:normal;font-weight:800;font-display:swap}
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #f7f7f6;
   --panel: #fff;
   --text: #252728;
@@ -255,8 +255,8 @@ h1 {
 #nav[hidden] {
   display: none;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
+:root[data-theme=dark] {
+    color-scheme: dark;
     --bg: #1e2021;
     --panel: #262829;
     --text: #e8e9e8;
@@ -267,7 +267,6 @@ h1 {
     --warn: #413a2f;
     --warnText: #e7d8b8;
     --focus: #b5cbdc;
-  }
 }
 
 .mobile-question form {

@@ -68,7 +68,16 @@ export function installDatePicker() {
     if (time) {
       const label = element('label','시각'); time.type = 'time';
       time.value = field.value.split('T')[1] || '09:00';
-      label.append(time); dialog.append(label);
+      if(field.hasAttribute('data-time-parts')){
+        const parts=element('div','', 'mobile-time-parts');parts.setAttribute('role','group');parts.setAttribute('aria-label','시각 선택');
+        const controls=[['시',24],['분',60]].map(([name,count],i)=>{
+          const control=element('select');control.setAttribute('aria-label',name);
+          for(let n=0;n<count;n++){const value=String(n).padStart(2,'0'),option=element('option',value+name);option.value=value;control.append(option);}
+          control.value=time.value.split(':')[i];parts.append(control);return control;
+        });
+        parts.addEventListener('change',()=>{time.value=controls.map(control=>control.value).join(':');updateTime();});
+        dialog.append(parts);
+      }else{label.append(time);dialog.append(label);}
       timeSave = button('적용','선택한 날짜와 시각 적용',()=>finish(chosen+'T'+time.value));
       time.addEventListener('input',updateTime);
     }

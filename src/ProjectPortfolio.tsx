@@ -618,21 +618,7 @@ export function ProjectPortfolio({
               }
             </p>
           </div>
-          {view === "dashboard" && (
-            <div className="pf-actions">
-              <button onClick={onChooseProject}>
-                <FolderOpen size={15} />
-                기존 폴더 연결
-              </button>
-              <button
-                className="pf-primary"
-                onClick={() => onNavigate("kickoff")}
-              >
-                <Plus size={16} />
-                프로젝트 추가
-              </button>
-            </div>
-          )}
+          {view === "kickoff" && <div className="pf-actions"><button onClick={onChooseProject}><FolderOpen size={15}/>기존 폴더 연결</button></div>}
         </header>
         {error && (
           <p role="alert" className="pf-error">
@@ -745,7 +731,7 @@ export function ProjectPortfolio({
                   새 프로젝트를 설계하거나 기존 폴더를 연결하면 업무, 팀, 자료를
                   한곳에서 관리할 수 있습니다.
                 </p>
-                <button onClick={onChooseProject}>프로젝트 폴더 선택</button>
+
               </section>
             )}
             {!!activeCards.length && !filtered(activeCards).length && (

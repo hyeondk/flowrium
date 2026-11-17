@@ -693,7 +693,7 @@
 .app-shell .pf-overview .pf-content .pf-panel {
   padding: 16px;
   border-radius: 12px;
-  background: linear-gradient(180deg,var(--surface-high),var(--card-subtle));
+  background: var(--panel);
 }
 .app-shell .pf-overview .pf-content .pf-panel > .pf-section-header:first-child {
   align-items: center;

@@ -88,7 +88,7 @@ function registerConversationTools(register,controller) {
     const messages=structuredClone(session.messages.slice(0,nextUser<0?undefined:nextUser));
     const forkTurns=await threadTurns(client,fork.thread.id);assignTurns(messages,forkTurns);
     const workflow=session.workflow&&{...structuredClone(session.workflow),status:'active'};if(workflow)delete workflow.completion;
-    const result=await store.createSession(session.projectId,{title:('분기 / '+session.title).slice(0,300),workflow,messages:messages.map(m=>({...m,id:randomUUID()})),threadId:fork.thread.id,preferences:session.preferences,context:session.context,applicationTools:session.applicationTools});
+    const result=await store.createSession(session.projectId,{title:('분기 / '+session.title).slice(0,300),workflow,messages:messages.map(m=>({...m,id:randomUUID()})),threadId:fork.thread.id,defaultProjectMode:session.defaultProjectMode,preferences:session.preferences,context:session.context,applicationTools:session.applicationTools});
     controller.loadedThreads.add(fork.thread.id);
     return result;
    }

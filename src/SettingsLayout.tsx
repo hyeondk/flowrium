@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState,type ReactNode} from 'react';
-const groups=[['general','일반'],['security','보안'],['transfer','대화와 자료'],['integrations','외부 자료'],['remote','휴대폰'],['voice','음성'],['account','계정과 모델'],['appearance','화면']] as const;
+const groups=[['general','일반'],['security','보안'],['remote','휴대폰'],['voice','음성'],['account','계정과 모델'],['appearance','화면']] as const;
 export function SettingsGroup({id,children}:{id:typeof groups[number][0];children:ReactNode}){
  return <div className="settings-group" data-settings-group={id}>{children}</div>;
 }

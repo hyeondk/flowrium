@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
 const {_electron}=require('playwright'),{Store}=require('../electron/store.cjs');
-const {closeSettings,openConversation}=require('./shell-test-helpers.cjs');
+const {openConversation}=require('./shell-test-helpers.cjs');
 async function main(){const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-copy-ui-')));let app,page;
  try{
   const profile=path.join(temp,'profile'),folder=path.join(temp,'합성 프로젝트'),fixture=path.join(temp,'source.json');await fs.mkdir(folder);
@@ -15,7 +15,7 @@ async function main(){const root=path.resolve(__dirname,'..'),temp=await fs.real
   app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(16000);
   // 프로젝트 발견 목록만 합성 위치로 공급합니다. 실제 IPC / 원문 조회 / 보관 / 대화 저장은 제품 코드를 사용합니다.
   await app.evaluate(({app},{folder,threadId})=>{const req=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json'),{CodexTransfer}=req('./electron/codex-transfer.cjs'),original=CodexTransfer.prototype.projects;CodexTransfer.prototype.projects=function(input){return original.call(this,{...input,projects:[{name:'합성 프로젝트',path:folder,threadIds:[threadId]}]});};},{folder,threadId});
-  await page.locator('.side-usage[data-connected=true]').waitFor();await page.getByRole('button',{name:'설정',exact:true}).click();await page.locator('[data-settings-target=transfer]').click();const panel=page.getByRole('region',{name:'Codex 프로젝트 대화 연결',exact:true});
+  await page.locator('.side-usage[data-connected=true]').waitFor();await page.getByRole('button',{name:'업무 연결 / 비서',exact:true}).click();await page.locator('.work-resources>summary').click();const panel=page.getByRole('region',{name:'Codex 프로젝트 대화 연결',exact:true});
   await panel.getByRole('button',{name:'Codex 대화 찾기',exact:true}).click();await panel.getByText(source.title,{exact:true}).waitFor();assert.equal(crypto.createHash('sha256').update(await fs.readFile(fixture)).digest('hex'),original,'미리보기 원본 불변');
   await app.evaluate(({app})=>{
     const req=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json');
@@ -56,7 +56,7 @@ async function main(){const root=path.resolve(__dirname,'..'),temp=await fs.real
   let snapshot=await page.evaluate(()=>window.flowrium.bootstrap()),session=snapshot.sessions.find(s=>s.threadId===threadId);assert(session?.codexLink);assert.equal(session.codexLink.mode,'linked');assert(session.messages.some(m=>m.text.includes('보존할 합성 도구 기록')));assert.equal(session.messages[0].attachments?.length,1,'사라진 이미지의 대화 기록 사본 복구');assert.equal(crypto.createHash('sha256').update(await fs.readFile(rollout)).digest('hex'),rolloutHash,'복구 전후 원본 기록 바이트 보존');
   assert.deepEqual(snapshot.sessions.filter(row=>!before.includes(row.id)).map(row=>row.id).sort(),[session.id,queued.id].sort(),'연결한 대화와 대기시킨 대화만 각각 한 번 저장된다');
   assert.deepEqual(snapshot.sessions.find(row=>row.id===unrelated.id)?.messages,[preserved],'다른 프로젝트에 있던 원문을 보존한다');
-  await panel.locator('summary').filter({hasText:'대화 연결 기록'}).click();await panel.getByRole('button',{name:'보관 원문',exact:true}).click();await panel.locator('pre').filter({hasText:'flowrium-codex-source'}).waitFor();await closeSettings(page);await openConversation(page,source.title);
+  await panel.locator('summary').filter({hasText:'대화 연결 기록'}).click();await panel.getByRole('button',{name:'보관 원문',exact:true}).click();await panel.locator('pre').filter({hasText:'flowrium-codex-source'}).waitFor();await openConversation(page,source.title);
   await page.locator('.codex-link-bar').waitFor();await page.getByRole('button',{name:'좋아요',exact:true}).first().click();
   const changed=JSON.parse(await fs.readFile(fixture,'utf8')),at=now+5;changed.updatedAt=at;changed.turns.push({id:crypto.randomUUID(),status:'completed',startedAt:at,completedAt:at,items:[{id:crypto.randomUUID(),type:'userMessage',content:[{type:'text',text:'원래 앱에서 추가한 합성 요청'}]},{id:crypto.randomUUID(),type:'agentMessage',text:'원래 앱에서 추가한 합성 답변',phase:'final_answer'}]});await fs.writeFile(fixture,JSON.stringify(changed));
   await page.getByText('원래 앱에서 추가한 합성 답변',{exact:true}).waitFor();snapshot=await page.evaluate(()=>window.flowrium.bootstrap());session=snapshot.sessions.find(s=>s.threadId===threadId);assert(session.messages.some(m=>m.reaction==='like'),'갱신 뒤 로컬 반응 보존');

@@ -105,11 +105,11 @@ async function gitOverview(root, from = "", to = "") {
       ? { reason: "일부 Git 기록을 읽지 못했습니다." } : {}),
   };
 }
-function artifactParts(relative) {
+function artifactParts(relative, allowImage = false) {
   if (!bounded(relative, 1500) || relative.includes("\\") || relative.includes("\0") || path.isAbsolute(relative)) throw invalid();
   const parts = relative.split("/");
   if (!documentRoots.includes(parts[0]) || parts.length < 2 || parts.some((p) => !p || p.startsWith(".") || /[:\x00-\x1f]/.test(p)) ||
-      !documents.has(path.extname(relative).toLowerCase())) throw new Error("프로젝트의 산출물 파일만 열 수 있습니다.");
+      !(documents.has(path.extname(relative).toLowerCase()) || allowImage && /\.(png|jpe?g|gif|webp)$/i.test(relative))) throw new Error("프로젝트의 산출물 파일만 열 수 있습니다.");
   return parts;
 }
 async function checkedDirectory(root, parts, create = false) {
@@ -126,8 +126,8 @@ async function checkedDirectory(root, parts, create = false) {
   }
   return dir;
 }
-async function artifactFile(root, relative) {
-  const parts = artifactParts(relative);
+async function artifactFile(root, relative, allowImage = false) {
+  const parts = artifactParts(relative, allowImage);
   const name = parts.pop();
   const dir = await checkedDirectory(root, parts);
   const file = path.join(dir, name);
@@ -494,4 +494,4 @@ function registerWorkbench(register, store, { reveal, isRunning = () => false })
     await reveal(file);
   });
 }
-module.exports = { registerWorkbench, startWork, workContext, validateWorkflow, saveArtifact, autoSaveWorkArtifact };
+module.exports = { artifactFile, projectRoot, registerWorkbench, startWork, workContext, validateWorkflow, saveArtifact, autoSaveWorkArtifact };

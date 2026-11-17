@@ -4,6 +4,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { _electron } = require('playwright');
 const { Store } = require('../electron/store.cjs');
+const {dockHome}=require('./shell-test-helpers.cjs');
 
 async function test() {
   const root = path.resolve(__dirname,'..');
@@ -41,6 +42,8 @@ async function test() {
       await page.waitForFunction(id=>document.querySelector('[data-project-sort-id="'+id+'"][data-project-drag=moving]'),id);
       await page.mouse.move(y.x+y.width/2,y.y+y.height/2,{steps:7});await page.mouse.up();
     };
+    assert.equal(await page.locator(right).first().isVisible(),false);
+    await dockHome(page);
     await hold(right,c,a);
     await expected([c,a,b]);
     assert.match(await page.locator('.main-shell').getAttribute('data-view'),/dashboard/);
@@ -60,7 +63,7 @@ async function test() {
     await page.getByRole('button',{name:'킥오프 저장',exact:true}).click();
     await page.getByRole('heading',{name:'개정한 표시 이름',exact:true}).first().waitFor();
     await page.locator('.workspace-side button[aria-label="개정한 표시 이름"]').waitFor();
-    const dockHome=page.getByRole('button',{name:'대화 홈으로',exact:true}); if(await dockHome.count())await dockHome.click();
+    await dockHome(page);
     await page.locator(right).filter({hasText:'개정한 표시 이름'}).waitFor();
     assert.ok((await fs.stat(projects[0].path)).isDirectory());
     await page.locator('.project-details summary').click();

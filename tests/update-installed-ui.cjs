@@ -142,7 +142,7 @@ async function checkNewProfile(binary,temporary,userData,fixture,version) {
     console.log('새 프로필 / 입력창 초안 복원 대기');
     await page.waitForFunction(text=>document.querySelector('textarea[aria-label="Codex에 보낼 작업 요청"]')?.value===text,fixture.draft.text,{timeout:30000});
     assert.equal(await composer.inputValue(),fixture.draft.text);
-    assert.equal(await page.getByLabel('작업 모드',{exact:true}).inputValue(),fixture.draft.mode);
+    assert.equal(await page.getByLabel('작업 모드',{exact:true}).count(),0);
     console.log('새 설치본 재기동 / 이전 프로젝트 주소와 평문 메시지 / 보내지 않은 입력의 이전 및 복원 확인');
   } finally {await closeInstalledApp(app,'새 프로필 검사 앱 종료');}
 }

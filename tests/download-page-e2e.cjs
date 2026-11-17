@@ -18,7 +18,9 @@ async function run() {
     "releases.mjs",
     "release-config.mjs",
     "mark.png",
-    "workspace.png",
+    "workspace-sales.png",
+    "workspace-sales-chat.png",
+    "sales-example.mjs",
     "fonts/NanumSquareRoundR.woff2",
     "fonts/NanumSquareRoundB.woff2",
     "fonts/NanumSquareRoundEB.woff2",
@@ -70,10 +72,11 @@ async function run() {
     page.on('requestfailed',request=>{pending.delete(request);requestFailures.push({url:request.url(),error:request.failure()?.errorText});});
     page.on('pageerror',error=>pageErrors.push(error.message));
     let tag = "261114_01",
-      error = false;
+      error = false, missing = false, noRelease = false;
     await page.route(
       "https://api.github.com/repos/" + repository + "/releases/latest",
       (route) => {
+        if (noRelease) return route.fulfill({ status: 404, body: "{}" });
         if (error) return route.fulfill({ status: 503, body: "unavailable" });
         const version = tag.startsWith("v")?tag.slice(1):tag,
           names = [
@@ -87,7 +90,7 @@ async function run() {
             draft: false,
             prerelease: false,
             tag_name: tag,
-            assets: names.map((name) => ({
+            assets: (missing ? [] : names).map((name) => ({
               name,
               state: "uploaded",
               size: 50000000,
@@ -111,33 +114,78 @@ async function run() {
     });
     assert.deepEqual(fonts.counts,[1,1,1]);assert.match(fonts.family,/NanumSquareRound/);
     for(const name of ['NanumSquareRoundR.woff2','NanumSquareRoundB.woff2','NanumSquareRoundEB.woff2'])assert.ok(serverRequests.includes('/fonts/'+name),'공식 로컬 글꼴 '+name);
-    assert.match(await page.locator('.hero p').innerText(),/우측 대화를 고정한 채 왼쪽에서 대시보드와 자료를 살펴볼 수 있습니다/);
-    assert.match(await page.locator('.app-preview figcaption').innerText(),/예시 프로젝트로 촬영한 실제 화면입니다.*대시보드와 우측 대화는 독립적으로 탐색/);
-    const image = page.locator(".app-preview img");
-    await page.waitForFunction(()=>{const image=document.querySelector('.app-preview img');return image?.complete&&image.naturalWidth===1440&&image.naturalHeight===1000;});
-    assert.equal(
-      await image.evaluate(
-        (e) => e.complete && e.naturalWidth === 1440 && e.naturalHeight === 1000,
-      ),
-      true,
-    );
-    assert.ok(
-      await page.getByText(/Apple 미공증 버전은 직접 설치/).isVisible(),
-    );
-    for (const width of [320, 390, 768, 1280]) {
-      await page.setViewportSize({ width, height: 844 });
-      assert.ok(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth + 1,
-        ),
-        "다운로드 가로폭 " + width,
-      );
-      assert.equal(
-        await page
-          .locator(".hero p")
-          .evaluate((n) => getComputedStyle(n).wordBreak),
-        "keep-all",
-      );
+    const { monthlySales, amount, growthPercent, salesAnswer } = await import('../docs/sales-example.mjs');
+    assert.deepEqual(monthlySales, [2400,2700,2550,3000,3200,3600]);
+    assert.equal(growthPercent, 50);
+    assert.equal(await page.locator('.hero h1').textContent(), '자료를 보며 AI와 일하세요.');
+    assert.equal(await page.locator('.hero-copy > p').textContent(), '프로젝트 자료를 펼쳐 두고, 오른쪽 대화에서 수정을 요청하세요. 완성한 문서는 같은 프로젝트에 보관할 수 있습니다.');
+    assert.deepEqual(await page.locator('.features h3').allTextContents(), ['오늘 할 일 확인하기','답변을 문서로 남기기','휴대폰에서 이어보기']);
+    assert.equal((await page.locator('.product-example figcaption').textContent()).includes('가상의 매출 데이터로 구성한 예시 화면입니다.'),true);
+    assert.deepEqual(await page.locator('.sales-bars data').allTextContents(),monthlySales.map(amount));
+    assert.deepEqual(await page.locator('.sales-bars li > span').allTextContents(),monthlySales.map((_, i) => (i+1)+'월'));
+    assert.match(await page.locator('.install-note').first().textContent(), /해당 버전의 릴리스/);
+    assert.doesNotMatch(await page.locator('body').innerText(), /산책길|중앙역|벤치|노선도/);
+    assert.match(await page.locator('meta[name=description]').getAttribute('content'), /온라인 스토어 매출 분석/);
+    const client = await page.context().newCDPSession(page);
+    const {root:doc} = await client.send('DOM.getDocument');
+    await client.send('DOM.enable');
+    await client.send('CSS.enable');
+    for (const selector of ['.hero h1 span','.hero-platforms','.download-button','.chart-title b','.sales-bars data']) {
+      const {nodeId} = await client.send('DOM.querySelector', {nodeId:doc.nodeId, selector});
+      const {fonts} = await client.send('CSS.getPlatformFontsForNode',{nodeId});
+      assert(fonts.some(f=>f.isCustomFont && /NanumSquareRound|나눔스퀘어라운드/i.test(f.familyName) && f.glyphCount>0),selector+'의 실제 웹글꼴');
+    }
+    await page.keyboard.press('Tab');
+    assert.equal(await page.locator(':focus').textContent(),'본문으로 이동');
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator(':focus').getAttribute('id'),'main');
+    const captures = process.env.FLOWRIUM_SITE_SCREENSHOTS;
+    if(captures) await fs.mkdir(captures,{recursive:true});
+    for (const width of [320,390,768,1440]) {
+      await page.setViewportSize({ width, height: width>=768?900:844 });
+      await page.evaluate(()=>{ document.documentElement.style.scrollBehavior='auto'; window.scrollTo(0,0); });
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),'다운로드 가로폭 '+width);
+      assert.equal(await page.locator('.hero-copy > p').evaluate(e=>getComputedStyle(e).wordBreak),'keep-all');
+      assert.deepEqual(await page.locator('.sales-bars data').allTextContents(), monthlySales.map(amount));
+      const heights = await page.locator('.sales-bars i').evaluateAll(nodes=>nodes.map(e=>e.getBoundingClientRect().height));
+      assert(heights[2] < heights[1] && heights[5] > heights[4], '3월의 하락과 6월의 최고 매출');
+      if(captures && [390,768,1440].includes(width)) await page.screenshot({path:path.join(captures,'homepage-'+width+'.png'),animations:'disabled'});
+      await page.locator('#example-open').click();
+      const dialog = page.getByRole('dialog',{name:'온라인 스토어 매출 분석'});
+      await dialog.waitFor();
+      assert.equal(await dialog.locator('[data-sales-summary]').textContent(),salesAnswer);
+      assert.deepEqual(await dialog.locator('tbody td').allTextContents(),monthlySales.map(amount));
+      const asset = await dialog.locator('img').evaluate(async image => {
+        await image.decode();
+        return {url:new URL(image.currentSrc).pathname,w:image.naturalWidth,h:image.naturalHeight};
+      });
+      assert.equal(asset.url,width<=620?'/workspace-sales-chat.png':'/workspace-sales.png');
+      assert(asset.w>=300 && asset.h>=200);
+      await page.keyboard.press('Escape');
+      await dialog.waitFor({state:'hidden'});
+      assert.equal(await page.locator(':focus').getAttribute('id'),'example-open');
+      await page.locator('.hero-actions a[href="#workspace"]').click();
+      assert.equal(new URL(page.url()).hash,'#workspace');
+      await page.locator('.hero-actions a[href="#download"]').click();
+      assert.equal(new URL(page.url()).hash,'#download');
+      await page.evaluate(()=>document.documentElement.style.fontSize='200%');
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), '확대 글자 가로폭 '+width);
+      const legible = await page.locator('.sales-bars data').evaluateAll(nodes=>{
+        const cells=nodes.map(node=>node.getBoundingClientRect());
+        return cells.every((cell,i)=>cells.slice(i+1).every(other=>other.top>=cell.bottom-1 || cell.top>=other.bottom-1 || other.left>=cell.right-1 || cell.left>=other.right-1));
+      });
+      assert(legible,'확대 글자의 월별 매출 숫자가 서로 겹치지 않음 '+width);
+      await page.evaluate(()=>document.documentElement.style.removeProperty('font-size'));
+    }
+    for (const [selector,surface] of [['.hero-platforms','#deecfc'],['.product-example figcaption','#deecfc'],['.download-card small','#ffffff'],['.sales-bars data','#ffffff']]) {
+      const ratio=await page.locator(selector).first().evaluate((node,color)=>{
+        const rgb=getComputedStyle(node).color.match(/[0-9.]+/g).slice(0,3).map(Number);
+        const bg=[1,3,5].map(i=>parseInt(color.slice(i,i+2),16));
+        const luminance=values=>values.map(v=>{const n=v/255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4;}).reduce((s,n,i)=>s+n*[.2126,.7152,.0722][i],0);
+        const a=luminance(rgb),b=luminance(bg);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+      },surface);
+      console.log('글자 대비',selector,ratio.toFixed(2));
+      assert.ok(ratio>=4.5,selector);
     }
     assert.match(
       await page.locator('[data-download="mac-arm64"]').getAttribute("href"),
@@ -150,6 +198,16 @@ async function run() {
       await page.locator('[data-download="mac-arm64"]').getAttribute("href"),
       null,
     );
+    assert(await page.getByRole('button',{name:'다시 확인'}).isVisible());
+    noRelease = true;
+    await page.reload({waitUntil:'domcontentloaded'});
+    await page.getByRole('status').filter({hasText:'첫 공개 릴리스'}).waitFor();
+    assert.equal(await page.locator('[data-download][href]').count(),0);
+    noRelease = false; missing = true;
+    await page.getByRole('button',{name:'다시 확인'}).click();
+    await page.getByRole('status').filter({hasText:'설치 파일을 추가'}).waitFor();
+    assert.equal(await page.locator('[data-download][href]').count(),0);
+    missing = false;
     error = true;
     await page.reload({waitUntil:'domcontentloaded'});
     await page.getByRole("button", { name: "다시 확인" }).waitFor();
@@ -159,7 +217,7 @@ async function run() {
     await page.getByRole("status").filter({ hasText: "2개 플랫폼" }).waitFor();
     assert.deepEqual(pageErrors,[]);
     console.log(
-      "공개 페이지 실제 브라우저 검증 / 공식 로컬 글꼴 3종 / 대화함과 자동 메뉴 소개 / 실제 앱 이미지 / 네 화면 폭 / 미공증 안내 / 플랫폼 링크 / 이전 Mac 차단 / 재시도",
+      "공개 페이지 실제 브라우저 / 렌더링된 로컬 웹폰트 / 매출 표와 그래프 / 확대·초점·키보드 / 네 화면 폭·큰 글씨 / 실제 앱 사진 / 다운로드 상태와 재시도",
     );
   } catch(error){
     console.error('다운로드 페이지 진단',JSON.stringify({pending:[...pending].map(request=>request.url()),requestFailures,pageErrors,serverRequests:serverRequests.slice(-80),readyState:page&&!page.isClosed()?await page.evaluate(()=>document.readyState).catch(()=>null):null}));

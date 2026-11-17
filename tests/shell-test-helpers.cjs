@@ -7,7 +7,7 @@ async function dockHome(page){
  await dock.waitFor();
  const back=dock.getByRole('button',{name:'대화 목록으로',exact:true});if(await back.isVisible())await back.click();
  const home=dock.getByRole('button',{name:'대화 홈으로',exact:true});if(await home.isVisible())await home.click();
- await dock.locator('.dock-scope-card').first().waitFor();return dock;
+ await dock.locator('.dock-scope-card').first().waitFor();const picker=dock.locator('.dock-project-picker');if(await picker.count()&&!await picker.evaluate(node=>node.open))await picker.locator('summary').click();return dock;
 }
 async function openConversation(page,title,{expanded=false}={}){
  const data=await page.evaluate(()=>window.flowrium.bootstrap()),session=data.sessions.find(s=>s.title===title);if(!session)throw Error('검증할 대화를 찾을 수 없습니다: '+title);

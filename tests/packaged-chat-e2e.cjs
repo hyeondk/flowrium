@@ -14,6 +14,12 @@ function serveCodex() {
   const lines=readline.createInterface({input:process.stdin});
   lines.on('line',line=>{
     const request=JSON.parse(line);
+    if(request.method==='turn/start' && process.env.FLOWRIUM_POLICY_TRACE) {
+      const params=request.params||{};
+      require('node:fs').appendFileSync(process.env.FLOWRIUM_POLICY_TRACE,JSON.stringify({
+        threadId:params.threadId,sandbox:params.sandboxPolicy?.type,approval:params.approvalPolicy,
+      })+'\n');
+    }
     if(request.method==='account/read') {
       process.stdout.write(JSON.stringify({id:request.id,result:{account:{type:'chatgpt',email:'test@example.invalid',planType:'pro'}}})+'\n');
     }else child.stdin.write(line+'\n');
@@ -41,7 +47,7 @@ async function run() {
   const profile=path.join(temp,'profile'),codex=path.join(temp,'codex');
   let app,page,server,phase='시작',serviceError,responseCount=0;
   const inputs=[], errors=[];
-  const env={...process.env,CODEX_HOME:codex,FLOWRIUM_OFFLINE_KEY:'local-test-only',FLOWRIUM_PACKAGED_CODEX:native};
+  const env={...process.env,CODEX_HOME:codex,FLOWRIUM_OFFLINE_KEY:'local-test-only',FLOWRIUM_PACKAGED_CODEX:native,FLOWRIUM_POLICY_TRACE:path.join(temp,'turn-policies.jsonl')};
   if(!windows)env.HOME=temp;
   delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   async function launch() {
@@ -74,7 +80,7 @@ async function run() {
         const prompt=input.filter(v=>v.role==='user').flatMap(v=>Array.isArray(v.content)?v.content.map(c=>c.text):v.content).findLast(v=>/^시험요청\d+$/.test(v));
         if(prompt)inputs.push(prompt);
         const id='resp_'+(++responseCount);
-        // Suggestions and housekeeping may request a separate completion.
+        // Internal housekeeping may request a separate completion.
         const text=prompt?'시험 응답 '+prompt:'보조 요청을 확인했습니다.';
         const answer={id:'item_'+responseCount,type:'message',status:'completed',role:'assistant',content:[{type:'output_text',text,annotations:[]}]};
         const events=[{type:'response.created',response:{id,status:'in_progress'}},{type:'response.output_item.added',output_index:0,item:{...answer,content:[]}},{type:'response.output_item.done',output_index:0,item:answer},{type:'response.completed',response:{id,status:'completed',output:[answer],usage:{input_tokens:5,output_tokens:5,total_tokens:10}}}];
@@ -102,6 +108,12 @@ async function run() {
       sessions.push(await send(prompt,scope));
     }
     assert.equal(new Set(sessions.map(s=>s.threadId)).size,4);
+    const policies=(await fs.readFile(env.FLOWRIUM_POLICY_TRACE,'utf8')).trim().split('\n').map(line=>JSON.parse(line));
+    for(const projectChat of [first,second]){
+      const turn=policies.find(row=>row.threadId===projectChat.threadId);
+      assert.equal(turn?.sandbox,'workspaceWrite','설치본 프로젝트 입력창의 실제 쓰기 권한');
+      assert.equal(turn.approval,'on-request','설치본 프로젝트 입력창의 추가 승인 정책');
+    }
     await app.close();app=undefined;
     await launch();await openConversation(page,first.title);
     const resumed=await send('시험요청5',undefined,projects[0].id);

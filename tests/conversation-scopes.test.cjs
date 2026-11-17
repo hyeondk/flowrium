@@ -66,7 +66,7 @@ test('일반 / 통합 대화의 계정별 영속 저장과 실행 범위 격리'
   const start=scoped[0].calls.find(c=>c.method==='thread/start').params,turn=scoped[0].calls.find(c=>c.method==='turn/start').params;
   assert.equal(start.permissions,'flowrium_hub_general');assert.equal(start.approvalPolicy,'never');assert.deepEqual(start.dynamicTools.map(tool=>tool.name),['flowrium_read_current_request']);assert(!start.sandbox);assert.equal(turn.permissions,start.permissions);assert(!turn.sandboxPolicy);assert.equal(start.config.permissions[start.permissions].network.enabled,false);assert.equal(start.config.permissions[start.permissions].filesystem[':root'],'deny');assert.equal(scoped[0].overrides['features.shell_tool'],false);assert.equal(scoped[0].overrides['mcp_servers."example".enabled'],false);
   assert(!JSON.stringify(turn.input).includes('프로젝트 현황 근거'));assert(!JSON.stringify(turn.input).includes(original));
-  assert.match(turn.additionalContext.flowrium_app.value,/미완료 작업/);
+  assert.doesNotMatch(JSON.stringify(turn),/미완료 작업/);
   assert(!JSON.stringify(start).includes('미완료 작업'));assert(!JSON.stringify(turn.input).includes('미완료 작업'));
   await assert.rejects(callScopeTool(controller,run,{tool:'flowrium_hub_snapshot',arguments:{query:''}}),/일반 대화/);
   await controller.finish(run,'completed');

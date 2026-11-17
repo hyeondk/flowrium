@@ -56,7 +56,7 @@ async function run() {
     await app.evaluate(({ dialog }, selection) => {
       dialog.showOpenDialog = async () => ({canceled: false, filePaths:[selection]});
     }, project);
-    await btn("프로젝트 폴더 선택").click();
+    await btn("프로젝트 추가").click();await btn("기존 폴더 연결").click();
     await page.locator("[data-work-kind=task]").waitFor();
     await page.locator(".settings-button").click();
     await page.locator(".settings-section").filter({has:page.getByRole("heading",{name:"Codex 연결",exact:true})}).getByRole("button",{name:"연결 확인",exact:true}).click();

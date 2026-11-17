@@ -81,11 +81,11 @@ async function run() {
     await page.mouse.move(900,80);
     await side.getByText('63%',{exact:true}).first().waitFor();
     assert.equal(await credits.count(),0);
-    const collapsedLock=await btn("잠금").boundingBox();
+    const collapsedSettings=await btn("설정").boundingBox();
     await side.hover();
     await credits.getByText('1,234.50').waitFor();
-    const expandedLock=await btn("잠금").boundingBox();
-    assert(Math.abs(expandedLock.y-collapsedLock.y)<=1,'메뉴를 펼쳐도 도구 버튼의 세로 위치는 같아야 합니다.');
+    const expandedSettings=await btn("설정").boundingBox();
+    assert(Math.abs(expandedSettings.y-collapsedSettings.y)<=1,'메뉴를 펼쳐도 도구 버튼의 세로 위치는 같아야 합니다.');
     await btn('메뉴 고정').click();
     await page.mouse.move(900,80);
     assert(await credits.isVisible());
@@ -103,7 +103,7 @@ async function run() {
     await page.getByLabel("새 번호 확인").fill("7904");
     await btn("잠금 번호 설정").click();
     await page.getByText("잠금 번호를 저장했습니다.").waitFor();
-    await page.getByLabel("자리 비움 자동 잠금").selectOption("5");
+    await page.getByRole("combobox",{name:"자리 비움 자동 잠금"}).click();await page.getByRole("option",{name:"5분 후",exact:true}).click();
     await page.waitForFunction(
       async () =>
         (await window.flowrium.securityState()).preferences?.idleMinutes === 5,
@@ -137,7 +137,7 @@ async function run() {
       page.evaluate(() => window.flowrium.logoutSecurity()),
       /진행 중/,
     );
-    await btn("잠금").click();
+    await side.hover();await btn("잠금").click();
     await page.getByRole("heading", { name: "화면 잠금" }).waitFor();
     assert(
       !(await page.locator("body").innerText()).includes("잠금 검증 프로젝트"),
@@ -174,9 +174,9 @@ async function run() {
     await sidebar.getByRole("button", { name: "Flowrium 홈" }).hover();
     const projectButton = sidebar.getByRole("button", { name: project.name, exact: true });
     await projectButton.hover();
-    const decisionBadge = projectButton.locator('.side-state[data-state="decision"]');
+    const decisionBadge = projectButton.locator('.side-project-label small[data-state="decision"]');
     await decisionBadge.waitFor({ state: "visible" });
-    assert.equal(await decisionBadge.innerText(), "결정 1");
+    assert.match(await decisionBadge.innerText(), /결정 1건/);
     await page.evaluate(
       (q) =>
         window.flowrium.approval({
@@ -192,14 +192,14 @@ async function run() {
           ?.messages.some((m) => m.role === "assistant"),
       session.id,
     );
-    await btn("로그아웃").click();
+    await side.hover();await btn("로그아웃").click();
     const logoutFrames = await closeWithMotion(page.locator('.logout-overlay [role="dialog"]'), btn("취소"), "ui-popup-out", 240);
     assert.ok(logoutFrames.length >= 2);
     assert(
       (await page.evaluate(() => window.flowrium.connectionStatus()))
         .authenticated,
     );
-    await btn("로그아웃").click();
+    await side.hover();await btn("로그아웃").click();
     await btn("로그아웃 확인").click();
     await page.getByRole("heading", { name: "화면 잠금" }).waitFor();
     await unlock();

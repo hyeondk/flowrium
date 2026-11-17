@@ -60,8 +60,8 @@ export function reconcileConfirmation(locked) {
 cancel.addEventListener('click', () => close());
 accept.addEventListener('click', () => close(true));
 sheet.addEventListener('cancel', event => { event.preventDefault(); close(); });
-sheet.addEventListener('animationend', event => {
-  if (event.target === sheet && event.animationName === 'mobile-sheet-out') finishClose();
+sheet.addEventListener('transitionend', event => {
+  if(event.target===sheet && !event.pseudoElement && event.propertyName==='transform' && sheet.dataset.phase==='exit')finishClose();
 });
 function outside(event) {
   const box = sheet.getBoundingClientRect();

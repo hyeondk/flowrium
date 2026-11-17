@@ -3,17 +3,15 @@
 :root[data-theme=dark]{--surface-edge:color-mix(in srgb,var(--blue-200) 28%,var(--panel));--surface-shadow:0 12px 32px -18px #0008;--surface-float-shadow:0 24px 64px -22px #000a}
 .app-shell{background:radial-gradient(ellipse at 4% 3%,#86b9da40,transparent 48%),radial-gradient(ellipse at 96% 20%,#a4bad324,transparent 52%),radial-gradient(ellipse at 40% 100%,#c0d4e733,transparent 60%),var(--bg)}
 .app-shell .workspace-side{background:transparent;border-right:0}
-.app-shell .sidebar-surface{background:linear-gradient(155deg,color-mix(in srgb,var(--blue-200) 24%,var(--panel)),var(--sidebar) 72%);border-color:var(--surface-edge);box-shadow:inset 0 1px 0 #ffffffa6,0 8px 26px -18px #16386940;backdrop-filter:var(--surface-blur);-webkit-backdrop-filter:var(--surface-blur)}
+.app-shell .sidebar-surface{background:linear-gradient(155deg,color-mix(in srgb,var(--blue-200) 24%,var(--panel)),var(--sidebar) 72%);border-color:var(--surface-edge);box-shadow:inset 0 1px 0 #ffffffa6,0 8px 26px -18px #16386940}
 .app-shell .workspace-side[data-expanded=true] .sidebar-surface{box-shadow:inset 0 1px 0 #ffffffa6,12px 12px 36px -16px #16386940}
-.app-shell .topbar{border-color:var(--surface-edge);background:var(--surface-low);box-shadow:inset 0 1px 0 #ffffffa6,var(--surface-shadow);backdrop-filter:var(--surface-blur);-webkit-backdrop-filter:var(--surface-blur)}
+.app-shell .topbar{border-color:var(--surface-edge);background:var(--surface-low);box-shadow:inset 0 1px 0 #ffffffa6,var(--surface-shadow)}
 .app-shell .main-shell>:is(.pf-page,.page-scroll,.home-page,.history-page,.library-page,.workbench,.flow-activity){background:var(--surface-low);border:1px solid var(--surface-edge);box-shadow:inset 0 1px 0 #ffffff80,var(--surface-shadow);border-radius:16px;animation:surface-page-enter 280ms var(--ease-enter) both}
-.app-shell .pf-page .pf-content :is(.pf-card,.pf-panel,.pf-kpi,.pf-stat,.di-panel,.pf-today),.app-shell .workbench :is(.wb-panel,.wb-summary,.wb-stat),.app-shell .workflow-hub>:is(section,article){background:linear-gradient(165deg,var(--surface-high),color-mix(in srgb,var(--panel) 88%,var(--card-subtle)));border-color:var(--line-soft);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--panel) 80%,transparent),0 5px 18px -15px #16386938}
+.app-shell .pf-page .pf-content :is(.pf-card,.pf-panel,.pf-kpi,.pf-stat,.di-panel,.pf-today),.app-shell .workbench :is(.wb-panel,.wb-summary,.wb-stat),.app-shell .workflow-hub>:is(section,article){background:var(--panel);border:1px solid var(--line-soft);box-shadow:none}
 .app-shell .pf-card{position:relative;isolation:isolate;transition:transform 280ms var(--ease-enter),box-shadow 280ms var(--ease-enter),border-color 280ms var(--ease-enter)}
-.app-shell .pf-card::after{content:'';position:absolute;inset:0;border-radius:inherit;z-index:-1;pointer-events:none;opacity:0;background:radial-gradient(280px circle at var(--surface-x,50%) var(--surface-y,0%),color-mix(in srgb,var(--blue-400) 17%,transparent),transparent 72%);transition:opacity 280ms var(--ease-enter)}
-.app-shell .pf-card:hover{transform:translateY(-2px);border-color:var(--blue-400);box-shadow:0 10px 28px -18px #255a925e,inset 0 1px 0 var(--panel)}
-.app-shell .pf-card:hover::after{opacity:1}
-.app-shell .pf-page .pf-hero{background:linear-gradient(115deg,color-mix(in srgb,var(--blue-200) 24%,var(--panel)),color-mix(in srgb,var(--panel) 96%,var(--blue-400)));border:1px solid var(--surface-edge);box-shadow:inset 0 1px 0 var(--panel),var(--surface-shadow);border-radius:16px}
-.app-shell .conversation-dock{background:var(--surface-high);border-color:var(--surface-edge);box-shadow:var(--surface-float-shadow);backdrop-filter:var(--surface-blur);-webkit-backdrop-filter:var(--surface-blur)}
+.app-shell .pf-card:hover{border-color:var(--accent);box-shadow:none}
+.app-shell .pf-page .pf-hero{background:var(--panel);border:1px solid var(--line-soft);box-shadow:none}
+.app-shell .conversation-dock{background:var(--surface-high);border-color:var(--surface-edge);box-shadow:var(--surface-float-shadow)}
 .app-shell[data-chat-focus=true]>.conversation-dock{box-shadow:inset 0 1px 0 var(--panel),var(--surface-shadow)}
 .conversation-dock[data-chat-active=true]>.dock-heading{background:linear-gradient(115deg,color-mix(in srgb,var(--blue-200) 18%,var(--panel)),var(--panel))}
 .app-shell .conversation-dock .composer:focus-within{border-color:var(--blue-400);box-shadow:0 0 0 3px color-mix(in srgb,var(--blue-200) 26%,transparent),0 6px 20px -18px #255a9280}
@@ -22,7 +20,7 @@
 :is(.app-shell,.motion-overlay,.modal-backdrop,dialog) button:not(.sidebar-backdrop):not(.dock-mobile-scrim):not(:disabled){transition:background-color 240ms var(--ease-enter),border-color 240ms var(--ease-enter),color 240ms var(--ease-enter),box-shadow 240ms var(--ease-enter),scale 200ms var(--ease-check)}
 :is(.app-shell,.motion-overlay,.modal-backdrop,dialog) button:not(.sidebar-backdrop):not(.dock-mobile-scrim):not(:disabled):active{scale:.98}
 .app-shell .pf-page .pf-content .pf-cards .pf-card{transition:background-color 280ms var(--ease-enter),border-color 280ms var(--ease-enter),box-shadow 280ms var(--ease-enter),transform 280ms var(--ease-enter),scale 200ms var(--ease-check)}
-.app-shell .pf-page .pf-content .pf-cards .pf-card:hover{transform:translateY(-2px);border-color:var(--blue-400);box-shadow:0 10px 28px -18px #255a925e,inset 0 1px 0 var(--panel)}
+.app-shell .pf-page .pf-content .pf-cards .pf-card:hover{border-color:var(--accent);box-shadow:none}
 :is(.motion-overlay,.modal-backdrop,.command-scrim)>:is(.motion-surface,.settings-modal,.confirm-modal){border:1px solid var(--surface-edge);box-shadow:inset 0 1px 0 color-mix(in srgb,var(--panel) 80%,transparent),var(--surface-float-shadow)}
 .app-shell .page-inner{width:100%;max-width:1280px;padding:28px;min-width:0}
 .app-shell .page-inner>h1,.app-shell .page-inner>.section-heading h1{font-size:24px;line-height:32px;font-weight:800;letter-spacing:-.025em;margin:0}

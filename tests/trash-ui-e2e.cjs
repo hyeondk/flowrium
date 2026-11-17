@@ -26,7 +26,7 @@ async function main(){
     globalThis.releaseProbeRefresh=()=>{runtime.busy=false;end();dialog.showOpenDialog=picker;};
   },b.path);
   try{
-    await button('기존 폴더 연결').click();
+    await button('프로젝트 추가').click();await button('기존 폴더 연결').click();
     await until(()=>app.evaluate(()=>globalThis.probePickCount===1));
     assert(await app.evaluate(()=>globalThis.testTransfer.options.foregroundBusy()));
   }finally{await app.evaluate(()=>globalThis.releaseProbeRefresh());}

@@ -65,9 +65,6 @@ async function main() {
         "업무 마감",
         "터미널",
         "뮤직",
-        "설정",
-        "잠금",
-        "로그아웃",
       ],
     );
     await page.locator('.side-usage[data-connected=true]').waitFor();
@@ -77,16 +74,13 @@ async function main() {
     const before=await page.locator('.main-shell').boundingBox();
     await rail.hover();await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');await page.waitForTimeout(300);
     assert.equal(await rail.getAttribute('data-expanded'),'true');
-    assert.equal((await page.locator('.sidebar-surface').boundingBox()).width,240);
+    assert.equal((await page.locator('.sidebar-surface').boundingBox()).width,248);
     assert.deepEqual(await page.locator('.main-shell').boundingBox(),before,'메뉴를 올려도 본문 배치 유지');
     await button('메뉴 고정').click();await page.mouse.move(400,100);
     await page.waitForTimeout(300);assert.equal(await rail.getAttribute('data-expanded'),'true');
     await button('메뉴 자동 접기').click();await page.mouse.move(500,100);await page.waitForTimeout(300);
     assert.equal(await rail.getAttribute('data-expanded'),'false');
-    await page
-      .locator(".pf-heading")
-      .getByRole("button", { name: "프로젝트 추가" })
-      .click();
+    await rail.hover();await nav.getByRole("button",{name:"프로젝트 추가"}).click();
     await page.getByLabel("프로젝트 이름", { exact: true }).fill(name);
     await page.getByLabel("프로젝트 구분", { exact: true }).fill("개인");
     const startDate=page.getByLabel("시작일",{exact:true}), dueDate=page.getByLabel("목표일",{exact:true});
@@ -150,6 +144,7 @@ async function main() {
       return cards.find(card => card.project.name === title)?.details?.goal;
     }, name);
     assert.equal(savedGoal, goalText);
+    await page.locator(".overview-tools>summary").click();
     const panels = page.locator(".pf-project-summary .pf-overview-group");
     await panels.last().waitFor();
     const bounds = await panels.evaluateAll(groups => groups.map(group => {
@@ -179,14 +174,14 @@ async function main() {
       .getByRole("checkbox", { name: /이번 주 인터뷰 자료 정리/ })
       .click();
     await page.locator(".advanced-goals input:checked").waitFor();
-    await page.getByLabel("목표 기간").selectOption("month");
+    await page.getByRole('group',{name:'목표 기간'}).getByRole('button',{name:'월간'}).click();
     assert.equal(
       await page
         .getByRole("checkbox", { name: /이번 주 인터뷰 자료 정리/ })
         .count(),
       0,
     );
-    await page.getByLabel("목표 기간").selectOption("week");
+    await page.getByRole('group',{name:'목표 기간'}).getByRole('button',{name:'주간'}).click();
     assert.ok(
       await page
         .getByRole("checkbox", { name: /이번 주 인터뷰 자료 정리/ })

@@ -58,14 +58,19 @@ html:has(#install-guide[open], #confirmation-sheet[open]) {overflow:hidden;}
 #confirmation-sheet button {min-height:44px;padding:7px 18px;border-radius:13px;touch-action:manipulation;}
 #confirmation-sheet [data-accept] {background:var(--accent-fill);border-color:var(--accent-fill);color:var(--accent-text);}
 #confirmation-sheet::backdrop {background:rgb(15 36 52 / 45%);}
-@keyframes mobile-sheet-in {from{transform:translateY(100%)}to{transform:translateY(0)}}
-@keyframes mobile-sheet-out {from{transform:translateY(0)}to{transform:translateY(100%)}}
-@keyframes mobile-scrim-in {from{opacity:0}to{opacity:1}}
-@keyframes mobile-scrim-out {from{opacity:1}to{opacity:0}}
-#confirmation-sheet[open][data-phase=enter] {animation:mobile-sheet-in 240ms var(--ease-enter) both;}
-#confirmation-sheet[open][data-phase=enter]::backdrop {animation:mobile-scrim-in 240ms var(--ease-enter) both;}
-#confirmation-sheet[open][data-phase=exit] {animation:mobile-sheet-out 220ms var(--ease-exit) both;pointer-events:none;}
-#confirmation-sheet[open][data-phase=exit]::backdrop {animation:mobile-scrim-out 220ms var(--ease-exit) both;}
-@media(prefers-reduced-motion:reduce) {
-  #confirmation-sheet[open][data-phase], #confirmation-sheet[open][data-phase]::backdrop {animation:none;}
+#confirmation-sheet {
+  transform:translateY(100%);
+  transition:transform 240ms var(--ease-enter);
+}
+#confirmation-sheet::backdrop {opacity:0;transition:opacity 240ms ease-out}
+#confirmation-sheet[open][data-phase=enter]{transform:translateY(0)}
+#confirmation-sheet[open][data-phase=enter]::backdrop{opacity:1}
+#confirmation-sheet[open][data-phase=exit]{transform:translateY(100%);transition-timing-function:var(--ease-exit);transition-duration:220ms;pointer-events:none}
+#confirmation-sheet[open][data-phase=exit]::backdrop{opacity:0;transition-timing-function:ease-in;transition-duration:220ms}
+@starting-style {
+  #confirmation-sheet[open][data-phase=enter]{transform:translateY(100%)}
+  #confirmation-sheet[open][data-phase=enter]::backdrop{opacity:0}
+}
+@media(prefers-reduced-motion:reduce){
+  #confirmation-sheet,#confirmation-sheet::backdrop {transition:none}
 }

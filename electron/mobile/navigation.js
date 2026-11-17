@@ -1,14 +1,33 @@
 const nav = document.querySelector('#nav');
 const buttons = [...nav.querySelectorAll('button')];
 const viewport = window.visualViewport;
-const keyboardField = 'textarea,input:not([type=button]):not([type=checkbox]):not([type=radio]):not([readonly]),[contenteditable=true]';
+const keyboardField='textarea,input:not([readonly]):is(:not([type]),[type=text],[type=search],[type=email],[type=url],[type=tel],[type=password],[type=number]),[contenteditable=true]';
 let restingHeight = viewport?.height ?? innerHeight;
+let keyboardOrigin;
 function updateKeyboard() {
-  const editing = document.activeElement?.matches(keyboardField);
-  const current = viewport?.height ?? innerHeight;
-  if (!editing) restingHeight = current;
-  const open = editing && current + 120 < Math.max(innerHeight, restingHeight) && (viewport?.scale ?? 1) === 1;
-  document.documentElement.toggleAttribute('data-mobile-keyboard', Boolean(open));
+  const active=document.activeElement,editing=active?.matches(keyboardField);
+  const current=viewport?.height ?? innerHeight;
+  const open=editing && current+120<Math.max(innerHeight,restingHeight) && (viewport?.scale??1)===1;
+  const html=document.documentElement,screen=document.querySelector('#content');
+  html.toggleAttribute('data-mobile-keyboard',Boolean(open));
+  if(open) {
+    if(!keyboardOrigin)keyboardOrigin={y:scrollY,field:active.dataset.field};
+    html.style.setProperty('--mobile-visible-height',current+'px');
+    const form=active.closest('.chat-compose');
+    if(form){
+      const top=(viewport?.offsetTop||0)+6,bottom=top+current-12;
+      const input=active.getBoundingClientRect(),send=form.querySelector('button[type=submit]')?.getBoundingClientRect();
+      const last=send && send.bottom-input.top<current-16?Math.max(input.bottom,send.bottom):input.bottom;
+      if(last>bottom)scrollBy({top:last-bottom,behavior:'instant'});
+      else if(input.top<top)scrollBy({top:input.top-top,behavior:'instant'});
+    }
+    return;
+  }
+  if(keyboardOrigin && (!editing || current+50>=restingHeight)){
+    const origin=keyboardOrigin;keyboardOrigin=undefined;html.style.removeProperty('--mobile-visible-height');
+    if(screen?.dataset.view==='chat' && screen.querySelector('textarea')?.dataset.field===origin.field)scrollTo({top:origin.y,behavior:'instant'});
+  }
+  if(!editing)restingHeight=current;
 }
 viewport?.addEventListener('resize', updateKeyboard);
 window.addEventListener('resize', updateKeyboard);
@@ -95,10 +114,10 @@ document.addEventListener('pointerup', event => {
   if (!pan) buttons[Math.round(fingerPosition(event.clientX))].click();
 });
 document.addEventListener('pointercancel', event => {
-  if (drag?.id === event.pointerId) clearDrag();
+  if (drag?.id === event.pointerId) {suppressClick=true;clearDrag();}
 });
 nav.addEventListener('lostpointercapture', event => {
-  if (event.target === nav && drag?.id === event.pointerId) clearDrag();
+  if (event.target === nav && drag?.id === event.pointerId) {suppressClick=true;clearDrag();}
 });
 window.addEventListener('blur', clearDrag);
 nav.addEventListener('click', event => {
@@ -138,3 +157,6 @@ nav.addEventListener('keydown', event => {
   buttons[next].focus();
   buttons[next].click();
 });
+
+document.addEventListener('keydown',()=>{document.documentElement.dataset.keyboardHint='';},true);
+document.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')delete document.documentElement.dataset.keyboardHint;},true);

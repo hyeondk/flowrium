@@ -1,6 +1,7 @@
 import {withLiveTurn} from '../electron/mobile/live-turn.js';
 import {RequestSource} from './RequestSource';
 import {maxChatInput, exceedsChatSize, chatLengthError, nativeQueueNotice} from '../electron/mobile/chat-input.js';
+import {projectMode} from '../electron/mobile/project-mode.js';
 import ChatAccessHint from './ChatAccessHint';
 import {useModelCatalog} from './useModelCatalog';
 import chatgptAvatar from "../electron/mobile/chatgpt.svg?no-inline";
@@ -9,7 +10,7 @@ import CommandCenter from "./CommandCenter";
 import {AttachmentComposer,ChatAttachmentList,ChatQueuePanel} from "./ChatAttachments";
 import InputRequestPanel from "./InputRequestPanel";
 import DecisionRequestPanel from './DecisionRequestPanel';
-import ChatContinuation, {type SuggestionCache} from './ChatContinuation';
+import ChatContinuation from './ChatContinuation';
 import { useWorkspaceDrafts } from "./useWorkspaceDrafts";
 import {useProjectOrder,projectOrderChanged} from "./ProjectOrder";
 import type {ProjectNavigationState} from "../shared/portfolio";
@@ -33,6 +34,7 @@ import SettingsLayout,{SettingsGroup} from "./SettingsLayout";
 import CodexTransferPanel,{CodexLinkBar} from "./CodexTransferPanel";
 import MessageHistory from "./MessageHistory";
 import MessageContent from "./MessageContent";
+import {presentCitations} from "../electron/mobile/file-citations.js";
 import {attachmentDisplayText} from "../electron/mobile/attachment-text.js";
 import IconTooltips from "./IconTooltips";
 import DotsPanel from "./DotsPanel";
@@ -123,39 +125,10 @@ const statusTime = {...messageTime, month: "long", day: "numeric"} as const;
 const initial: Bootstrap = {
   projects: [],
   sessions: [],
-  settings: { effort: "medium", theme: "light" },
+  settings: { effort: "medium", theme: "light", accentColor:"blue" },
   version: packageInfo.flowriumVersion || packageInfo.version,
   platform: "preview",
 };
-const modes = [
-  {
-    id: "plan" as Mode,
-    title: "계획",
-    label: "계획",
-    icon: Sparkles,
-    description: "구조를 읽고 다음 단계를 정리합니다.",
-    prompt:
-      "이 프로젝트의 구조를 살펴보고, 다음 개발을 위한 실행 계획을 세워줘. 먼저 현재 상태와 확인이 필요한 부분을 정리해줘.",
-  },
-  {
-    id: "build" as Mode,
-    title: "구현",
-    label: "구현",
-    icon: Code2,
-    description: "프로젝트 파일을 수정하고 검증합니다.",
-    prompt:
-      "이 프로젝트에서 다음 기능을 구현하고 싶어. 먼저 관련 코드를 확인하고 구현 방법과 검증 계획을 알려줘.\n\n만들 기능: ",
-  },
-  {
-    id: "review" as Mode,
-    title: "검토",
-    label: "검토",
-    icon: ShieldCheck,
-    description: "변경 사항과 회귀 위험을 확인합니다.",
-    prompt:
-      "현재 프로젝트의 변경 사항을 검토해줘. 실제 오류 가능성과 회귀 위험을 중심으로 근거와 파일 위치를 알려줘. 파일은 수정하지 마.",
-  },
-];
 const templates = [
   {
     title: "새 프로젝트의 첫 설계",
@@ -186,7 +159,7 @@ const templates = [
     category: "품질",
     mode: "review" as Mode,
     description: "실제 결함과 검증이 빠진 부분을 찾습니다.",
-    prompt: modes[2].prompt,
+    prompt: "현재 프로젝트의 변경 사항을 검토해줘. 실제 오류 가능성과 회귀 위험을 중심으로 근거와 파일 위치를 알려줘. 파일은 수정하지 마.",
   },
   {
     title: "다음 작업을 위한 인수인계",
@@ -230,6 +203,7 @@ export default function App() {
 function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>}) {
   const [logoutOpen,setLogoutOpen] = useState(false);
   const update = useDesktopUpdate();
+  const [categories,setCategories]=useState<Record<string,string>>({});
   const [archived, setArchived] = useState<Record<string,boolean>>({});
   const [data, setData] = useState(initial);
   const [loaded, setLoaded] = useState(false);
@@ -238,7 +212,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     let active = true;
     for (const project of data.projects) {
       api?.readProjectDetails(project.id).then(value => {
-        if (active) setArchived(prev=>({...prev,[project.id]:Boolean(value.archivedAt)}));
+        if (active) {setArchived(prev=>({...prev,[project.id]:Boolean(value.archivedAt)}));setCategories(prev=>({...prev,[project.id]:value.kickoff?.category||""}));}
       }).catch(()=>{});
     }
     return () => { active = false; };
@@ -271,8 +245,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const input = drafts[draftKey]?.text || "";
   const attachments=drafts[draftKey]?.attachments||[];
   const setAttachments=(items:ChatAttachment[])=>setDrafts(prev=>({...prev,[draftKey]:{text:prev[draftKey]?.text||"",mode:prev[draftKey]?.mode||mode,attachments:items}}));
-  const workflow = data.sessions.find(s => s.id === sessionId)?.workflow;
-  const mode = drafts[draftKey]?.mode || workflow?.teamSlot?.mode || (workflow ? workKinds[workflow.kind].mode : "plan");
+  const draftSession = data.sessions.find(s => s.id === sessionId);
+  const workflow = draftSession?.workflow;
+  const mode = projectMode(draftSession, drafts[draftKey]?.mode || (workflow ? workKinds[workflow.kind].mode : undefined), data.settings.chatDefaults);
   const setInput = (text: string) =>
     setDrafts((prev) => ({
       ...prev,
@@ -315,13 +290,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [reacting,setReacting]=useState<Record<string,boolean>>({});
   const [snackbar,setSnackbar]=useState("");
   const composer = useRef<HTMLTextAreaElement>(null);
-  const suggestionCache = useRef<SuggestionCache>(new Map());
-  useEffect(()=>{
-    let frame=0,target:HTMLElement|null=null,x=0,y=0;
-    const move=(event:PointerEvent)=>{if(event.pointerType==='touch')return;target=(event.target as Element)?.closest<HTMLElement>('.pf-card')||null;if(!target)return;x=event.clientX;y=event.clientY;cancelAnimationFrame(frame);frame=requestAnimationFrame(()=>{if(!target?.isConnected)return;const box=target.getBoundingClientRect();target.style.setProperty('--surface-x',(x-box.left)+'px');target.style.setProperty('--surface-y',(y-box.top)+'px');});};
-    document.addEventListener('pointermove',move,{passive:true});return()=>{document.removeEventListener('pointermove',move);cancelAnimationFrame(frame);};
-  },[]);
-
   const messages = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
   const messageGeometry=useRef<{width:number;height:number;content:number}|undefined>(undefined);
@@ -338,18 +306,20 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const conversationProject=session?[...data.projects,...(data.conversationProjects||[])].find(p=>p.id===session.projectId):project;
   const projectOnlySessions=data.sessions.filter(s=>!s.scope);
   const activeCounts={running:0,waiting:0,decision:approvals.length+visibleProposals(proposals).length};
-  for(const item of data.sessions){const state=sessionExecution(item,activities[item.id],approvals,proposals);if(state&&state!=='decision')activeCounts[state]++;}
-  const projectCounts=Object.fromEntries(data.projects.map(p=>{const rows=projectOnlySessions.filter(s=>s.projectId===p.id);return[p.id,{
-    running:rows.filter(s=>sessionExecution(s,activities[s.id],approvals,proposals)==='running').length,
-    waiting:rows.filter(s=>sessionExecution(s,activities[s.id],approvals,proposals)==='waiting').length,
-    decision:rows.filter(s=>sessionExecution(s,activities[s.id],approvals,proposals)==='decision').length
-  }]}));
+  const projectCounts:Record<string,{running:number;waiting:number;decision:number;total:number}>={};
+  for(const item of data.sessions){
+    const state=sessionExecution(item,activities[item.id],approvals,proposals);
+    if(state && state!=='decision') activeCounts[state]++;
+    if(item.scope) continue;
+    const counts=projectCounts[item.projectId]??={running:0,waiting:0,decision:0,total:0};
+    counts.total++;
+    if(state) counts[state]++;
+  }
   const projectSessions = data.sessions.filter(
     (s) => s.projectId === projectId,
   );
   const activity = sessionId ? activities[sessionId] : undefined;
   const running = Boolean(activity);
-  const currentMode = modes.find((m) => m.id === mode)!;
   const sessionApprovals = approvals.filter(
     (a) => !a.sessionId || a.sessionId === sessionId,
   );
@@ -561,7 +531,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }, [fail, notify]);
   useEffect(() => {
     document.documentElement.dataset.theme = data.settings.theme;
-  }, [data.settings.theme]);
+    document.documentElement.dataset.accent = data.settings.accentColor || "blue";
+  }, [data.settings.theme,data.settings.accentColor]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 5200);
@@ -660,7 +631,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             ? {
                 ...prev,
                 [key]: unassigned,
-                "project:unassigned": { text: "", mode: "plan" },
+                "project:unassigned": { text: "", mode: "build" },
               }
             : prev;
         });
@@ -770,6 +741,18 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     } finally {
       setConnecting(false);
     }
+  }
+  async function openPersonalAssistant(){
+    if(!api)return;
+    if(connection.authenticated&&connection.dotsEligible){
+      setChatActive(false);setDockFilter('all');setDockOpen(true);setAssistantNavigation(value=>(value||0)+1);
+      return;
+    }
+    setCreatingConversation(true);
+    try {
+      const value=await api.openGeneralAssistant();
+      setData(await api.bootstrap());rememberSession(value);selectSession(value);
+    } catch(error){fail(error)} finally{setCreatingConversation(false)}
   }
   async function startDockConversation(scope:'project'|'integrated'|'general',id?:string){
     if(!api)return notify('데스크톱 앱에서 대화를 시작할 수 있습니다.');
@@ -1127,7 +1110,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       }
                     }}
                   >
-                    <MessageHistory key={session.id} messages={session.messages} scrollRef={messages} stickToBottom={stickToBottom} renderMessage={(message,hasLaterRequest,failedRequest) => (
+                    <MessageHistory key={session.id} running={running} messages={session.messages} scrollRef={messages} stickToBottom={stickToBottom} renderMessage={(message,hasLaterRequest,failedRequest) => (
                       <article
                         className={`message ${message.role}`}
                         data-message-id={message.id}
@@ -1165,7 +1148,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                   onClick={async () => {
                                     try {
                                       const original=message.sourceOnly ? (await api!.readRequestSource(session.id,message.id,"full")).text : message.text;
-                                      await api?.copyText(original);
+                                      await api?.copyText(message.role==="assistant"?presentCitations(original).text:original);
                                       notify("메시지를 복사했습니다.");
                                     } catch (error) {
                                       fail(error);
@@ -1176,7 +1159,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                 </button>
                               )}
                               {message.role === "assistant" && <>
-                                <SpeakMessageButton text={message.text} onError={fail}/>
+                                <SpeakMessageButton text={presentCitations(message.text).text} onError={fail}/>
                                 <LikeButton
                                   active={message.reaction === 'like'}
                                   disabled={reacting[message.id] || !api}
@@ -1190,9 +1173,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                               </>}
                             </span>
                           </div>
-                          {Boolean(message.attachments?.length)&&project&&<ChatAttachmentList projectId={project.id} items={message.attachments!}/>}
+                          {Boolean(message.attachments?.length)&&project&&<ChatAttachmentList projectId={project.id} items={message.role==="assistant"?message.attachments!.filter(a=>!presentCitations(message.text).references.some(r=>r.attachmentId===a.id)):message.attachments!}/>}
                           <div className="markdown">
-                            <MessageContent text={message.text} role={message.role} hasLaterRequest={hasLaterRequest}
+                            <MessageContent sessionId={session.id} messageId={message.id} text={message.text} role={message.role} hasLaterRequest={hasLaterRequest}
                               retryAction={failedRequest&&<button type="button" className="button subtle" data-message-detail-control
                                 disabled={submitting||Boolean(input.length||attachments.length)}
                                 title={input.length||attachments.length?"입력창을 비우면 이 요청을 다시 담을 수 있습니다.":"요청을 입력창에 담아 다시 확인합니다."}
@@ -1269,31 +1252,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       )}
                     </button>
                   </div>
-                  <div className="section-heading workflow-heading">
-                    <h2>작업 방식</h2>
-                  </div>
-                  <div className="workflow-cards">
-                    {modes.map((item) => (
-                      <button
-                        key={item.id}
-                        className={`workflow-card ${mode === item.id ? "selected" : ""}`}
-                        onClick={() => {
-                          setMode(item.id);
-                          setInput(item.prompt);
-                          composer.current?.focus();
-                        }}
-                      >
-                        <span className={`workflow-icon ${item.id}`}>
-                          <item.icon size={19} />
-                        </span>
-                        <h3>{item.title}</h3>
-                        <p>{item.description}</p>
-                        <span className="card-arrow">
-                          <ArrowRight size={16} />
-                        </span>
-                      </button>
-                    ))}
-                  </div>
                 </div>
               )}
               <div className="composer-area">
@@ -1323,8 +1281,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     )}
                   </div>
                   <ChatContinuation key={draftKey} session={session} running={running || sessionApprovals.length > 0 || Boolean(session && visibleProposals(proposals).some(p=>p.sourceId===session.id || p.targetId===session.id))}
-                    authenticated={connection.authenticated} busy={submitting || savingModel === draftKey} model={session?.preferences?.model || data.settings.model} draft={input} textareaRef={composer}
-                    active={chatActive && dockOpen && !settingsOpen && !attentionOpen} cache={suggestionCache.current}
+                    authenticated={connection.authenticated} busy={submitting || savingModel === draftKey} draft={input} textareaRef={composer}
+                    active={chatActive && dockOpen && !settingsOpen && !attentionOpen}
                     placeholder={project ? "어떤 작업을 함께 해볼까요?" : "만들고 싶은 것, 풀고 싶은 문제를 적어 주세요."}
                     onChange={setInput} onSend={() => void send()} onContinue={continueWaitingSession}
                     onChoose={prompt => {
@@ -1342,23 +1300,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       <VoiceComposer key={voiceContinuity.current.generation} suspend={settingsOpen||attentionOpen||!dockOpen||!chatActive} disabled={running||security.state.locked} onText={text=>setDrafts(prev=>{
                         const draft=prev[draftKey];return {...prev,[draftKey]:{mode:draft?.mode||mode,text:[draft?.text,text].filter(Boolean).join("\n"),attachments:draft?.attachments}};
                       })} onSubmit={text=>void send([input,text].filter(Boolean).join("\n"))}/>
-                      {!session?.scope&&<label className="mode-select">
-                        <currentMode.icon size={14} />
-                        <select
-                          aria-label="작업 모드"
-                          value={mode}
-                          onChange={(e) => setMode(e.target.value as Mode)}
-                          disabled={running}
-                        >
-                          {modes.map((m) => (
-                            <option value={m.id} key={m.id}>
-                              {m.label}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={12} />
-                      </label>}
-                      <span className="option-divider" />
                       <ChatModelPicker onOpen={()=>void modelCatalog.refresh(true)} models={models} model={session?.preferences?.model}
                         defaultModel={data.settings.model}
                         disabled={!conversationProject || savingModel !== null || submitting}
@@ -1394,7 +1335,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 </div>)}
                 </AttachmentComposer>
                 <div className="composer-footnote">
-                  <ChatAccessHint session={session} defaults={data.settings.chatDefaults} mode={mode} running={running} onBuild={()=>setMode('build')}/>
+                  <ChatAccessHint session={session} defaults={data.settings.chatDefaults} mode={mode} running={running} onBuild={async()=>{
+                    if (!session || !api) {setMode('build');return;}
+                    try {const next=await api.editConversation(session.id,{action:'preferences',preferences:{...session.preferences,sandbox:'workspace-write',approval:session.preferences?.approval||data.settings.chatDefaults?.approval||'on-request'}});rememberSession(next);setMode('build');} catch(e){fail(e);}
+                  }}/>
                   <span>줄바꿈 ⇧ ↵</span>
                 </div>
               </div>
@@ -1442,7 +1386,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           onClick={() => setSidebarOpen(false)}
         />
       )}
-      <WorkspaceSidebar current={reportDialog||view} mobileOpen={sidebarOpen} projects={panelProjects} onProjectMove={navigation.move}
+      <WorkspaceSidebar search={<CommandCenter projects={data.projects} sessions={data.sessions} onProject={selectProject} onSession={selectSession} onView={value=>{if(value==="settings")setSettingsOpen(true);else if(value==="music")setMusicOpen(true);else setView(value as View);}} onNew={()=>{void newSession();}}/>} categories={categories} current={reportDialog||view} mobileOpen={sidebarOpen} projects={panelProjects} onProjectMove={navigation.move}
         selected={["overview","home","workspace","terminal"].includes(view)?projectId:undefined}
         onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} counts={projectCounts} accountUsage={accountUsage}
         onGo={value=>{if(value==='weekly'||value==='pause')setReportDialog(value);else if(value==='music')setMusicOpen(true);else setView(value);setSidebarOpen(false);}} onProject={selectProject}
@@ -1467,8 +1411,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             {!api && <span className="preview-badge">화면 미리보기</span>}
           </div>
           <div className="topbar-actions">
-            <CommandCenter projects={data.projects} sessions={data.sessions} onProject={selectProject} onSession={selectSession} onView={value=>{if(value==="settings")setSettingsOpen(true);else if(value==="music")setMusicOpen(true);else setView(value as View);}} onNew={()=>{void newSession();}}/>
-            <AssistantShortcut projects={data.projects.filter(p=>!archived[p.id])} onOpen={openWork} onCreateProject={()=>setView("kickoff")} onOpenPanel={()=>{setChatActive(false);setDockFilter('all');setDockOpen(true);setAssistantNavigation(Date.now())}}/>
+            <AssistantShortcut projects={data.projects.filter(p=>!archived[p.id])} onOpen={openWork} onCreateProject={()=>setView("kickoff")} onOpenPanel={()=>void openPersonalAssistant()}/>
             <button className="icon-button header-music" aria-label="뮤직 열기" title="뮤직" onClick={()=>setMusicOpen(true)}><Music2 size={18}/></button>
             <button className="icon-button header-decisions" aria-label={`알림 ${(attentionState?.notifications.filter(n=>!n.readAt).length||0)+activeCounts.decision}건`} title="알림과 검토 요청" onClick={openDecisions}><Bell size={18}/>{((attentionState?.notifications.filter(n=>!n.readAt).length||0)+activeCounts.decision)>0&&<span>{(attentionState?.notifications.filter(n=>!n.readAt).length||0)+activeCounts.decision}</span>}</button>
             <button className="icon-button dock-toggle" aria-label={dockOpen?'대화함 닫기':'대화함 열기'} aria-expanded={dockOpen} onClick={()=>setDockOpen(v=>!v)}><PanelRight size={19}/></button>
@@ -1493,7 +1436,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             작업 공간을 불러오고 있습니다.
           </div>
         ) : view === "music" ? null : view === "workflow" ? (
-          <div className="page-scroll"><div className="page-inner"><WorkflowHub onOpen={openWork} onOpenInbox={()=>setView("inbox")}/></div></div>
+          <div className="page-scroll"><div className="page-inner"><WorkflowHub onOpen={openWork} onOpenInbox={()=>setView("inbox")}/><details className="work-resources"><summary>자료 관리</summary><CodexTransferPanel onChanged={async()=>{if(!api)return;const next=await api.bootstrap();setData(next);if(!projectId&&next.projects[0])setProjectId(next.projects[0].id);}} onOpen={id=>{void (async()=>{const next=await api!.bootstrap();setData(next);const found=next.sessions.find(row=>row.id===id);if(found){setSettingsOpen(false);selectSession(found);}})().catch(fail);}}/><MigrationPanel/>
+              <IntegrationPanel projectId={projectId}/></details></div></div>
         ) : view === "terminal" && !project ? (
           <div className="pf-page"><div className="pf-content"><h1>터미널</h1><section className="pf-welcome"><h2>터미널을 열 폴더를 연결하세요</h2><button onClick={()=>void chooseProjectFor("terminal")}>프로젝트 폴더 선택</button></section></div></div>
         ) : view === "details" && project ? (
@@ -1542,7 +1486,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         ) : view==="overview" && project ? (
           <ProjectOverview key={project.id} project={project} nameLink={navigation.nameLinks?.[project.id]} sessions={projectSessions} tab={projectTab}
             onTabChange={setProjectTab} onOpenSession={openWork} onBack={()=>setView("dashboard")}
-            onDetailsChange={d=>{setArchived(prev=>({...prev,[d.projectId]:!!d.archivedAt}));if(d.kickoff?.name){const name=d.kickoff.name;setData(prev=>prev.projects.some(p=>p.id===d.projectId&&p.name!==name)?{...prev,projects:prev.projects.map(p=>p.id===d.projectId?{...p,name}:p)}:prev);}window.dispatchEvent(new Event(projectOrderChanged));}}
+            onDetailsChange={d=>{setCategories(prev=>({...prev,[d.projectId]:d.kickoff?.category||""}));setArchived(prev=>({...prev,[d.projectId]:!!d.archivedAt}));if(d.kickoff?.name){const name=d.kickoff.name;setData(prev=>prev.projects.some(p=>p.id===d.projectId&&p.name!==name)?{...prev,projects:prev.projects.map(p=>p.id===d.projectId?{...p,name}:p)}:prev);}window.dispatchEvent(new Event(projectOrderChanged));}}
             renderPanel={tab=>tab==="work"?<Workbench project={project} sessions={projectSessions} onChooseProject={chooseProject} onOpen={openWork} onSessionChange={rememberSession}/>:
               tab==="team"?<TeamPanel projectId={project.id} onOpen={openWork}/>:<RepositoryPanel project={project}/>}/>
         ) : view === "home" ? (
@@ -1705,7 +1649,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
 
       <MotionOverlay open={musicOpen} persist onClose={()=>setMusicOpen(false)} label="뮤직" className="music-popup"><header className="utility-popup-heading"><div><Music2 size={20}/><h2>뮤직</h2></div><button className="icon-button" aria-label="뮤직 닫기" onClick={()=>setMusicOpen(false)}><X size={18}/></button></header><MusicPanel visible={musicPresence.present} locked={security.state.locked}/></MotionOverlay>
       <AttentionCenter open={attentionOpen} onShow={()=>setAttentionOpen(true)} onClose={()=>setAttentionOpen(false)} data={attentionState} sessions={data.sessions} requests={approvals} onOpen={selectSession} onDecisions={()=>{setAttentionOpen(false);setView(visibleProposals(proposals).length?'workflow':'inbox')}} onRefresh={refreshAttention}/>
-      <ConversationDock assistantNavigation={assistantNavigation} assistantContent={<DotsPanel active={dockOpen} blocked={settingsOpen||historyOpen||musicOpen||attentionOpen||Boolean(workPopup)||Boolean(deletionTarget)||trashOpen||Boolean(reportDialog)||sidebarOpen||logoutOpen}/>} projectNavigation={projectNavigation} open={dockOpen} chatActive={chatActive} expanded={chatExpanded} onExpand={()=>setChatExpanded(v=>!v)} onMenu={()=>setSidebarOpen(true)} onSettings={()=>setSettingsOpen(true)} onClose={()=>setDockOpen(false)} onLeaveChat={()=>setChatActive(false)} projects={panelProjects} onProjectMove={navigation.move} sessions={data.sessions} projectId={projectId} sessionId={sessionId} activities={activities} requests={approvals} proposals={proposals} counts={activeCounts} filter={dockFilter} onFilter={setDockFilter} onOpen={selectSession} onProject={()=>{}} onCreate={(scope,id)=>void startDockConversation(scope,id)} onCreateProject={()=>setView('kickoff')} onSessionMenu={(event,s)=>itemContext(event,{kind:"session",id:s.id,name:s.title})} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} attentionCount={attentionState?.notifications.filter(n=>!n.readAt).length||0} onDecisions={openDecisions} busy={creatingConversation}>{renderChat()}</ConversationDock>
+      <ConversationDock dotsEligible={Boolean(connection.authenticated&&connection.dotsEligible)} onAssistant={()=>void openPersonalAssistant()} assistantNavigation={assistantNavigation} assistantContent={<DotsPanel active={dockOpen} blocked={settingsOpen||historyOpen||musicOpen||attentionOpen||Boolean(workPopup)||Boolean(deletionTarget)||trashOpen||Boolean(reportDialog)||sidebarOpen||logoutOpen}/>} projectNavigation={projectNavigation} open={dockOpen} chatActive={chatActive} expanded={chatExpanded} onExpand={()=>setChatExpanded(v=>!v)} onMenu={()=>setSidebarOpen(true)} onSettings={()=>setSettingsOpen(true)} onClose={()=>setDockOpen(false)} onLeaveChat={()=>setChatActive(false)} projects={panelProjects} onProjectMove={navigation.move} sessions={data.sessions} projectId={projectId} sessionId={sessionId} activities={activities} requests={approvals} proposals={proposals} counts={activeCounts} filter={dockFilter} onFilter={setDockFilter} onOpen={selectSession} onProject={()=>{}} onCreate={(scope,id)=>void startDockConversation(scope,id)} onCreateProject={()=>setView('kickoff')} onSessionMenu={(event,s)=>itemContext(event,{kind:"session",id:s.id,name:s.title})} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} attentionCount={attentionState?.notifications.filter(n=>!n.readAt).length||0} onDecisions={openDecisions} busy={creatingConversation}>{renderChat()}</ConversationDock>
       <WorkActionPopup kind={workPopup} projects={data.projects.filter(p=>!archived[p.id])} initialProject={view==="overview"?projectId:undefined} onClose={()=>setWorkPopup(null)} onStart={async(record,text,options)=>{await sendWorkRequest(record,text,record.workflow?.kind?workKinds[record.workflow.kind].mode:"plan",options)}} onOpen={selectSession}/>
       <MotionOverlay open={Boolean(reportDialog)} onClose={()=>setReportDialog(undefined)} label={reportDialog==='pause'?'업무 마감':'주간업무보고'} className="report-overlay">
         {reportDialog&&<PortfolioReports key={reportDialog} kind={reportDialog} projects={data.projects.filter(p=>!archived[p.id])} sessions={projectOnlySessions} authenticated={connection.authenticated}
@@ -1927,8 +1871,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             <SettingsLayout>
               <SettingsGroup id="general"><UpdatePanel settings state={update} fail={fail}/></SettingsGroup>
               <SettingsGroup id="security"><SecurityPanel security={security} accountUsage={accountUsage}/></SettingsGroup>
-              <SettingsGroup id="transfer"><CodexTransferPanel onChanged={async()=>{if(!api)return;const next=await api.bootstrap();setData(next);if(!projectId&&next.projects[0])setProjectId(next.projects[0].id);}} onOpen={id=>{void (async()=>{const next=await api!.bootstrap();setData(next);const found=next.sessions.find(row=>row.id===id);if(found){setSettingsOpen(false);selectSession(found);}})().catch(fail);}}/><MigrationPanel/></SettingsGroup>
-              <SettingsGroup id="integrations"><IntegrationPanel projectId={projectId}/></SettingsGroup>
               <SettingsGroup id="remote"><RemotePanel/></SettingsGroup>
               <SettingsGroup id="voice"><VoiceSettings/></SettingsGroup>
               <SettingsGroup id="account"><div className="settings-section">
@@ -2070,6 +2012,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   >
                     밝게
                   </button>
+                </div>
+              </div>
+              <div className="settings-section appearance"><div><h3>강조색</h3><p>선택한 항목과 주요 버튼에 적용합니다.</p></div>
+                <div className="segmented accent-options" role="group" aria-label="강조색">
+                  {([['blue','파랑'],['green','초록'],['purple','보라']] as const).map(([key,label])=><button type="button" key={key} aria-pressed={(data.settings.accentColor||'blue')===key} className={(data.settings.accentColor||'blue')===key?'selected':''} onClick={()=>saveSettings({accentColor:key})}><i data-swatch={key}/>{label}</button>)}
                 </div>
               </div>
               <div className="settings-note">

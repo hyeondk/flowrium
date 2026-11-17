@@ -355,3 +355,25 @@ test("기록 폴더가 선택 폴더 밖을 가리키는 링크면 외부 위치
   await assert.rejects(ProjectStore.open(project), /다른 위치/);
   assert.deepEqual(await fs.readdir(outside), []);
 });
+
+test("기존 외관의 파란 기본값, 강조색 독립 저장과 저장 실패 복원", async t => {
+  const {store,root} = await fixture(t);
+  const directory = path.join(root, "컴퓨터A 설정");
+  await store.saveSettings({theme:"dark",model:"demo-model",accentColor:"green"});
+  const fresh = new Store(directory);await fresh.load();
+  assert.equal(fresh.state.settings.accentColor,"green");
+  assert.equal(fresh.state.settings.theme,"dark");
+  await assert.rejects(fresh.saveSettings({accentColor:"invalid"}),/강조색/);
+  fresh.save = async () => {throw Error("시험용 저장 실패")};
+  await assert.rejects(fresh.saveSettings({accentColor:"purple"}),/저장 실패/);
+  assert.equal(fresh.state.settings.accentColor,"green");
+  const registry=JSON.parse(await fs.readFile(store.file,"utf8"));
+  for(const value of [undefined,"invalid"]){
+    registry.settings.accentColor=value;
+    await fs.writeFile(store.file,JSON.stringify(registry));
+    const old=new Store(directory);await old.load();
+    assert.equal(old.state.settings.accentColor,"blue");
+    assert.equal(old.state.settings.theme,"dark");
+    assert.equal(old.state.settings.model,"demo-model");
+  }
+});

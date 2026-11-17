@@ -42,12 +42,14 @@ function validateSession(session, projectId) {
       session.sourceThreadId.length > 300)
   )
     throw new Error("가져온 대화의 원본 식별자가 올바르지 않습니다.");
+  if (session.generalAssistant !== undefined && (session.generalAssistant !== true || session.scope !== "general")) throw new Error("일반 비서 대화 형식이 올바르지 않습니다.");
   if (session.personalAssistant !== undefined && session.personalAssistant !== true) throw new Error("개인 비서 대화 형식이 올바르지 않습니다.");
   if(session.desktopThread!==undefined){
     const link=session.desktopThread;
     if(!link || typeof link.threadId!=='string' || !link.threadId || link.threadId.length>300 || typeof link.cwd!=='string' || !path.isAbsolute(link.cwd) || !/^[a-f0-9]{64}$/.test(link.ownerHash))throw Error('로컬 대화 연결 정보를 확인해 주세요.');
   }
   if(session.codexLink!==undefined)require("./codex-transfer-link.cjs").validateLink(session.codexLink);
+  if(session.defaultProjectMode!==undefined && session.defaultProjectMode!=='build')throw Error('저장된 프로젝트 작업 범위를 확인해 주세요.');
   if(session.scope!==undefined&&!['general','integrated'].includes(session.scope))throw Error('대화 종류를 확인해 주세요.');
   if (session.preferences !== undefined) require("./chat-preferences.cjs").preferences(session.preferences);
   if (session.workflow !== undefined) require("./workbench.cjs").validateWorkflow(session.workflow);
@@ -74,10 +76,14 @@ function validateSession(session, projectId) {
       if(message.role!=="user" || source.name!=="request.txt" || source.type!=="text/plain")throw Error("긴 요청 원문 정보를 확인해 주세요.");
     }
     if(message.attachments!==undefined)require("./chat-attachments.cjs").checkedAttachments(message.attachments);
+    if ((message.workStartedAt !== undefined && !validateDate(message.workStartedAt)) ||
+        (message.workCompletedAt !== undefined && !validateDate(message.workCompletedAt)) ||
+        (message.progressCommentary !== undefined && (message.progressCommentary !== true || message.role !== 'system')))
+      throw Error('저장된 작업 시각이나 진행 설명을 확인해 주세요.');
     if (message.workSteps !== undefined && (!Array.isArray(message.workSteps) || message.workSteps.some(step =>
       !step || typeof step.id !== 'string' || !step.id || step.id.length > 300 ||
       typeof step.label !== 'string' || !step.label || step.label.length > 200 ||
-      !['running','completed','failed','interrupted'].includes(step.state) || !validateDate(step.createdAt)
+      !['running','completed','failed','interrupted'].includes(step.state) || !validateDate(step.createdAt) || (step.completedAt !== undefined && !validateDate(step.completedAt))
     ))) throw Error('저장된 작업 과정 형식을 확인해 주세요.');
     if(message.turnId!==undefined&&(typeof message.turnId!=="string"||message.turnId.length>300||!message.turnId))throw Error("메시지의 실행 식별자를 확인해 주세요.");
     if(message.reaction!==undefined&&message.reaction!=='like')throw Error('메시지 반응 형식을 확인해 주세요.');

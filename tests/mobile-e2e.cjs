@@ -47,7 +47,8 @@ async function run() {
       canRun:()=>!locked,pending:()=>requests,intervalMs:600000,
     });
     registerWorkbench(register, store, { reveal: () => {} });
-    register('readPortfolio',async()=>[{project:p,details:{dueDate:'2020-01-01',kickoff:{phase:'진행'},periodGoals:[{id:'fixture',text:'모바일 검토 마무리',due:'2020-01-01'}]}}]);
+    const todayKey=new Intl.DateTimeFormat('sv-SE').format(new Date());
+    register('readPortfolio',async()=>[{project:p,details:{dueDate:todayKey,kickoff:{phase:'진행'},periodGoals:[{id:'fixture',text:'모바일 검토 마무리',due:todayKey}]}}]);
     register("readTeams", () => ({
       teams: [
         {
@@ -240,17 +241,18 @@ async function run() {
     streaming.text='새 단계 확인 중';
     controller.emit('event',{type:'delta',sessionId:archived.id,text:'새 단계 확인 중'});
     await page.getByText(streaming.text,{exact:true}).waitFor();
-    const processDialog=page.getByRole('dialog',{name:'작업 과정'});
-    await page.getByRole('button',{name:'작업 과정 (1건)'}).evaluate(button=>button.click());
-    await processDialog.getByText('파일 변경을 적용하고 있습니다.',{exact:true}).waitFor();
-    await processDialog.getByRole('button',{name:'닫기'}).click();
+    const progress=page.getByRole('button',{name:'작업 진행 중',exact:true});
+    await page.getByRole('list',{name:'작업 과정'}).getByText('파일 변경을 적용하고 있습니다.',{exact:true}).waitFor();
+    await progress.evaluate(button=>button.click());
+    await page.getByRole('list',{name:'작업 과정'}).waitFor({state:'hidden'});
+    await progress.evaluate(button=>button.click());
     assert.equal(await page.getByText('표시하지 않을 검사용 명령',{exact:true}).count(),0);
     streaming.text='다음 단계 확인';
     controller.emit('event',{type:'session',sessionId:archived.id});
     await page.getByText(streaming.text,{exact:true}).waitFor();
     assert.ok(Math.abs(await anchorTop()-beforeTop)<=1);
     controller.runs.delete(archived.id);
-    await page.getByRole('button',{name:'작업 과정 (1건)'}).waitFor({state:'detached'});
+    await progress.waitFor({state:'detached'});
     await page.waitForTimeout(250);
     assert.equal(await page.locator(".message").count(), 122);
     const delivered = pages.length;

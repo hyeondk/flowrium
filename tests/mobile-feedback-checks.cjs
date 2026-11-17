@@ -15,6 +15,23 @@ async function verifyStopSheet(page, isStopped, updateSession) {
   const originalWidth = page.viewportSize().width;
   for (const width of [320,390,768]) {
     await page.setViewportSize({width,height:844});
+    if(width===390){
+      const sample=await page.evaluate(async()=>{
+        const trigger=[...document.querySelectorAll('[data-confirm-action]')].find(b=>b.textContent==='작업 중단');
+        const sheet=document.getElementById('confirmation-sheet'),snapshot=()=>({y:sheet.getBoundingClientRect().top,opacity:Number(getComputedStyle(sheet,'::backdrop').opacity)});
+        const next=()=>new Promise(r=>requestAnimationFrame(r));trigger.click();await next();
+        const enter=[snapshot()];await next();enter.push(snapshot());await next();enter.push(snapshot());
+        sheet.querySelector('[data-cancel]').click();const exit=[snapshot()];
+        for(let i=0;i<50 && sheet.open;i++){await next();if(sheet.open)exit.push(snapshot());}
+        return {enter,exit,closed:!sheet.open};
+      });
+      assert(sample.closed && sample.enter.length>=3 && sample.exit.length>=2);
+      const before=sample.enter.at(-1),after=sample.exit[0];
+      assert(Math.abs(before.y-after.y)<=1.5 && Math.abs(before.opacity-after.opacity)<.04,JSON.stringify(sample));
+      assert(sample.enter.every((p,i,a)=>!i || p.y<=a[i-1].y+1 && p.opacity>=a[i-1].opacity-.015));
+      assert(sample.exit.every((p,i,a)=>!i || p.y>=a[i-1].y-1 && p.opacity<=a[i-1].opacity+.015),JSON.stringify(sample));
+      console.log('바텀시트 진입 중 닫기 위치·배경 불투명도 '+JSON.stringify(sample));
+    }
     await trigger.click();
     await dialog.waitFor();
     assert(await cancel.evaluate(button=>document.activeElement===button),'기본 초점은 취소');

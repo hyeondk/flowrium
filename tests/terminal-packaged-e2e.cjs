@@ -42,7 +42,12 @@ async function main() {
     assert.match(document.pdf.replace(/\s/g,''),/실제패키지본문읽기/);assert.match(document.pptx,/번들 문서 검증/);
     if(!win)assert.equal(document.native,true);
     const click = (name) => page.getByRole('button', { name, exact: true }).click();
-    await click('프로젝트 폴더 선택'); await click('터미널'); await click('터미널 추가');
+    const add=page.locator('.workspace-side').getByRole('button',{name:'프로젝트 추가',exact:true});
+    await add.click();
+    await page.locator('.main-shell[data-view=kickoff]').waitFor();
+    await page.getByRole('button',{name:'기존 폴더 연결',exact:true}).focus();
+    await page.keyboard.press('Enter');
+    await page.getByRole('heading',{name:'시험 프로젝트',exact:true}).waitFor(); await click('터미널'); await click('터미널 추가');
     const textbox = page.locator('.xterm-helper-textarea');
     async function send(command) {
       await textbox.focus();

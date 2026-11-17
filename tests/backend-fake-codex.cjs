@@ -91,7 +91,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
             : {
                 type: "chatgpt",
                 email: "개인정보를 출력하지 않음",
-                planType: "pro",
+                planType: process.env.FLOWRIUM_TEST_PLAN || "pro",
               },
         requiresOpenaiAuth: !process.argv.includes("--no-account"),
       },
@@ -105,7 +105,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     return;
   }
   if (method === "account/rateLimits/read") {
-    write({ id, result: { rateLimits: { limitId: "codex", planType: "pro", primary: { usedPercent: 37, windowDurationMins: 300, resetsAt: 1900000000 }, credits:{hasCredits:true,unlimited:false,balance:"1234.50"} }, rateLimitResetCredits:{availableCount:2} } });
+    write({ id, result: { rateLimits: { limitId: "codex", planType: process.env.FLOWRIUM_TEST_PLAN || "pro", primary: { usedPercent: 37, windowDurationMins: 300, resetsAt: 1900000000 }, credits:{hasCredits:true,unlimited:false,balance:"1234.50"} }, rateLimitResetCredits:{availableCount:2} } });
     return;
   }
   if (method === "model/list") {
@@ -164,6 +164,10 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     write({ id, result: { turn: { id: turnId, status: "inProgress" } } });
     notify("turn/started", { threadId, turn: { id: turnId } });
     const prompt = params.input[0].text;
+    if (process.env.FLOWRIUM_TEST_FOLLOWUP_ANSWER && prompt.includes('분류표를 확인해줘')) {
+      setTimeout(() => complete(threadId, turnId, process.env.FLOWRIUM_TEST_FOLLOWUP_ANSWER), 150);
+      return;
+    }
     if (process.env.FLOWRIUM_TEST_STEP_GATE && prompt.includes('작업 단계 스트림 시험')) {
       const item={id:turnId+'-tool',type:'commandExecution',status:'inProgress'};
       notify('item/started',{threadId,turnId,item});

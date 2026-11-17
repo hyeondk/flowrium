@@ -93,7 +93,7 @@ async function checkMobileShell(page) {
   });
   for (const fixed of [false,true]) {
     await classic.evaluate((sheet, enabled) => sheet.disabled = !enabled, fixed);
-    for (const width of [320,390,768]) {
+    for (const width of [320,390,430,768]) {
       await page.setViewportSize({width,height:844});
       const r = await geometry();
       assert(r.left>=9 && r.right>=9 && r.bottom>=8,JSON.stringify(r));
@@ -129,7 +129,24 @@ async function checkMobileShell(page) {
   const shift=await offset()-resting;
   assert(Math.abs(shift-from.width*.25)<2,`반 칸 미만 드래그가 손가락을 따라야 함: ${shift}px / 목표 ${from.width*.25}px`);
   assert.equal(await nav.locator('[data-view=running]').getAttribute('aria-current'),'page');
-  await page.mouse.move(to.x+to.width/2,to.y+22,{steps:8});await page.mouse.up();
+  await page.mouse.move(to.x+to.width*.72,to.y+22,{steps:8});
+  const finger=await offset();
+  await nav.evaluate(el=>{
+    const x=()=>new DOMMatrix(getComputedStyle(el,'::before').transform).m41;
+    el.addEventListener('pointerup',()=>{
+      const t=performance.now(),samples=[x()];
+      el.settledFrames=new Promise(resolve=>{
+        function tick(){samples.push(x());if(performance.now()-t>360)resolve(samples);else requestAnimationFrame(tick);}
+        requestAnimationFrame(tick);
+      });
+    },{once:true});
+  });
+  await page.mouse.up();
+  const samples=await nav.evaluate(el=>el.settledFrames);
+  const last=samples.at(-1);assert(Math.abs(samples[0]-finger)<1.5);
+  assert(samples.length>=3 && samples.every((x,i)=>i===0||x<=samples[i-1]+1),'손을 뗀 뒤 역방향 튐 '+samples);
+  assert(last<finger-2 && Math.abs(last-samples.at(-2))<1,'정착 안정성 '+samples);
+  console.log('탭 릴리스 표시 프레임 '+samples.length+' / 좌표 '+[finger,samples[0],last].map(n=>n.toFixed(1)).join(' → '));
   assert.equal(await approvals.getAttribute('aria-current'),'page');
   await checkTouchAndWheel(page,nav);
   await page.emulateMedia({reducedMotion:'reduce'});
@@ -138,7 +155,8 @@ async function checkMobileShell(page) {
   await page.emulateMedia({reducedMotion:'no-preference'});
   if(process.env.FLOWRIUM_MOBILE_SCREENSHOT){
     await classic.evaluate(sheet=>sheet.disabled=true);
-    await page.evaluate(()=>document.fonts.ready);
+    await page.mouse.move(0,0);await page.evaluate(()=>{document.activeElement?.blur();scrollTo(0,0);});
+    await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(350);
     await page.screenshot({path:process.env.FLOWRIUM_MOBILE_SCREENSHOT,animations:'disabled'});
     await classic.evaluate(sheet=>sheet.disabled=false);
   }

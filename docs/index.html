@@ -1,222 +1,121 @@
 <!doctype html>
 <html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#ffffff" />
-    <meta
-      name="description"
-      content="대시보드를 보면서 우측 고정 대화로 프로젝트별 AI 업무를 이어가세요. Flowrium은 본인의 ChatGPT 계정으로 사용하는 Mac과 Windows용 AI 작업 공간입니다."
-    />
-    <title>Flowrium</title>
-    <link rel="icon" href="./mark.png" type="image/png" />
-    <link rel="preload" href="./fonts/NanumSquareRoundR.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="stylesheet" href="./style.css" />
-    <script type="module" src="./site.js"></script>
-  </head>
-  <body>
-    <a class="skip-link" href="#main">본문으로 이동</a>
-    <header class="site-header wrap">
-      <a class="brand" href="./"
-        ><img src="./mark.png" width="32" height="32" alt="" />Flowrium</a
-      >
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="description" content="프로젝트 자료를 보며 오른쪽 AI 대화에서 수정을 요청하고 완성한 문서를 보관하세요. 가상의 온라인 스토어 매출 분석 예시로 Flowrium을 살펴보고 Apple Silicon Mac 또는 Windows 64비트에서 본인의 ChatGPT 계정으로 시작하세요.">
+  <title>Flowrium</title>
+  <link rel="icon" href="./mark.png" type="image/png">
+  <link rel="preload" href="./fonts/NanumSquareRoundR.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">본문으로 이동</a>
+  <header class="site-header">
+    <div class="wrap nav-row">
+      <a class="brand" href="./"><img src="./mark.png" width="34" height="34" alt="">Flowrium</a>
       <nav aria-label="주 메뉴">
-        <a href="#workspace">작업 공간</a><a href="#download">다운로드</a
-        ><a
-          id="source-link"
-          class="source-link"
-          href="https://github.com/hyeondk/flowrium"
-          target="_blank"
-          rel="noopener noreferrer"
-          >소스 보기 ↗</a
-        >
+        <a href="#workspace">작업 공간</a><a href="#download">다운로드</a><a id="source-link" href="https://github.com/hyeondk/flowrium">소스 보기 ↗</a>
       </nav>
-    </header>
-    <main id="main">
-      <section class="hero wrap" aria-labelledby="hero-title">
-        <span class="eyebrow">프로젝트 작업 공간</span>
-        <h1 id="hero-title">프로젝트를 열고,<br />오늘 할 일을 고르세요.</h1>
-        <p>프로젝트별 AI 업무를 동시에 진행하고 통합 알림에서 검토 요청과 결과를 확인하세요. 우측 대화를 고정한 채 왼쪽에서 대시보드와 자료를 살펴볼 수 있습니다. 본인의 ChatGPT 계정으로 사용합니다.</p>
-        <div class="hero-actions">
-          <a class="button primary" href="#download"
-            >Flowrium 다운로드 <span aria-hidden="true">↓</span></a
-          ><a class="text-link" href="#workspace">작업 공간 살펴보기 ↗</a>
-        </div>
-        <span class="hero-platforms">Apple Silicon Mac / Windows 64비트</span>
-      </section>
-      <section
-        class="workspace-section wrap"
-        id="workspace"
-        aria-labelledby="workspace-title"
-      >
-        <div class="section-heading">
-          <div>
-            <h2 id="workspace-title">대화는 우측에, 업무는 한눈에</h2>
+    </div>
+  </header>
+  <main id="main" tabindex="-1">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="wrap hero-layout">
+        <div class="hero-copy">
+          <h1 id="hero-title">자료를 보며 <span>AI와 일하세요.</span></h1>
+          <p>프로젝트 자료를 펼쳐 두고, 오른쪽 대화에서 수정을 요청하세요. 완성한 문서는 같은 프로젝트에 보관할 수 있습니다.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="#download"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v11m-4-4 4 4 4-4M4 16v4h16v-4"/></svg> Flowrium 다운로드</a>
+            <a class="text-link" href="#workspace">작업 공간 살펴보기 <span aria-hidden="true">→</span></a>
           </div>
+          <small class="hero-platforms">Apple Silicon Mac / Windows 64비트</small>
         </div>
-        <figure class="app-preview">
-          <img
-            src="./workspace.png"
-            width="1440"
-            height="1000"
-            alt="Flowrium 실제 대시보드. 오늘의 할 일, 업무 그래프와 프로젝트 진행 분포를 확인할 수 있습니다."
-          />
-          <figcaption>예시 프로젝트로 촬영한 실제 화면입니다. 대시보드와 우측 대화는 독립적으로 탐색하며 초안과 실행 중인 업무를 유지합니다.</figcaption>
+        <figure class="product-example" aria-labelledby="example-caption">
+          <div class="product-surfaces">
+            <div class="project-sheet sample-sheet">
+              <div class="sheet-bar"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3z"/></svg> 프로젝트</div>
+              <div class="project-body">
+                <h2>온라인 스토어 매출 분석</h2>
+                <p>상반기 주문 자료를 집계합니다.</p>
+                <div class="project-progress"><b>월별 자료 확인</b><span>6 / 6</span><progress max="6" value="6" aria-label="확인한 월별 자료"></progress></div>
+                <h3>오늘의 업무</h3>
+                <ul class="task-list"><li>월별 주문 합계 확인</li><li>증감 원인 정리</li></ul>
+              </div>
+            </div>
+            <div class="chat-sheet sample-sheet">
+              <div class="sheet-bar"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h16v13H9l-5 4z"/></svg> 프로젝트 대화</div>
+              <p class="sample-question">상반기 매출 흐름을 보여줘.</p>
+              <div class="sales-chart">
+                <div class="chart-title"><b>월별 매출</b><small>단위 만 원</small></div>
+                <ol class="sales-bars" aria-label="1월부터 6월까지 매출"></ol>
+                <div class="chart-change"><span>1월 대비 6월</span><strong data-sales-change></strong></div>
+              </div>
+              <noscript><p>6월 매출은 3,600만 원으로, 1월 2,400만 원보다 50% 늘었어요.</p></noscript>
+            </div>
+          </div>
+          <figcaption id="example-caption">가상의 매출 데이터로 구성한 예시 화면입니다.
+            <a href="./workspace-sales.png" class="example-link" id="example-open" aria-haspopup="dialog">실제 앱 화면 보기 <span aria-hidden="true">↗</span></a>
+          </figcaption>
         </figure>
-        <div class="features">
-          <article>
-            <h3>세 범위로 나눈 대화</h3>
-            <p>우측 통합 탭에서 여러 프로젝트의 완료와 검토 알림을 모아 보고, 알림을 선택해 해당 대화로 이동하세요. 프로젝트 대화에서 작업을 맡기고 일반 대화에서는 별개의 질문을 이어갈 수 있습니다.</p>
+      </div>
+    </section>
+    <section id="workspace" class="workspace-section wrap" aria-labelledby="workspace-title">
+      <h2 id="workspace-title">프로젝트를 열면 할 수 있는 일</h2>
+      <div class="features">
+        <article><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></svg><h3>오늘 할 일 확인하기</h3><p>목표와 기한을 확인하고 업무를 고르세요. 대화를 열어 둔 채 다른 자료도 살펴볼 수 있습니다.</p></article>
+        <article><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5zM14 3v6h5M8 13h8m-8 4h6"/></svg><h3>답변을 문서로 남기기</h3><p>대화에서 만든 결과를 미리 보고 수정하세요. 완성한 문서를 PDF나 편집 가능한 발표자료로 내보낼 수 있습니다.</p></article>
+        <article><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="2"/><path d="M11 18h2"/></svg><h3>휴대폰에서 이어보기</h3><p>컴퓨터에서 Flowrium을 켜고 휴대폰 연결을 시작하세요. QR 코드를 스캔하면 진행 중인 업무와 검토 요청을 보고 대화로 이동할 수 있습니다.</p></article>
+      </div>
+    </section>
+    <section id="download" class="download-section" aria-labelledby="download-title">
+      <div class="wrap">
+        <h2 id="download-title">Flowrium 다운로드</h2>
+        <p class="section-intro">사용하는 컴퓨터에 맞는 설치 파일을 선택하세요.</p>
+        <div class="release-notice" role="status" aria-live="polite"><span id="release-status">공개된 설치 파일을 확인하고 있습니다.</span> <button id="retry-releases" type="button" hidden>다시 확인</button></div>
+        <div class="download-grid">
+          <article class="download-card"><div><h3>Mac</h3><p>Apple Silicon / M 시리즈 칩</p></div>
+            <a class="download-button" data-download="mac-arm64" aria-disabled="true" tabindex="-1">설치 파일 준비 중</a>
+            <small data-file="mac-arm64">디스크 이미지와 업데이트 파일을 확인합니다.</small>
           </article>
-          <article>
-            <h3>대화에서 산출물로</h3>
-            <p>AI가 자료를 읽어 완성한 문서를 저장합니다. HTML 미리보기와 수정, PDF와 편집 가능한 발표자료 변환, 삭제와 복원을 프로젝트에서 이어갑니다.</p>
-          </article>
-          <article>
-            <h3>오늘의 업무와 AI 보고</h3>
-            <p>목표와 기한, 그래프로 현황을 보고 ChatGPT에 오늘의 계획을 맡기세요. 중앙 팝업에서 프로젝트와 기간, 계정 모델과 생각의 깊이를 고르면 AI가 실제 완료 기록으로 보고와 인계를 작성합니다.</p>
-          </article>
-          <article><h3>자료와 실행 도구 관리</h3><p>전체 자료를 미리 보고 새 폴더로 옮기세요. 원문과 백업을 보존합니다. 준비한 로컬 음성 서버의 실행을 관리하고 프로젝트 자동 포트표에서 서비스 주소와 충돌을 확인합니다.</p></article>
-          <article><h3>같은 기기에서 대화 이어가기</h3><p>Flowrium과 Codex 데스크톱에서 같은 대화를 번갈아 이어가세요. 다른 앱에서 답변이 끝나면 열린 Flowrium 대화가 자동으로 갱신됩니다. 과거 대화를 별도로 보관하려면 독립 사본을 만들 수 있습니다.</p></article>
-          <article>
-            <h3>채팅마다 모델 선택</h3>
-            <p>대화마다 모델을 고르고, 실행 중인 작업에 추가 지시를 보내세요. 대화 안에서 작업 과정을 펼쳐 보고 새 모델 알림도 받을 수 있습니다. <a class="text-link" href="./chat-261115_06.png">채팅 화면 보기</a></p>
-          </article>
-          <article>
-            <h3>휴대폰에서 업무 이어가기</h3>
-            <p>컴퓨터의 QR 코드를 스캔하세요. 휴대폰 홈에서 오늘 할 일과 작업 상태를 보고 해당 대화로 이동할 수 있습니다. 하단 바를 좌우로 밀어 이동하고, 설정에서 홈 화면 설치와 모바일 업데이트를 확인하세요.</p>
-            <p><a class="text-link" href="./mobile-dashboard-261115_09.png">휴대폰 홈</a> / <a class="text-link" href="./mobile-settings-261115_09.png">휴대폰 설정</a> / <a class="text-link" href="./mobile-confirmation-261115_08.png">작업 중단 확인</a></p>
+          <article class="download-card"><div><h3>Windows</h3><p>64비트 / Intel 또는 AMD 프로세서</p></div>
+            <a class="download-button" data-download="win-x64" aria-disabled="true" tabindex="-1">설치 파일 준비 중</a>
+            <small data-file="win-x64">공개 릴리스의 설치 파일을 확인합니다.</small>
           </article>
         </div>
-      </section>
-      <section
-        class="download-section"
-        id="download"
-        aria-labelledby="download-title"
-      >
-        <div class="wrap">
-          <div class="download-heading">
-            <h2 id="download-title">Flowrium 다운로드</h2>
-            <p>사용하는 컴퓨터에 맞는 설치 파일을 선택하세요.</p>
-          </div>
-          <div class="release-notice" role="status" aria-live="polite">
-            <span id="release-status"
-              >공개된 설치 파일을 확인하고 있습니다.</span
-            ><button id="retry-releases" type="button" hidden>다시 확인</button>
-          </div>
-          <div class="download-grid">
-            <article class="download-card">
-              <span class="os-symbol" aria-hidden="true">⌘</span>
-              <h3>Mac</h3>
-              <p>Apple Silicon</p>
-              <span class="architecture">M 시리즈 칩 (arm64)</span
-              ><a
-                class="download-button"
-                data-download="mac-arm64"
-                aria-disabled="true"
-                tabindex="-1"
-                >설치 파일 준비 중 <span aria-hidden="true">↓</span></a
-              ><small data-file="mac-arm64"
-                >현재 공개 릴리스의 디스크 이미지와 업데이트 파일을 확인합니다.</small
-              >
-              <p class="mac-notice">Apple 미공증 버전은 직접 설치하며, 처음 열 때 macOS가 실행을 제한할 수 있습니다.</p>
-              <a class="source-build-link" href="https://github.com/hyeondk/flowrium/blob/main/README.md#local-mac">맥 설치와 첫 실행 안내</a>
-            </article>
-            <article class="download-card">
-              <svg
-                class="os-symbol windows-symbol"
-                aria-hidden="true"
-                viewBox="0 0 32 32"
-              >
-                <path
-                  d="M2 5l12-2v12H2zm14-2l14-2v14H16zM2 17h12v12L2 27zm14 0h14v14l-14-2z"
-                  fill="currentColor"
-                />
-              </svg>
-              <h3>Windows</h3>
-              <p>64비트 PC</p>
-              <span class="architecture">Intel 또는 AMD 프로세서 (x64)</span
-              ><a
-                class="download-button"
-                data-download="win-x64"
-                aria-disabled="true"
-                tabindex="-1"
-                >설치 파일 준비 중 <span aria-hidden="true">↓</span></a
-              ><small data-file="win-x64"
-                >공개 릴리스에 설치 파일이 등록되면 받을 수 있습니다.</small
-              >
-            </article>
-          </div>
-          <div class="download-footnote">
-            <p>
-              설치 파일의 서명 상태와 SHA-256 확인값은 해당 버전의 릴리스에서 확인하세요.
-            </p>
-            <p>기존 0.6.0 이하 버전은 날짜 형식의 새 설치본을 이번 한 번 직접 설치하세요. <a href="https://github.com/hyeondk/flowrium/blob/main/docs/VERSIONING.md">버전과 업데이트 안내 ↗</a></p>
-            <p><a href="https://github.com/hyeondk/flowrium/blob/main/docs/TERMINAL-INSTALL.md">터미널 설치와 직접 빌드하기 ↗</a></p>
-            <a
-              id="releases-link"
-              href="https://github.com/hyeondk/flowrium/releases"
-              target="_blank"
-              rel="noopener noreferrer"
-              >전체 릴리스와 검증 정보 ↗</a
-            >
-          </div>
+        <p class="install-note">설치 파일의 서명과 공증 상태, SHA-256 확인값은 해당 버전의 릴리스에서 확인하세요. 미공증 맥 앱은 처음 열 때 macOS가 실행을 제한할 수 있습니다.</p>
+        <div class="support-links">
+          <a href="https://github.com/hyeondk/flowrium/blob/main/README.md#local-mac">맥 설치와 첫 실행 안내 ↗</a>
+          <a id="releases-link" href="https://github.com/hyeondk/flowrium/releases">전체 릴리스와 검증 정보 ↗</a>
+          <a href="https://github.com/hyeondk/flowrium/blob/main/docs/TERMINAL-INSTALL.md">터미널 설치와 직접 빌드 ↗</a>
+          <a href="https://github.com/hyeondk/flowrium/blob/main/docs/VERSIONING.md">버전과 업데이트 안내 ↗</a>
         </div>
-      </section>
-      <section class="getting-started wrap" aria-labelledby="start-title">
-        <div>
-          <h2 id="start-title">세 단계로 시작하세요.</h2>
-          <a
-            class="text-link"
-            href="https://github.com/hyeondk/flowrium#시작하기"
-            target="_blank"
-            rel="noopener noreferrer"
-            >설치와 사용 안내 ↗</a
-          >
-        </div>
-        <ol>
-          <li>
-            <span>01</span>
-            <div>
-              <h3>Flowrium 설치</h3>
-              <p>
-                Mac은 앱을 응용 프로그램 폴더로 옮기고, Windows는 설치
-                프로그램을 실행하세요.
-              </p>
-            </div>
-          </li>
-          <li>
-            <span>02</span>
-            <div>
-              <h3>본인의 ChatGPT 계정 연결</h3>
-              <p>
-                Flowrium의 설정에서 Codex 연결을 누르고 브라우저에서 자신의 계정으로 로그인하세요.
-              </p>
-            </div>
-          </li>
-          <li>
-            <span>03</span>
-            <div>
-              <h3>프로젝트와 대화 선택</h3>
-              <p>
-                프로젝트 폴더를 연결하고 대화 범위를 고르세요. 일반 대화는 프로젝트 없이도 시작하며, 프로젝트에서 진행한 기존 Codex 대화도 골라 가져올 수 있습니다.
-              </p>
-            </div>
-          </li>
-        </ol>
-      </section>
-    </main>
-    <footer class="site-footer wrap">
-      <a class="brand" href="./"
-        ><img src="./mark.png" width="24" height="24" alt="" />Flowrium</a
-      >
-      <a class="text-link" href="https://github.com/hyeondk/flowrium/blob/main/docs/FEATURES.md">기능별 지원 범위</a>
-    <a href="./privacy.html">개인정보 안내</a></footer>
-    <noscript
-      ><p class="noscript-note">
-        자동 다운로드 확인에는 자바스크립트가 필요합니다. 전체 릴리스 링크에서
-        설치 파일의 공개 여부를 확인해 주세요.
-      </p></noscript
-    >
-  </body>
+        <noscript><p class="install-note">설치 파일은 전체 릴리스에서도 내려받을 수 있습니다.</p></noscript>
+      </div>
+    </section>
+    <section class="getting-started wrap" aria-labelledby="start-title">
+      <h2 id="start-title">기존 계정으로 시작하세요</h2>
+      <p class="section-intro">컴퓨터에서 Flowrium을 열고 설정에서 본인의 ChatGPT 계정을 연결하세요. 프로젝트 폴더를 선택하면 대화를 시작할 수 있습니다.</p>
+      <a class="text-link" href="https://github.com/hyeondk/flowrium#시작하기">설치와 사용 안내 ↗</a>
+    </section>
+  </main>
+  <footer class="site-footer">
+    <div class="wrap"><a class="brand" href="./"><img src="./mark.png" width="26" height="26" alt="">Flowrium</a>
+      <nav aria-label="추가 안내"><a href="https://github.com/hyeondk/flowrium">소스 보기</a><a href="https://github.com/hyeondk/flowrium/blob/main/docs/FEATURES.md">기능별 지원 범위</a><a href="./privacy.html">개인정보 안내</a></nav>
+    </div>
+  </footer>
+  <dialog id="example-dialog" aria-labelledby="example-title">
+    <div class="dialog-heading"><h2 id="example-title">온라인 스토어 매출 분석</h2><form method="dialog"><button autofocus aria-label="예시 화면 닫기" type="submit">닫기</button></form></div>
+    <div class="dialog-body">
+      <p data-sales-summary></p>
+      <figure class="app-preview">
+        <picture><source media="(max-width: 620px)" srcset="./workspace-sales-chat.png"><img src="./workspace-sales.png" width="1440" height="900" alt="온라인 스토어 매출 분석 프로젝트에서 상반기 자료와 1월 대비 6월 매출 50% 증가를 함께 확인하는 Flowrium 앱 화면" loading="lazy"></picture>
+        <figcaption>가상의 매출 데이터로 구성한 예시 화면입니다.</figcaption>
+      </figure>
+      <table class="input-table"><caption>가상 입력표 (단위 만 원)</caption><thead><tr><th scope="col">월</th><th scope="col">매출</th></tr></thead><tbody></tbody></table>
+    </div>
+  </dialog>
+</body>
 </html>
