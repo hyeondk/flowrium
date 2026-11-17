@@ -8,7 +8,7 @@ const {spawn} = require('node:child_process');
 const {randomUUID} = require('node:crypto');
 const {once} = require('node:events');
 const readCommand = process.platform === 'win32' ? 'Get-Content input.txt' : 'cat input.txt';
-const writeCommand = process.platform === 'win32'
+let writeCommand = process.platform === 'win32'
   ? 'Add-Content input.txt EDIT; Copy-Item input.txt copy.txt'
   : 'echo EDIT >> input.txt && cp input.txt copy.txt';
 
@@ -19,9 +19,11 @@ const {CodexClient, resolveCodex} = require('../electron/codex.cjs');
 async function main() {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-edit-proof-'));
   const cwd = path.join(temp,'project'), profile = path.join(temp,'account');
-  let current, server, controller, client, issue;
+  let current, server, controller, client, issue, variant;
+  const external = path.join(process.env.GITHUB_WORKSPACE || process.cwd(),'.flowrium-probe-'+randomUUID());
+  const externalMarker = 'BOUNDED_'+randomUUID();
   try {
-    await fs.mkdir(cwd); await fs.mkdir(profile);
+    await fs.writeFile(external,externalMarker,{flag:'wx'}); await fs.mkdir(cwd); await fs.mkdir(profile);
     server = http.createServer(async (req,res) => {
       try {
         assert.equal(req.url,'/v1/responses');
@@ -59,24 +61,41 @@ async function main() {
     client=new CodexClient({descriptor:await resolveCodex(),spawn:(cmd,args,opts)=>spawn(cmd,[...args,'-c','model_provider="flowrium_test"'],{...opts,env:{...opts.env,CODEX_HOME:profile,FLOWRIUM_OFFLINE_KEY:'synthetic-only',OPENAI_BASE_URL:base}})});
     const request=client.request.bind(client), projectCalls=[];
     client.request=(method, ...args)=>{
-      if (method === 'thread/start' || method === 'thread/resume') projectCalls.push({method,config:args[0].config});
+      if (method === 'thread/start' || method === 'thread/resume') {
+        if (variant?.startsWith('seed')) args[0].sandbox='read-only';
+        else assert.equal(args[0].sandbox,'workspace-write');
+        projectCalls.push({method,variant,id:args[0].threadId,config:args[0].config});
+      }
+      if(method==='turn/start'){
+        if (variant?.startsWith('seed')) args[0].sandboxPolicy={type:'readOnly'};
+        else {
+          assert.equal(args[0].sandboxPolicy.type,'workspaceWrite');
+          assert.deepEqual(args[0].sandboxPolicy.writableRoots,[cwd]);
+          assert.equal(args[0].sandboxPolicy.networkAccess,false);
+        }
+      }
       return method==='account/read'?Promise.resolve({account:{type:'chatgpt',planType:'test'}}):request(method,...args);
     };
     const store=new Store(path.join(temp,'flowrium')); await store.load();
     const project=await store.addProject(cwd); await store.saveSettings({model:'gpt-5.5'});
     controller=new Controller(store,{client,canRun:()=>true}); await controller.connect();
-    const baseline=process.argv.includes('--baseline');
-    let original;
     const originalProfile = await fs.readFile(path.join(profile,'config.toml'),'utf8');
-    for (const variant of baseline ? ['baseline'] : ['new','resume','readonly']) {
-      const writable = variant === 'new' || variant === 'resume';
-      if (variant === 'resume') {
+    const saved={};
+    for (variant of ['seed-hot','upgrade-hot-plan','seed-cold','upgrade-cold-build','new-plan','new-build','external']) {
+      const old = saved[variant.includes('hot')?'hot':'cold'];
+      const upgrading = variant.startsWith('upgrade');
+      const seed = variant.startsWith('seed');
+      const writable = !seed && variant!=='external';
+      if (variant === 'upgrade-cold-build') {
         const exit = once(client.proc, 'exit');
         client.close(); await exit; await controller.connect();
       }
-      const session = variant === 'resume' ? original : await store.createSession(project.id,
-        writable || baseline ? {} : {preferences:{sandbox:'read-only',approval:'never'}});
-      if (variant === 'new') original = session;
+      const session = upgrading ? store.session(old.id) : await store.createSession(project.id,
+        {preferences:{sandbox:'read-only',approval:'never'}});
+      if(variant==='external') {
+        const quoted = "'" + external.replaceAll("'","''") + "'";
+        writeCommand = 'Set-Content -LiteralPath '+quoted+' -Value ALTERED';
+      }
       current={id:randomUUID(),marker:'INPUT_'+randomUUID()};
       await fs.writeFile(path.join(cwd,'input.txt'),current.marker+'\n');await fs.rm(path.join(cwd,'copy.txt'),{force:true});
       const done=new Promise((resolve,reject)=>{
@@ -99,23 +118,23 @@ async function main() {
           if(event.type==='done' && event.sessionId===session.id){clearTimeout(timer);controller.off('event',listen);resolve(event);}}
         controller.on('event',listen);
       });
-      await controller.send({sessionId:session.id,text:'프로젝트의 input.txt를 읽고 한 줄을 추가해 copy.txt에도 저장해줘.',...(baseline&&{mode:'plan'})},{fromComposer:true});
+      await controller.send({sessionId:session.id,text:'프로젝트의 input.txt를 읽고 한 줄을 추가해 copy.txt에도 저장해줘.',mode:variant.includes('plan')?'plan':'build'},{fromComposer:true});
       const result=await done; if(issue)throw issue;assert.equal(result.status,'completed',result.text);
       const source=await fs.readFile(path.join(cwd,'input.txt'),'utf8');
       if(writable){assert.match(source,/EDIT/);assert((await fs.readFile(path.join(cwd,'copy.txt'),'utf8')).includes(current.marker));}
       else{assert.equal(source,current.marker+'\n');await assert.rejects(fs.stat(path.join(cwd,'copy.txt')),{code:'ENOENT'});}
       assert(store.session(session.id).messages.some(m=>m.role==='assistant'&&m.text.includes(current.marker)));
-      console.log(variant === 'resume' ? '재연결한 같은 대화 / 실제 파일 읽기·수정·복사 확인' :
-        writable ? '새 프로젝트 기본값 / 실제 파일 읽기·수정·복사 확인' : '읽기 전용 / 실제 읽기 및 수정 거부 확인');
-    }
-    if (!baseline) {
-      assert.deepEqual(projectCalls.map(call => call.method), ['thread/start','thread/resume','thread/start']);
-      if (process.platform === 'win32') for (const { config } of projectCalls) {
-        assert.equal(config?.['features.prefer_mxc'], true);
-        assert.equal(config?.['windows.sandbox'], 'unelevated');
+      if(seed) saved[variant.endsWith('hot')?'hot':'cold']={id:session.id,thread:store.session(session.id).threadId,marker:current.marker};
+      if(upgrading){
+        assert.equal(store.session(session.id).threadId,old.thread);
+        assert(store.session(session.id).messages.some(m=>m.role==='assistant'&&m.text.includes(old.marker)));
       }
-      assert.equal(await fs.readFile(path.join(profile,'config.toml'),'utf8'), originalProfile);
+      if(variant==='external')assert.equal(await fs.readFile(external,'utf8'),externalMarker);
+      console.log(variant, writable?'실제 편집 성공':'실제 쓰기 차단 확인');
     }
-  } finally {await controller?.shutdown();client?.close();server?.closeAllConnections();if(server)await new Promise(r=>server.close(r));await fs.rm(temp,{recursive:true,force:true,maxRetries:5});}
+    assert(!projectCalls.some(c=>c.variant==='upgrade-hot-plan'));
+    assert(projectCalls.some(c=>c.variant==='upgrade-cold-build' && c.method==='thread/resume' && c.id===saved.cold.thread));
+    assert.equal(await fs.readFile(path.join(profile,'config.toml'),'utf8'), originalProfile);
+  } finally {await fs.rm(external,{force:true});await controller?.shutdown();client?.close();server?.closeAllConnections();if(server)await new Promise(r=>server.close(r));await fs.rm(temp,{recursive:true,force:true,maxRetries:5});}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

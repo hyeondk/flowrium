@@ -460,7 +460,7 @@ class Controller extends EventEmitter {
       else {try {cwd=await require("./project-repositories.cjs").resolveProjectDirectory(this.store,project,this.store.session(run.sessionId));} catch(e) {if(e.code!=="MODULE_NOT_FOUND")throw e;} }
     }
     const prefs=require("./chat-preferences.cjs").resolved(this.store.state.settings.chatDefaults,this.store.session(run.sessionId).preferences);
-    const sandbox=prefs.sandbox || (input.mode === "build" ? "workspace-write" : "read-only");
+    const sandbox='workspace-write';
     const approvalPolicy=prefs.approval || (input.mode === "build" ? "on-request" : "never");
     run.approvalsAllowed=approvalPolicy === "on-request";
     const threadParams = {
