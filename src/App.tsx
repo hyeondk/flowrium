@@ -192,12 +192,13 @@ const upsert = (items: Session[], session: Session) =>
 
 export default function App() {
   const security = useSecurity();
-  const lockPresence=usePresence(security.state.loaded&&security.state.locked,360);
+  const lockLayer=useRef<HTMLDivElement>(null);
+  const lockPresence=usePresence(security.state.loaded&&security.state.locked,360,lockLayer);
   if (!security.state.loaded && security.error) return <main className="loading-page"><p role="alert">{security.error}</p><button onClick={()=>void security.refresh().catch(()=>{})}>연결 다시 확인</button></main>;
   if (!security.state.loaded) return <main className="loading-page"><LoaderCircle className="spin"/>작업 공간을 준비하고 있습니다.</main>;
   return <div className="security-stage">
     {!security.state.locked&&<div className="unlocked-stage"><UnlockedWorkspace key={security.state.accountRevision} security={security}/></div>}
-    {lockPresence.present&&<div className="security-lock-layer" data-phase={lockPresence.phase} inert={!security.state.locked} aria-hidden={!security.state.locked}><LockScreen security={security} releasing={!security.state.locked}/></div>}
+    {lockPresence.present&&<div ref={lockLayer} className="security-lock-layer" data-phase={lockPresence.phase} inert={!security.state.locked} aria-hidden={!security.state.locked}><LockScreen security={security} releasing={!security.state.locked}/></div>}
   </div>;
 }
 function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>}) {

@@ -36,13 +36,14 @@ async function run() {
       env,
       timeout: 45000,
     });
-    page = await app.firstWindow();await page.setViewportSize({width:1440,height:1000});
+    page = await app.firstWindow();await page.bringToFront();await page.waitForFunction(()=>document.visibilityState==='visible');await page.setViewportSize({width:1440,height:1000});
     await page.emulateMedia({ reducedMotion: "no-preference" });
     page.setDefaultTimeout(15000);
   }
   async function closeWithMotion(layer, button, name, duration) {
     const probe = await layer.evaluateHandle((element, name) => {
-      const result = { started: null };
+      const result = { started: null, ended: false };
+      element.addEventListener('animationend', event => {if(event.target===element && event.animationName===name) result.ended=true;});
       element.addEventListener("animationstart", (event) => {
         if (event.target !== element || event.animationName !== name) return;
         const animation = element.getAnimations().find(item => item.animationName === name);
@@ -57,7 +58,8 @@ async function run() {
     try {
       await button.click();
       await layer.waitFor({ state: "detached" });
-      const { started } = await probe.jsonValue();
+      const { started, ended } = await probe.jsonValue();
+      if(name==='ui-unlock') assert.ok(ended,'잠금 화면을 해제 애니메이션 마지막 프레임까지 유지합니다.');
       assert.ok(started, name + " 시작 이벤트가 필요합니다.");
       assert.equal(started.name, name);
       assert.equal(started.duration, duration);
@@ -215,7 +217,26 @@ async function run() {
     app = null;
     await launch();
     await page.getByRole("heading", { name: "화면 잠금" }).waitFor();
+    const timeline=await page.context().newCDPSession(page);
+    await timeline.send('Animation.enable');
+    await timeline.send('Animation.setPlaybackRate',{playbackRate:.35});
     await unlock();
+    await timeline.send('Animation.setPlaybackRate',{playbackRate:1});await timeline.detach();
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await page.evaluate(()=>window.flowrium.lockSecurity());
+    const reducedLayer=page.locator('.security-lock-layer');
+    await reducedLayer.waitFor();
+    const reducedProbe=await reducedLayer.evaluateHandle(el=>{
+      const state={starts:0};
+      el.addEventListener('animationstart',event=>{if(event.target===el&&event.animationName==='ui-unlock')state.starts++});
+      return state;
+    });
+    await page.getByLabel('잠금 번호',{exact:true}).fill('7904');
+    await btn('잠금 해제').click();
+    await reducedLayer.waitFor({state:'detached'});
+    assert.deepEqual(await reducedProbe.jsonValue(),{starts:0});
+    await reducedProbe.dispose();
+
     assert.equal(
       (await page.evaluate(() => window.flowrium.securityState())).preferences
         .idleMinutes,

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type CSSProperties, type RefObject, type ReactNode } from 'react';
 import {ThumbsUp} from 'lucide-react';
 import {createPortal} from 'react-dom';
 
@@ -10,13 +10,14 @@ export function useReducedMotion() {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     const change = () => setReduced(media.matches);
     media.addEventListener('change', change);
+    change();
     return () => media.removeEventListener('change', change);
   }, []);
   return reduced;
 }
 
 /** 닫힘 동작이 끝난 뒤 언마운트합니다. 열림 상태가 빠르게 바뀌면 이전 타이머를 취소합니다. */
-export function usePresence(open: boolean, durationMs = 240) {
+export function usePresence(open: boolean, durationMs = 240, exitElement?: RefObject<HTMLElement | null>) {
   const reduced = useReducedMotion();
   const duration = reduced ? 1 : Math.max(200, Math.min(400, durationMs));
   const [state, setState] = useState<{ present: boolean; phase: MotionPhase }>(() => ({ present: open, phase: open ? 'enter' : 'exit' }));
@@ -26,13 +27,33 @@ export function usePresence(open: boolean, durationMs = 240) {
     // CSS의 마지막 프레임까지 그린 뒤 배치에서 제거한다. 백그라운드 창의 rAF는 멈출 수 있다.
     let frame=0, timer=0, fallback=0;
     const finish=()=>setState(open ? {present:true,phase:'idle'} : {present:false,phase:'exit'});
+    if(!open && !reduced && exitElement?.current){
+      // 잠금막은 창이 실제로 그린 마지막 애니메이션 프레임까지 보존한다.
+      let cancelled=false;
+      const onVisibility=()=>{
+        clearTimeout(timer);
+        if(document.hidden) timer=window.setTimeout(finish,duration);
+      };
+      onVisibility();
+      document.addEventListener('visibilitychange',onVisibility);
+      frame=requestAnimationFrame(()=>{
+        const animations=exitElement.current?.getAnimations() || [];
+        Promise.allSettled(animations.map(animation=>animation.finished)).then(()=>{
+          if(!cancelled) frame=requestAnimationFrame(finish);
+        });
+      });
+      return ()=>{
+        cancelled=true;cancelAnimationFrame(frame);clearTimeout(timer);
+        document.removeEventListener('visibilitychange',onVisibility);
+      };
+    }
     if(reduced||document.hidden)timer=window.setTimeout(finish,reduced?0:duration);
     else{
       fallback=window.setTimeout(finish,duration+100);
       frame=requestAnimationFrame(()=>{timer=window.setTimeout(()=>{clearTimeout(fallback);finish()},duration+16)});
     }
     return ()=>{cancelAnimationFrame(frame);window.clearTimeout(timer);window.clearTimeout(fallback)};
-  }, [open, duration, reduced]);
+  }, [open, duration, reduced, exitElement]);
   return state;
 }
 

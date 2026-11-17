@@ -105,6 +105,11 @@ async function run() {
       }
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
+    const rail = page.getByRole('complementary', { name: '작업 공간 탐색' });
+    await rail.hover();
+    await page.locator('.workspace-side[data-expanded=true]').waitFor();
+    await page.mouse.move(720, 80);
+    await page.locator('.workspace-side[data-expanded=false]').waitFor();
     await tab('팀').click();
     await button('팀 만들기').click();
     await page.getByLabel('팀 이름', { exact: true }).fill('합성 검증 팀');

@@ -1,6 +1,6 @@
 import {useMemo,useState,type ReactNode} from 'react';
 import {CircleAlert,ChevronDown,Copy,FileText,TerminalSquare} from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, {type Components} from 'react-markdown';
 import type {Processor} from 'unified';
 import type {Extension} from 'micromark-util-types';
 import remarkGfm from 'remark-gfm';
@@ -18,12 +18,17 @@ function preserveTildes(this:Processor) {
  const data=this.data() as {micromarkExtensions?: Extension[]};
  (data.micromarkExtensions ||= []).push({disable:{null:['strikethrough']}});
 }
+const markdownComponents: Components = {
+  a: ({node: _, href, children, ...props}) =>
+    <a {...props} href={href} target={href?.startsWith('#') ? undefined : '_blank'} rel="noopener noreferrer">{children}</a>,
+  table: ({node: _, ...props}) =>
+    <div className="message-table-wrap" role="region" aria-label="답변 표" tabIndex={0}><table {...props}/></div>,
+};
 function Markdown({text}:{text:string}){
  return <div className="markdown message-prose">
-  <ReactMarkdown remarkPlugins={[remarkGfm, preserveTildes]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={{
-    a:({node:_,href,children,...props})=> <a {...props} href={href} target={href?.startsWith('#')?undefined:'_blank'} rel="noopener noreferrer">{children}</a>,
-    table:({node:_,...props})=><div className="message-table-wrap" role="region" aria-label="답변 표" tabIndex={0}><table {...props}/></div>,
-  }}>{text}</ReactMarkdown>
+  <ReactMarkdown remarkPlugins={[remarkGfm, preserveTildes]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={markdownComponents}>
+    {text}
+  </ReactMarkdown>
  </div>;
 }
 function LogDetails({raw,title,failed=false,pending=false,requestFailure,children}:{raw:string;title:string;failed?:boolean;pending?:boolean;requestFailure?:'previous'|'failed';children?:ReactNode}){

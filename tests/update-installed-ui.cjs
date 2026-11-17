@@ -49,9 +49,15 @@ async function clickAvailable(application,version) {
     const rail=page.locator('.workspace-side');if(await rail.count())await rail.hover();
     await page.locator('.settings-button').click();
     const settings=page.getByRole('dialog').getByRole('region',{name:'프로그램 업데이트'});
-    const check=settings.getByRole('button',{name:'새 버전 확인'});
-    if(await check.isVisible()) await check.click();
-    await settings.getByRole('button',{name:'업데이트 후 재시작'}).waitFor();
+    const check=settings.getByRole('button',{name:'새 버전 확인',exact:true,disabled:false});
+    const restart=settings.getByRole('button',{name:'업데이트 후 재시작',exact:true});
+    // 설정 표시와 자동 확인이 모두 비동기다. 실제로 누를 수 있는 상태를 기다린다.
+    await check.or(restart).waitFor();
+    if(await check.isVisible()){
+      try{await check.click();}
+      catch(error){if(!await restart.isVisible())throw error;}
+    }
+    await restart.waitFor();
     await page.getByRole('button',{name:'설정 닫기'}).click();
   }
   await banner.getByRole('button',{name:'업데이트 후 재시작'}).click();
