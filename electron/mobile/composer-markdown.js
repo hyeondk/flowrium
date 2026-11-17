@@ -60,6 +60,7 @@ export function attachComposerMarkdown(input, ink, scope=input) {
     if(!event && last!==undefined)pasteEdit=undefined;
     last=source;revision++;
     stopWorker();
+    if(input.dataset.draftWindowed){plain();return;}
     if(source.length<4096){
       try{paint(source,markdownRanges(source));}catch{plain();}
       return;
@@ -124,6 +125,7 @@ export function attachComposerMarkdown(input, ink, scope=input) {
   function startComposition(){composing=true;revision++;stopWorker();plain();}
   function finishComposition(){composing=false;last=undefined;refresh();}
   input.addEventListener('input',refresh);
+  input.addEventListener('flowrium-draft-window',refresh);
   input.addEventListener('paste',paste);
   input.addEventListener('keydown',keydown);
   input.addEventListener('beforeinput',beforeinput);
@@ -140,6 +142,7 @@ export function attachComposerMarkdown(input, ink, scope=input) {
     else pasteHistory.delete(scope);
     revision++;stopWorker();observer.disconnect();theme.disconnect();
     input.removeEventListener('input',refresh);input.removeEventListener('scroll',scroll);
+    input.removeEventListener('flowrium-draft-window',refresh);
     input.removeEventListener('paste',paste);input.removeEventListener('keydown',keydown);input.removeEventListener('beforeinput',beforeinput);
     input.removeEventListener('compositionstart',startComposition);input.removeEventListener('compositionend',finishComposition);
     delete frame.dataset.formatted;

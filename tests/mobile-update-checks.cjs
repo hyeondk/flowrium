@@ -71,7 +71,7 @@ async function checkMobileUpdate(page, release) {
   await page.waitForFunction(version => document.querySelector('meta[name="flowrium-mobile-version"]')?.content === version, nextVersion);
   await check.waitFor();
   assert.equal(await page.locator('meta[name="update-fixture"]').getAttribute('content'), 'applied');
-  for(const name of ['composer-parse-worker.js','composer-syntax.js','composer-markdown.js','composer-markdown.css','chat-reader.js','markdown-engine.js','attachment-text.js','file-citations.js','work-time.js','answer-followup.js','project-mode.js']){
+  for(const name of ['composer-parse-worker.js','composer-syntax.js','composer-markdown.js','composer-markdown.css','chat-reader.js','markdown-engine.js','attachment-text.js','file-citations.js','work-time.js','answer-followup.js','project-mode.js','request-upload.js','large-draft-editor.js','draft-editor-events.js']){
     const loaded=await page.request.get(new URL('/'+name,page.url()).href);
     assert.equal(loaded.status(),200);
     assert.deepEqual(await loaded.body(),await fs.readFile(path.join(__dirname,'../electron/mobile',name)));

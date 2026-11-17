@@ -24,7 +24,7 @@ export default function MessageHistory({messages,running,scrollRef,stickToBottom
     if(at>lastRequestAt)lastRequestAt=at;
    }else if(message.role==='system'&&message.text.startsWith('작업을 완료하지 못했습니다')){
     const previous=messages[i-1];
-    if(previous?.role==='user'&&!previous.delegated&&!previous.sourceOnly&&
+    if(previous?.role==='user'&&!previous.delegated&&(!previous.sourceOnly||previous.requestSource)&&
         (!message.turnId||!previous.turnId||previous.turnId===message.turnId)&&
         Date.parse(previous.createdAt)<=Date.parse(message.createdAt)&&
         (previous.attachments?.length||attachmentDisplayText(previous.text)===previous.text)&&

@@ -6,6 +6,7 @@ const fs = require("node:fs/promises"),
 const {executionFor} = require('./execution-state.js');
 const {attachmentDisplayText}=require('./mobile/attachment-text.js');
 const {MobileUpdater} = require('./mobile-updater.cjs');
+const {MobileRequestUploads,chunkBytes,singleUploadBytes} = require('./mobile-request-uploads.cjs');
 const allowed = new Set([
   "startWork",
   "send",
@@ -183,6 +184,7 @@ function registerRemote(
   },
 ) {
   const mobileUpdater = new MobileUpdater({version,directory:mobileUpdateDirectory,storage:mobileUpdateStorage,fetchImpl:mobileUpdateFetch});
+  const requestUploads = new MobileRequestUploads();
   const answeredInputs = new Set();
   const runRevisions = new WeakMap();
   const runLabels = new WeakMap();
@@ -220,6 +222,13 @@ function registerRemote(
     const input=args[0];
     if(method==='send' || (method==='workflowAction' && input?.action==='continueConversation')){
       await requireSessionTrust(input?.sessionId);
+      if(input.requestSourceId){
+        const session=store.state.sessions.find(item=>item.id===input.sessionId);
+        checkScope(requestScope,requestOwner);
+        const sourceKey=id=>JSON.stringify([requestScope,requestOwner,session.projectId,session.id,id]);
+        const found=input.submissionId && await requestUploads.publish(sourceKey(input.submissionId),input.requestSourceId);
+        if(!found)await requestUploads.publish(sourceKey('legacy:'+input.requestSourceId),input.requestSourceId);
+      }
     }else if(method==='sendQueuedToCodex' || method==='resumeQueuedMessages'){
       await requireSessionTrust(input);
     }else if(method==='startWork' || method==='directTeam'){
@@ -407,17 +416,50 @@ function registerRemote(
         return;
       }
       const requestScope = scopeId(), requestOwner = String(accountRevision());
+      if(u.pathname==='/api/mobile/request-upload'){
+        try{
+          const sessionId=u.searchParams.get('sessionId'),uploadId=u.searchParams.get('id'),action=u.searchParams.get('action');
+          const session=store.state.sessions.find(item=>item.id===sessionId),contentType=req.headers['content-type']?.split(';')[0];
+          if(!originAllowed(req,local)||!session||!uuid.test(uploadId))throw Error('원문 전송 연결을 확인해 주세요.');
+          const uploadKey=JSON.stringify([requestScope,requestOwner,session.projectId,sessionId,uploadId]);
+          const verify=async()=>{
+            checkScope(requestScope,requestOwner);
+            await requireSessionTrust(sessionId);
+            if(!store.state.sessions.some(item=>item.id===sessionId&&item.projectId===session.projectId))throw Error('대화가 변경됐습니다.');
+            checkScope(requestScope,requestOwner);
+          };
+          if(req.method==='DELETE'){
+            checkScope(requestScope,requestOwner);await requestUploads.discard(uploadKey);json(res,200,{});return;
+          }
+          if(req.method==='PUT' && action==='part' && contentType==='application/octet-stream'){
+            const offset=u.searchParams.get('offset');
+            if(!/^\d{1,16}$/.test(offset)||Number(req.headers['content-length'])>chunkBytes)throw Error('원문 전송 조각 크기를 확인해 주세요.');
+            const bytes=await readBody(req,chunkBytes);await verify();
+            const result=await guard('addChatAttachments',()=>requestUploads.part(uploadKey,Number(offset),bytes,req.headers['x-content-sha256']));
+            checkScope(requestScope,requestOwner);json(res,200,result);return;
+          }
+          if(req.method!=='POST'||contentType!=='application/json'||!['begin','finish'].includes(action))throw Error('원문 전송 형식을 확인해 주세요.');
+          const input=JSON.parse((await readBody(req,1024)).toString('utf8'));await verify();
+          const result=await guard('addChatAttachments',()=>action==='begin'
+            ?requestUploads.begin(uploadKey,input.size,store,session.projectId,verify)
+            :requestUploads.finish(uploadKey,input.chain));
+          checkScope(requestScope,requestOwner);json(res,200,result);
+        }catch(e){json(res,400,{error:require('./errors.cjs').publicMessage(e)});}
+        return;
+      }
       if(u.pathname==='/api/mobile/request-source' && req.method==='POST'){
         try{
           if(!originAllowed(req,local)||req.headers["content-type"]?.split(";")[0]!=="application/octet-stream")throw Error('원문 업로드 요청을 확인해 주세요.');
           const sessionId=u.searchParams.get('sessionId'),session=store.state.sessions.find(s=>s.id===sessionId);
           if(!session)throw Error('프로젝트 대화를 다시 선택해 주세요.');
-          const bytes=await readBody(req,require('./mobile/chat-input.js').maxRequestBytes);
+          const bytes=await readBody(req,singleUploadBytes);
           await requireSessionTrust(session.id);
           checkScope(requestScope,requestOwner);
-          const raw=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
-          require('./mobile/chat-input.js').chatInput(raw);
-          const source=await guard('addChatAttachments',()=>require('./chat-attachments.cjs').storeRequestSource(store,session.projectId,raw));
+          const verify=async()=>{await requireSessionTrust(session.id);checkScope(requestScope,requestOwner);};
+          const sha=createHash('sha256').update(bytes).digest('hex');
+          const sourceId=require('./chat-request-source.cjs').sourceId(sha);
+          const legacyKey=JSON.stringify([requestScope,requestOwner,session.projectId,session.id,'legacy:'+sourceId]);
+          const source=await guard('addChatAttachments',()=>requestUploads.legacy(legacyKey,bytes,store,session.projectId,verify));
           checkScope(requestScope,requestOwner);
           json(res,200,{id:source.id});
         }catch(e){json(res,400,{error:require('./errors.cjs').publicMessage(e)});}
@@ -473,6 +515,7 @@ function registerRemote(
               version,
               mobileVersion:mobileUpdater.version,
               canSteer:true,
+              canUploadRequestChunks:true,
               pushAvailable: !!handlers.get("webPushAction"),
               connection: {
                 available: connection.available,
@@ -617,6 +660,9 @@ function registerRemote(
       "/chat-reader.js": "chat-reader.js",
       "/work-time.js": "work-time.js",
       "/project-mode.js": "project-mode.js",
+      "/request-upload.js": "request-upload.js",
+      "/large-draft-editor.js": "large-draft-editor.js",
+      "/draft-editor-events.js": "draft-editor-events.js",
       "/answer-followup.js": "answer-followup.js",
       "/chat-input.js": "chat-input.js",
       "/file-citations.js": "file-citations.js",
@@ -710,6 +756,7 @@ function registerRemote(
         child.kill("SIGKILL");
     }
     await closed;
+    await requestUploads.clear();
     if(revoke && pairing) await pairing.revoke();
     return state();
   }

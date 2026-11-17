@@ -91,19 +91,22 @@ async function run() {
       await page.evaluate(() => localStorage.getItem("flowrium.drafts")),
       null,
     );
-    await composer().fill("새로 편집한 미전송 초안");
-    await until(
-      async () =>
-        (await page.evaluate(
-          async (k) =>
-            (
-              await window.flowrium.readDrafts(
-                (await window.flowrium.securityState()).accountRevision,
-              )
-            )[k]?.text,
-          key,
-        )) === "새로 편집한 미전송 초안",
-    );
+    const longDraftHash=await composer().evaluate(async field=>{
+      const text='  긴 초안 첫 줄\n'+'한글과 공백 '.repeat(1800000)+'\n끝 표시  ';
+      const transfer=new DataTransfer(); transfer.setData('text/plain',text);
+      field.focus();field.select();
+      field.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:transfer}));
+      const bytes=new TextEncoder().encode(text);
+      if(bytes.length<=20*1024*1024) throw Error('시험 문장이 이전 크기 기준보다 짧습니다.');
+      return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),b=>b.toString(16).padStart(2,'0')).join('');
+    });
+    const stored=await page.evaluate(async key => {
+      const revision=(await window.flowrium.securityState()).accountRevision;
+      const data=await window.flowrium.readDrafts(revision);
+      const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(data[key].text));
+      return Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+    },key);
+    assert.equal(stored,longDraftHash);
     await page.evaluate(() => window.flowrium.setSecurityPin("", "6804"));
     await sidebarAction("잠금");
     await page.getByRole("heading", { name: "화면 잠금" }).waitFor();
@@ -119,9 +122,9 @@ async function run() {
     await launch();
     await unlock();
     await openConversation(page, session.title);
-    await until(
-      async () => (await composer().inputValue()) === "새로 편집한 미전송 초안",
-    );
+    await page.locator('.composer-draft-pages').waitFor();
+    const restored=(await require('./inline-draft-checks.cjs').editorDigest(composer())).hash;
+    assert.equal(restored,longDraftHash,'20MiB 이상 미전송 원문은 재시작한 실제 입력창에서 완전히 동일');
     assert.equal(
       (await page.evaluate(() => window.flowrium.bootstrap())).sessions[0]
         .messages.length,

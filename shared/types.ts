@@ -209,6 +209,7 @@ export interface FlowriumAPI
   listHubConversations():Promise<{projects:Project[];sessions:Session[]}>;
   addChatAttachments(projectId:string,files:{name:string;type:string;bytes:Uint8Array}[]):Promise<ChatAttachment[]>;
   readRequestSource(sessionId:string,messageId:string,offset:number|"full"):Promise<{text:string;next:number|null}>;
+  copyRequestSource(sessionId:string,messageId:string):Promise<void>;
   readChatCitation(session:string,message:string,index:number,action:'preview'|'download'|'reveal'):Promise<{name:string;dataUrl?:string}>;
   readChatAttachment(projectId:string,id:string):Promise<{attachment:ChatAttachment;dataUrl?:string}>;
   listQueuedMessages(sessionId:string):Promise<QueuedMessage[]>;

@@ -71,6 +71,13 @@ async function checkReading(page,chat,origin,key,folder) {
       assert.equal(received,createHash('sha256').update(expected).digest('hex'));
     }finally{await page.unroute(endpoint,refuse);}
   },page.getByRole('button',{name:'요청 보내기',exact:true}),folder);
+  // The final large input now starts a real turn. Let it finish before
+  // comparing a historic snapshot that deliberately has no progress events.
+  await page.waitForFunction(async ({id,key})=>{
+    const response=await fetch('/api/mobile/state',{headers:{Authorization:'Bearer '+key}});
+    return response.ok && !(await response.json()).running.includes(id);
+  },{id:chat.id,key},{timeout:30000});
+  await page.getByRole('button',{name:'요청 보내기',exact:true}).waitFor();
   await input.fill(raw);
   await page.getByRole('button',{name:'프로젝트로',exact:true}).click();
   // 기존 데스크톱 형식은 추가 필드와 공개 작업 단계를 제공하지 않는다.

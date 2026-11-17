@@ -1,6 +1,6 @@
 import {withLiveTurn} from '../electron/mobile/live-turn.js';
 import {RequestSource} from './RequestSource';
-import {maxChatInput, exceedsChatSize, chatLengthError, nativeQueueNotice} from '../electron/mobile/chat-input.js';
+import {maxChatInput, nativeQueueNotice} from '../electron/mobile/chat-input.js';
 import {projectMode} from '../electron/mobile/project-mode.js';
 import {useModelCatalog} from './useModelCatalog';
 import chatgptAvatar from "../electron/mobile/chatgpt.svg?no-inline";
@@ -781,14 +781,20 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     setTimeout(() => composer.current?.focus(), 0);
   }
   const submissionReceipts=useRef(new Map<string,{id:string;text:string}>());
-  function restoreFailedRequest(message:Message){
+  async function restoreFailedRequest(message:Message){
     if(submittingRef.current||currentDraftKey.current!==draftKey)return;
-    setDrafts(previous=>{
-      const draft=previous[draftKey];
-      if(draft?.text||draft?.attachments?.length)return previous;
-      return {...previous,[draftKey]:{mode:draft?.mode||mode,text:attachmentDisplayText(message.text),attachments:message.attachments||[]}};
-    });
-    composer.current?.focus();
+    try {
+      const text=message.sourceOnly && api && session
+        ? (await api.readRequestSource(session.id,message.id,"full")).text
+        : attachmentDisplayText(message.text);
+      if(submittingRef.current||currentDraftKey.current!==draftKey)return;
+      setDrafts(previous=>{
+        const draft=previous[draftKey];
+        if(draft?.text||draft?.attachments?.length)return previous;
+        return {...previous,[draftKey]:{mode:draft?.mode||mode,text,attachments:message.attachments||[]}};
+      });
+      composer.current?.focus();
+    } catch(error){ fail(error); }
   }
   function longSubmission(key:string,text:string) {
     if(text.length<=maxChatInput)return {};
@@ -806,10 +812,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }
   async function send(textOverride?:string, nextTurn=false) {
     const requestText=textOverride??input;
-    if ((!requestText.trim() && !attachments.length) || submittingRef.current || modelSaveKey.current === draftKey) return;
+    if ((!/\S/.test(requestText) && !attachments.length) || submittingRef.current || modelSaveKey.current === draftKey) return;
     if (!api)
       return notify("데스크톱 앱에서 작업 폴더와 Codex를 연결해 주세요.");
-    if (exceedsChatSize(requestText)) return notify(chatLengthError);
     if (!conversationProject) return notify("먼저 대화할 프로젝트나 대화 범위를 선택해 주세요.");
     submittingRef.current = true;
     setSubmitting(true);
@@ -823,7 +828,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     let draftCleared = false;
     try {
       if (!await confirmChatFolders(conversationProject.id,session)) {
-        if (textOverride && !input.trim()) {
+        if (textOverride && !/\S/.test(input)) {
           setDrafts(prev => prev[originKey]?.text ? prev : {
             ...prev, [originKey]: { ...prev[originKey], text: requestText, mode },
           });
@@ -1162,8 +1167,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                   aria-label="메시지 복사"
                                   onClick={async () => {
                                     try {
-                                      const original=message.sourceOnly ? (await api!.readRequestSource(session.id,message.id,"full")).text : message.text;
-                                      await api?.copyText(message.role==="assistant"?presentCitations(original).text:original);
+                                      if(message.sourceOnly) await api!.copyRequestSource(session.id,message.id);
+                                      else await api!.copyText(message.role==="assistant"?presentCitations(message.text).text:message.text);
                                       notify("메시지를 복사했습니다.");
                                     } catch (error) {
                                       fail(error);
@@ -1321,8 +1326,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         onChange={model => void selectChatModel(model)}/>
                     </div>
                     <div className="chat-run-controls">
-                    {running&&<><button className="button subtle" aria-label="추가 지시 대기열에 넣기" onClick={()=>void send(undefined,true)} disabled={(!input.trim()&&!attachments.length)||submitting}>다음 차례</button>
-                    <button className="button secondary" aria-label="현재 작업에 추가 지시 보내기" onClick={()=>void send()} disabled={(!input.trim()&&!attachments.length)||submitting}>지금 전달</button></>}
+                    {running&&<><button className="button subtle" aria-label="추가 지시 대기열에 넣기" onClick={()=>void send(undefined,true)} disabled={(!/\S/.test(input)&&!attachments.length)||submitting}>다음 차례</button>
+                    <button className="button secondary" aria-label="현재 작업에 추가 지시 보내기" onClick={()=>void send()} disabled={(!/\S/.test(input)&&!attachments.length)||submitting}>지금 전달</button></>}
                     {running ? (
                       <button
                         className="send-button stop-button"
@@ -1337,7 +1342,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         className="send-button"
                         aria-label="작업 보내기"
                         onClick={()=>void send()}
-                        disabled={(!input.trim()&&!attachments.length) || submitting || !project}
+                        disabled={(!/\S/.test(input)&&!attachments.length) || submitting || !project}
                       >
                         {submitting ? (
                           <LoaderCircle size={17} className="spin" />

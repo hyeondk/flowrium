@@ -1,11 +1,15 @@
 import {attachComposerMarkdown} from '../electron/mobile/composer-markdown.js';
+import {attachDraftEditor} from '../electron/mobile/draft-editor-events.js';
+import {draftWindow} from '../electron/mobile/large-draft-editor.js';
 import '../electron/mobile/composer-markdown.css';
 import {useId, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject, type TextareaHTMLAttributes} from 'react';
 
 const storageKey = 'flowrium.composer.height.v1';
 const minimum = 42;
 const maximum = 420;
-type Props = TextareaHTMLAttributes<HTMLTextAreaElement> & {textareaRef: RefObject<HTMLTextAreaElement | null>};
+type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>,'value'|'onChange'> & {
+  value:string; onTextChange:(text:string)=>void; textareaRef:RefObject<HTMLTextAreaElement|null>;
+};
 
 function storedHeight() {
   try {
@@ -15,20 +19,30 @@ function storedHeight() {
   return undefined;
 }
 
-export default function ResizableComposerInput({textareaRef, ...props}: Props) {
+export default function ResizableComposerInput({textareaRef,value,onTextChange, ...props}: Props) {
   const id = useId();
   const ink = useRef<HTMLSpanElement>(null);
   const editor = useRef<ReturnType<typeof attachComposerMarkdown> | null>(null);
+  const draftEditor=useRef<ReturnType<typeof attachDraftEditor>|null>(null);
+  const current=useRef({value,onTextChange});
+  current.current={value,onTextChange};
+  const [view,setView]=useState<{page:number;count:number}>(()=>draftWindow(value,0));
   useLayoutEffect(() => {
     if (!textareaRef.current || !ink.current) return;
+    draftEditor.current=attachDraftEditor(textareaRef.current,{
+      read:()=>current.current.value,
+      change:next=>current.current.onTextChange(next),
+      render:next=>setView(previous=>previous.page===next.page&&previous.count===next.count?previous:next),
+    });
     editor.current=attachComposerMarkdown(textareaRef.current,ink.current);
-    return () => {editor.current?.dispose();editor.current=null;};
+    return () => {draftEditor.current?.dispose();draftEditor.current=null;editor.current?.dispose();editor.current=null;};
   },[textareaRef]);
-  useLayoutEffect(() => {editor.current?.refresh();},[props.value]);
+  useLayoutEffect(() => {draftEditor.current?.refresh();editor.current?.refresh();},[value]);
   const [preferred, setPreferred] = useState(storedHeight);
   const [bounds, setBounds] = useState({max: maximum, actual: minimum});
   const drag = useRef<{pointer: number; y: number; height: number; last: number} | null>(null);
   const actual = preferred === undefined ? undefined : Math.min(bounds.max, preferred);
+  const largeDraft = view.count>1;
 
   useLayoutEffect(() => {
     const input = textareaRef.current;
@@ -103,7 +117,15 @@ export default function ResizableComposerInput({textareaRef, ...props}: Props) {
           : bounds.actual + (event.key === 'ArrowUp' ? step : -step);
         save(Math.max(minimum, Math.min(bounds.max, next)));
       }}><span aria-hidden="true"/></div>
+    {largeDraft&&<nav className="composer-draft-pages" aria-label="긴 입력 편집 범위">
+      <button type="button" disabled={!view.page} onClick={()=>draftEditor.current?.go(0)}>처음</button>
+      <button type="button" disabled={!view.page} onClick={()=>draftEditor.current?.go(view.page-1)}>이전</button>
+      <span>{view.page+1} / {view.count}</span>
+      <button type="button" disabled={view.page+1===view.count} onClick={()=>draftEditor.current?.go(view.page+1)}>다음</button>
+      <button type="button" disabled={view.page+1===view.count} onClick={()=>draftEditor.current?.go(view.count-1)}>마지막</button>
+    </nav>}
     <div className="markdown-input"><textarea {...props} ref={textareaRef} id={id} rows={1} className="composer-input"
+      data-large-draft={largeDraft || undefined} spellCheck={largeDraft ? false : props.spellCheck}
       data-height-mode={actual === undefined ? 'auto' : 'manual'}
       style={{height: actual === undefined ? undefined : actual, '--composer-limit': bounds.max + 'px'} as CSSProperties}/><span ref={ink} className="markdown-input-ink" aria-hidden="true"/></div>
   </>;

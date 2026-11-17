@@ -7,6 +7,73 @@ const {_electron} = require('playwright');
 const {Store} = require('../electron/store.cjs');
 const {openConversation} = require('./shell-test-helpers.cjs');
 
+async function checkQueuedOriginal(app,page,input,sessionId) {
+  const button=name=>page.getByRole('button',{name,exact:true});
+  await input.fill('대기검증');
+  await input.press('Enter');
+  await button('작업 중지').waitFor();
+  const expected=await input.evaluate(async el=>{
+    const source='  다음 작업\n'+('한글 후속 지시 🚦 '.repeat(900000))+'\n끝  ';
+    el.focus();el.select();
+    const transfer=new DataTransfer();
+    transfer.setData('text/plain',source);
+    el.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:transfer}));
+    const bytes=new TextEncoder().encode(source);
+    const digest=await crypto.subtle.digest('SHA-256',bytes);
+    return {bytes:bytes.length,hash:Array.from(new Uint8Array(digest),n=>n.toString(16).padStart(2,'0')).join('')};
+  });
+  assert(expected.bytes>20*1024*1024);
+  await button('현재 작업에 추가 지시 보내기').click();
+  await page.locator('.chat-queue-panel').getByText(/긴 요청 원문/).waitFor();
+  await button('작업 중지').click();
+  const findSource=()=>page.evaluate(async({sessionId,hash})=>{
+    const session=(await window.flowrium.bootstrap()).sessions.find(row=>row.id===sessionId);
+    const sources=session.messages.filter(row=>row.role==='user'&&row.requestSource?.sha256===hash);
+    return {ids:sources.map(row=>row.id),sent:session.queuedMessages.some(row=>row.status==='sent'&&row.requestSourceId===sources[0]?.requestSource?.id),
+      answered:sources.length>0&&session.messages.some(row=>row.role==='assistant'&&row.turnId===sources[0].turnId)};
+  },{sessionId,hash:expected.hash});
+  let state;
+  for(let attempt=0;attempt<240;attempt++) {
+    state=await findSource();
+    if(state.sent&&state.answered)break;
+    await new Promise(resolve=>setTimeout(resolve,125));
+  }
+  assert(state.sent&&state.answered,'긴 후속 원문 대기열 전달 및 같은 턴 답변');
+  assert.equal(state.ids.length,1);
+  const messageId=state.ids[0];
+  await app.evaluate(({clipboard})=>{
+    clipboard.writeText=value=>{
+      globalThis.flowriumCopiedDigest=process.getBuiltinModule('node:crypto').createHash('sha256').update(value).digest('hex');
+    };
+  });
+  const row=page.locator('[data-message-id="'+messageId+'"]');
+  await row.getByRole('button',{name:'메시지 복사',exact:true}).click();
+  await page.getByText('메시지를 복사했습니다.',{exact:true}).waitFor();
+  assert.equal(await app.evaluate(()=>globalThis.flowriumCopiedDigest),expected.hash);
+  await button('작업 보내기').waitFor();
+  await button('대화 관리').click();
+  await page.getByRole('combobox',{name:'기준 요청'}).selectOption(messageId);
+  await button('이 요청 전으로 되감기').click();
+  await button('되감기 확인').click();
+  const paging=page.getByRole('navigation',{name:'긴 입력 편집 범위'});
+  await paging.waitFor();
+  await paging.getByRole('button',{name:'마지막',exact:true}).click();
+  assert((await input.inputValue()).endsWith('\n끝  '));
+  await paging.getByRole('button',{name:'처음',exact:true}).click();
+  assert((await input.inputValue()).startsWith('  다음 작업'));
+  assert((await input.inputValue()).length<=12001);
+  const {editorDigest}=require('./inline-draft-checks.cjs');
+  assert.equal((await editorDigest(input)).hash,expected.hash);
+  await input.press(process.platform==='darwin'?'Meta+a':'Control+a');
+  await input.press('Backspace');
+  await paging.waitFor({state:'detached'});
+  assert.equal(await input.inputValue(),'');
+  await input.press(process.platform==='darwin'?'Meta+z':'Control+z');
+  await paging.waitFor();
+  assert.equal((await editorDigest(input)).hash,expected.hash);
+  console.log('후속 입력 '+expected.bytes+'바이트 / 기존 작업 대기열에서 한 번 전송 / 단일 턴 답변 / 원문 복사·되감기 입력 복원 전체 SHA-256 일치');
+}
+
 async function run() {
   const root = path.resolve(__dirname, '..');
   const temp = await fs.mkdtemp(path.join(root, '.flowrium-tmp', 'chat-reading-'));
@@ -21,7 +88,7 @@ async function run() {
     await fs.mkdir(folder);
     const store = new Store(profile); await store.load();
     const project = await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount});
-    await store.createSession(project.id,{title,messages});
+    const session=await store.createSession(project.id,{title,messages});
     await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
     const gate=path.join(temp,'finish-step');
     const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex'),FLOWRIUM_TEST_STEP_GATE:gate};
@@ -67,7 +134,7 @@ async function run() {
         await page.getByRole('button',{name:'작업 보내기',exact:true}).click();
         await page.getByText(/파일이나 폴더를 찾을 수 없습니다/).first().waitFor();
       }finally{await fs.rename(moved,folder);}
-    },page.getByRole('button',{name:'작업 보내기',exact:true}),folder);
+    },page.getByRole('button',{name:'작업 보내기',exact:true}),folder,{verifyLargeFailure:true});
     await input.fill(draft);
     const image=await fs.readFile(path.join(root,'assets/flowrium.png'));
     // 무작위 픽셀을 담은 실제 PNG로 큰 원본의 운영체제 미리보기 경로도 검증합니다.
@@ -109,6 +176,8 @@ async function run() {
     await openConversation(page,title);
     await liveButton.click();
     await popup.getByText('완료',{exact:true}).waitFor();
+    await liveButton.click();
+    await checkQueuedOriginal(app,page,input,session.id);
     console.log('입력 마크다운 / 발신·수신 말풍선 / 요청별 과거와 실시간 작업 기록 및 재실행 복원 / 사진 가로 목록과 전송 후 보존 통과');
   } finally {
     await app?.close().catch(()=>{});

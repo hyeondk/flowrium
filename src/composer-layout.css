@@ -46,6 +46,12 @@
   field-sizing: fixed;
   max-height: var(--composer-limit);
 }
+.app-shell .conversation-dock .composer textarea.composer-input[data-height-mode=auto][data-large-draft] {
+  field-sizing: fixed;
+  height: min(104px, var(--composer-limit));
+}
+.composer-draft-pages {display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px;margin:2px 4px;color:var(--muted);font-size:12px;}
+.composer-draft-pages button {border:0;border-radius:6px;padding:3px 6px;background:var(--selected);color:var(--accent);}
 .composer .composer-resize-handle {
   position: absolute;
   z-index: 2;

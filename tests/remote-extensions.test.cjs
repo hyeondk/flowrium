@@ -29,11 +29,100 @@ test('휴대폰의 큰 입력은 인증 후 같은 프로젝트의 원문 하나
   assert.equal((await upload('invalid')).status,401);
   const stored=await upload(f.key);assert.equal(stored.status,200);const {id}=await stored.json();
   const retry=await upload(f.key);assert.equal((await retry.json()).id,id);
-  const source=await sourceRecord(store,project.id,id,true);assert.equal(source.bytes.toString('utf8'),text);
+  await assert.rejects(fs.stat(path.join(projectFolder,'.flowrium','attachments',id)),{code:'ENOENT'});
   const receipt=randomUUID();assert.equal((await f.call('send',{sessionId:session.id,submissionId:receipt,text:'',requestSourceId:id,mode:'plan'})).status,200);
+  const source=await sourceRecord(store,project.id,id,true);assert.equal(source.bytes.toString('utf8'),text);
   assert.equal(sent.length,1);assert.equal(sent[0].requestSourceId,id);
   assert.deepEqual(await fs.readdir(path.join(projectFolder,'.flowrium','attachments')),[id]);
   const medium='고'.repeat(900000);assert.equal((await f.call('send',{sessionId:session.id,text:medium,mode:'plan'})).status,200);
   assert.equal(sent[1].text,medium);
   assert.equal((await f.call('mobileSettings',medium)).status,400);
+  const abandoned=Buffer.from('구형 화면에서 보내지 않고 닫은 미전송 원문');
+  const legacy=await fetch(f.base+'/api/mobile/request-source?sessionId='+session.id,{method:'POST',headers:{Origin:f.base,Authorization:'Bearer '+f.key,'Content-Type':'application/octet-stream'},body:abandoned});
+  assert.equal(legacy.status,200);
+  await f.api.stopRemoteAccess();
+  assert.deepEqual(await fs.readdir(path.join(folder,'profile','mobile-request-staging-v1')),[]);
+  assert.deepEqual(await fs.readdir(path.join(projectFolder,'.flowrium','attachments')),[id]);
+  const {MobileRequestUploads}=require('../electron/mobile-request-uploads.cjs');
+  const expiring=new MobileRequestUploads(undefined,100);
+  const staged=await expiring.legacy('expired',abandoned,store,project.id,async()=>{});
+  for(let i=0;i<100 && (await fs.readdir(path.join(folder,'profile','mobile-request-staging-v1'))).length;i++)await new Promise(resolve=>setTimeout(resolve,15));
+  assert.equal(expiring.rows.size,0);
+  assert.deepEqual(await fs.readdir(path.join(folder,'profile','mobile-request-staging-v1')),[]);
+  await assert.rejects(fs.stat(path.join(projectFolder,'.flowrium','attachments',staged.id)),{code:'ENOENT'});
+});
+
+test('휴대폰 100MiB 초과 단일 원문은 인증된 조각 재전송, 해시 검증, 계정 격리와 미완료 정리를 거친다',async t=>{
+  const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+  const {createHash}=require('node:crypto'),{createReadStream}=require('node:fs'),{Store}=require('../electron/store.cjs');
+  const {chunkBytes}=require('../electron/mobile-request-uploads.cjs'),hash=bytes=>createHash('sha256').update(bytes).digest();
+  const folder=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-mobile-raw-'));t.after(()=>fs.rm(folder,{recursive:true,force:true}));
+  const store=new Store(path.join(folder,'profile'));await store.load();
+  const root=path.join(folder,'업무');await fs.mkdir(root);
+  const project=await require('./project-trust-fixture.cjs').addTrustedFixtureProject(store,root);
+  const first=await store.createSession(project.id),other=await store.createSession(project.id);
+  const f=await fixture(t,{store}),uploadId=randomUUID();
+  async function request(action,body,{id=uploadId,session=first.id,offset=0,key=f.key,sum,remove=false}={}){
+    const part=action==='part',query=new URLSearchParams({sessionId:session,id,action,offset:String(offset)});
+    const res=await fetch(f.base+'/api/mobile/request-upload?'+query,{method:remove?'DELETE':part?'PUT':'POST',
+      headers:{Origin:f.base,Authorization:'Bearer '+key,'Content-Type':part?'application/octet-stream':'application/json',...part&&{'x-content-sha256':sum||hash(body).toString('hex')}},
+      body:remove?undefined:part?body:JSON.stringify(body)});
+    return {status:res.status,value:await res.json()};
+  }
+  const unit='한🌿글 / ',bytes=Buffer.byteLength(unit);
+  const block=Buffer.from(unit.repeat(Math.ceil(chunkBytes/bytes)+2)),total=Math.ceil((100*1024*1024+1)/bytes)*bytes;
+  const full=createHash('sha256'),firstChunk=block.subarray(0,chunkBytes);
+  assert.equal((await request('begin',{size:total},{key:'invalid-test-key'})).status,401);
+  assert.equal((await request('begin',{size:total})).status,200);
+  assert.equal((await request('part',firstChunk,{session:other.id})).status,400);
+  assert.equal((await request('part',firstChunk,{sum:'0'.repeat(64)})).status,400);
+  assert.equal((await request('part',Buffer.alloc(chunkBytes+1))).status,400);
+  let chain=Buffer.alloc(32),parts=0,largest=0;
+  for(let offset=0;offset<total;offset+=chunkBytes){
+    const n=Math.min(total-offset,chunkBytes),start=offset%bytes,part=block.subarray(start,start+n);
+    const sum=hash(part),expected={status:200,value:{offset:offset+n}};
+    assert.deepEqual(await request('part',part,{offset}),expected);
+    full.update(part);chain=hash(Buffer.concat([chain,sum]));parts++;largest=Math.max(largest,n);
+    if(offset===0){
+      assert.deepEqual(await request('part',part,{offset}),expected,'접수 응답 유실 뒤 같은 조각 재시도');
+      f.lock(true);assert.equal((await request('begin',{size:total})).status,403);f.lock(false);
+      f.owner(1);assert.equal((await request('begin',{size:total})).status,401);f.owner(0);
+      assert.deepEqual((await request('begin',{size:total})).value,{offset:n,chain:chain.toString('hex'),chunkBytes});
+      assert.equal((await request('finish',{chain:chain.toString('hex')})).status,400);
+    }
+  }
+  const completed=await request('finish',{chain:chain.toString('hex')});
+  assert.equal(completed.status,200,JSON.stringify(completed));assert.equal(completed.value.size,total);
+  assert.equal(completed.value.sha256,full.digest('hex'));
+  assert.deepEqual(await request('finish',{chain:chain.toString('hex')}),completed);
+  const attachmentRoot=path.join(root,'.flowrium','attachments'),stored=createHash('sha256');
+  const stages=path.join(folder,'profile','mobile-request-staging-v1');
+  await assert.rejects(fs.stat(path.join(attachmentRoot,completed.value.id)),{code:'ENOENT'});
+  assert.equal((await fs.readdir(stages)).length,1,'보내기 전 원문은 앱 프로필 임시 보관');
+  assert.equal((await f.call('send',{sessionId:first.id,text:'',requestSourceId:completed.value.id,submissionId:uploadId})).status,200);
+  for await(const chunk of createReadStream(path.join(attachmentRoot,completed.value.id,'request.txt')))stored.update(chunk);
+  assert.equal(stored.digest('hex'),completed.value.sha256);
+  const partial=randomUUID();await request('begin',{size:total},{id:partial});await request('part',firstChunk,{id:partial});
+  assert.equal((await request('',null,{id:partial,remove:true})).status,200);
+  assert.deepEqual(await fs.readdir(stages),[]);
+  assert.deepEqual(await fs.readdir(attachmentRoot),[completed.value.id]);
+  const small=Buffer.from('보낸 원문과 취소한 원문의 독립 보관'),smallChain=hash(Buffer.concat([Buffer.alloc(32),hash(small)])).toString('hex');
+  async function stageSmall(id){
+    await request('begin',{size:small.length},{id});await request('part',small,{id});
+    const response=await request('finish',{chain:smallChain},{id});assert.equal(response.status,200);return response.value.id;
+  }
+  const standalone=randomUUID();await stageSmall(standalone);
+  await request('',null,{id:standalone,remove:true});
+  assert.deepEqual(await fs.readdir(stages),[]);
+  assert.deepEqual(await fs.readdir(attachmentRoot),[completed.value.id],'완료 뒤 보내기를 취소하면 임시 원문 정리');
+  const secondId=randomUUID(),thirdId=randomUUID(),ref=await stageSmall(secondId);
+  assert.equal(await stageSmall(thirdId),ref);
+  assert.equal((await f.call('send',{sessionId:first.id,text:'',requestSourceId:ref,submissionId:secondId})).status,200);
+  await request('',null,{id:thirdId,remove:true});
+  assert.deepEqual((await fs.readdir(attachmentRoot)).sort(),[completed.value.id,ref].sort());
+  await request('begin',{size:total},{id:partial});await request('part',firstChunk,{id:partial});
+  await stageSmall(standalone);
+  await f.api.stopRemoteAccess();assert.deepEqual((await fs.readdir(attachmentRoot)).sort(),[completed.value.id,ref].sort());
+  assert.deepEqual(await fs.readdir(stages),[]);
+  t.diagnostic('UTF-8 '+total+'바이트 / HTTP 본문 최대 '+largest+'바이트 / '+parts+'개 조각 / 저장 원문 1개 / SHA-256 일치');
 });

@@ -355,6 +355,7 @@ async function launch() {
     ready: async () => { await drafts.migration; await acknowledgeUpdateLaunch(app, "ready"); },
     focus: ensureWindow,
   });
+  await require("./chat-request-source.cjs").cleanupMobileRequestStages(store).catch(error=>console.warn("휴대폰 임시 원문 정리",error.code || error.name));
   const remote = require("./remote.cjs").registerRemote(register, {
     accountOwner:()=>security.data.accountOwner==='signed-out'?'':security.data.accountOwner,
     pairing:new (require('./mobile-pairing.cjs').MobilePairing)(app.getPath('userData'),require('electron').safeStorage),
@@ -534,9 +535,15 @@ async function launch() {
     return shell.openExternal(links[target]);
   });
   register("copyText", (value) => {
-    if (typeof value !== "string" || require("./mobile/chat-input.js").exceedsChatSize(value))
-      throw new Error("복사할 텍스트 크기를 확인해 주세요.");
+    if (typeof value !== "string") throw new Error("복사할 텍스트를 확인해 주세요.");
     clipboard.writeText(value);
+  });
+  register("copyRequestSource", async (sessionId, messageId) => {
+    const revision=security.accountRevision, epoch=security.epoch;
+    const {text:original}=await require("./chat-long-request.cjs").readRequestSource(store,sessionId,messageId,"full");
+    if (security.locked || security.loggingOut || revision!==security.accountRevision || epoch!==security.epoch)
+      throw Error("계정과 잠금 상태가 바뀌었습니다. 원문 복사를 다시 시작해 주세요.");
+    clipboard.writeText(original);
   });
   register("openProject", async (id) => {
     const project = store.project(text(id, "프로젝트 식별자", 100));

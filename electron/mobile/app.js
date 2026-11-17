@@ -1,4 +1,6 @@
-import {maxChatInput,exceedsChatSize,chatLengthError,nativeQueueAction,nativeQueueQuestion,nativeQueueExplanation,nativeQueueNotice,queuedInputView,clearQueueAction,clearQueueQuestion,clearQueueExplanation} from './chat-input.js';
+import {maxChatInput,nativeQueueAction,nativeQueueQuestion,nativeQueueExplanation,nativeQueueNotice,queuedInputView,clearQueueAction,clearQueueQuestion,clearQueueExplanation} from './chat-input.js';
+import {uploadText,discardUpload} from './request-upload.js';
+import {attachDraftEditor} from './draft-editor-events.js';
 import {originalAnswerFollowups} from './answer-followup.js';
 import {presentCitations} from './file-citations.js';
 import {projectMode} from './project-mode.js';
@@ -86,6 +88,7 @@ function resetHistory() {
   historyError = "";
 }
 const drafts = new Map();
+const draftPages = new Map();
 const questionDrafts = new Map();
 const selectedProposals = new Map();
 const shownFolderGuides = new Set();
@@ -138,14 +141,25 @@ const showNotice = (message, tone = "info") => {
   errorTimer = setTimeout(hideNotice, 6000);
 };
 const submissionReceipts=new Map();
+const textUploads=new Map();
 function longSubmission(sessionId,text){
   if(text.length<=maxChatInput)return {};
   const prior=submissionReceipts.get(sessionId);
   if(prior?.text===text)return {submissionId:prior.id};
+  if(prior?.chunked)discardUpload(sessionId,prior.id,key);
   const bytes=crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
   const hex=Array.from(bytes,b=>b.toString(16).padStart(2,'0')).join('');
   const id=[hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-');submissionReceipts.set(sessionId,{id,text});
   return {submissionId:id};
+}
+function clearSentDraft(id,sent,files){
+  const draftId='chat/'+id;
+  if(drafts.get(draftId)===sent){drafts.delete(draftId);draftPages.delete(draftId);}
+  const ids=new Set(files.map(file=>file.id));
+  const remaining=(attachedDrafts.get(id)||[]).filter(file=>!ids.has(file.id));
+  if(remaining.length)attachedDrafts.set(id,remaining);else attachedDrafts.delete(id);
+  const receipt=submissionReceipts.get(id);
+  if(receipt?.text===sent){if(receipt.chunked)discardUpload(id,receipt.id,key);submissionReceipts.delete(id);}
 }
 const ownSessions = () =>
   (data?.sessions ?? []).filter((s) => s.projectId === selectedProject);
@@ -256,6 +270,8 @@ function clearPrivateState(nextGate) {
   if(nextGate==='expired'){clearProgressChoices();applyAppearance();}
 
   document.querySelector('dialog.citation-zoom[open]')?.close();
+  for(const flight of textUploads.values())flight.abort.abort();
+  textUploads.clear();
   submissionReceipts.clear();
   resetUpdate();
   connection.removeAttribute('data-connected');
@@ -270,6 +286,7 @@ function clearPrivateState(nextGate) {
   assetRequest++;
   signature = "";
   drafts.clear();
+  draftPages.clear();
   questionDrafts.clear();
   selectedProposals.clear();
   attachedDrafts.clear();missingCitations.clear();attachmentPreviews.clear();attachmentFlights.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;chatModels=chatModelRequest=undefined;extrasEpoch++;
@@ -436,7 +453,7 @@ function go(view, id, options={}) {
   render();
   if(['project','new','chat'].includes(view)) {
     const id=view==='chat'?session(selectedSession)?.projectId:selectedProject;
-    if(id && !shownFolderGuides.has(id) && openFolderGuide(id))shownFolderGuides.add(id);
+    if(id && project(id)?.trustedForFileAccess===false && !shownFolderGuides.has(id) && openFolderGuide(id))shownFolderGuides.add(id);
   }
   if(view==='project' && detailTab!=='work')void loadAssets(false);
   const restored=options.back && routePositions.get(routeKey(routeEntry()));
@@ -907,7 +924,7 @@ function folderGuide(root,p) {
   if(!p || p.trustedForFileAccess===true)return;
   const title=p.trustedForFileAccess===false?'컴퓨터에서 프로젝트를 신뢰해 주세요':'컴퓨터 앱을 업데이트해 주세요';
   const description=p.trustedForFileAccess===false
-    ? '컴퓨터의 Flowrium에서 ‘'+p.name+'’ 프로젝트를 열고, 표시된 폴더 경로를 확인한 뒤 ‘신뢰하고 편집 허용’을 누르세요. 허용 후 이 화면에서 작성한 요청을 보낼 수 있습니다.'
+    ? '컴퓨터의 Flowrium에서 ‘'+p.name+'’ 프로젝트에 첫 작업을 보내면 폴더 경로가 표시됩니다. 경로를 확인하고 ‘신뢰하고 편집 허용’을 누른 뒤 이 화면에서 요청을 보내세요.'
     : '이 컴퓨터의 Flowrium을 업데이트한 뒤 프로젝트 폴더를 확인하세요. 작성한 요청은 이 화면에 남아 있습니다.';
   const box=node('aside',undefined,'folder-guide');
   const guide=confirmationButton('확인 방법','folder-trust/'+p.id,title,description);
@@ -1118,11 +1135,21 @@ function chat(root) {
     if(queueItems.some(item=>queuedInputView(item).canResume))queue.append(action("대기 지시 이어 보내기",()=>run(async()=>{if(!mayStartProjectWork(s.projectId))return;await call("resumeQueuedMessages",s.id);await loadQueue()})));
     root.append(queue);
   }
-  const form = node("form",undefined,"chat-compose"),
-    draftId = "chat/" + s.id,
-    text = bindDraft(node("textarea"), draftId, "");
+  const form = node("form",undefined,"chat-compose"),draftId = "chat/" + s.id;
+  const oldInput=content.querySelector('.markdown-input > textarea');
+  const text=oldInput?.dataset.field===draftId ? oldInput : node('textarea');
+  text.dataset.field=draftId;
+  const fullText=()=>drafts.get(draftId)||'';
+  const listener={signal:chatRenderEvents.signal};
 
   const mode = projectMode(s);
+  text.addEventListener('input',()=>{
+    const previous=submissionReceipts.get(s.id);
+    if(!busy && previous && previous.text!==fullText()){
+      if(previous.chunked)discardUpload(s.id,previous.id,key);
+      submissionReceipts.delete(s.id);
+    }
+  },listener);
   const canSteer = running(s.id) && data.canSteer;
   const submit = node("button", canSteer ? "현재 작업에 전달" : running(s.id) ? "추가 지시 대기열에 넣기" : "요청 보내기", "main-action");
   submit.type = "submit";
@@ -1134,6 +1161,50 @@ function chat(root) {
   text.replaceWith(editor);editor.append(text,ink);
   text.rows=1;text.placeholder='이어서 요청하세요';textLabel.firstChild.remove();
   form.append(textLabel);
+  const pages=node('div',undefined,'mobile-draft-pages');
+  const previousPage=action('이전',()=>mobileDraftEditor.go(pageNumber-1));
+  const nextPage=action('다음',()=>mobileDraftEditor.go(pageNumber+1));
+  previousPage.setAttribute('aria-label','원문 이전 구간');nextPage.setAttribute('aria-label','원문 다음 구간');
+  const position=node('input'),countLabel=node('span');
+  position.type='text';position.inputMode='numeric';position.setAttribute('aria-label','원문 편집 구간');
+  let pageNumber=draftPages.get(draftId)||0;
+  const goToTypedPage=()=>{const value=Number(position.value);if(Number.isSafeInteger(value)&&value>=1)mobileDraftEditor.go(value-1);else position.value=String(pageNumber+1);};
+  position.addEventListener('change',goToTypedPage);
+  position.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();goToTypedPage();text.focus({preventScroll:true});}});
+  pages.append(node('span','원문 편집'),previousPage,position,countLabel,nextPage);form.append(pages);
+  const requestedPage=pageNumber;
+  const updatePage=({page,count})=>{
+      pageNumber=page;pages.hidden=count===1;
+      if(count>1)draftPages.set(draftId,page);else draftPages.delete(draftId);
+      position.value=String(page+1);countLabel.textContent='/ '+count;
+      previousPage.disabled=page===0;nextPage.disabled=page+1>=count;
+  };
+  pages.append(action('전체 복사',async()=>{
+    try{await navigator.clipboard.writeText(fullText());showNotice('원문 전체를 복사했습니다.');}
+    catch{showNotice('클립보드에 복사할 수 없습니다. 브라우저의 클립보드 접근을 확인해 주세요.','error');}
+  }));
+  if(mobileDraftSurface?.input!==text){
+    mobileDraftEditor?.dispose();
+    const surface={input:text,update:updatePage};
+    mobileDraftSurface=surface;
+    mobileDraftEditor=attachDraftEditor(text,{
+      read:fullText,change:value=>drafts.set(draftId,value),
+      render:view=>{surface.view=view;surface.update(view);}
+    });
+    if(requestedPage)mobileDraftEditor.go(requestedPage);
+  }else{
+    mobileDraftSurface.update=updatePage;
+    mobileDraftEditor.refresh();updatePage(mobileDraftSurface.view);
+  }
+  const uploadStatus=node('div',undefined,'text-upload-status');
+  uploadStatus.dataset.uploadStatus=s.id;
+  const uploadLabel=node('span');uploadLabel.setAttribute('role','status');
+  uploadStatus.append(uploadLabel,action('전송 취소',()=>{
+    const flight=textUploads.get(s.id);if(!flight)return;
+    flight.abort.abort();discardUpload(s.id,flight.id,key);
+  }));
+  uploadStatus.hidden=!textUploads.has(s.id);
+  uploadLabel.textContent=textUploads.get(s.id)?.label||'';form.append(uploadStatus);
   if(historyPage && !running(s.id) && !pending.length && !busy) {
     const suggested=originalAnswerFollowups({...s,messages:historyPage.messages})[0];
     if(suggested){
@@ -1146,12 +1217,12 @@ function chat(root) {
       button.append(node('span',suggested.prompt),node('kbd','Tab'));
       button.hidden=!!text.value;
       const sync=()=>{button.hidden=!!text.value || !!composingField;};
-      text.addEventListener('input',sync);text.addEventListener('compositionstart',()=>button.hidden=true);text.addEventListener('compositionend',()=>queueMicrotask(sync));
+      text.addEventListener('input',sync,listener);text.addEventListener('compositionstart',()=>button.hidden=true,listener);text.addEventListener('compositionend',()=>queueMicrotask(sync),listener);
       text.addEventListener('keydown',event=>{
         if(event.key==='Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing && !text.value && !button.hidden){
           event.preventDefault();accept();
         }
-      });
+      },listener);
       form.append(button);
     }
   }
@@ -1165,8 +1236,9 @@ function chat(root) {
     const choices=node('div',undefined,'actions');
     const proceed=action('진행하기',()=>{if(!s.scope&&!mayStartProjectWork(s.projectId))return;return run(async()=>{
       const attachments=attachedDrafts.get(s.id)||[];
-      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:s.lastMessageId,...await mobileChatInput(s,text.value),attachments:attachments.map(a=>a.id),mode});
-      submissionReceipts.delete(s.id);drafts.delete(draftId);attachedDrafts.delete(s.id);
+      const value=fullText();
+      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:s.lastMessageId,...await mobileChatInput(s,value),attachments:attachments.map(a=>a.id),mode});
+      clearSentDraft(s.id,value,attachments);
     });});
     const complete=action('완료',()=>run(async()=>{
       await call('workflowAction',{action:'completeContinuation',sessionId:s.id,messageId:s.lastMessageId});showNotice('후속 대기를 완료했습니다.');
@@ -1187,11 +1259,10 @@ function chat(root) {
     );
   form.addEventListener("submit", (e) => {
     e.preventDefault();
-    const value = text.value;
+    const value = fullText();
     const attachments=attachedDrafts.get(s.id)||[];
     if (!value.trim() && !attachments.length) return;
     if(!s.scope&&!mayStartProjectWork(s.projectId))return;
-    if (exceedsChatSize(value)) return showNotice(chatLengthError, 'error');
     void run(async () => {
       const result=await call("send", {
         ...(canSteer && e.submitter?.dataset.delivery!=='queue' && {delivery:'steer'}),
@@ -1200,7 +1271,7 @@ function chat(root) {
         attachments:attachments.map(a=>a.id),
         mode,
       });
-      submissionReceipts.delete(s.id);drafts.delete(draftId);attachedDrafts.delete(s.id);await loadQueue();
+      clearSentDraft(s.id,value,attachments);await loadQueue();
       showNotice(result.steered ? "현재 작업에 추가 지시를 전달했습니다." : result.waitingForWriter ? "요청을 보관했습니다. 채팅의 추가 지시에서 전달 상태를 확인할 수 있습니다." : result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
     });
   });
@@ -1208,11 +1279,33 @@ function chat(root) {
 }
 async function mobileChatInput(session,text){
   if(text.length<=maxChatInput)return {text};
-  if(exceedsChatSize(text))throw Error(chatLengthError);
-  const response=await fetch('/api/mobile/request-source?sessionId='+encodeURIComponent(session.id),{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/octet-stream'},body:new Blob([text]),credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(120000)});
+  if(!text.isWellFormed()||text.includes('\0'))throw Error('입력한 글에 저장할 수 없는 문자가 있습니다.');
+  const receipt=longSubmission(session.id,text),saved=submissionReceipts.get(session.id);
+  const blob=new Blob([text]);
+  if(data?.canUploadRequestChunks){
+    saved.chunked=true;
+    const flight={abort:new AbortController(),id:receipt.submissionId,label:''},epoch=accessEpoch;
+    textUploads.set(session.id,flight);
+    const update=(current,total)=>{
+      flight.label='원문 전송 중 ('+Math.floor(current*100/total)+'%)';
+      const status=content.querySelector('[data-upload-status="'+CSS.escape(session.id)+'"]');
+      if(status){status.hidden=false;status.firstChild.textContent=flight.label;}
+    };
+    const check=()=>{if(flight.abort.signal.aborted||epoch!==accessEpoch||gate)throw Error('전송을 중단했습니다. 작성한 요청을 확인해 주세요.');};
+    try{
+      update(0,blob.size);
+      const id=await uploadText({blob,sessionId:session.id,id:flight.id,key,guard:check,signal:flight.abort.signal,onProgress:update});
+      check();return {text:'',requestSourceId:id,...receipt};
+    }finally{
+      textUploads.delete(session.id);
+      const status=content.querySelector('[data-upload-status="'+CSS.escape(session.id)+'"]');if(status)status.hidden=true;
+    }
+  }
+  if(blob.size>20*1024*1024)throw Error('긴 원문을 한 번에 보내려면 컴퓨터의 Flowrium을 업데이트해 주세요. 작성한 내용은 이 화면에 남아 있습니다.');
+  const response=await fetch('/api/mobile/request-source?sessionId='+encodeURIComponent(session.id),{method:'POST',headers:{Authorization:'Bearer '+key,'Content-Type':'application/octet-stream'},body:blob,credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(120000)});
   const result=await response.json();
   if(!response.ok)throw Error(result.error||'원문을 보관하지 못했습니다. 작성한 글에서 다시 시도해 주세요.');
-  return {text:'',requestSourceId:result.id,...longSubmission(session.id,text)};
+  return {text:'',requestSourceId:result.id,...receipt};
 }
 async function loadQueue(){
   const id=selectedSession,epoch=accessEpoch;if(route!=='chat'||gate||!id)return;
@@ -1635,7 +1728,7 @@ function visibleMessageAnchor(){
   const first=messages[lo],top=first?.getBoundingClientRect().top;
   if(first && top<innerHeight)return {id:first.dataset.messageId,top};
 }
-let mobileEditor, composingField, composerHistory, pendingComposerRender=false;
+let mobileEditor, mobileDraftEditor, mobileDraftSurface, composingField, composerHistory, chatRenderEvents, pendingComposerRender=false;
 function render() {
   if (composingField?.isConnected && route==='chat' && renderedChatId===selectedSession && !gate && data && key) {
     pendingComposerRender=true;return;
@@ -1646,6 +1739,7 @@ function render() {
     calendar.close();
   }
   mobileEditor?.dispose();mobileEditor=undefined;
+  chatRenderEvents?.abort();chatRenderEvents=new AbortController();
   composingField=undefined;pendingComposerRender=false;
   photoObserver?.disconnect();
   const galleryPositions=new Map([...content.querySelectorAll('[data-gallery]')].map(strip=>[strip.dataset.gallery,strip.scrollLeft]));
@@ -1717,12 +1811,14 @@ function render() {
   if(composingInput){
     if(composerHistory?.id!==selectedSession)composerHistory={id:selectedSession};
     mobileEditor=attachComposerMarkdown(composingInput,composingInput.nextElementSibling,composerHistory);
-    composingInput.addEventListener('compositionstart',()=>{composingField=composingInput;});
+    composingInput.addEventListener('compositionstart',()=>{composingField=composingInput;},{signal:chatRenderEvents.signal});
     composingInput.addEventListener('compositionend',()=>{
       composingField=undefined;
       if(pendingComposerRender)requestAnimationFrame(()=>{if(pendingComposerRender)render();});
-    });
-  }else composerHistory=undefined;
+    },{signal:chatRenderEvents.signal});
+  }else{
+    composerHistory=undefined;mobileDraftEditor?.dispose();mobileDraftEditor=undefined;mobileDraftSurface=undefined;
+  }
   reconcileConfirmation(Boolean(gate) || !data);
   if ((settingsGuide || confirmAction) && !gate && !document.querySelector('dialog[open]')) {
     const selector = confirmAction ? '[data-confirm-action="' + CSS.escape(confirmAction) + '"]' : '[data-settings-guide="' + CSS.escape(settingsGuide) + '"]';

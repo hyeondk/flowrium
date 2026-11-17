@@ -12,7 +12,8 @@ function validKey(key) {
       (["project", "session"].includes(kind) && UUID.test(id)))
   );
 }
-function checked(input, deletion = false) {
+const inlineCharacters = 1024;
+function checked(input, {deletion = false, references = false} = {}) {
   if (
     !input ||
     typeof input !== "object" ||
@@ -20,7 +21,6 @@ function checked(input, deletion = false) {
     Object.keys(input).length > 10000
   )
     throw new Error("초안 목록 형식을 확인해 주세요.");
-  let bytes = 0;
   const result = {};
   for (const [k, v] of Object.entries(input)) {
     if (!validKey(k))
@@ -29,19 +29,15 @@ function checked(input, deletion = false) {
       result[k] = null;
       continue;
     }
-    if (
-      !v ||
-      typeof v.text !== "string" ||
-      require("./mobile/chat-input.js").exceedsChatSize(v.text) ||
-      !["plan", "build", "review"].includes(v.mode)
-    )
+    const external = references && typeof v?.source === "string" && UUID.test(v.source)
+      && Number.isSafeInteger(v.length) && v.length >= 0 && v.text === undefined;
+    if (!v || (!external && typeof v.text !== "string") || !["plan","build","review"].includes(v.mode))
       throw new Error("초안의 내용과 작업 모드를 확인해 주세요.");
-    bytes += Buffer.byteLength(v.text, "utf8");
-    if (bytes > require("./mobile/chat-input.js").maxRequestBytes + 4 * 1024 * 1024)
-      throw new Error(
-        "이 기기에 보관한 초안이 24MB를 넘었습니다. 이전 초안을 정리해 주세요.",
-      );
-    result[k] = { text: v.text, mode: v.mode, ...(v.attachments?.length ? {attachments:require("./chat-attachments.cjs").checkedAttachments(v.attachments)} : {}) };
+    result[k] = {
+      ...(external ? {source:v.source, length:v.length} : {text:v.text}),
+      mode:v.mode,
+      ...(v.attachments?.length ? {attachments:require("./chat-attachments.cjs").checkedAttachments(v.attachments)} : {}),
+    };
   }
   return result;
 }
@@ -118,12 +114,12 @@ class Drafts {
       return prior.version === 1 && prior.source === source;
     }
   }
-  async prior(revision) {
+  async manifest(revision) {
     const file = path.join(this.directory, String(revision) + ".json");
     try {
       const data = await readJSON(file,{maxBytes:128*1024*1024});
-      if (data.version !== 1 || data.revision !== revision) throw stale();
-      return checked(data.drafts);
+      if (![1,2].includes(data.version) || data.revision !== revision) throw stale();
+      return checked(data.drafts,{references:data.version===2});
     } catch (e) {
       if (e.code !== "ENOENT") throw e;
     }
@@ -144,6 +140,40 @@ class Drafts {
       );
     }
   }
+  sourceFile(revision,source) {
+    return path.join(this.directory, revision + "." + source + ".draft");
+  }
+  async storeText(revision,text) {
+    const source=randomUUID(), file=this.sourceFile(revision,source);
+    const handle=await fs.open(file,"wx",0o600);
+    try {
+      try {
+        // UTF-16 preserves each editor code unit, including a composition boundary.
+        const chunkSize=256*1024;
+        for (let at=0;at<text.length;at+=chunkSize)
+          await handle.writeFile(text.slice(at,at+chunkSize),{encoding:"utf16le"});
+        await handle.sync();
+      } finally { await handle.close(); }
+      return {source,length:text.length};
+    } catch(error) {
+      await fs.rm(file,{force:true}).catch(()=>{});
+      throw error;
+    }
+  }
+  async prior(revision) {
+    const next=await this.manifest(revision);
+    for (const [key,draft] of Object.entries(next)) {
+      if (!draft.source) continue;
+      const file=this.sourceFile(revision,draft.source);
+      const info=await fs.lstat(file);
+      if (!info.isFile() || info.size!==draft.length*2) throw Error("초안 원문 파일을 확인해 주세요.");
+      const {source,length,...meta}=draft;
+      const text=await fs.readFile(file,"utf16le");
+      if (text.length!==length) throw Error("초안 원문이 변경되었습니다. 다시 열어 주세요.");
+      next[key]={...meta,text};
+    }
+    return next;
+  }
   async verify(revision) {
     await this.migration;
     await this.identity();
@@ -156,30 +186,51 @@ class Drafts {
     if (this.security.locked) throw new Error("화면이 잠겼습니다.");
   }
   read(revision) {
+    this.pendingWrite=null;
     return this.serial(async () => {
       await this.verify(revision);
-      return this.prior(revision);
+      const result=await this.prior(revision);
+      await this.verify(revision);
+      return result;
     });
   }
-  write(revision, patch) {
-    const changes = checked(patch, true);
-    return this.serial(async () => {
+  write(revision,patch) {
+    const changes=checked(patch,{deletion:true});
+    if (this.pendingWrite?.revision===revision) {
+      Object.assign(this.pendingWrite.changes,changes);
+      return this.pendingWrite.done;
+    }
+    const batch={revision,changes};
+    this.pendingWrite=batch;
+    batch.done=this.serial(async()=>{
+      if (this.pendingWrite===batch) this.pendingWrite=null;
       await this.verify(revision);
-      const next = await this.prior(revision);
-      for (const [key, value] of Object.entries(changes)) {
-        if (value === null) delete next[key];
-        else next[key] = value;
-      }
-      const drafts = checked(next);
-      const file = path.join(this.directory, String(revision) + ".json"),
-        tmp = file + "." + randomUUID() + ".tmp";
+      const next=await this.manifest(revision), added=[], removed=[];
+      const target=path.join(this.directory,String(revision)+".json");
+      const tmp=target+"."+randomUUID()+".tmp";
+      let committed=false;
       try {
-        await createJSON(tmp, { version: 1, revision, drafts },{maxBytes:128*1024*1024});
-        await fs.rename(tmp, file);
+        for (const [key,value] of Object.entries(batch.changes)) {
+          if (next[key]?.source) removed.push(next[key].source);
+          if (value===null) delete next[key];
+          else if (value.text.length>inlineCharacters) {
+            const {text,...meta}=value;
+            const ref=await this.storeText(revision,text);
+            added.push(ref.source);next[key]={...meta,...ref};
+          } else next[key]=value;
+        }
+        const drafts=checked(next,{references:true});
+        await createJSON(tmp,{version:2,revision,drafts},{maxBytes:128*1024*1024});
+        await this.verify(revision);
+        await fs.rename(tmp,target);
+        committed=true;
       } finally {
-        await fs.unlink(tmp).catch(() => {});
+        await fs.rm(tmp,{force:true}).catch(()=>{});
+        for (const source of committed ? removed : added)
+          await fs.rm(this.sourceFile(revision,source),{force:true}).catch(()=>{});
       }
     });
+    return batch.done;
   }
 }
 function registerDrafts(register, drafts) {

@@ -1,5 +1,20 @@
 const assert=require('node:assert/strict');
 
+async function editorDigest(input) {
+  return input.evaluate(async el=>{
+    let raw=el.value;
+    if(el.dataset.draftWindowed) {
+      const copy=new DataTransfer();
+      el.dispatchEvent(new KeyboardEvent('keydown',{key:'a',ctrlKey:true,bubbles:true,cancelable:true}));
+      el.dispatchEvent(new ClipboardEvent('copy',{clipboardData:copy,bubbles:true,cancelable:true}));
+      raw=copy.getData('text/plain');
+      el.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+    }
+    const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw));
+    return {length:raw.length,hash:Array.from(new Uint8Array(digest),n=>n.toString(16).padStart(2,'0')).join('')};
+  });
+}
+
 async function checkInlineDraft(page,input,draft) {
   await input.fill(draft);
   const ink=input.locator('..').locator('.markdown-input-ink');
@@ -60,7 +75,7 @@ async function checkInlineDraft(page,input,draft) {
   console.log('대량 원문 입력',bulk.length,'자 / 입력 이벤트',Math.round(elapsed),'밀리초 / 실제 한글 조합 완료');
   await input.fill(draft);
 }
-async function checkLargeDraft(page,input,verifyFailedSend,send,folder) {
+async function checkLargeDraft(page,input,verifyFailedSend,send,folder,{verifyLargeFailure=false}={}) {
   const {createHash}=require('node:crypto');
   const hash=value=>createHash('sha256').update(value).digest('hex');
   const head='  [원문 시작]\n',middle='[검증용 가운데]',tail='\n[원문 끝]  ';
@@ -74,6 +89,7 @@ async function checkLargeDraft(page,input,verifyFailedSend,send,folder) {
       // Mobile state polling may have replaced the previously located element.
       const el=document.querySelector('.markdown-input textarea');
       el.focus();el.select();
+      if(el.dataset.draftWindowed)el.dispatchEvent(new KeyboardEvent('keydown',{key:'a',ctrlKey:true,bubbles:true,cancelable:true}));
       const data=new DataTransfer();data.setData('text/plain',raw);
       const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data});
       const start=performance.now();
@@ -85,10 +101,7 @@ async function checkLargeDraft(page,input,verifyFailedSend,send,folder) {
   const original=await input.inputValue();
   const elapsed=await paste(pasted);
   async function persisted(value) {
-    const actual=await input.evaluate(async el=>{
-      const raw=el.value,digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw));
-      return {length:raw.length,hash:Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('')};
-    });
+    const actual=await editorDigest(input);
     assert.equal(actual.length,value.length);
     assert.equal(actual.hash,hash(value),'처음·가운데·끝과 공백을 포함한 전체 원문 보존');
     assert(await input.isVisible());
@@ -109,15 +122,38 @@ async function checkLargeDraft(page,input,verifyFailedSend,send,folder) {
   await page.waitForFunction(()=>document.querySelector('.markdown-input textarea')?.value==='');
   const fs=require('node:fs/promises'),path=require('node:path');
   const attachments=path.join(folder,'.flowrium','attachments');
-  const dirs=await fs.readdir(attachments);
-  const files=await Promise.all(dirs.map(dir=>fs.readFile(path.join(attachments,dir,'request.txt')).catch(()=>null)));
-  assert(files.some(raw=>raw&&hash(raw)===hash(pasted)),'실제 전송에서 전체 원문이 UTF-8 첨부로 보존');
+  const {createReadStream} = require('node:fs');
+  async function sourceCount(expected) {
+    const sizes=Buffer.byteLength(expected), expectedHash=hash(expected);
+    let matches=0;
+    for (const dir of await fs.readdir(attachments)) {
+      const file=path.join(attachments,dir,'request.txt');
+      const stat=await fs.stat(file).catch(()=>null);
+      if (stat?.size!==sizes) continue;
+      const digest=createHash('sha256');
+      for await (const chunk of createReadStream(file)) digest.update(chunk);
+      if (digest.digest('hex')===expectedHash) matches++;
+    }
+    return matches;
+  }
+  assert.equal(await sourceCount(pasted),1,'실제 전송에서 전체 원문이 UTF-8 한 파일로 보존');
   const bytes=20*1024*1024+1,unit='한글 원문 '.repeat(25)+'\n';
   const oversized=unit.repeat(Math.floor(bytes/Buffer.byteLength(unit)))+'!'.repeat(bytes%Buffer.byteLength(unit));
+  await send.waitFor();
+  const originals=page.getByText(/긴 요청 원문 \(/);
+  const before=await originals.count();
   await paste(oversized);
-  await send.click();
-  await page.getByText(/한 번에 보낼 수 있는 원문은 UTF-8 기준 20(?:MiB|MB)/).first().waitFor();
   await persisted(oversized);
-  console.log('2,000,001자 붙여넣기',elapsed,'밀리초 / 실행 취소·다시 실행 / 2,000,000자 실패 복원 / 2,000,001자 정상 전송 및 첨부 해시 일치 / 20MiB + 1바이트 거절 후 전체 원문 보존');
+  if (verifyLargeFailure) {
+    await verifyFailedSend(oversized);
+    await persisted(oversized);
+    assert.equal(await sourceCount(oversized),0);
+  }
+  await send.click();
+  await originals.nth(before).waitFor({timeout:45000});
+  await page.waitForFunction(()=>document.querySelector('.markdown-input textarea')?.value==='');
+  assert.equal(await originals.count(),before+1,'긴 요청은 대화 내 한 건으로 표시');
+  assert.equal(await sourceCount(oversized),1,'20MiB를 넘는 원문 해시와 크기 일치');
+  console.log('2,000,001자 붙여넣기',elapsed,'밀리초 / 실행 취소·다시 실행 / 2,000,000자 실패 복원 / 2,000,001자 정상 전송 및 첨부 해시 일치 / 20MiB + 1바이트 단일 메시지 전송 및 전체 SHA-256 일치');
 }
-module.exports={checkInlineDraft,checkLargeDraft};
+module.exports={checkInlineDraft,checkLargeDraft,editorDigest};

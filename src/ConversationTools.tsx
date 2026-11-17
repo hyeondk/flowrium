@@ -19,9 +19,9 @@ export function ConversationTools({session,models,running,onOpen,onChange,notify
  const behavior=():ChatPreferences=>({answerLength:prefs.answerLength,testing:prefs.testing,askNext:prefs.askNext,autoCompact:prefs.autoCompact,compactAt:prefs.compactAt,approval:prefs.approval,networkAccess:prefs.networkAccess});
  async function apply(change:ConversationEdit){
   if(!window.flowrium||busy)return;setBusy(true);
-  try{const value=await window.flowrium.editConversation(session.id,change);
+  try{const {restoredDraft,...value}=await window.flowrium.editConversation(session.id,change);
    if(change.action==='branch')onOpen(value);else onChange(value);
-   if(change.action==='rewind'&&value.restoredDraft)onRewind?.(value.restoredDraft);
+   if(change.action==='rewind'&&restoredDraft)onRewind?.(restoredDraft);
    notify(change.action==='preferences'?'대화 동작 설정을 저장했습니다.':change.action==='compact'?'Codex 문맥 압축을 시작했습니다.':change.action==='rewind'?'Codex 기록을 되감고 선택한 요청을 입력창에 복원했습니다.':change.action==='branch'?'Codex 내부 문맥을 보존한 분기 대화를 열었습니다.':'대화 이름을 변경했습니다.');
    setOpen(false);setConfirm(false);select('');
   }catch(e){fail(e);}finally{setBusy(false);}

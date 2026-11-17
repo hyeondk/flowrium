@@ -71,7 +71,7 @@ export default function ChatContinuation({
   return <>
     <ResizableComposerInput textareaRef={textareaRef} aria-label="Codex에 보낼 작업 요청" value={draft}
       placeholder={preview || placeholder} data-inline-suggestion={Boolean(preview)}
-      onChange={e => onChange(e.target.value)}
+      onTextChange={onChange}
       onKeyDown={e => {
         if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
         if (e.key === 'Tab' && preview && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {

@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld(
     readDrafts: revision => invoke("readDrafts", revision),
     addChatAttachments: (project, files) => invoke("addChatAttachments", project, files),
     readRequestSource: (session, message, offset) => invoke("readRequestSource",session,message,offset),
+    copyRequestSource: (session, message) => invoke("copyRequestSource",session,message),
     readChatCitation: (session, message, index, action) => invoke("readChatCitation", session, message, index, action),
     readChatAttachment: (project, id) => invoke("readChatAttachment", project, id),
     listQueuedMessages: id => invoke("listQueuedMessages", id),
