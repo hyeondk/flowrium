@@ -108,7 +108,7 @@ async function checkLegacyProfile(archive,userData,temporary,fixture) {
       assert(!relative.split('/').includes('..'));
       const target=path.join(directory,relative);
       await fs.mkdir(path.dirname(target),{recursive:true});
-      await fs.writeFile(target,asar.extractFile(archive,relative));
+      await fs.writeFile(target,asar.extractFile(archive,relative.split('/').join(path.sep)));
     }
     const LegacyStore=require(path.join(directory,'electron','store.cjs')).Store;
     const legacy=new LegacyStore(userData);await legacy.load();
