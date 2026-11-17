@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const {expect}=require('playwright/test');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),{randomUUID}=require('node:crypto'),{_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs'),{openConversation}=require('./shell-test-helpers.cjs');
@@ -5,7 +6,7 @@ async function main(){
  const root=path.resolve(__dirname,'..'),qa=process.env.FLOWRIUM_QA_DIR||path.join(root,'.flowrium-tmp/qa-261115_02');await fs.mkdir(qa,{recursive:true});const temp=await fs.realpath(await fs.mkdtemp(path.join(qa,'message-content-')));let app,page;
  const metrics={result:'failed',anchors:[]};
  try{
-  const profile=path.join(temp,'profile'),folder=path.join(temp,'합성 프로젝트');await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await store.addProject(folder);
+  const profile=path.join(temp,'profile'),folder=path.join(temp,'합성 프로젝트');await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount});
   const nested={messages:Array.from({length:500},(_,i)=>({role:'assistant',text:'# 중첩 결과 제목 '+i+'\n\n:::writing{variant="email"}\n실제 본문으로 꺼내면 안 되는 합성 도구 결과\n:::\n'+('합성 세부 자료 '.repeat(15))})),access_token:'nested-sensitive-token'};
   const raw=JSON.stringify({type:'mcpToolCall',state:'completed',result:{content:[{type:'text',text:JSON.stringify(nested)}],structuredContent:null,_meta:null},authorization:'Bearer direct-sensitive-token',error:null,durationMs:220,startedAtMs:1000,completedAtMs:1220},null,2);
   const source=':::writing{variant="email" id="synthetic" subject="숨겨 둘 합성 메타데이터"}\n# 작성한 안내문\n\n**확인 사항**을 정리했습니다.\n\n- 첫 번째 안내\n- 두 번째 안내\n\n```text\n:::writing{variant="email"}\n코드 안의 원본\n:::\n```\n:::';

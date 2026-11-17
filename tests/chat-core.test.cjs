@@ -1,9 +1,10 @@
+const {addTrustedFixtureProject} = require('./project-trust-fixture.cjs');
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {Store}=require('../electron/store.cjs');
 const {Controller}=require('../electron/controller.cjs');
 const {addAttachments,resolveAttachments}=require('../electron/chat-attachments.cjs');
 const {Drafts}=require('../electron/drafts.cjs');
-async function fixture(t){const root=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-chat-core-'));await fs.mkdir(path.join(root,'project'));const store=new Store(path.join(root,'profile'));await store.load();const project=await store.addProject(path.join(root,'project'));const session=await store.createSession(project.id);const result={root,store,project,session,controllers:[]};t.after(async()=>{for(const c of result.controllers)await c.shutdown();await fs.rm(root,{recursive:true,force:true,maxRetries:6,retryDelay:200});});return result;}
+async function fixture(t){const root=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-chat-core-'));await fs.mkdir(path.join(root,'project'));const store=new Store(path.join(root,'profile'));await store.load();const project=await addTrustedFixtureProject(store, path.join(root,'project'));const session=await store.createSession(project.id);const result={root,store,project,session,controllers:[]};t.after(async()=>{for(const c of result.controllers)await c.shutdown();await fs.rm(root,{recursive:true,force:true,maxRetries:6,retryDelay:200});});return result;}
 const png=require('./chat-fixtures.cjs').png;
 function wait(c,predicate){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{c.off('event',handler);reject(Error('검증 이벤트 대기 시간 초과'));},6000);function handler(e){if(predicate(e)){clearTimeout(timer);c.off('event',handler);resolve(e);}}c.on('event',handler);});}
 test('첨부는 프로젝트에 보관하고 원본 크기와 해시, 래스터 이미지를 검증한다',async t=>{

@@ -1,8 +1,9 @@
+const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert=require("node:assert/strict"),fs=require("node:fs/promises"),os=require("node:os"),path=require("node:path");
 const { _electron }=require("playwright");const {Store}=require("../electron/store.cjs");
 async function main(){
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),"flowrium-team-auto-ui-")),folder=path.join(temp,"팀 검증 프로젝트"),profile=path.join(temp,"설정");
-  await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await store.addProject(folder);
+  await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount});
   await store.saveSettings({codexPath:path.join(__dirname,"backend-fake-codex.cjs")});
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,"codex")};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   let app,page;const button=name=>page.getByRole("button",{name,exact:true});

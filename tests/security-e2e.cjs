@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
@@ -16,7 +17,7 @@ async function run() {
   await fs.mkdir(folder);
   const store = new Store(profile);
   await store.load();
-  const project = await store.addProject(folder);
+  const project = await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount});
   const session = await store.createSession(project.id);
   await store.saveSettings({
     codexPath: path.join(__dirname, "backend-fake-codex.cjs"),

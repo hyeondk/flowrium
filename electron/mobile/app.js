@@ -88,6 +88,7 @@ function resetHistory() {
 const drafts = new Map();
 const questionDrafts = new Map();
 const selectedProposals = new Map();
+const shownFolderGuides = new Set();
 const attachedDrafts = new Map(), attachmentPreviews = new Map(), attachmentFlights = new Map(), missingCitations=new Set();
 let photoObserver;
 let queueItems=[],workflowData,mobileSettings,usageData,pushData,extrasEpoch=0;
@@ -251,6 +252,7 @@ function applyAppearance(settings={}) {
   document.querySelector('meta[name="theme-color"]').content=dark?'#18212b':'#ffffff';
 }
 function clearPrivateState(nextGate) {
+  shownFolderGuides.clear();
   if(nextGate==='expired'){clearProgressChoices();applyAppearance();}
 
   document.querySelector('dialog.citation-zoom[open]')?.close();
@@ -432,6 +434,10 @@ function go(view, id, options={}) {
   }
   browserRoutes[routeIndex]=routeEntry();
   render();
+  if(['project','new','chat'].includes(view)) {
+    const id=view==='chat'?session(selectedSession)?.projectId:selectedProject;
+    if(id && !shownFolderGuides.has(id) && openFolderGuide(id))shownFolderGuides.add(id);
+  }
   if(view==='project' && detailTab!=='work')void loadAssets(false);
   const restored=options.back && routePositions.get(routeKey(routeEntry()));
   window.scrollTo({top:restored?.y||0,behavior:'instant'});
@@ -815,7 +821,7 @@ function team(root) {
     const form=node('form'),goal=bindDraft(node('textarea'),'teamGoal/'+t.id,''),strategy=bindDraft(select([['plan','AI가 역할별 계획 배정'],['manual','역할 지시로 직접 배정']],'plan'),'teamStrategy/'+t.id,'plan');goal.required=true;goal.maxLength=12000;
     const isolate=node('input');isolate.type='checkbox';isolate.checked=drafts.get('teamIsolate/'+t.id)===true;isolate.addEventListener('change',()=>drafts.set('teamIsolate/'+t.id,isolate.checked));form.append(label(t.name+'의 목표',goal),label('배정 방식',strategy),label('역할별 Git 작업 공간 분리',isolate));
     const start=node('button','팀 업무 시작','main-action');start.type='submit';start.disabled=busy;form.append(start);
-    form.addEventListener('submit',e=>{e.preventDefault();const prompt=goal.value.trim(),method=strategy.value;void run(async()=>{const options={strategy:method,isolate:isolate.checked,autoReport:true,autoDispatch:method==='plan',autoPM:true,autoQA:true,autoIntegrate:false};if(method==='manual'){options.assignments=t.roles.map((r,index)=>({index,title:r.name,task:prompt+'\n'+r.instruction,steps:[]}));if(options.assignments.some(a=>a.task.length>6000))throw Error('직접 배정할 목표와 역할 지시를 합해 6,000자 이내로 입력하세요.');}await call('directTeam',selectedProject,t.id,prompt,crypto.randomUUID(),options);drafts.delete('teamGoal/'+t.id);await loadAssets();showNotice('팀 업무를 시작했습니다.')})});card.append(form);root.append(card);
+    form.addEventListener('submit',e=>{e.preventDefault();if(!mayStartProjectWork(selectedProject))return;const prompt=goal.value.trim(),method=strategy.value;void run(async()=>{const options={strategy:method,isolate:isolate.checked,autoReport:true,autoDispatch:method==='plan',autoPM:true,autoQA:true,autoIntegrate:false};if(method==='manual'){options.assignments=t.roles.map((r,index)=>({index,title:r.name,task:prompt+'\n'+r.instruction,steps:[]}));if(options.assignments.some(a=>a.task.length>6000))throw Error('직접 배정할 목표와 역할 지시를 합해 6,000자 이내로 입력하세요.');}await call('directTeam',selectedProject,t.id,prompt,crypto.randomUUID(),options);drafts.delete('teamGoal/'+t.id);await loadAssets();showNotice('팀 업무를 시작했습니다.')})});card.append(form);root.append(card);
   }
   for (const runEntry of teamBoard.runs) {
     const card = node("section", undefined, "box");
@@ -897,6 +903,26 @@ function artifacts(root) {
     root.append(item);
   }
 }
+function folderGuide(root,p) {
+  if(!p || p.trustedForFileAccess===true)return;
+  const title=p.trustedForFileAccess===false?'컴퓨터에서 프로젝트를 신뢰해 주세요':'컴퓨터 앱을 업데이트해 주세요';
+  const description=p.trustedForFileAccess===false
+    ? '컴퓨터의 Flowrium에서 ‘'+p.name+'’ 프로젝트를 열고, 표시된 폴더 경로를 확인한 뒤 ‘신뢰하고 편집 허용’을 누르세요. 허용 후 이 화면에서 작성한 요청을 보낼 수 있습니다.'
+    : '이 컴퓨터의 Flowrium을 업데이트한 뒤 프로젝트 폴더를 확인하세요. 작성한 요청은 이 화면에 남아 있습니다.';
+  const box=node('aside',undefined,'folder-guide');
+  const guide=confirmationButton('확인 방법','folder-trust/'+p.id,title,description);
+  box.append(node('span',title),guide);root.append(box);
+}
+function openFolderGuide(id) {
+  const trigger=content.querySelector('[data-confirm-action="folder-trust/'+CSS.escape(id)+'"]');
+  if(!trigger)return false;
+  trigger.click();return true;
+}
+function mayStartProjectWork(id) {
+  if(project(id)?.trustedForFileAccess===true)return true;
+  if(!openFolderGuide(id))showNotice('컴퓨터의 Flowrium에서 프로젝트 폴더를 먼저 신뢰해 주세요.');
+  return false;
+}
 function projectPage(root) {
   const p = project(selectedProject);
   if (!p) return projects(root);
@@ -915,6 +941,7 @@ function projectPage(root) {
     tabs.append(b);
   }
   root.append(tabs);
+  folderGuide(root,p);
   if (detailTab === "team") return team(root);
   if (detailTab === "files") return artifacts(root);
   const list = ownSessions()
@@ -938,6 +965,7 @@ function newWork(root) {
     action("프로젝트로", () => goBack("project", p.id)),
     node("h1", "새 업무 대화"),
   );
+  folderGuide(root,p);
   const form = node("form"),
     prefix = "new/" + p.id + "/";
   const kind = bindDraft(
@@ -968,6 +996,7 @@ function newWork(root) {
       brief: brief.value.trim(),
     };
     if (!values.title) return;
+    if(!mayStartProjectWork(p.id))return;
     void run(async () => {
       const s = await call("startWork", values);
       data.sessions = [s, ...data.sessions.filter((v) => v.id !== s.id)];
@@ -1015,6 +1044,7 @@ function chat(root) {
   const back=action('',()=>goBack('project',s.projectId));back.setAttribute('aria-label',backLabel);back.title=backLabel;
   heading.append(back,node('h1',s.title));
   root.append(heading,node('p',(project(s.projectId)?.name||'')+' / '+(kinds[s.workflow?.kind]||'대화'),'chat-context'));
+  if(!s.scope)folderGuide(root,project(s.projectId));
   const pending = data.approvals.filter((a) => a.sessionId === s.id);
   if (pending.length) approvals(pending, root);
   if (historyError) {
@@ -1080,19 +1110,19 @@ function chat(root) {
       if(view.canCancel)line.append(confirmationButton('이 지시 취소','queue/'+item.id,'대기 중인 지시를 취소할까요?',item.text||'첨부 요청',()=>
         run(async()=>{await call('cancelQueuedMessage',s.id,item.id);await loadQueue();showNotice('대기 중인 지시를 취소했습니다.');})));
       if(view.canSendToCodex&&item.id===firstPending?.id)line.append(confirmationButton(nativeQueueAction,'send-to-codex/'+s.id+'/'+item.id,nativeQueueQuestion,nativeQueueExplanation,()=>
-        run(async()=>{const result=await call('sendQueuedToCodex',s.id,item.id);await loadQueue();if(result.accepted)showNotice(nativeQueueNotice(result));})));
+        run(async()=>{if(!mayStartProjectWork(s.projectId))return;const result=await call('sendQueuedToCodex',s.id,item.id);await loadQueue();if(result.accepted)showNotice(nativeQueueNotice(result));})));
       if(view.canClear)line.append(confirmationButton(clearQueueAction,'clear-codex-queue/'+s.id+'/'+item.id,clearQueueQuestion,clearQueueExplanation,()=>
         run(async()=>{await call('clearUnconfirmedCodexQueue',s.id,item.id);await loadQueue();})));
       queue.append(line);
     }
-    if(queueItems.some(item=>queuedInputView(item).canResume))queue.append(action("대기 지시 이어 보내기",()=>run(async()=>{await call("resumeQueuedMessages",s.id);await loadQueue()})));
+    if(queueItems.some(item=>queuedInputView(item).canResume))queue.append(action("대기 지시 이어 보내기",()=>run(async()=>{if(!mayStartProjectWork(s.projectId))return;await call("resumeQueuedMessages",s.id);await loadQueue()})));
     root.append(queue);
   }
   const form = node("form",undefined,"chat-compose"),
     draftId = "chat/" + s.id,
     text = bindDraft(node("textarea"), draftId, "");
 
-  const mode = projectMode(s,drafts.get('mode/'+s.id),data.settings);
+  const mode = projectMode(s);
   const canSteer = running(s.id) && data.canSteer;
   const submit = node("button", canSteer ? "현재 작업에 전달" : running(s.id) ? "추가 지시 대기열에 넣기" : "요청 보내기", "main-action");
   submit.type = "submit";
@@ -1133,11 +1163,11 @@ function chat(root) {
   }
   if(s.canCompleteWaiting){
     const choices=node('div',undefined,'actions');
-    const proceed=action('진행하기',()=>run(async()=>{
+    const proceed=action('진행하기',()=>{if(!s.scope&&!mayStartProjectWork(s.projectId))return;return run(async()=>{
       const attachments=attachedDrafts.get(s.id)||[];
       await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:s.lastMessageId,...await mobileChatInput(s,text.value),attachments:attachments.map(a=>a.id),mode});
       submissionReceipts.delete(s.id);drafts.delete(draftId);attachedDrafts.delete(s.id);
-    }));
+    });});
     const complete=action('완료',()=>run(async()=>{
       await call('workflowAction',{action:'completeContinuation',sessionId:s.id,messageId:s.lastMessageId});showNotice('후속 대기를 완료했습니다.');
     }));
@@ -1160,6 +1190,7 @@ function chat(root) {
     const value = text.value;
     const attachments=attachedDrafts.get(s.id)||[];
     if (!value.trim() && !attachments.length) return;
+    if(!s.scope&&!mayStartProjectWork(s.projectId))return;
     if (exceedsChatSize(value)) return showNotice(chatLengthError, 'error');
     void run(async () => {
       const result=await call("send", {
@@ -1287,6 +1318,7 @@ function appendAttachments(parent,items,projectId,id,remove) {
 }
 function attachmentComposer(form,s){
   const box=node('section',undefined,'attachments'),picker=node('input');picker.type='file';picker.multiple=true;picker.disabled=busy;picker.setAttribute('aria-label','파일 첨부');
+  picker.addEventListener('click',e=>{if(!s.scope&&!mayStartProjectWork(s.projectId))e.preventDefault();});
   picker.addEventListener('change',()=>{const files=[...picker.files];void uploadAttachments(s,files)});
   const choose=label('파일 첨부',picker);choose.className='mobile-attach-button';box.append(choose);
   appendAttachments(box,attachedDrafts.get(s.id)||[],s.projectId,'draft:'+s.id,id=>{attachedDrafts.set(s.id,(attachedDrafts.get(s.id)||[]).filter(x=>x.id!==id));render()});
@@ -1298,6 +1330,7 @@ function attachmentComposer(form,s){
 let uploadTail=Promise.resolve();
 function uploadAttachments(s,files){
   if(!files.length)return;
+  if(!s.scope&&!mayStartProjectWork(s.projectId))return;
   const epoch=accessEpoch;
   uploadTail=uploadTail.catch(()=>{}).then(async()=>{
     if(epoch!==accessEpoch||gate)return;

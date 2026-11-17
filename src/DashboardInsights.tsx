@@ -15,9 +15,13 @@ export default function DashboardInsights({cards,sessions,onOpen,onProject}:{car
   const phases=['킥오프','진행','유지보수','중단','완료'].map(phase=>({phase,count:cards.filter(c=>(c.details?.archivedAt?'완료':c.details?.kickoff?.phase||'진행')===phase).length}));
   async function generate(){if(busy)return;const target=active.find(c=>c.project.id===destination)||active[0];if(!target)return;setBusy(true);setError('');try{
     const connection=await window.flowrium!.connect();if(!connection.status.authenticated)throw Error('ChatGPT 계정을 연결한 뒤 오늘의 계획을 생성하세요.');
-    const facts=active.slice(0,64).map(c=>({project:c.details?.kickoff?.name||c.project.name,due:c.details?.dueDate,goal:c.details?.goal,periodGoals:(c.details?.periodGoals||[]).filter(g=>!g.done&&!g.carriedTo).slice(-10),activeWork:unfinished.filter(s=>s.projectId===c.project.id).slice(0,10).map(s=>({title:s.title,updatedAt:s.updatedAt,remaining:s.workflow?.checklist.filter(t=>!t.done).map(t=>t.text)}))}));
+    const sources = active.slice(0,64);
+    for (const id of new Set([target.project.id,...sources.map(c=>c.project.id)])) {
+      if (!await window.flowrium!.requestProjectTrust(id)) {setBusy(false);return;}
+    }
+    const facts=sources.map(c=>({project:c.details?.kickoff?.name||c.project.name,due:c.details?.dueDate,goal:c.details?.goal,periodGoals:(c.details?.periodGoals||[]).filter(g=>!g.done&&!g.carriedTo).slice(-10),activeWork:unfinished.filter(s=>s.projectId===c.project.id).slice(0,10).map(s=>({title:s.title,updatedAt:s.updatedAt,remaining:s.workflow?.checklist.filter(t=>!t.done).map(t=>t.text)}))}));
     const request='오늘('+today+')의 우선순위 계획을 작성하세요. 아래 실제 목표와 기한, 미완료 업무만 근거로 삼고 임의의 기한이나 실적을 만들지 마세요. 우선순위와 이유 / 오늘 할 일 3~7개 / 먼저 확인할 결정 / 미뤄도 되는 일을 구분하고 산출물로 저장하세요.\n\n확인한 프로젝트 사실:\n'+JSON.stringify(facts);
-    const record=await window.flowrium!.startWork({projectId:target.project.id,kind:'briefing',title:'오늘의 우선순위 / '+today,role:'오늘의 업무 계획 담당자',brief:'실제 목표와 기한에 근거한 오늘의 우선순위 정리',audience:'사용자',from:today,to:today,reportProjects:active.slice(0,64).map(c=>c.project.id),...(model?{model}:{})});
+    const record=await window.flowrium!.startWork({projectId:target.project.id,kind:'briefing',title:'오늘의 우선순위 / '+today,role:'오늘의 업무 계획 담당자',brief:'실제 목표와 기한에 근거한 오늘의 우선순위 정리',audience:'사용자',from:today,to:today,reportProjects:sources.map(c=>c.project.id),...(model?{model}:{})});
     await window.flowrium!.send({sessionId:record.id,text:request,mode:'build',...(model?{model}:{})});onOpen(record);
   }catch(e){setError(e instanceof Error?e.message:String(e));setBusy(false);}}
   return <section className="dashboard-insights" aria-label="오늘의 업무와 프로젝트 현황">

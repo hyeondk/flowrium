@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
@@ -19,7 +20,7 @@ async function run() {
     await fs.mkdir(directory);
     const store = new Store(profile);
     await store.load();
-    const p = await store.addProject(directory);
+    const p = await addTrustedFixtureProject(store, directory);
     const s = await startWork(store, { projectId: p.id, kind: "document", title: "한글 출력 검증" });
     const answer = { id: randomUUID(), createdAt: new Date().toISOString(), role: "assistant",
       text: "## 검증 결과\n\n내용 확인 기준 ABC123\n\n## 다음 작업\n\n<html>원문 보존</html>" };

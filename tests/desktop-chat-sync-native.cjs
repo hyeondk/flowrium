@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject} = require('./project-trust-fixture.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const http = require('node:http');
@@ -74,7 +75,7 @@ async function main() {
     }
     primary=makeClient();reader=makeClient();desktop=makeClient();
     let store=new Store(path.join(root,'flowrium'));await store.load();
-    const project=await store.addProject(cwd),session=await store.createSession(project.id);
+    const project=await addTrustedFixtureProject(store, cwd),session=await store.createSession(project.id);
     await store.saveSettings({model:'gpt-5.5'});
     controller=new Controller(store,{client:primary,canRun:()=>true});
     runtime=new CodexTransfer(store,controller,{readClient:reader,accountOwner:()=> 'synthetic',canRun:()=>true});
@@ -159,7 +160,7 @@ async function main() {
     controller.status.authenticated=true;
     const second=path.join(root,'second'),other=path.join(root,'other');
     await fs.mkdir(second);await fs.mkdir(other);
-    const secondProject=await store.addProject(second);
+    const secondProject=await addTrustedFixtureProject(store, second);
     const create=(name,folder)=>desktop.request('project/create',{name,roots:[{path:folder}],idempotencyKey:require('node:crypto').randomUUID()}).then(r=>r.project);
     const firstRemote=await create('첫 번째',cwd), foreign=await create('다른 카드',other), secondRemote=await create('두 번째',second);
     await desktop.request('project/move',{projectId:firstRemote.id,beforeProjectId:foreign.id});

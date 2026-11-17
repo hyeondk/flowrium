@@ -1,3 +1,4 @@
+const { trustFixtureProject } = require('./project-trust-fixture.cjs');
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -187,6 +188,7 @@ test("한 번 고른 보관 프로젝트의 단일 비서 대화를 반복/동�
     if (method === "turn/start") {assert.equal(params.input[0].text,"지시 확인");prompt = Object.values(params.additionalContext).map(entry=>entry.value).join("\n");}
     return original(method, params, ...rest);
   };
+  await trustFixtureProject(store, a);
   await controller.send({ sessionId: one.id, mode: "plan", text: "지시 확인" });
   for (let i = 0; i < 250 && controller.runs.size; i++) await delay(10);
   assert.match(prompt, /기록한 메모문장/);

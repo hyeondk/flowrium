@@ -91,6 +91,7 @@ test('최초 설치의 없는 프로필은 허용하고 복구 미완료 결과�
 });
 test('원본 대기열로 보낸 지시를 취소한 뒤 과거 개정까지 이관하며 원본에 재전송하지 않는다',async t=>{
  const x=await fixture(t),session=x.store.session(x.s.id),threadId=randomUUID(),owner='a'.repeat(64),device='b'.repeat(64);
+ await require('./project-trust-fixture.cjs').trustFixtureProject(x.store,x.p);
  const calls=[],rows=[];
  const client={request:async(method,input)=>{
    calls.push(method);

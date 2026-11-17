@@ -12,6 +12,7 @@ function createProjectTools({handlers,store}){
   return {definitions:specs,handles:name=>names.has(name),async call({sessionId,name,arguments:input}){
     const session=store.session(sessionId),projectId=session.projectId,spec=specs.find(s=>s.name===name);
     if(!spec||!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!Object.hasOwn(spec.inputSchema.properties,k)))throw Error('프로젝트 AI 도구 입력을 확인해 주세요.');
+    await store.requireProjectTrust(projectId);
     if(name==='flowrium_project_read')return call('readProjectDetails',projectId);
     if(name==='flowrium_project_goal'){
       const change={add:{action:'goal-add',period:input.period,key:input.key,text:input.text,...(input.parent?{parent:input.parent}:{}),...(input.target!==null?{target:input.target}:{}),...(input.due?{due:input.due}:{})},check:{action:'goal-check',id:input.id,done:input.done},progress:{action:'goal-progress',id:input.id,current:input.current},carry:{action:'goal-carry',id:input.id,key:input.key}}[input.action];

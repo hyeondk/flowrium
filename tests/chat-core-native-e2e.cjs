@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject} = require('./project-trust-fixture.cjs');
 // 실제 번들 Codex의 첨부 입력 / 동적 도구 / 내부 대화 fork와 revert를 로컬 모의 모델로 검증한다.
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),http=require('node:http'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 const {CodexClient,resolveCodex}=require('../electron/codex.cjs'),{Controller}=require('../electron/controller.cjs'),{Store}=require('../electron/store.cjs');
@@ -62,7 +63,7 @@ async function main(){
   const nativeRequest=client.request.bind(client);
   // 인증 자체는 별도 검사한다. 합성 계정 응답으로 Controller를 통과시키고 모든 대화 RPC는 실제 app-server에 보낸다.
   client.request=(method,params,...rest)=>method==='account/read'?Promise.resolve({account:{type:'chatgpt',planType:'test'}}):nativeRequest(method,params,...rest);
-  const store=new Store(path.join(temp,'app'));await store.load();const project=await store.addProject(folder),session=await store.createSession(project.id);await store.saveSettings({model:'gpt-5.5'});
+  const store=new Store(path.join(temp,'app'));await store.load();const project=await addTrustedFixtureProject(store, folder),session=await store.createSession(project.id);await store.saveSettings({model:'gpt-5.5'});
   memory=require('../electron/memory.cjs').registerMemory(()=>{},store);
   controller=new Controller(store,{client,applicationTools:s=>workflow.toolsFor(s),callApplicationTool:async input=>{toolCalled=true;return workflow.callTool(input);},canRun:()=>true});
   workflow=new(require('../electron/workflow.cjs').WorkflowRuntime)(store,controller,{memory,canRun:()=>true,accountRevision:()=>0,intervalMs:3600000});

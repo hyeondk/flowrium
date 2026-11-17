@@ -8,6 +8,7 @@ async function main(){
  try{
   const store=new Store(path.join(directory,'profile'));await store.load();await fs.mkdir(path.join(directory,'현장 업무'));const project=await store.addProject(path.join(directory,'현장 업무'));const chat=await store.createSession(project.id,{title:'휴대폰 요청'});
   const sibling=await store.createSession(project.id,{title:'별도 모델 비교'});
+  await require('./project-trust-fixture.cjs').trustFixtureProject(store,project);
   const {addReadingFixture,checkReading,checkDraftImages}=require('./mobile-chat-reading-checks.cjs');
   const reading=await addReadingFixture(store,project.id);
   await store.saveSettings({model:'gpt-6.1-sol',effort:'high',chatDefaults:{compactAt:73,approval:'on-request'}});

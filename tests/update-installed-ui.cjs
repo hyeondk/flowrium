@@ -71,6 +71,7 @@ async function seedOldProject(userData,temporary) {
   await fs.mkdir(path.join(temporary,'codex'),{recursive:true});
   const store=new Store(userData);await store.load();
   const project=await store.addProject(directory);
+  await store.requestProjectTrust(project.id,async folder=>folder.path===await fs.realpath(directory));
   const text='이전 설치에서 작성한 검증용 메시지';
   const message={id:randomUUID(),role:'user',text,createdAt:new Date().toISOString()};
   const session=await store.createSession(project.id,{title:'보존할 대화',messages:[message]});
@@ -130,6 +131,9 @@ async function checkNewProfile(binary,temporary,userData,fixture,version) {
     console.log('새 프로필 / 창 열기 완료');
     await within(page.setViewportSize({width:1440,height:1000}),30000,'새 설치 창 크기');
     await checkProject(page,fixture);
+    const {Store}=require('../electron/store.cjs');
+    const persisted=new Store(userData);await persisted.load();
+    assert.equal(await persisted.isProjectTrusted(fixture.project),true,'설치본을 교체한 뒤 동일한 로컬 폴더 신뢰 유지');
     const migrated=await within(page.evaluate(async id=>{
       const api=window.flowrium, security=await api.securityState();
       return (await api.readDrafts(security.accountRevision))['session:'+id];

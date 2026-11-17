@@ -66,7 +66,7 @@ async function capture() {
       await Promise.all(document.getAnimations().filter(a => a.effect.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
     });
     const publicText = await page.locator('body').innerText();
-    for (const token of [temp, os.homedir(), 'backend-fake-codex', '모의 계정']) assert(!publicText.includes(token),'공개 이미지에 실행 경로나 계정이 보입니다.');
+    for (const token of [temp, os.homedir(), 'backend-fake-codex', '모의 계정', '편집 허용']) assert(!publicText.includes(token),'공개 이미지에 실행 경로나 계정이 보입니다.');
     await page.screenshot({ path: path.join(root, 'docs/workspace-sales.png'), animations: 'disabled', scale: 'css' });
     await answer.screenshot({ path: path.join(root, 'docs/workspace-sales-chat.png'), animations: 'disabled', scale: 'css' });
     console.log('격리된 실제 앱에서 월별 입력 6개 / 50% 답변 / 프로젝트 업무와 대화 / 모바일용 답변 확대 사진 촬영');

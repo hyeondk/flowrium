@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject} = require('./project-trust-fixture.cjs');
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -16,7 +17,7 @@ async function setup(t) {
   await fs.mkdir(folder);
   const store = new Store(path.join(tmp, "profile"));
   await store.load();
-  const project = await store.addProject(folder);
+  const project = await addTrustedFixtureProject(store, folder);
   const api = {};
   const running = new Set();
   let revealed;
@@ -50,7 +51,7 @@ test("기능별 역할 대화가 별도로 생기고 현재 프로젝트에서 �
   assert.doesNotMatch(ctx, /인계 후 원문/);
   const other = path.join(tmp, "별개 프로젝트");
   await fs.mkdir(other);
-  const p = await store.addProject(other);
+  const p = await addTrustedFixtureProject(store, other);
   await assert.rejects(api.startWork({ projectId: p.id, title: "분리", kind: "task", sourceSessionId: created.id }), /같은 프로젝트/);
   await assert.rejects(work("weekly", "기간 오류", { from: "2026-09-31" }), /형식/);
   const team = await startWork(store, { projectId: project.id, title: "팀 작업", kind: "task" }, { runId: randomUUID(), index: 0, mode: "review" });

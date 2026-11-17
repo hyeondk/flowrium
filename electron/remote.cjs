@@ -211,7 +211,21 @@ function registerRemote(
       proposals:(value.proposals||[]).map(p=>{const {id,revision,kind,title,body,sourceId,targetId,projectId,status,createdAt,hidden,snoozedUntil,result,preview}=p;return {id,revision,kind,title,body,sourceId,targetId,projectId,status,createdAt,hidden,snoozedUntil,result,preview};}),
       pending:(value.pending || []).map(e => e.type === "input" ? mobileInput(e) : e).filter(e => e.type === "input" || e.type === "approval")};
   }
+  async function requireSessionTrust(id) {
+    const session=store.state.sessions.find(item=>item.id===id);
+    if(!session)throw Error('연결된 프로젝트 대화를 선택해 주세요.');
+    if(!session.scope)await store.requireProjectTrust(session.projectId);
+  }
   async function mobileCall(method, args, requestScope, requestOwner) {
+    const input=args[0];
+    if(method==='send' || (method==='workflowAction' && input?.action==='continueConversation')){
+      await requireSessionTrust(input?.sessionId);
+    }else if(method==='sendQueuedToCodex' || method==='resumeQueuedMessages'){
+      await requireSessionTrust(input);
+    }else if(method==='startWork' || method==='directTeam'){
+      await store.requireProjectTrust(method==='startWork'?input?.projectId:input);
+    }
+    checkScope(requestScope,requestOwner);
     if(method==='sendQueuedToCodex'||method==='clearUnconfirmedCodexQueue'){
       const [sessionId,queueId]=args;
       if(args.length!==2 || typeof sessionId!=='string' || !uuid.test(sessionId) || typeof queueId!=='string' || !uuid.test(queueId) || !store.state.sessions.some(row=>row.id===sessionId&&!row.scope))
@@ -399,6 +413,7 @@ function registerRemote(
           const sessionId=u.searchParams.get('sessionId'),session=store.state.sessions.find(s=>s.id===sessionId);
           if(!session)throw Error('프로젝트 대화를 다시 선택해 주세요.');
           const bytes=await readBody(req,require('./mobile/chat-input.js').maxRequestBytes);
+          await requireSessionTrust(session.id);
           checkScope(requestScope,requestOwner);
           const raw=new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(bytes);
           require('./mobile/chat-input.js').chatInput(raw);
@@ -412,7 +427,9 @@ function registerRemote(
         try {
           if (!originAllowed(req,local) || req.headers["content-type"]?.split(";")[0] !== "application/octet-stream") throw Error("첨부 요청 형식을 확인해 주세요.");
           const projectId=u.searchParams.get("projectId"), name=u.searchParams.get("name"), type=u.searchParams.get("type");
-          const bytes=await readBody(req,20*1024*1024);checkScope(requestScope,requestOwner);
+          const bytes=await readBody(req,20*1024*1024);
+          await store.requireProjectTrust(projectId);
+          checkScope(requestScope,requestOwner);
           const handler=handlers.get("addChatAttachments");if(!handler)throw Error("첨부를 사용할 수 없는 앱 버전입니다.");
           const result=await guard("addChatAttachments",()=>handler(projectId,[{name,type,bytes}]));
           checkScope(requestScope,requestOwner);json(res,200,{result});
@@ -439,11 +456,12 @@ function registerRemote(
             const requests = pending.filter(e=>e.type==='approval'||(e.type==='input'&&!answeredInputs.has(e.requestId)));
             const deciding = new Set([...requests.map(e=>e.sessionId),...links.flatMap(p=>[p.sourceId,p.targetId])]);
             return {
-              projects: snapshot.projects.map((p) => ({
+              projects: await Promise.all(snapshot.projects.map(async (p) => ({
                 id: p.id,
                 name: p.name,
                 createdAt: p.createdAt,
-              })),
+                trustedForFileAccess: await store.isProjectTrusted(p.id),
+              }))),
               sessions: snapshot.sessions.map(s=>mobileSummary(display(s),Boolean(controller.runs.get(s.id)&&!controller.runs.get(s.id).claimingWriter||externalPreview(s)),deciding.has(s.id),revisionOf(s.id),runLabels.get(controller.runs.get(s.id)))),
               settings: {
                 theme: snapshot.settings.theme === 'dark' ? 'dark' : 'light',

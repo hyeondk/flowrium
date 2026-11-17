@@ -1,3 +1,4 @@
+const { trustFixtureProject } = require('./project-trust-fixture.cjs');
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
@@ -16,6 +17,7 @@ async function setup(t) {
   await fs.writeFile(path.join(root,'common.txt'),'initial\n');await fs.writeFile(path.join(root,'.gitignore'),'.flowrium/\nignored.tmp\n');
   await git(root,'add','.');await git(root,'commit','-m','기준');
   const project=await store.addProject(root), run=randomUUID(), api={};
+  await trustFixtureProject(store, project);
   const controller=new Controller(store,{descriptor:{command:process.execPath,prefix:[path.join(__dirname,'backend-fake-codex.cjs')],node:true,label:'시험'}});
   registerTeamWorktrees((key,value)=>{api[key]=value;},store,controller);
   const roles=[{name:'기능',mode:'build'},{name:'수정',mode:'build'},{name:'검수',mode:'review',targetIndex:0}];

@@ -1,3 +1,4 @@
+const { trustFixtureProject } = require('./project-trust-fixture.cjs');
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -49,6 +50,7 @@ async function setup(t) {
       retryDelay: 100,
     });
   });
+  await trustFixtureProject(store, p);
   const team = await api.saveTeam(p.id, { name: "프로젝트 팀", roles });
   const create = (options, goal = "공동 목표") =>
     api.directTeam(p.id, team.id, goal, randomUUID(), options);
@@ -216,6 +218,11 @@ test("실행 중 기록을 새 기기에서 열어도 모델을 자동 호출하
     assignments: [{ ...picks[0], task: "대기검증" }, picks[1]],
   });
   assert.equal(r.directed.nodes[1].status, "failed");
+  // The held turn stays active. Copy only after its first user receipt is published.
+  const activeId = r.directed.nodes[0].sessionId;
+  await wait(r.id, () => store.session(activeId).messages.some(message => message.role === "user" && message.turnId));
+  await store.queue;
+  assert(controller.runs.has(activeId));
   const moved = path.join(tmp, "복원");
   await fs.cp(folder, moved, { recursive: true });
   const another = new Store(path.join(tmp, "복원 기기"));

@@ -1,3 +1,4 @@
+const { trustFixtureProject } = require('./project-trust-fixture.cjs');
 const test=require("node:test"),assert=require("node:assert/strict");
 const fs=require("node:fs/promises"),path=require("node:path"),os=require("node:os");
 const {randomUUID}=require("node:crypto"),{execFile}=require("node:child_process"),{promisify}=require("node:util");
@@ -10,8 +11,9 @@ async function setup(t,roles){
   const controller=new Controller(store,{descriptor:{command:process.execPath,node:true,label:"격리 검증 연결",prefix:[path.join(__dirname,"backend-fake-codex.cjs")]}}),api={};
   const register=(name,fn)=>api[name]=fn;registerTeamWorktrees(register,store,controller);
   const teams=registerTeams(register,store,controller,{worktreeState:(...args)=>api.teamWorktrees(...args),worktreeAction:(...args)=>api.teamWorktreeAction(...args)});
-  const team=await api.saveTeam(project.id,{name:"자동 운영 검증",roles});
   t.after(async()=>{await controller.shutdown();await fs.rm(root,{recursive:true,force:true,maxRetries:8,retryDelay:100});});
+  await trustFixtureProject(store, project);
+  const team=await api.saveTeam(project.id,{name:"자동 운영 검증",roles});
   async function wait(id,fn){for(let i=0;i<250;i++){const item=(await api.readTeams(project.id)).runs.find(r=>r.id===id);if(item&&fn(item.directed))return item;await delay(20);}throw Error("자동 팀 완료 대기 시간 초과");}
   return{root,folder,store,project,controller,api,teams,team,wait,create:(goal,options)=>api.directTeam(project.id,team.id,goal,randomUUID(),options)};
 }

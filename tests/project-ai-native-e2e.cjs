@@ -1,9 +1,10 @@
+const {addTrustedFixtureProject} = require('./project-trust-fixture.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),http=require('node:http'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 const {CodexClient,resolveCodex}=require('../electron/codex.cjs'),{Store}=require('../electron/store.cjs'),{registerWorkbench,workContext}=require('../electron/workbench.cjs'),{createProjectTools}=require('../electron/project-ai-tools.cjs');
 async function main(){
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-project-ai-'));let client,server,timer,saved,failure,calls=0,offered=false,modelMatched=false,evidence=false,replied=false;
  try{
-  const folder=path.join(dir,'project');await fs.mkdir(folder);const store=new Store(path.join(dir,'profile'));await store.load();const project=await store.addProject(folder),handlers=new Map();registerWorkbench((n,f)=>handlers.set(n,f),store,{reveal:()=>{}});const tools=createProjectTools({handlers,store});
+  const folder=path.join(dir,'project');await fs.mkdir(folder);const store=new Store(path.join(dir,'profile'));await store.load();const project=await addTrustedFixtureProject(store, folder),handlers=new Map();registerWorkbench((n,f)=>handlers.set(n,f),store,{reveal:()=>{}});const tools=createProjectTools({handlers,store});
   const source=await store.createSession(project.id,{title:'실제 완료 업무',workflow:{kind:'task',status:'done',role:'실무 담당자',brief:'',audience:'',from:'',to:'',checklist:[],completion:{at:new Date().toISOString(),summary:'검증 자료 정리 완료',commits:[]}}});
   const session=await handlers.get('startWork')({projectId:project.id,kind:'briefing',title:'오늘의 우선순위 계획',model:'gpt-5.5',reportProjects:[project.id]});assert.equal(session.preferences.model,'gpt-5.5');assert.notEqual(session.id,source.id);const context=await workContext(store,session.id);
   server=http.createServer(async(req,res)=>{try{

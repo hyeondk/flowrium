@@ -1,9 +1,10 @@
+const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),{_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs'),{closeInstalledApp}=require('./update-installed-ui.cjs');
 async function main(){
  const root=path.resolve(__dirname,'..'),qa=path.join(root,'.flowrium-tmp/qa-261115_03');await fs.mkdir(qa,{recursive:true});const temp=await fs.mkdtemp(path.join(qa,'decision-notice-'));let app;const measurements=[];
  try{
-  const folder=path.join(temp,'합성 알림 프로젝트');await fs.mkdir(folder);const profile=path.join(temp,'profile'),store=new Store(profile);await store.load();const project=await store.addProject(folder),session=await store.createSession(project.id);await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
+  const folder=path.join(temp,'합성 알림 프로젝트');await fs.mkdir(folder);const profile=path.join(temp,'profile'),store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount}),session=await store.createSession(project.id);await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   app=await _electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();page.setDefaultTimeout(16000);await page.setViewportSize({width:1440,height:1000});await page.locator('.side-usage[data-connected=true]').waitFor();
   for(const width of [1440,1024,390]){
    await page.setViewportSize({width,height:1000});const dock=page.locator('.conversation-dock');if(await dock.count()){await dock.getByRole('button',{name:'대화함 접기',exact:true}).click();await dock.waitFor({state:'detached'})}

@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject} = require('./project-trust-fixture.cjs');
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -37,7 +38,7 @@ async function fixture(t) {
   await fs.mkdir(projectPath);
   const store = new Store(path.join(directory, "기록"));
   await store.load();
-  const project = await store.addProject(projectPath);
+  const project = await addTrustedFixtureProject(store, projectPath);
   const session = await store.createSession(project.id);
   const controller = new Controller(store, { descriptor: fakeDescriptor });
   t.after(async () => {
@@ -53,7 +54,7 @@ test("작업 공간은 한글과 공백이 있는 실제 경로와 대화를 원
     project.path,
     await fs.realpath(path.join(directory, "한글 & 공백 프로젝트")),
   );
-  assert.equal((await store.addProject(project.path)).id, project.id);
+  assert.equal((await addTrustedFixtureProject(store, project.path)).id, project.id);
   await store.saveSettings({ theme: "light", effort: "high" });
   const restored = new Store(path.join(directory, "기록"));
   await restored.load();
@@ -93,7 +94,7 @@ test("초기화 후 계정과 모델을 조회하고 인증 정보를 노출하�
   );
 });
 
-test("읽기 전용 계획 작업은 스트리밍 후 최종 응답과 대화 식별자를 저장한다", async (t) => {
+test("계획 작업도 신뢰한 프로젝트 범위에서 실행되고 스트리밍 후 최종 응답과 대화 식별자를 저장한다", async (t) => {
   const { store, controller, session } = await fixture(t);
   const deltas = [];
   controller.on("event", (event) => {
@@ -113,7 +114,7 @@ test("읽기 전용 계획 작업은 스트리밍 후 최종 응답과 대화 �
   assert.equal((await done).status, "completed");
   const saved = store.session(session.id);
   assert.equal(saved.messages[0].text, "구조를 설명해 줘");
-  assert.equal(saved.messages[1].text, "확인한 결과입니다. / readOnly");
+  assert.equal(saved.messages[1].text, "확인한 결과입니다. / workspaceWrite");
   assert.equal(deltas.join(""), "확인한 결과입니다.");
   assert.match(saved.threadId, /^thread-/);
   const doneAgain = eventOnce(controller, (event) => event.type === "done");
@@ -164,14 +165,14 @@ test("동시 대화 실행을 구분하고 실행 중 추가 지시는 대기시
   assert.equal(store.session(session.id).messages.at(-1).role, "system");
 });
 
-test("명령 실행 승인은 명시적인 선택을 프로토콜에 전달한다", async (t) => {
+test("계획 작업의 기본 승인 요청도 사용자의 결정을 프로토콜에 전달한다", async (t) => {
   const { controller, session, store } = await fixture(t);
   const approval = eventOnce(controller, (event) => event.type === "approval");
   const done = eventOnce(controller, (event) => event.type === "done");
   await controller.send({
     sessionId: session.id,
     text: "승인검증",
-    mode: "build",
+    mode: "plan",
   });
   const request = await approval;
   assert.match(request.details, /검증용 명령/);
@@ -214,8 +215,9 @@ test("명령 문자열을 셸로 해석하지 않고 실행 파일을 찾는다"
   client.close();
 });
 
-test("읽기 전용 작업은 하위 서버가 추가 실행 승인을 요청해도 거절한다", async (t) => {
+test("명시적으로 추가 승인을 끈 검토 작업은 서버의 승인 요청을 거절한다", async (t) => {
   const { controller, session, store } = await fixture(t);
+  store.session(session.id).preferences={approval:"never"};
   let approvals = 0;
   controller.on("event", (event) => {
     if (event.type === "approval") approvals++;

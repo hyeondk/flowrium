@@ -1,10 +1,13 @@
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+const {trustFixtureProject,backendFixtureAccount}=require('./project-trust-fixture.cjs');
 const {openConversation}=require('./shell-test-helpers.cjs');
 const {_electron}=require('playwright'),{Store}=require('../electron/store.cjs'),{png}=require('./chat-fixtures.cjs');
 async function main(){
  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-chat-screen-')),profile=path.join(temp,'profile');let app,page;
  const store=new Store(profile);await store.load();await fs.mkdir(path.join(temp,'project'));await fs.mkdir(path.join(temp,'other'));
  const project=await store.addProject(path.join(temp,'project')),other=await store.addProject(path.join(temp,'other'));
+ await trustFixtureProject(store,project,{account:backendFixtureAccount});
+ await trustFixtureProject(store,other,{account:backendFixtureAccount});
  const session=await store.createSession(project.id,{title:'첨부 검증 대화'});await store.createSession(other.id,{title:'다른 프로젝트 대화'});await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
  const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
  const button=name=>page.getByRole('button',{name,exact:true});const input=()=>page.getByLabel('Codex에 보낼 작업 요청');
@@ -43,8 +46,8 @@ async function main(){
   let branched=(await snapshot()).sessions.find(s=>s.title==='분기 / '+current.title);assert(branched.threadId!==current.threadId);assert.equal(branched.messages.filter(m=>m.role==='user').length,1);assert.equal(branched.messages[0].attachments.length,2);
   await button('대화 관리').click();await page.getByLabel('기준 요청').selectOption({index:1});await button('이 요청 전으로 되감기').click();await button('되감기 확인').click();
   await until(async()=> (await snapshot()).sessions.find(s=>s.id===branched.id).messages.length===0);await until(async()=>await input().inputValue()==='첨부한 자료를 확인해 주세요.');assert.equal(await page.locator('.attachment-composer .chat-attachment-list li').count(),2);
-  await button('대화 관리').click();await page.getByLabel('대화 동작은 앱 기본 설정 따르기').uncheck();await page.getByLabel('답변 길이',{exact:true}).selectOption('short');await page.getByLabel('실행 허용 범위').selectOption('read-only');await button('대화 연결 설정 저장').click();
-  const saved=(await snapshot()).sessions.find(s=>s.id===branched.id);assert.equal(saved.preferences.answerLength,'short');assert.equal(saved.preferences.sandbox,'read-only');
+  await button('대화 관리').click();await page.getByLabel('대화 동작은 앱 기본 설정 따르기').uncheck();await page.getByLabel('답변 길이',{exact:true}).selectOption('short');assert.equal(await page.getByLabel('실행 허용 범위').count(),0);await button('대화 연결 설정 저장').click();
+  const saved=(await snapshot()).sessions.find(s=>s.id===branched.id);assert.equal(saved.preferences.answerLength,'short');assert.notEqual(saved.preferences.sandbox,'read-only');
   await open('다른 프로젝트 대화');
   await require('./native-queue-ui-checks.cjs').desktop(app,page,(await snapshot()).sessions.find(s=>s.title==='다른 프로젝트 대화'));
   console.log('실제 Electron 채팅 통과 / 파일 선택·캡처 붙여넣기·드롭 / 프로젝트별 첨부 초안과 재기동 복원 / 첨부만 전송 / 지시 큐·취소·순차 실행 / 내부 분기와 되감기 / 요청 초안 복원 / 대화 동작 설정');

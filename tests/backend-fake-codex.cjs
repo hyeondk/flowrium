@@ -132,9 +132,13 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     });
     return;
   }
+  if (method === "config/read") {
+    write({id, result:{config:{}}});
+    return;
+  }
   if (method === "thread/start") {
     const threadId=`thread-${++nextThread}`;threads.set(threadId,[]);
-    write({ id, result: { thread: { id: threadId } } });
+    write({ id, result: { thread: { id: threadId }, ...(params.permissions && {activePermissionProfile:{id:params.permissions}}) } });
     return;
   }
   if(method === 'thread/turns/list') {write({id,result:{data:threads.get(params.threadId)||[],nextCursor:null}});return;}
@@ -152,7 +156,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   }
   if(method === 'thread/compact/start') {write({id,result:{}});setTimeout(()=>{notify('thread/tokenUsage/updated',{threadId:params.threadId,turnId:'compaction',tokenUsage:{last:{inputTokens:200,outputTokens:0,totalTokens:200},total:{totalTokens:200},modelContextWindow:1000}});notify('thread/compacted',{threadId:params.threadId});},25);return;}
   if (method === "thread/resume") {
-    write({ id, result: { thread: { id: params.threadId } } });
+    write({ id, result: { thread: { id: params.threadId }, ...(params.permissions && {activePermissionProfile:{id:params.permissions}}) } });
     return;
   }
   if (method === "turn/start") {
@@ -215,7 +219,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     }
     if (prompt.includes("대기검증")) return;
     setTimeout(
-      () => complete(threadId, turnId, require("./teams-fake-response.cjs").teamResponse(prompt, params.outputSchema), params.sandboxPolicy.type),
+      () => complete(threadId, turnId, require("./teams-fake-response.cjs").teamResponse(prompt, params.outputSchema), (params.sandboxPolicy?.type || params.permissions)),
       30,
     );
     return;

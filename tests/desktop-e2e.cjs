@@ -1,3 +1,4 @@
+const {trustRegisteredFixtureFolder} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -58,6 +59,7 @@ async function run() {
     }, project);
     await btn("프로젝트 추가").click();await btn("기존 폴더 연결").click();
     await page.locator("[data-work-kind=task]").waitFor();
+    await trustRegisteredFixtureFolder(profile, project);
     await page.locator(".settings-button").click();
     await page.locator(".settings-section").filter({has:page.getByRole("heading",{name:"Codex 연결",exact:true})}).getByRole("button",{name:"연결 확인",exact:true}).click();
     await page.getByRole("dialog",{name:"설정"}).getByText("ChatGPT / pro", { exact: true }).waitFor();

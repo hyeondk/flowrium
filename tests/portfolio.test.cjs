@@ -237,6 +237,7 @@ test("통합 주간보고는 직접 선택한 프로젝트의 완료 기록만 �
   for (const name of ["취재", "편집", "제외"]) {
     const p = await f.api.kickoffProject({ ...input, name });
     projects.push(p);
+    await require('./project-trust-fixture.cjs').trustFixtureProject(f.store,p);
     const task = await f.api.startWork({
       projectId: p.id,
       kind: "task",

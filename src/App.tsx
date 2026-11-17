@@ -2,7 +2,6 @@ import {withLiveTurn} from '../electron/mobile/live-turn.js';
 import {RequestSource} from './RequestSource';
 import {maxChatInput, exceedsChatSize, chatLengthError, nativeQueueNotice} from '../electron/mobile/chat-input.js';
 import {projectMode} from '../electron/mobile/project-mode.js';
-import ChatAccessHint from './ChatAccessHint';
 import {useModelCatalog} from './useModelCatalog';
 import chatgptAvatar from "../electron/mobile/chatgpt.svg?no-inline";
 import WorkflowHub from "./WorkflowHub";
@@ -248,16 +247,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const setAttachments=(items:ChatAttachment[])=>setDrafts(prev=>({...prev,[draftKey]:{text:prev[draftKey]?.text||"",mode:prev[draftKey]?.mode||mode,attachments:items}}));
   const draftSession = data.sessions.find(s => s.id === sessionId);
   const workflow = draftSession?.workflow;
-  const mode = projectMode(draftSession, drafts[draftKey]?.mode || (workflow ? workKinds[workflow.kind].mode : undefined), data.settings.chatDefaults);
+  const mode = projectMode(draftSession, workflow ? workKinds[workflow.kind].mode : undefined);
   const setInput = (text: string) =>
     setDrafts((prev) => ({
       ...prev,
       [draftKey]: { ...prev[draftKey],text, mode: prev[draftKey]?.mode || mode },
-    }));
-  const setMode = (nextMode: Mode) =>
-    setDrafts((prev) => ({
-      ...prev,
-      [draftKey]: { ...prev[draftKey],text: prev[draftKey]?.text || "", mode: nextMode },
     }));
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -803,6 +797,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const id=crypto.randomUUID();submissionReceipts.current.set(key,{id,text});
     return {submissionId:id};
   }
+  async function confirmChatFolders(projectId:string, target?:Session) {
+    if (target?.scope) return true;
+    if (!api) return false;
+    const folders = new Set([projectId, ...(target?.workflow?.reportProjects || [])]);
+    for (const id of folders) if (!await api.requestProjectTrust(id)) return false;
+    return true;
+  }
   async function send(textOverride?:string, nextTurn=false) {
     const requestText=textOverride??input;
     if ((!requestText.trim() && !attachments.length) || submittingRef.current || modelSaveKey.current === draftKey) return;
@@ -819,8 +820,19 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const originalAttachments=attachments;
     const wasRunning=running;
     const text = requestText;
-    setDrafts((prev) => ({ ...prev, [originKey]: { text: "", mode } }));
+    let draftCleared = false;
     try {
+      if (!await confirmChatFolders(conversationProject.id,session)) {
+        if (textOverride && !input.trim()) {
+          setDrafts(prev => prev[originKey]?.text ? prev : {
+            ...prev, [originKey]: { ...prev[originKey], text: requestText, mode },
+          });
+        }
+        return;
+      }
+      if (currentDraftKey.current !== originKey) return;
+      setDrafts(prev => ({ ...prev, [originKey]: { text: "", mode } }));
+      draftCleared = true;
       if (!activeId) {
         const created = await api.createSession(conversationProject.id);
         activeId = created.id;
@@ -865,6 +877,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         notify(sent.waitingForWriter?"요청을 보관했습니다. 채팅의 추가 지시에서 전달 상태를 확인할 수 있습니다.":"추가 지시를 보관했습니다. 현재 작업이 끝나면 차례로 전달합니다.");
       }
     } catch (error) {
+      if (!draftCleared) { fail(error); return; }
       if (activeId&&!wasRunning)
         setActivities((prev) => {
           const next = { ...prev };
@@ -953,6 +966,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const originKey=draftKey,originalInput=input,originalAttachments=attachments;
     submittingRef.current=true;setSubmitting(true);
     try{
+      if (!await confirmChatFolders(session.projectId,session)) return;
       await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,...longSubmission(originKey,originalInput),text:originalInput,attachments:originalAttachments.map(a=>a.id),mode,model:data.settings.model||undefined,effort:data.settings.effort});
       submissionReceipts.current.delete(originKey);
       setDrafts(previous=>{const draft=previous[originKey];return {...previous,[originKey]:{...draft,mode:draft?.mode||mode,text:draft?.text===originalInput?'':draft?.text||'',attachments:(draft?.attachments||[]).filter(item=>!originalAttachments.some(sent=>sent.id===item.id))}}});
@@ -1090,8 +1104,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </div>
                   <CodexLinkBar key={session.id} session={session} running={running}/>
                   {session.context&&<div className="chat-context">문맥 {session.context.percent}% ({session.context.used.toLocaleString("ko-KR")} / {session.context.max.toLocaleString("ko-KR")} 토큰) <progress max={100} value={session.context.percent}/>{session.compacting&&<span>문맥 압축 중</span>}</div>}
-                  <ChatQueuePanel session={session} onCancel={id=>{void api!.cancelQueuedMessage(session.id,id).catch(fail);}} onResume={()=>{void api!.resumeQueuedMessages(session.id).catch(fail);}}
-                    onSendToCodex={async id=>{try{const result=await api!.sendQueuedToCodex(session.id,id);if(result.accepted)notify(nativeQueueNotice(result));}catch(error){fail(error);}}}
+                  <ChatQueuePanel session={session} onCancel={id=>{void api!.cancelQueuedMessage(session.id,id).catch(fail);}} onResume={async()=>{try{if(await confirmChatFolders(session.projectId,session))await api!.resumeQueuedMessages(session.id);}catch(error){fail(error);}}}
+                    onSendToCodex={async id=>{try{if(!await confirmChatFolders(session.projectId,session))return;const result=await api!.sendQueuedToCodex(session.id,id);if(result.accepted)notify(nativeQueueNotice(result));}catch(error){fail(error);}}}
                     onClear={async id=>{try{await api!.clearUnconfirmedCodexQueue(session.id,id);}catch(error){fail(error);}}}/>
                   {session.workflow && <WorkSessionControls key={session.id} session={session} onSessionChange={rememberSession} running={running} />}
                   <div
@@ -1335,13 +1349,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </div>
                 </div>)}
                 </AttachmentComposer>
-                <div className="composer-footnote">
-                  <ChatAccessHint session={session} defaults={data.settings.chatDefaults} mode={mode} running={running} onBuild={async()=>{
-                    if (!session || !api) {setMode('build');return;}
-                    try {const next=await api.editConversation(session.id,{action:'preferences',preferences:{...session.preferences,sandbox:'workspace-write',approval:session.preferences?.approval||data.settings.chatDefaults?.approval||'on-request'}});rememberSession(next);setMode('build');} catch(e){fail(e);}
-                  }}/>
+                {session?.scope && <div className="composer-footnote">
+                  <span><ShieldCheck size={12}/>{session.scope === 'general' ? '일반 대화' : '프로젝트 현황 조회'}</span>
                   <span>줄바꿈 ⇧ ↵</span>
-                </div>
+                </div>}
               </div>
               {!session && (
                 <div className="recent-section">
@@ -1520,11 +1531,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     </span>
                   </button>
                 ))}
-              </div>
-              <div className="quiet-note">
-                <ShieldCheck size={15} />
-                계획과 검토는 읽기 전용으로 진행됩니다. 구현 모드에서 프로젝트
-                파일을 변경할 수 있습니다.
               </div>
             </div>
           </div>

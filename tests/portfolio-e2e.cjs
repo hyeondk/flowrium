@@ -1,3 +1,4 @@
+const {trustRegisteredFixtureFolder} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
@@ -236,6 +237,7 @@ async function main() {
     await form
       .locator("textarea")
       .fill("관찰한 동선을 다음 주 면담 질문으로 정리해 주세요.");
+    await trustRegisteredFixtureFolder(profile, path.join(parent,name));
     await button("업무 시작").click();
     await page.locator(".message.assistant").first().waitFor();
     await button("리서치 / 진행 중").click();

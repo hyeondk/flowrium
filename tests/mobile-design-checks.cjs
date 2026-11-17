@@ -21,6 +21,7 @@ async function checkDesign(app,page,store,folder) {
   });
   const name='산책 안내도.png';await fs.writeFile(path.join(projectDir,'docs',name),Buffer.from(map,'base64'));
   const project=await store.addProject(projectDir),turnId=randomUUID(),now=Date.now(),at=new Date(now).toISOString();
+  await require('./project-trust-fixture.cjs').trustFixtureProject(store,project);
   const chat=await store.createSession(project.id,{title:'중앙역에서 도시숲 공원까지',messages:[
     {id:randomUUID(),turnId,role:'user',text:'중앙역에서 공원까지 걷는 길을 정리해줘.',createdAt:at,workStartedAt:new Date(now-206000).toISOString(),workCompletedAt:at},
     {id:randomUUID(),turnId,role:'system',progressCommentary:true,text:'현장 메모에서 갈림길을 확인했어요.',createdAt:at},

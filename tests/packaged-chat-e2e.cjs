@@ -46,14 +46,27 @@ async function run() {
   const temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-package-chat-')));
   const profile=path.join(temp,'profile'),codex=path.join(temp,'codex');
   let app,page,server,phase='시작',serviceError,responseCount=0;
-  const inputs=[], errors=[];
+  const inputs=[], errors=[], projects=[];
   const env={...process.env,CODEX_HOME:codex,FLOWRIUM_OFFLINE_KEY:'local-test-only',FLOWRIUM_PACKAGED_CODEX:native,FLOWRIUM_POLICY_TRACE:path.join(temp,'turn-policies.jsonl')};
   if(!windows)env.HOME=temp;
   delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
-  async function launch() {
+  async function launch(trustChoices=[]) {
     app=await _electron.launch({executablePath:executable,args:['--user-data-dir='+profile,'--use-mock-keychain'],env,timeout:45000});
     const location=await app.evaluate(({app})=>({packaged:app.isPackaged,data:app.getPath('userData')}));
     assert(location.packaged && path.relative(profile,location.data)==='','독립 프로필의 배포 앱이어야 합니다.');
+    // Only this isolated packaged-app test supplies the user's native dialog choices.
+    await app.evaluate(({dialog},choices)=>{
+      const original=dialog.showMessageBox.bind(dialog);
+      globalThis.flowriumTrustPrompts=[];
+      dialog.showMessageBox=async(...args)=>{
+        const options=args.at(-1);
+        if (!options.buttons?.includes('신뢰하고 편집 허용')) return original(...args);
+        const choice=choices.shift();
+        if (!choice) throw Error('이미 신뢰한 프로젝트의 재승인 요청');
+        globalThis.flowriumTrustPrompts.push([options.message,options.detail].join(' '));
+        return {response:options.buttons.indexOf(choice),checkboxChecked:false};
+      };
+    },trustChoices);
     page=await app.firstWindow();page.setDefaultTimeout(20000);
     page.on('pageerror',error=>errors.push(error.message));
     await page.setViewportSize({width:1440,height:960});
@@ -92,13 +105,18 @@ async function run() {
     const endpoint='http://127.0.0.1:'+server.address().port+'/v1';
     await fs.writeFile(path.join(codex,'config.toml'),['cli_auth_credentials_store = "file"','model = "gpt-5.5"','[model_providers.flowrium_test]','name = "Flowrium test"','base_url = '+JSON.stringify(endpoint),'wire_api = "responses"','env_key = "FLOWRIUM_OFFLINE_KEY"','supports_websockets = false','[analytics]','enabled = false'].join('\n'));
     const store=new Store(profile);await store.load();
-    const projects=[];
     for(const name of ['첫 프로젝트','두 번째 프로젝트']){
       const folder=path.join(temp,name);await fs.mkdir(folder);projects.push(await store.addProject(folder));
     }
     await store.saveSettings({codexPath:__filename,model:'gpt-5.5'});
-    await launch();
+    await launch(['취소','신뢰하고 편집 허용','신뢰하고 편집 허용']);
     await newProjectConversation(page,projects[0].id);
+    await composer(page).fill('시험요청1');
+    await page.getByRole('button',{name:'작업 보내기',exact:true}).click();
+    const {expect}=require('playwright/test');
+    await expect.poll(()=>app.evaluate(()=>globalThis.flowriumTrustPrompts.length)).toBe(1);
+    assert.equal(await composer(page).inputValue(),'시험요청1','취소한 초안 보존');
+    assert.deepEqual(inputs,[],'신뢰 취소 시 모델 전송 없음');
     const first=await send('시험요청1',undefined,projects[0].id);
     await newProjectConversation(page,projects[1].id);
     const second=await send('시험요청2',undefined,projects[1].id);
@@ -114,12 +132,17 @@ async function run() {
       assert.equal(turn?.sandbox,'workspaceWrite','설치본 프로젝트 입력창의 실제 쓰기 권한');
       assert.equal(turn.approval,'on-request','설치본 프로젝트 입력창의 추가 승인 정책');
     }
+    const prompts=await app.evaluate(()=>globalThis.flowriumTrustPrompts);
+    assert.equal(prompts.length,3);
+    for(const [index,project] of [projects[0],projects[0],projects[1]].entries())
+      assert(prompts[index].includes(await fs.realpath(project.path)),'권한 확인창에 실제 프로젝트 경로 표시');
     await app.close();app=undefined;
     await launch();await openConversation(page,first.title);
     const resumed=await send('시험요청5',undefined,projects[0].id);
     assert.equal(resumed.id,first.id);assert.equal(resumed.threadId,first.threadId);
     assert.deepEqual(resumed.messages.filter(m=>m.role==='user').map(m=>m.text),['시험요청1','시험요청5']);
     assert.deepEqual(inputs,['시험요청1','시험요청2','시험요청3','시험요청4','시험요청5']);
+    assert.deepEqual(await app.evaluate(()=>globalThis.flowriumTrustPrompts),[],'재시작 뒤 신뢰 유지');
     assert.deepEqual(errors,[]);assert.ifError(serviceError);
     console.log('설치형 앱과 내장 Codex / 두 프로젝트의 새 대화 / 일반 대화 / 통합 대화 / 재시작 후 원래 대화에 이어 보내기 / 입력과 모델 응답 표시 통과');
   }catch(error){

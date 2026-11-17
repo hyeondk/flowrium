@@ -25,6 +25,7 @@ async function run() {
     await store.load();
     const p = await store.addProject(folder),
       controller = new EventEmitter();
+    await require('./project-trust-fixture.cjs').trustFixtureProject(store,p);
     controller.runs = new Map();
     controller.status = { available: true, authenticated: true };
     controller.connectionStatus = async () => ({
@@ -426,6 +427,7 @@ async function run() {
     );
     assert.equal(overflow, false);
     assert.equal(p.id, store.state.sessions[0].projectId);
+    await require('./mobile-project-trust-checks.cjs').verifyMobileProjectTrust({page,store,temp,handlers,url:remote.localUrl});
     console.log(
       "모바일 실제 브라우저 검증 / 로컬 서버 인증과 키 제거 / 프로젝트·팀·문서 / 업무 대화 생성·요청·중단·승인 / 질문 선택·직접 입력·실패 복구·비밀 문항 차단 / 입력 보존 / 본문 없는 목록과 최근·이전 기록 / 잠금과 복원 / 가로폭",
     );

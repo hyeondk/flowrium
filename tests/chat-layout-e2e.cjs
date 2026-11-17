@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const path=require('node:path');
@@ -82,7 +83,7 @@ async function run(){
  const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-chat-layout-'))),baseline=process.argv.includes('--baseline');let app,page;
  const measurements=[],errors=[];let resizeMetrics;
  try{
-  const profile=path.join(temp,'profile'),folder=path.join(temp,'synthetic-project');await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await store.addProject(folder);
+  const profile=path.join(temp,'profile'),folder=path.join(temp,'synthetic-project');await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount});
   const messages=Array.from({length:302},(_,i)=>({id:randomUUID(),role:i%2?'assistant':'user',text:i===301?'넓은 대화 화면에서 확인할 마지막 답변입니다.\n\n한국어 문장은 단어 중간에서 끊지 않고 자연스럽게 이어서 읽습니다.\n\n```js\nconst longLine = "'+('검증'.repeat(100))+'";\n```':`합성 대화 ${i+1}\n\n화면 공간과 스크롤을 확인하기 위한 검증 기록입니다.`,createdAt:new Date(1700000000000+i*1000).toISOString()}));
   const session=await store.createSession(project.id,{title:'넓은 채팅 배치 검증',threadId:'synthetic-layout-thread',messages,codexLink:{version:1,mode:'linked',sourceThreadId:'synthetic-layout-thread',ownerHash:'synthetic',deviceHash:'synthetic',importedAt:new Date().toISOString(),sourceUpdatedAt:new Date().toISOString(),snapshotHash:'synthetic',archivePath:'synthetic',activeAtImport:true,sourceMessageIds:[]}});
   store.session(session.id).codexLink={version:1,mode:'linked',sourceThreadId:'synthetic-layout-thread',ownerHash:'a'.repeat(64),deviceHash:'b'.repeat(64),importedAt:new Date().toISOString(),sourceUpdatedAt:new Date().toISOString(),snapshotHash:'c'.repeat(64),archivePath:'.flowrium/codex-source/'+('a'.repeat(64))+'/'+('b'.repeat(64))+'.json',activeAtImport:true,sourceMessageIds:[]};await store.save();

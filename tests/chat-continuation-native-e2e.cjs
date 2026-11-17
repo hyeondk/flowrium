@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject} = require('./project-trust-fixture.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -52,7 +53,7 @@ async function main() {
       ? Promise.resolve({account:{type:'chatgpt',planType:'test'}}) : request(method,params,...rest);
     const store = new Store(path.join(dir,'local'));
     await store.load();
-    const project = await store.addProject(projectDir);
+    const project = await addTrustedFixtureProject(store, projectDir);
     const session = await store.createSession(project.id);
     await store.saveSettings({model:'gpt-5.5'});
     controller=new Controller(store,{client,canRun:()=>true,analysisClientFactory:()=>{

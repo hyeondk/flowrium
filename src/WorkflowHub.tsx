@@ -55,10 +55,46 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
     });
     return()=>{alive.current=false;clearInterval(timer);cleanup?.();};
   },[api,refresh]);
+  async function confirmDeliveryFolders(input:WorkflowAction) {
+    if (!api || !data) return true;
+    const destinations = new Set<string>();
+    const include = (id?:string|null) => {
+      if (id && data.projects.some(project=>project.id===id)) destinations.add(id);
+    };
+    let conversationList:Promise<Session[]> | undefined;
+    const includeTarget = async (sessionId?:string|null) => {
+      if (!sessionId) return;
+      conversationList ??= api.bootstrap().then(snapshot=>snapshot.sessions);
+      const conversation = (await conversationList).find(session=>session.id===sessionId);
+      if (!conversation || conversation.scope) return;
+      include(conversation.projectId);
+      conversation.workflow?.reportProjects?.forEach(include);
+    };
+    const includeReport = () => data.projects.forEach(project=>include(project.id));
+    const includeProposal = async (id:string) => {
+      const proposal=data.proposals.find(row=>row.id===id);
+      if (!proposal || proposal.kind==='external') return;
+      if (proposal.kind==='report') includeReport();
+      else if (proposal.targetId && proposal.kind!=='team') await includeTarget(proposal.targetId);
+      else include(proposal.projectId);
+    };
+    switch (input.action) {
+      case 'send': await includeTarget(input.targetId); break;
+      case 'retryDelivery': await includeTarget(data.deliveries.find(row=>row.id===input.id)?.targetId); break;
+      case 'recommend': include(data.preferences.projectId || data.projects[0]?.id); break;
+      case 'reportNow': includeReport(); break;
+      case 'approve': await includeProposal(input.id); break;
+      case 'bulk': if (input.operation==='approve') for (const item of input.items) await includeProposal(item.id); break;
+    }
+    for (const id of destinations) if (!await api.requestProjectTrust(id)) return false;
+    return true;
+  }
   async function act(input:WorkflowAction,success?:string){
     if(!api||sending.current)return;
     sending.current=true;setBusy(true);setError("");setNotice("");
-    try{const result=await api.workflowAction(input);await refresh();if(success)setNotice(success);return result;}
+    try{
+      if (!await confirmDeliveryFolders(input)) return;
+      const result=await api.workflowAction(input);await refresh();if(success)setNotice(success);return result;}
     catch(e){setError(describe(e));await refresh().catch(()=>{});}
     finally{sending.current=false;setBusy(false);}
   }

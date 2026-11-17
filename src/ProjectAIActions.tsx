@@ -14,6 +14,7 @@ export default function ProjectAIActions({project,purpose,onOpen}:{project:Proje
   const [open,setOpen]=useState(false),[models,setModels]=useState<Model[]>([]),[model,setModel]=useState(''),[instruction,setInstruction]=useState(''),[error,setError]=useState(''),[authenticated,setAuthenticated]=useState(false),[busy,setBusy]=useState(false);
   useEffect(()=>{if(!open)return;let alive=true;window.flowrium?.connect().then(v=>{if(alive){setModels(v.models);setAuthenticated(v.status.authenticated);if(!v.status.authenticated)setError('ChatGPT 계정 연결이 필요합니다.');}}).catch(e=>{if(alive)setError(e.message);});return()=>{alive=false;};},[open]);
   async function start(){if(busy||!authenticated)return;setBusy(true);setError('');try{
+    if (!await window.flowrium!.requestProjectTrust(project.id)) {setBusy(false);return;}
     const kind=purpose==='docs'?'document':'task',request=[prompts[purpose],instruction&&'사용자 요청 / '+instruction].filter(Boolean).join('\n\n');
     const session=await window.flowrium!.startWork({projectId:project.id,kind,title:labels[purpose],role:'프로젝트 자료 작성 담당자',brief:request,audience:'프로젝트 사용자',from:'',to:'',...(model?{model}:{})});
     await window.flowrium!.send({sessionId:session.id,text:request,mode:'build',...(model?{model}:{})});onOpen(session);

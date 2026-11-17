@@ -176,6 +176,7 @@ class WorkflowRuntime {
     if(!message)return;
     let target;
     try{target=this.store.session(targetId);}catch{message.status="failed";message.error="받는 대화가 삭제됐습니다.";await this.save();return;}
+    if(!target.scope && !await this.store.isProjectTrusted(target.projectId))return;
     if(target.workflow?.status==="done"){message.status="held";message.error="완료된 업무는 재개한 뒤 전달해 주세요.";await this.save();return;}
     const source=message.sourceId&&(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===message.sourceId);
     message.status="dispatching";message.before=target.messages.length;
@@ -191,6 +192,7 @@ class WorkflowRuntime {
   async collect(){
     const projects=[];
     for(const project of this.store.state.projects){
+      if (!await this.store.isProjectTrusted(project.id)) continue;
       const sessions=this.store.state.sessions.filter(s=>s.projectId===project.id);
       const row={id:project.id,name:project.name,running:sessions.filter(s=>this.controller.runs.has(s.id)).length,
         open:sessions.filter(s=>s.workflow&&s.workflow.status!=="done").length,latest:sessions.slice(0,8).map(s=>({id:s.id,title:s.title,status:s.workflow?.status||"대화",updatedAt:s.updatedAt}))};
@@ -208,8 +210,20 @@ class WorkflowRuntime {
     const external=(prefs.github||prefs.mail)&&this.options.collectExternal?await this.options.collectExternal({github:prefs.github,mail:prefs.mail}):null;
     return{at:this.stamp(),projects,external,pending:this.record.proposals.filter(p=>p.status==="pending"&&!p.hidden).length};
   }
-  async report(reason="사용자 요청"){
+  async report(reason="사용자 요청",{scheduled=false}={}){
     this.ready();const owner=this.owner,snapshot=await this.collect();if(owner!==this.account())throw stale();this.ready();
+    if(this.store.state.projects.length && !snapshot.projects.length) {
+      if(scheduled) return;
+      throw Error('컴퓨터에서 보고할 프로젝트 폴더를 먼저 신뢰해 주세요.');
+    }
+    if(this.record.preferences.aiReports && this.options.memory) {
+      const home=await this.options.memory.assistantHome();
+      const target=home.connected?home.projectId:this.record.preferences.projectId || snapshot.projects[0]?.id;
+      if(target && this.store.state.projects.some(p=>p.id===target) && !await this.store.isProjectTrusted(target)) {
+        if(scheduled) return;
+        await this.store.requireProjectTrust(target);
+      }
+    }
     const body=[reason,...snapshot.projects.map(p=>`${p.name} / 실행 ${p.running}개 / 미완료 ${p.open}개 / 변경 파일 ${p.changedFiles??"확인 필요"}개\n${p.commits.join("\n")}`),
       `결정 대기 / ${snapshot.pending}개`,snapshot.external&&JSON.stringify(snapshot.external)].filter(Boolean).join("\n\n");
     const record={id:randomUUID(),at:this.stamp(),reason,body:this.record.preferences.aiReports?"":body,evidence:{at:snapshot.at,projectIds:snapshot.projects.map(p=>p.id)},status:this.record.preferences.aiReports?"queued":"completed"};
@@ -221,8 +235,9 @@ class WorkflowRuntime {
         if(!memory)throw new Error("개인 비서 연결을 먼저 확인해 주세요.");
         const home=await memory.assistantHome();
         if(home.connected&&this.record.preferences.projectId&&home.projectId!==this.record.preferences.projectId)throw new Error("비서의 보고 보관 프로젝트와 연결된 개인 비서 프로젝트가 다릅니다. 개인 비서 연결을 확인해 주세요.");
-        const projectId=home.connected?home.projectId:this.record.preferences.projectId||this.store.state.projects[0]?.id;
+        const projectId=home.connected?home.projectId:this.record.preferences.projectId||snapshot.projects[0]?.id;
         if(!projectId)throw new Error("보고를 보관할 프로젝트를 연결해 주세요.");
+        await this.store.requireProjectTrust(projectId);
         const session=await memory.openAssistant(projectId);
         record.sessionId=session.id;
         await this.sendMessage(null,session.id,"[개인 비서 상태 보고] 다음 실제 수집 결과를 바탕으로 완성된 한국어 보고서를 작성하세요. 결론 / 프로젝트별 수행 현황과 근거 / 결정할 사항 / 다음 행동 순서로 정리하세요. 원자료 JSON을 그대로 출력하거나 사용자가 본문을 다시 쓰게 하지 마세요. 확인하지 않은 완료나 배포를 주장하지 마세요. 사용자가 요청하지 않은 외부 변경은 실행하지 마세요.\n"+body,{kind:"report",reportId:record.id});
@@ -235,6 +250,7 @@ class WorkflowRuntime {
     const projectId=this.record.preferences.projectId||this.store.state.projects[0]?.id;
     if(!projectId)throw new Error("결정 추천을 보관할 프로젝트를 먼저 연결해 주세요.");
     const pending=this.record.proposals.filter(p=>p.status==="pending"&&!p.hidden).slice(0,40).map(p=>({id:p.id,title:p.title,body:p.body,targetId:p.targetId,projectId:p.projectId}));
+    await this.store.requireProjectTrust(projectId);
     const session=await this.store.createSession(projectId,{title:"결정 묶음 검토"});
     const job={id:randomUUID(),sessionId:session.id,before:session.messages.length,status:"running",at:this.stamp()};
     this.record.recommendations.unshift(job);this.record.recommendations=this.record.recommendations.slice(0,100);await this.save();
@@ -257,7 +273,11 @@ class WorkflowRuntime {
     this.record.reminders.unshift(reminder);await this.save();return copy(reminder);
   }
   async approve(p){
-    this.ready();p.status="running";p.revision++;p.startedAt=this.stamp();await this.save();
+    this.ready();
+    const target=p.targetId&&this.store.peekSession(p.targetId);
+    const projectId=target?(target.scope?null:target.projectId):p.projectId;
+    if(projectId && this.store.state.projects.some(project=>project.id===projectId)) await this.store.requireProjectTrust(projectId);
+    p.status="running";p.revision++;p.startedAt=this.stamp();await this.save();
     try{
       if(p.kind==="external"){
         if(!this.options.executeExternal)throw new Error("이 외부 작업의 실행 연결이 없습니다.");
@@ -504,6 +524,7 @@ class WorkflowRuntime {
         const localParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:prefs.timezone,year:"numeric",month:"2-digit",day:"2-digit",weekday:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now).map(p=>[p.type,p.value]));
         const day=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(localParts.weekday),date=`${localParts.year}-${localParts.month}-${localParts.day}`,clock=`${localParts.hour}:${localParts.minute}`;
         for(const project of this.store.state.projects){
+          if (!await this.store.isProjectTrusted(project.id)) continue;
           const details=await this.options.readProjectDetails(project.id);
           for(const goal of details.schedule||[]){
             if(goal.day!==day||goal.time>clock)continue;
@@ -520,7 +541,7 @@ class WorkflowRuntime {
       const weekday=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(parts.weekday),hour=Number(parts.hour);
       const inHours=prefs.startHour===prefs.endHour||
         (prefs.startHour<prefs.endHour?hour>=prefs.startHour&&hour<prefs.endHour:hour>=prefs.startHour||hour<prefs.endHour);
-      if(prefs.weekdays.includes(weekday)&&inHours)await this.report("설정한 주기의 상태 보고");
+      if(prefs.weekdays.includes(weekday)&&inHours)await this.report("설정한 주기의 상태 보고",{scheduled:true});
     });}finally{this.tickRunning=false;}
   }
   isBusy(){return this.transitions>0||this.tickRunning;}

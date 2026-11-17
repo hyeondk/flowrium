@@ -27,7 +27,7 @@ class TestController extends EventEmitter{
 async function setup(t,extra={}){
   const base=path.resolve(__dirname,"../.flowrium-tmp/qa-261115_03");await fs.mkdir(base,{recursive:true});const temporary=await fs.mkdtemp(path.join(base,"workflow-"));
   const store=new Store(path.join(temporary,"설정"));await store.load();
-  const folder=path.join(temporary,"프로젝트 & 기록");await fs.mkdir(folder);const project=await store.addProject(folder);
+  const folder=path.join(temporary,"프로젝트 & 기록");await fs.mkdir(folder);const project=await require('./project-trust-fixture.cjs').addTrustedFixtureProject(store,folder);
   const a=await store.createSession(project.id,{title:"원래 요청"}),b=await store.createSession(project.id,{title:"받는 대화"});
   const controller=new TestController(store),api={};let account=0,allowed=true,now=Date.parse("2026-11-16T01:15:00Z");
   const memory=registerMemory((name,fn)=>api[name]=fn,store,{accountRevision:()=>account});

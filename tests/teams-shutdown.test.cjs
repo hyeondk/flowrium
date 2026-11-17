@@ -1,3 +1,4 @@
+const { trustFixtureProject } = require('./project-trust-fixture.cjs');
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {randomUUID}=require('node:crypto'),{setTimeout:delay}=require('node:timers/promises');
 const {Store}=require('../electron/store.cjs'),{Controller}=require('../electron/controller.cjs'),{registerTeams}=require('../electron/teams.cjs');
@@ -9,6 +10,7 @@ test('종료는 실제 Controller의 마지막 팀 보고 이벤트와 뒤늦은
   try{
     await fs.mkdir(path.join(root,'project'));
     const store=new Store(path.join(root,'profile'));await store.load();const project=await store.addProject(path.join(root,'project')),api={};
+    await trustFixtureProject(store, project);
     controller=new Controller(store,{descriptor:{command:process.execPath,node:true,label:'종료 검증 연결',prefix:[path.join(__dirname,'backend-fake-codex.cjs')]}});
     runtime=registerTeams((name,handler)=>api[name]=handler,store,controller,{canRun:()=>!closing});
     const team=await api.saveTeam(project.id,{name:'마지막 팀 보고',roles:[{name:'구현',mode:'build',instruction:'역할 결과 확인'},{name:'검토',mode:'review',instruction:'근거 확인'}]});
@@ -46,6 +48,7 @@ test('이미 완료 처리 중인 대화의 산출물이 늦어도 종료는 같
   try{
     await fs.mkdir(path.join(root,'project'));const store=new Store(path.join(root,'profile'));await store.load();
     const project=await store.addProject(path.join(root,'project'));
+    await trustFixtureProject(store, project);
     const session=await startWork(store,{projectId:project.id,kind:'task',title:'완료 중 종료 확인',brief:'격리된 기록 보관 검증',role:'검토'});
     controller=new Controller(store,{descriptor:{command:process.execPath,node:true,label:'완료 중 종료 검증',prefix:[path.join(__dirname,'backend-fake-codex.cjs')]}});
     await controller.send({sessionId:session.id,mode:'plan',text:'대기검증'});

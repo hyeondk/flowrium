@@ -14,7 +14,7 @@ const SOURCES = ['git', 'asar', 'resources', 'source'];
 const APP_ROOTS = new Set(['dist', 'electron', 'assets', 'package.json', 'node_modules']);
 const SENSITIVE_SEGMENTS = new Set([
   '.flowrium', '.codex', 'codex-source', 'codex-transfers', 'composer-drafts',
-  'migration-records', 'personal-memory',
+  'migration-records', 'personal-memory', 'project-trust-v1',
 ]);
 const TEXT_EXTENSION = /\.(?:[cm]?jsx?|tsx?|jsonl?|html?|css|md|txt|ya?ml|toml|xml|svg|sh|ps1|cmd|bat|csv|sql|map|ini|conf|config|log)$/i;
 

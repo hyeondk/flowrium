@@ -55,6 +55,7 @@ test('공개 코드의 경로 예시 / 합성 검사 / 글꼴 출처는 개인�
   assert.equal(sensitivePath('docs/fonts/sources.json'), false);
   assert.equal(sensitivePath('src/pages/login.json'), false);
   assert.equal(sensitivePath('original/data/state/login.json'), true);
+  assert.equal(sensitivePath('user-data/project-trust-v1/fixture.json'), true);
   for (const name of ['state.json', 'profiles/local/state.json', '.codex/auth.json', '.flowrium/codex-source/thread.json', 'codex-transfers/chat.json', 'profiles/local/state.sqlite-wal']) assert.equal(sensitivePath(name), true);
   assert.equal(buildPolicy(packageData()), true);
   assert.equal(buildPolicy({ build: { files: ['**/*'] } }), false);

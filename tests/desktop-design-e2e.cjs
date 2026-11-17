@@ -128,6 +128,8 @@ async function run(){
     for(const side of ['width','height'])assert(Math.abs(reduced.image[side]/full.image[side]-.9)<.02,'그림 '+side+' '+JSON.stringify(results.reading));
     for(const fixed of ['dock','heading','toolbar','composer','main','side'])assert.deepEqual(full[fixed],reduced[fixed],fixed);
     assert.equal(reduced.heading.height,36);assert.equal(reduced.toolbar.height,56);assert.equal(reduced.side.width,248);
+    assert.equal(await page.getByRole('button',{name:/이 대화에서 프로젝트 편집 허용/}).count(),0);
+    assert.equal(await page.locator('.composer-footnote').count(),0);
     assert(reduced.font.includes('NanumSquareRound')&&reduced.fonts);
     if(screenshots){await fs.mkdir(screenshots,{recursive:true});await page.screenshot({path:path.join(screenshots,'desktop.png'),animations:'disabled'});}
     }

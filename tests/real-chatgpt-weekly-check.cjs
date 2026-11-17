@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject} = require('./project-trust-fixture.cjs');
 // 실제 계정 사용은 수동으로 명시한 경우에만 실행한다. 인증 자료는 읽거나 복사하지 않는다.
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),{randomUUID}=require('node:crypto');
 const {CodexClient}=require('../electron/codex.cjs'),{disabledConnections}=require('../electron/structured-analysis.cjs');
@@ -8,7 +9,7 @@ async function main(){
  const evidenceDir=path.resolve(__dirname,'../docs/validation'),profile='flowrium_report_'+randomUUID().replaceAll('-','');
  try{
   const folder=await fs.realpath(await fs.mkdir(path.join(dir,'project'),{recursive:true}).then(()=>path.join(dir,'project')));
-  const store=new Store(path.join(dir,'profile'));await store.load();const project=await store.addProject(folder),handlers=new Map();registerWorkbench((name,fn)=>handlers.set(name,fn),store,{reveal:()=>{}});const tools=createProjectTools({handlers,store});
+  const store=new Store(path.join(dir,'profile'));await store.load();const project=await addTrustedFixtureProject(store, folder),handlers=new Map();registerWorkbench((name,fn)=>handlers.set(name,fn),store,{reveal:()=>{}});const tools=createProjectTools({handlers,store});
   const at=new Date().toISOString();
   for(const [title,summary]of [['검증 자료 정리','더미 화면 체크리스트 3개를 정리하고 누락 여부를 확인했습니다.'],['안내 문구 검토','더미 안내 문장의 어절 줄바꿈과 용어 2개를 확인했습니다.']])await store.createSession(project.id,{title,workflow:{kind:'task',status:'done',role:'검증 담당',brief:'사용자 자료가 아닌 합성 검증 업무',audience:'',from:'',to:'',checklist:[],completion:{at,summary,commits:[]}}});
   stage='기본 인증 연결';preflight=new CodexClient();await preflight.start();stage='계정 읽기';const account=await preflight.request('account/read',{refreshToken:false});if(account.account?.type!=='chatgpt')throw Error('현재 기본 인증이 ChatGPT 로그인 방식이 아니어서 실제 계정 검증을 중단했습니다.');

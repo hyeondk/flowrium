@@ -14,4 +14,4 @@ function samePath(first, second, platform = process.platform) {
   return relativePath(first, second, platform) === '';
 }
 
-module.exports = { relativePath, samePath };
+module.exports = { pathForComparison, relativePath, samePath };

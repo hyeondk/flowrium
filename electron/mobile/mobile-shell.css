@@ -235,6 +235,8 @@ body:has(#content[data-view=chat]) .bar{display:none}
 .mobile-chat-heading button::before{content:"";width:9px;height:9px;display:inline-block;border:solid currentColor;border-width:0 0 2px 2px;transform:rotate(45deg)}
 .mobile-chat-heading .chat-state{margin:0 0 0 auto;flex:none}
 .chat-context{margin:8px 0}
+.folder-guide{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:8px 0;padding:6px 10px 6px 14px;background:var(--row-tint);border:1px solid var(--line);border-radius:10px;color:var(--text);font-size:.88rem;line-height:1.5}
+.folder-guide>button{flex:none;min-height:44px;color:var(--focus);font-weight:700}
 .mobile-timeline{zoom:.9}
 #content form .mobile-followup {display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;background:var(--selected);color:var(--focus);width:100%;margin:5px 0}
 #content form .mobile-followup[hidden]{display:none}

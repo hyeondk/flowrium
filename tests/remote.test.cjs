@@ -59,6 +59,7 @@ test("휴대폰 연결은 키와 출처·잠금을 검사하고 종료 즉시 �
   const service = registerRemote((n, f) => (api[n] = f), {
     store: {
       state,
+      requireProjectTrust: async id=>assert.equal(id,state.sessions[0].projectId),
       snapshot: () => {
         throw new Error("전체 대화 복제는 모바일 목록에서 수행하지 않습니다.");
       },
@@ -154,7 +155,7 @@ test("휴대폰 연결은 키와 출처·잠금을 검사하고 종료 즉시 �
   );
   assert.equal((await fetch(detail, { headers })).status, 403);
   locked = false;
-  const call = (method, origin = base, args = [{}]) =>
+  const call = (method, origin = base, args = [{sessionId:sid}]) =>
     fetch(base + "/api/mobile/call", {
       method: "POST",
       headers: {

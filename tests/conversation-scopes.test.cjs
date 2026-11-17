@@ -10,7 +10,7 @@ for(const scope of ['일반','프로젝트'])test('기존 '+scope+' 대화는 �
  const store=new Store(path.join(temp,'app'));await store.load();
  const folder=path.join(temp,'project');
  await fs.mkdir(folder);
- const project=scope==='일반'?await store.conversations.ensure('general'):await store.addProject(folder);
+ const project=scope==='일반'?await store.conversations.ensure('general'):await require('./project-trust-fixture.cjs').addTrustedFixtureProject(store,folder);
  const row=await store.createSession(project.id);const session=store.session(row.id);
  const message='  처음\n'+'가'.repeat(47994)+'🫧'+'나'.repeat(10_000)+'\n마지막  ';
  const user={id:require('node:crypto').randomUUID(),role:'user',text:message,createdAt:new Date().toISOString()};
@@ -49,7 +49,7 @@ test('일반 / 통합 대화의 계정별 영속 저장과 실행 범위 격리'
   const create=apis.get('createHubConversation');
   const general=await create({scope:'general'}),integrated=await create({scope:'integrated'});
   assert.equal(store.state.projects.length,0);assert.equal(store.state.sessions.length,0);assert.equal(store.snapshot().conversationProjects.length,2);assert.equal(store.snapshot().sessions.length,2);
-  const original=await fs.mkdtemp(path.join(temp,'project-'));const project=await store.addProject(original);const work=await store.createSession(project.id,{title:'진행할 업무'});
+  const original=await fs.mkdtemp(path.join(temp,'project-'));const project=await require('./project-trust-fixture.cjs').addTrustedFixtureProject(store,original);const work=await store.createSession(project.id,{title:'진행할 업무'});
   await assert.rejects(controller.listCodexHistory(general.projectId),/프로젝트 대화/);
   await assert.rejects(controller.importCodexHistory(general.projectId,['다른 내부 기록']),/프로젝트 대화/);
   const attachments=require('../electron/chat-attachments.cjs'),[attachment]=await attachments.addAttachments(store,general.projectId,[{name:'계정별.txt',type:'text/plain',bytes:Buffer.from('계정별 첨부 원문')}]);
@@ -93,20 +93,20 @@ test('통합 현황의 검색 일치 수와 등록 전체 수를 구분하고 �
  try{
   const store=new Store(path.join(temporary,'app'));await store.load();const controller={store,runs:new Map()};
   const empty=await snapshot(controller);assert.equal(empty.totalProjects,0);assert.equal(empty.matchedProjects,0);assert.equal(empty.returnedProjects,0);
-  const folder=path.join(temporary,'안내 문구 프로젝트');await fs.mkdir(folder);const project=await store.addProject(folder);
+  const folder=path.join(temporary,'안내 문구 프로젝트');await fs.mkdir(folder);const project=await require('./project-trust-fixture.cjs').addTrustedFixtureProject(store,folder);
   await store.createSession(project.id,{title:'안내 문구 점검',messages:[{id:require('node:crypto').randomUUID(),role:'assistant',text:'합성 안내 문구 3개를 확인했습니다.',createdAt:new Date().toISOString()}]});
   const filtered=await snapshot(controller,'안내문구점검 확인개수');assert.equal(filtered.totalProjects,1);assert.equal(filtered.matchedProjects,0);assert.equal(filtered.returnedProjects,0);assert.equal(filtered.query,'안내문구점검 확인개수');assert.deepEqual(filtered.projects,[]);assert.equal(filtered.scannedProjects,1);assert.equal(filtered.cap.projectScanReached,false);
   const all=await snapshot(controller,'  ');assert.equal(all.totalProjects,1);assert.equal(all.matchedProjects,1);assert.equal(all.returnedProjects,1);assert.equal(all.query,'');assert.equal(all.projects[0].conversations[0].recentMessages[0].text,'합성 안내 문구 3개를 확인했습니다.');assert.equal(all.limits.conversationsPerProject,15);assert.equal(all.limits.messagesPerConversation,4);assert.equal(all.truncated,false);
   const keyword=await snapshot(controller,'점검');assert.equal(keyword.totalProjects,1);assert.equal(keyword.matchedProjects,1);assert.equal(keyword.projects[0].id,project.id);
   const description=toolDefinitions.find(t=>t.name==='flowrium_hub_snapshot');assert.match(description.description,/빈 문자열/);assert.match(description.inputSchema.properties.query.description,/자연어 질문은 넣지/);
-  const capped=await snapshot({store:{state:{projects:Array.from({length:101},(_,i)=>({id:String(i),name:'합성 '+i})),sessions:[]}},runs:new Map()});assert.equal(capped.totalProjects,101);assert.equal(capped.matchedProjects,100);assert.equal(capped.returnedProjects,100);assert.equal(capped.scannedProjects,100);assert.equal(capped.cap.projectScanReached,true);assert.equal(capped.truncated,true);
+  const capped=await snapshot({store:{isProjectTrusted:async()=>false,state:{projects:Array.from({length:101},(_,i)=>({id:String(i),name:'합성 '+i})),sessions:[]}},runs:new Map()});assert.equal(capped.totalProjects,101);assert.equal(capped.matchedProjects,100);assert.equal(capped.returnedProjects,100);assert.equal(capped.scannedProjects,100);assert.equal(capped.cap.projectScanReached,true);assert.equal(capped.truncated,true);
  }finally{await fs.rm(temporary,{recursive:true,force:true,maxRetries:4,retryDelay:100});}
 });
 
 test('통합 업무 제안은 실제 결정함 승인 뒤 프로젝트에서 실행하고 결과를 원대화에 회신한다',async()=>{
  const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-hub-workflow-'));let workflow;
  try{
-  let revision=0,account='계정-가';const store=new Store(path.join(temporary,'app'));await store.load();const folder=path.join(temporary,'project');await fs.mkdir(folder);const project=await store.addProject(folder);
+  let revision=0,account='계정-가';const store=new Store(path.join(temporary,'app'));await store.load();const folder=path.join(temporary,'project');await fs.mkdir(folder);const project=await require('./project-trust-fixture.cjs').addTrustedFixtureProject(store,folder);
   class WorkController extends EventEmitter{
    constructor(){super();this.store=store;this.options={queueOwner:()=>revision,canRun:()=>true};this.runs=new Map();this.editingSessions=new Set();this.sent=[];}
    async send(input){const s=store.session(input.sessionId);s.messages.push({id:require('node:crypto').randomUUID(),role:'user',text:input.text,createdAt:new Date().toISOString()});await store.save();this.sent.push(input);this.runs.set(s.id,{sessionId:s.id});return{accepted:true};}

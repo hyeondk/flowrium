@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const os=require('node:os');
@@ -11,7 +12,7 @@ async function run(){
  let app,page;const errors=[],failures=[],measurements=[];
  try{
  const profile=path.join(temp,'검증 프로필'),folder=path.join(temp,'화면 검증 프로젝트');
- await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await store.addProject(folder);
+ await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount});
  const waiting=await store.createSession(project.id,{title:'계속할지 기다리는 대화',messages:[{id:randomUUID(),role:'assistant',text:'현재 업무를 정리했습니다.\n\n다음 작업을 계속할까요?',createdAt:new Date().toISOString()}]});
  const running=await store.createSession(project.id,{title:'실행 검증 대화'}),decision=await store.createSession(project.id,{title:'결정 검증 대화'});
  await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});

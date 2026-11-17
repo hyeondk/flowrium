@@ -71,7 +71,7 @@ async function main(){
   const nativeRequest=client.request.bind(client);
   // 인증 자체는 별도 검사한다. 합성 계정 응답으로 Controller를 통과시키고 모든 대화 RPC는 실제 app-server에 보낸다.
   client.request=(method,params,...rest)=>method==='account/read'?Promise.resolve({account:{type:'chatgpt',planType:'test'}}):nativeRequest(method,params,...rest);
-  const store=new Store(path.join(temp,'app'));await store.load();const project=await store.addProject(folder);projectId=project.id;await store.createSession(project.id,{title:'실제 프로젝트 업무'});await store.saveSettings({model:'gpt-5.5'});
+  const store=new Store(path.join(temp,'app'));await store.load();const project=await require('./project-trust-fixture.cjs').addTrustedFixtureProject(store,folder);projectId=project.id;await store.createSession(project.id,{title:'실제 프로젝트 업무'});await store.saveSettings({model:'gpt-5.5'});
   controller=new Controller(store,{client,canRun:()=>true,queueOwner:()=>0,applicationTools:()=>{throw Error('제한 대화에서 프로젝트 도구를 가져오면 안 됩니다.');}});
   controller.on('event',event=>{if(event.type==='error')console.error(event.text);});
   const handlers=new Map(),register=(name,fn)=>handlers.set(name,fn);registerConversationScopes(register,store,controller,{accountRevision:()=>0,workflowAction:async input=>{assert.equal(input.action,'request');assert.equal(input.projectId,project.id);delegated++;return{id:'test-proposal',status:'pending'};}});registerConversationTools(register,controller);

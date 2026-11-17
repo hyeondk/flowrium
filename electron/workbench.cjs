@@ -243,6 +243,7 @@ async function workContext(store, id) {
     for (const projectId of ids) {
       const project = store.state.projects.find(entry => entry.id === projectId);
       if (!project) { lines.push("연결이 해제된 보고 대상 프로젝트가 있습니다."); continue; }
+      await store.requireProjectTrust(projectId);
       if (w.reportProjects) lines.push("\n프로젝트 / " + project.name);
       const others = store.state.sessions.filter((item) => item.projectId === project.id && item.id !== s.id);
       const recentEnough=value=>w.kind!=='pause'||Date.parse(value)>=Date.now()-12*60*60*1000;
@@ -293,7 +294,7 @@ async function workContext(store, id) {
 }
 async function startWork(store, input, teamSlot) {
   if (!input || !kinds.includes(input.kind)) throw invalid();
-  store.project(input.projectId);
+  await store.requireProjectTrust(input.projectId);
   const title = required(input.title, 160);
   const workflow = newWorkflow(input.kind);
   for (const name of ["brief", "role", "audience", "from", "to", "searchMode", "researchDepth", "documentKind", "slideCount"])
@@ -301,7 +302,7 @@ async function startWork(store, input, teamSlot) {
   if (input.reportProjects !== undefined) {
     workflow.reportProjects = input.reportProjects;
     validateWorkflow(workflow);
-    for (const id of workflow.reportProjects) store.project(id);
+    for (const id of workflow.reportProjects) await store.requireProjectTrust(id);
   }
   if (teamSlot) workflow.teamSlot = { runId: teamSlot.runId, index: teamSlot.index, ...(teamSlot.mode && { mode: teamSlot.mode }), ...(teamSlot.isolated === true && { isolated: true }), ...(teamSlot.integration === true && {integration:true}) };
   if (!workflow.role) workflow.role = definitions[input.kind].role;

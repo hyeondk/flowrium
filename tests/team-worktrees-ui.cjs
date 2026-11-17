@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
@@ -23,7 +24,7 @@ async function main() {
     await fs.writeFile(path.join(project, '.gitignore'), '.flowrium/\n');
     await git('add', '.'); await git('commit', '-m', '기준');
     const original = await git('rev-parse', 'HEAD');
-    await store.load(); await store.addProject(project);
+    await store.load(); await addTrustedFixtureProject(store, project, {account: backendFixtureAccount});
     await store.saveSettings({ codexPath: path.join(__dirname, 'backend-fake-codex.cjs') });
     const env = {...process.env, FLOWRIUM_USER_DATA: profile, CODEX_HOME: path.join(temporary, 'codex')};
     delete env.ELECTRON_RUN_AS_NODE; delete env.ELECTRON_RENDERER_URL;

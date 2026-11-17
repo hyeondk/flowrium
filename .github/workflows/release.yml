@@ -210,6 +210,7 @@ jobs:
         run: |
           node tests/ui-motion-e2e.cjs
           node tests/desktop-design-e2e.cjs
+          node tests/project-trust-ui-e2e.cjs
           node tests/chat-citations-e2e.cjs
           node tests/workspace-shell-e2e.cjs
           node tests/conversation-scopes-native-e2e.cjs

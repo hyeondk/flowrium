@@ -5,6 +5,15 @@ const os = require("node:os");
 const path = require("node:path");
 const { _electron } = require("playwright");
 
+async function assertExampleImage(page, expectedPath) {
+  await page.waitForFunction(path => {
+    const image = document.querySelector('#example-dialog img');
+    return image.complete && image.currentSrc && new URL(image.currentSrc).pathname === path &&
+      image.naturalWidth >= 300 && image.naturalHeight >= 200;
+  }, expectedPath);
+  await page.locator('#example-dialog img').evaluate(image=>image.decode());
+}
+
 async function run() {
   const temp = await fs.mkdtemp(
     path.join(os.tmpdir(), "flowrium-download-ui-"),
@@ -27,6 +36,7 @@ async function run() {
     "fonts/OFL.txt",
   ]);
   const serverRequests=[];
+  let imageGate;
   const server = http.createServer(async (req, res) => {
     serverRequests.push(req.url);
     const file = req.url === "/" ? "index.html" : req.url.slice(1);
@@ -45,6 +55,7 @@ async function run() {
             : file.endsWith(".css")
               ? "text/css"
               : "text/javascript";
+    if (file === 'workspace-sales.png' && imageGate) await imageGate.promise;
     res.writeHead(200, { "content-type": mime });
     res.end(await fs.readFile(path.join(root, file)));
   });
@@ -139,6 +150,18 @@ async function run() {
     assert.equal(await page.locator(':focus').textContent(),'본문으로 이동');
     await page.keyboard.press('Enter');
     assert.equal(await page.locator(':focus').getAttribute('id'),'main');
+    assert.match(await page.locator('.getting-started .section-intro').textContent(),/첫 작업.*폴더를 신뢰/);
+    await page.setViewportSize({width:1440,height:900});
+    imageGate = Promise.withResolvers();
+    try {
+      const desktopRequest = page.waitForRequest(request=>new URL(request.url()).pathname==='/workspace-sales.png');
+      await page.locator('#example-open').click();
+      await desktopRequest;
+      await page.setViewportSize({width:320,height:844});
+      imageGate.resolve();
+      await assertExampleImage(page,'/workspace-sales-chat.png');
+      await page.keyboard.press('Escape');
+    } finally { imageGate.resolve(); imageGate=undefined; }
     const captures = process.env.FLOWRIUM_SITE_SCREENSHOTS;
     if(captures) await fs.mkdir(captures,{recursive:true});
     for (const width of [320,390,768,1440]) {
@@ -155,12 +178,7 @@ async function run() {
       await dialog.waitFor();
       assert.equal(await dialog.locator('[data-sales-summary]').textContent(),salesAnswer);
       assert.deepEqual(await dialog.locator('tbody td').allTextContents(),monthlySales.map(amount));
-      const asset = await dialog.locator('img').evaluate(async image => {
-        await image.decode();
-        return {url:new URL(image.currentSrc).pathname,w:image.naturalWidth,h:image.naturalHeight};
-      });
-      assert.equal(asset.url,width<=620?'/workspace-sales-chat.png':'/workspace-sales.png');
-      assert(asset.w>=300 && asset.h>=200);
+      await assertExampleImage(page,width<=620?'/workspace-sales-chat.png':'/workspace-sales.png');
       await page.keyboard.press('Escape');
       await dialog.waitFor({state:'hidden'});
       assert.equal(await page.locator(':focus').getAttribute('id'),'example-open');

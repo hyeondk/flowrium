@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject} = require('./project-trust-fixture.cjs');
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os'),assert=require('node:assert/strict');
 const {CodexClient}=require('../electron/codex.cjs'),{disabledConnections}=require('../electron/structured-analysis.cjs');
 const {Store}=require('../electron/store.cjs'),{Controller}=require('../electron/controller.cjs'),{CodexTransfer}=require('../electron/codex-transfer.cjs');
@@ -8,7 +9,7 @@ async function direct(client,threadId,text,model){let answer='',complete,failed;
  pre=new CodexClient();await pre.start();const account=await pre.request('account/read',{refreshToken:false});assert.equal(account.account?.type,'chatgpt');const [config,catalog]=await Promise.all([pre.request('config/read',{includeLayers:false}),pre.request('model/list',{limit:100,includeHidden:false})]);const model=catalog.data.find(m=>(m.model||m.id)==='gpt-6-luna')?.model||catalog.data[0].model||catalog.data[0].id;
  const overrides={...disabledConnections(config.config),'features.hooks':false,'features.memories':false,'features.shell_tool':false,'features.skip_host_skill_discovery':true,'web_search':'disabled'};
  a=new CodexClient({configOverrides:overrides});b=new CodexClient({configOverrides:overrides});c=new CodexClient({configOverrides:overrides});for(const client of [a,b,c]){client.on('approval',r=>client.decide(r.requestId,'decline'));client.on('input',r=>client.resolveInput(r.requestId,true));await client.start();}
- const folder=path.join(root,'합성 프로젝트');await fs.mkdir(folder);const store=new Store(path.join(root,'설정'));await store.load();await store.addProject(folder);
+ const folder=path.join(root,'합성 프로젝트');await fs.mkdir(folder);const store=new Store(path.join(root,'설정'));await store.load();await addTrustedFixtureProject(store, folder);
  const created=await a.request('thread/start',{cwd:folder,approvalPolicy:'never',sandbox:'read-only',model,developerInstructions:'이 대화는 합성 연결 검사입니다. 어떤 도구나 파일에도 접근하지 말고 사용자가 요청한 짧은 텍스트만 응답하세요.'});const threadId=created.thread.id;ownedThread=threadId;
  await direct(a,threadId,'첫 번째 표식은 푸른달별입니다. 기억한 뒤 확인이라고만 답하세요.',model);
  let sent,borrowedClosed=false;const text='두 번째 표식은 은빛바람입니다. 기억한 뒤 확인이라고만 답하세요.';

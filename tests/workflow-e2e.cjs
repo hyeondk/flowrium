@@ -1,10 +1,11 @@
+const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert=require("node:assert/strict"),fs=require("node:fs/promises"),path=require("node:path"),os=require("node:os");
 const { _electron }=require("playwright");
 const {Store}=require("../electron/store.cjs"),{registerMemory}=require("../electron/memory.cjs");
 const {dockHome,composer,openConversation}=require("./shell-test-helpers.cjs");
 async function main(){
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),"flowrium-workflow-ui-")),profile=path.join(temp,"설정"),folder=path.join(temp,"기능 검증 프로젝트");
-  await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await store.addProject(folder);
+  await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount});
   const source=await store.createSession(project.id,{title:"원래 업무 대화"}),target=await store.createSession(project.id,{title:"조사 담당 대화"});
   const memory={};registerMemory((key,fn)=>memory[key]=fn,store);await memory.changeMemory(project.id,{action:"save",revision:null,scope:"project",title:"보관할 기준",body:"검증할 메모 본문",role:"",link:"",linked:true});
   await store.saveSettings({codexPath:path.join(__dirname,"backend-fake-codex.cjs")});

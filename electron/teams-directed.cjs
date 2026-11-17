@@ -453,6 +453,7 @@ function registerDirected(
     return s;
   }
   async function launchNode(projectId, dir, r, n, purpose, prompt) {
+    await store.requireProjectTrust(projectId);
     requireReady();
     const s = await session(projectId, r, n, purpose);
     if (controller.runs.has(s.id))
@@ -820,6 +821,7 @@ function registerDirected(
   });
   register("directTeam", (projectId, teamId, goal, runId, o) =>
     serial(projectId, async () => {
+      await store.requireProjectTrust(projectId);
       if (
         !UUID.test(teamId) ||
         !UUID.test(runId) ||

@@ -166,6 +166,7 @@ function registerTeams(register, store, controller, { canRun = () => true, workt
     await modify(projectId, id(teamId), id(revision), null);
   }));
   expose('runTeam', (projectId, teamId, input, requestId) => serial(projectId, async () => {
+    await store.requireProjectTrust(projectId);
     const prompt = text(input, 12000), runId = id(requestId);
     const { teams, runs } = await folders(store, projectId);
     let existing;

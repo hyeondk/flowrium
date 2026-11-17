@@ -20,6 +20,7 @@ test('휴대폰의 큰 입력은 인증 후 같은 프로젝트의 원문 하나
   const store=new Store(path.join(folder,'profile'));await store.load();
   const projectFolder=path.join(folder,'project');await fs.mkdir(projectFolder);
   const project=await store.addProject(projectFolder),session=await store.createSession(project.id);
+  await require('./project-trust-fixture.cjs').trustFixtureProject(store,project);
   const sent=[];const f=await fixture(t,{store,send:input=>{sent.push(input);return {accepted:true};}});
   const text='\uFEFF처음'+ '가🪴'.repeat(400000)+'중간'+'나🪴'.repeat(400000)+'마지막\n  ';
   const upload=async token=>fetch(f.base+'/api/mobile/request-source?sessionId='+session.id,{

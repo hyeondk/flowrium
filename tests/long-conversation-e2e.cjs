@@ -1,10 +1,11 @@
+const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {randomUUID}=require('node:crypto'),{_electron}=require('playwright'),{Store}=require('../electron/store.cjs');
 const {openConversation}=require('./shell-test-helpers.cjs');
 async function main(){
  const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-long-chat-'))),profile=path.join(temp,'profile'),baseline=process.argv.includes('--baseline');let app,page;const errors=[],metrics={mode:baseline?'before':'after',total:22000,anchors:[]};
  try{
-  const folder=path.join(temp,'synthetic-project');await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await store.addProject(folder),messages=Array.from({length:22000},(_,index)=>({id:randomUUID(),role:index%2?'assistant':'user',text:`합성 기록 ${index+1}\n\n검증용 문장은 실제 개인 대화와 관계가 없습니다. ${index%7===0?'\n\n- 첫째 확인 사항\n- 둘째 확인 사항':''}`,createdAt:new Date(1700000000000+index*1000).toISOString()}));
+  const folder=path.join(temp,'synthetic-project');await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount}),messages=Array.from({length:22000},(_,index)=>({id:randomUUID(),role:index%2?'assistant':'user',text:`합성 기록 ${index+1}\n\n검증용 문장은 실제 개인 대화와 관계가 없습니다. ${index%7===0?'\n\n- 첫째 확인 사항\n- 둘째 확인 사항':''}`,createdAt:new Date(1700000000000+index*1000).toISOString()}));
   const session=await store.createSession(project.id,{title:'긴 대화 표시 검증',threadId:'synthetic-long-thread',messages});await store.createSession(project.id,{title:'짧은 대화 전환 검증',messages:messages.slice(0,2)});await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(90000);page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();await page.evaluate(()=>document.fonts.ready);

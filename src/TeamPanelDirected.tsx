@@ -535,6 +535,8 @@ export function DirectedBoard({
   const [deleting, setDeleting] = useState(false);
   const act = (c: TeamChange) => {
     void perform(async () => {
+      const startsWork = ['dispatch','resume','report','answer','instruct','ask','explain','reassign','message','retry'].includes(c.action);
+      if (startsWork && !await window.flowrium!.requestProjectTrust(projectId)) return;
       await window.flowrium!.changeTeamRun(projectId, run.id, c, d.revision);
     });
   };

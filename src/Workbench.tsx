@@ -51,6 +51,7 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
     setBusy(true);
     setError("");
     try {
+      if (!await getAPI().requestProjectTrust(project.id)) { setBusy(false); return; }
       const s = await getAPI().startWork(form);
       onSessionChange(s);
       onOpen(s, spec.mode, [form.title, form.brief].filter(Boolean).join("\n\n") + "\n\n요청한 " + spec.label + " 업무를 시작해 주세요.");

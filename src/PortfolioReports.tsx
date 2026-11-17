@@ -57,7 +57,17 @@ export default function PortfolioReports({ kind, projects, sessions, onOpen, onS
     if (effort && !efforts.some(row => row.reasoningEffort === effort)) { setError('선택한 모델의 추론 강도를 다시 선택하세요.'); return; }
     submitting.current = true; setBusy(true); setError('');
     const finished = new Set(created.map(s => s.projectId)), newEntries: Session[] = [], issues: string[] = [];
-    for (const project of weekly ? [output] : targets) {
+    const destinations = weekly ? [output] : targets;
+    try {
+      for (const project of targets) {
+        if (!finished.has(project.id) && !await window.flowrium.requestProjectTrust(project.id)) {
+          setBusy(false); submitting.current = false; return;
+        }
+      }
+    } catch (error) {
+      setError(errorText(error)); setBusy(false); submitting.current = false; return;
+    }
+    for (const project of destinations) {
       if (finished.has(project.id)) continue;
       const seed: WorkInput = {
         projectId: project.id, kind, title: name.trim(), role: workKinds[kind].role,

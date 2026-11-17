@@ -214,7 +214,7 @@ async function launch() {
   security = new Security(app.getPath("userData"));
   await security.load();
   lifecycleDiagnostic('security-ready');
-  const store = new Store(app.getPath("userData"));
+  const store = new Store(app.getPath("userData"), {projectTrustOwner: () => security.data.accountOwner});
   try {
     const recovered=await require('./migration.cjs').recoverMigrations(app.getPath('userData'));
     if(recovered.some(row=>row.status==='recovery-required'))throw Error('자료 이관 복구가 완료되지 않았습니다. 원본과 백업을 보존하고 복구 결과를 확인해 주세요. / '+path.join(app.getPath('userData'),'migration-records'));
@@ -438,6 +438,9 @@ async function launch() {
   register("bootstrap", async () => {
     await store.syncConversationOwner?.();
     const snapshot = { ...store.snapshot(), version: displayVersion(app.getVersion()), platform: process.platform };
+    await Promise.all(snapshot.projects.map(async project => {
+      project.trustedForFileAccess = await store.isProjectTrusted(project.id);
+    }));
     for(const session of snapshot.sessions){
       const record=store.peekSession(session.id),preview=record&&codexTransfer?.liveTurn(record);
       if(preview)session.messages=require('./mobile/live-turn.js').withLiveTurn(session.messages,preview.turnId,preview.rows);
@@ -445,6 +448,24 @@ async function launch() {
     await acknowledgeUpdateLaunch(app, "ready");
     lifecycleDiagnostic('bootstrap-ready');
     return snapshot;
+  });
+  register("requestProjectTrust", async id => {
+    if (!security.data.accountOwner || security.data.accountOwner === 'signed-out') {
+      await controller.connect(true);
+      if (!security.data.accountOwner || security.data.accountOwner === 'signed-out')
+        throw Error('설정에서 ChatGPT 계정에 로그인한 뒤 프로젝트 폴더를 신뢰해 주세요.');
+    }
+    const revision = security.accountRevision;
+    return store.requestProjectTrust(id, async ({name,path}) => {
+      if (!window || window.isDestroyed() || security.locked || security.loggingOut) return false;
+      const answer = await dialog.showMessageBox(window,{
+        type:'question',title:'프로젝트 폴더 신뢰',message:`‘${name}’ 프로젝트 폴더를 신뢰할까요?`,
+        detail:`허용하면 이 폴더에서 Codex가 파일을 읽고 수정하거나 생성할 수 있습니다.\n\n${path}`,
+        buttons:['취소','신뢰하고 편집 허용'],defaultId:0,cancelId:0,noLink:true,
+      });
+      return answer.response===1 && security.accountRevision===revision && !security.locked &&
+        !security.loggingOut && !quitting && !migrationTransition && !importRestartRequired;
+    });
   });
   register("chooseProject", async () => {
     const context=codexTransfer.context();

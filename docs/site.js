@@ -42,6 +42,7 @@ document.getElementById("example-open").addEventListener("click", event => {
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || !example.showModal) return;
   event.preventDefault();
   example.showModal();
+  example.querySelector("img").loading = "eager";
 });
 
 if (validRepository(repository)) {

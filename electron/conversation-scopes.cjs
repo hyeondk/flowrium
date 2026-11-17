@@ -18,6 +18,11 @@ async function snapshot(controller,query=''){
  const limits={projectsScanned:100,conversationsPerProject:15,messagesPerConversation:4,charactersPerMessage:2000,checklistItemsPerProject:60,responseCharacters:130000};
  const projects=[];
  for(const project of store.state.projects.slice(0,limits.projectsScanned)){
+  if (!await store.isProjectTrusted(project.id)) {
+    const entry={id:project.id,name:project.name,warning:'컴퓨터에서 이 폴더를 신뢰하면 업무 현황을 확인할 수 있습니다.'};
+    if (!match || project.name.toLowerCase().includes(match)) projects.push(entry);
+    continue;
+  }
   const sessions=store.state.sessions.filter(s=>s.projectId===project.id);
   let details={},warning;
   try{details=await require('./project-details.cjs').readDetails(store,project.id);}catch(e){warning='프로젝트 세부 정보를 읽지 못했습니다.';}

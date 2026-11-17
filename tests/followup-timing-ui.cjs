@@ -1,3 +1,4 @@
+const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -19,7 +20,7 @@ async function verifyFollowupTiming() {
     await fs.mkdir(projectDir);
     const store = new Store(path.join(dir,'profile'));
     await store.load();
-    const project = await store.addProject(projectDir);
+    const project = await addTrustedFixtureProject(store, projectDir, {account: backendFixtureAccount});
     const add = (title, user, text) => store.createSession(project.id, {title, messages:[
       {id:randomUUID(),role:'user',text:user,createdAt:new Date().toISOString()},
       {id:randomUUID(),role:'assistant',text,createdAt:new Date().toISOString()},

@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {_electron} = require('playwright');
 const {Store} = require('../electron/store.cjs');
+const {trustFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const {composer, openConversation} = require('./shell-test-helpers.cjs');
 
 async function main() {
@@ -48,6 +49,7 @@ async function main() {
     const directory = path.join(temp, '프로젝트');
     await fs.mkdir(directory);
     const project = await store.addProject(directory);
+    await trustFixtureProject(store, project, {account:backendFixtureAccount});
     const a = await store.createSession(project.id, {title:'첫 대화', preferences:{answerLength:'short',sandbox:'read-only'}});
     const b = await store.createSession(project.id, {title:'두 번째 대화'});
     await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'), model:'gpt-6.1-sol', effort:'high'});
@@ -61,10 +63,9 @@ async function main() {
     assert(await picker().locator('option[value="catalog-preview"]').count());
     await choose('catalog-preview');
     await verifyTurn(a.id,'catalog-preview','high');
-    await button('이 대화에서 프로젝트 편집 허용').click();
-    await page.getByText('AI 프로젝트 편집',{exact:true}).waitFor();
+    assert.equal(await button('이 대화에서 프로젝트 편집 허용').count(),0);
     assert.equal(await page.getByLabel('작업 모드',{exact:true}).count(),0);
-    assert.equal((await page.evaluate(id=>window.flowrium.bootstrap().then(s=>s.sessions.find(row=>row.id===id)),a.id)).preferences.sandbox,'workspace-write');
+    assert.equal((await snapshot()).projects.find(row=>row.id===project.id).trustedForFileAccess,true);
     await composer(page).fill('대기검증');
     await button('작업 보내기').click();
     await button('작업 중지').waitFor();

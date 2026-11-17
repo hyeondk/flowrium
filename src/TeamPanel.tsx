@@ -93,6 +93,7 @@ export default function TeamPanel({ projectId, onOpen }: { projectId: string; on
       e.preventDefault();
       if (!prompt.trim()) return;
       void perform(async () => {
+        if (!await api!.requestProjectTrust(projectId)) return;
         const key = JSON.stringify([team.id, prompt, strategy, options]);
         if (requestToken.current?.key !== key) requestToken.current = { key, id: crypto.randomUUID() };
         const run = strategy==="shared" ? await api!.runTeam(projectId, team.id, prompt, requestToken.current.id) :

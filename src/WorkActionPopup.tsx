@@ -14,7 +14,17 @@ export default function WorkActionPopup({kind,projects,initialProject,onClose,on
  const label=kind?workKinds[kind].label:'AI 업무',selected=projects.filter(p=>picked.includes(p.id)),output=selected.find(p=>p.id===destination)||selected[0],selectedModel=models.find(m=>m.id===model)||(!model?models.find(m=>m.isDefault):undefined),efforts=effortOptions(selectedModel);
  useEffect(()=>{setEffort(value=>value&&!efforts.some(row=>row.reasoningEffort===value)?'':value);},[model,models]);
  async function start(){if(!kind||!ready||busy||!window.flowrium||!output)return;const generation=epoch.current;setBusy(true);setError('');const complete=new Set(created.map(s=>s.projectId)),results:Session[]=[],errors:string[]=[];
-  for(const project of kind==='briefing'?[output]:selected){if(complete.has(project.id))continue;try{const seed:WorkInput={kind,projectId:project.id,title:title.trim(),brief,role:workKinds[kind].role,audience:'프로젝트 사용자',from:'',to:'',...(model?{model}:{}),...(effort?{effort}:{}),...(kind==='briefing'?{reportProjects:selected.map(p=>p.id)}:{}),...(kind==='research'?{searchMode:'live',researchDepth:depth}:{}),...(kind==='document'?{documentKind:format,slideCount:Number(slides)}:{})};const session=pending.current.get(project.id)||await window.flowrium.startWork(seed);pending.current.set(project.id,session);await onStart(session,[seed.title,brief,`선택한 프로젝트 자료를 확인하고 ${label} 결과를 완성해 주세요.`].filter(Boolean).join('\n\n'),{model:model||undefined,effort:effort||undefined});pending.current.delete(project.id);results.push(session)}catch(e){errors.push(project.name+': '+(e instanceof Error?e.message:String(e)))}}
+  const destinations = kind === 'briefing' ? [output] : selected;
+  try {
+    for (const project of selected) {
+      if (!complete.has(project.id) && !await window.flowrium.requestProjectTrust(project.id)) {
+        setBusy(false); return;
+      }
+    }
+  } catch (error) {
+    setError(error instanceof Error ? error.message : String(error)); setBusy(false); return;
+  }
+  for(const project of destinations){if(complete.has(project.id))continue;try{const seed:WorkInput={kind,projectId:project.id,title:title.trim(),brief,role:workKinds[kind].role,audience:'프로젝트 사용자',from:'',to:'',...(model?{model}:{}),...(effort?{effort}:{}),...(kind==='briefing'?{reportProjects:selected.map(p=>p.id)}:{}),...(kind==='research'?{searchMode:'live',researchDepth:depth}:{}),...(kind==='document'?{documentKind:format,slideCount:Number(slides)}:{})};const session=pending.current.get(project.id)||await window.flowrium.startWork(seed);pending.current.set(project.id,session);await onStart(session,[seed.title,brief,`선택한 프로젝트 자료를 확인하고 ${label} 결과를 완성해 주세요.`].filter(Boolean).join('\n\n'),{model:model||undefined,effort:effort||undefined});pending.current.delete(project.id);results.push(session)}catch(e){errors.push(project.name+': '+(e instanceof Error?e.message:String(e)))}}
   if(epoch.current!==generation)return;setCreated(old=>[...old,...results]);setBusy(false);if(errors.length)setError(errors.join('\n'));else if(results.length){onOpen(results[0]);onClose()}
  }
  return <MotionOverlay open={Boolean(kind)} onClose={()=>{if(!busy)onClose()}} label={label} className="work-action-popup"><header className="utility-popup-heading"><div><h2>{label}</h2><span>{kind==='briefing'?'선택한 프로젝트를 하나의 대화에서 종합합니다.':'프로젝트마다 독립된 AI 대화를 시작합니다.'}</span></div><button className="icon-button" aria-label="AI 업무 닫기" disabled={busy} onClick={onClose}><X size={18}/></button></header>
