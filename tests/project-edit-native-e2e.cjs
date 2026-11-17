@@ -30,6 +30,7 @@ async function main() {
         const chunks=[];
         for await (const chunk of req) chunks.push(chunk);
         const body=JSON.parse(Buffer.concat(chunks));
+        console.log(variant,'모델 시험 응답 요청',body.input?.length,body.previous_response_id ? '이전 응답 지정' : '전체 기록 지정');
         const outputs = body.input.filter(i => i.type === 'function_call_output');
         const readOutput = outputs.find(i => i.call_id === 'read_' + current.id);
         const writeOutput = outputs.find(i => i.call_id === 'write_' + current.id);
@@ -53,12 +54,20 @@ async function main() {
         const id='resp_'+randomUUID();
         const events=[{type:'response.created',response:{id,status:'in_progress'}},{type:'response.output_item.added',output_index:0,item:{...item,...(item.type==='function_call'?{arguments:''}:{content:[]})}},{type:'response.output_item.done',output_index:0,item},{type:'response.completed',response:{id,status:'completed',output:[item],usage:{input_tokens:10,output_tokens:10,total_tokens:20}}}];
         res.writeHead(200,{'content-type':'text/event-stream'});res.end(events.map(e=>'data: '+JSON.stringify(e)+'\n\n').join(''));
-      } catch(e){issue=e; res.writeHead(400).end();}
+      } catch(e){console.error(variant,'모델 시험 응답 오류',e.message); issue=e; res.writeHead(400).end();}
     });
     server.listen(0,'127.0.0.1'); await once(server,'listening');
     const base='http://127.0.0.1:'+server.address().port+'/v1';
     await fs.writeFile(path.join(profile,'config.toml'),['cli_auth_credentials_store = "file"','model = "gpt-5.5"','[model_providers.flowrium_test]','name = "Flowrium file test"','base_url = '+JSON.stringify(base),'wire_api = "responses"','env_key = "FLOWRIUM_OFFLINE_KEY"','supports_websockets = false'].join('\n'));
     client=new CodexClient({descriptor:await resolveCodex(),spawn:(cmd,args,opts)=>spawn(cmd,[...args,'-c','model_provider="flowrium_test"'],{...opts,env:{...opts.env,CODEX_HOME:profile,FLOWRIUM_OFFLINE_KEY:'synthetic-only',OPENAI_BASE_URL:base}})});
+    client.on('notification',({method,params})=>{
+      if(method==='error' || method==='turn/completed' || method==='item/completed' && params.item?.type==='commandExecution') {
+        const item=params.item;
+        console.log(variant,method,JSON.stringify(method==='error'?params.error:
+          item?{status:item.status,exitCode:item.exitCode,output:item.aggregatedOutput?.slice(-500)}:
+          {status:params.turn?.status,error:params.turn?.error}));
+      }
+    });
     const request=client.request.bind(client), projectCalls=[];
     client.request=(method, ...args)=>{
       if (method === 'thread/start' || method === 'thread/resume') {
@@ -82,6 +91,7 @@ async function main() {
     const originalProfile = await fs.readFile(path.join(profile,'config.toml'),'utf8');
     const saved={};
     for (variant of ['seed-hot','upgrade-hot-plan','seed-cold','upgrade-cold-build','new-plan','new-build','external']) {
+      console.log(variant,'시험 시작');
       const old = saved[variant.includes('hot')?'hot':'cold'];
       const upgrading = variant.startsWith('upgrade');
       const seed = variant.startsWith('seed');
