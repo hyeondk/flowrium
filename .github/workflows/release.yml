@@ -4,6 +4,12 @@ permissions:
   contents: read
 jobs:
   reproduce:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [elevated, unelevated]
+    env:
+      FLOWRIUM_TEST_WINDOWS_SANDBOX: ${{ matrix.mode }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
