@@ -22,7 +22,7 @@ async function main() {
         assert.equal(req.url,'/v1/responses');
         const chunks=[];
         for await (const chunk of req) chunks.push(chunk);
-        const body=JSON.parse(Buffer.concat(chunks));
+        const body=JSON.parse(Buffer.concat(chunks)); console.log('합성 모델 요청',body.input.map(i=>i.type),JSON.stringify(body.input.filter(i=>i.type==='function_call_output')).slice(0,4000));
         const tool='exec_command', call='file_'+current.id;
         const output=body.input.find(i=>i.type==='function_call_output' && i.call_id===call);
         let item;
@@ -46,6 +46,9 @@ async function main() {
     const base='http://127.0.0.1:'+server.address().port+'/v1';
     await fs.writeFile(path.join(profile,'config.toml'),['cli_auth_credentials_store = "file"','model = "gpt-5.5"','[model_providers.flowrium_test]','name = "Flowrium file test"','base_url = '+JSON.stringify(base),'wire_api = "responses"','env_key = "FLOWRIUM_OFFLINE_KEY"','supports_websockets = false'].join('\n'));
     client=new CodexClient({descriptor:await resolveCodex(),spawn:(cmd,args,opts)=>spawn(cmd,[...args,'-c','model_provider="flowrium_test"'],{...opts,env:{...opts.env,CODEX_HOME:profile,FLOWRIUM_OFFLINE_KEY:'synthetic-only',OPENAI_BASE_URL:base}})});
+    client.on('notification',({method,params})=>{ if(!method.includes('Delta')) console.log('알림',method,JSON.stringify(params).slice(0,600)); });
+    client.on('approval',event=>console.log('승인 대기',JSON.stringify(event).slice(0,2500)));
+    client.on('unsupported',event=>console.log('미지원',JSON.stringify(event).slice(0,2500)));
     const request=client.request.bind(client);
     client.request=(method,...args)=>method==='account/read'?Promise.resolve({account:{type:'chatgpt',planType:'test'}}):request(method,...args);
     const store=new Store(path.join(temp,'flowrium')); await store.load();
@@ -58,7 +61,7 @@ async function main() {
       await fs.writeFile(path.join(cwd,'input.txt'),current.marker+'\n');await fs.rm(path.join(cwd,'copy.txt'),{force:true});
       const done=new Promise((resolve,reject)=>{
         const timer=setTimeout(()=>{controller.off('event',listen);reject(issue||Error('파일 작업 시간 초과'));},30000);
-        function listen(event){if(event.type==='done' && event.sessionId===session.id){clearTimeout(timer);controller.off('event',listen);resolve(event);}}
+        function listen(event){console.log('화면 사건',event.type,event.status,event.text?.slice(0,300));if(event.type==='done' && event.sessionId===session.id){clearTimeout(timer);controller.off('event',listen);resolve(event);}}
         controller.on('event',listen);
       });
       await controller.send({sessionId:session.id,text:'프로젝트의 input.txt를 읽고 한 줄을 추가해 copy.txt에도 저장해줘.',...(baseline&&{mode:'plan'})},{fromComposer:true});
