@@ -59,6 +59,28 @@ async function main(){
   await writing.locator('summary').click();await writing.getByRole('button',{name:'원문 보기',exact:true}).click();assert.equal(await writing.locator('[data-message-original="true"]').textContent(),source);await writing.locator('summary').click();
   await row(6).getByRole('heading',{name:'정상 답변',exact:true}).waitFor();
   const rich=row(6);await rich.getByRole('columnheader',{name:'구분',exact:true}).waitFor();assert.equal(await rich.locator('table tbody tr').count(),1);assert.equal(await rich.locator('input[type=checkbox]').count(),2);assert.equal(await rich.locator('input[type=checkbox]:checked').count(),1);assert.equal(await rich.locator('input[type=checkbox]:disabled').count(),2);assert.equal(await rich.locator('del').count(),0);assert((await rich.innerText()).includes('~~이전 안내~~'));assert((await rich.locator('.footnotes').innerText()).includes('각주에 담은 안내입니다.'));assert.equal(await rich.getByRole('link',{name:'차단할 링크',exact:true}).getAttribute('href'),'');assert.equal(await rich.locator('a[data-footnote-ref]').getAttribute('target'),null);assert.equal(await rich.locator('a[data-footnote-backref]').getAttribute('aria-label'),'본문의 각주로 돌아가기');metrics.gfm={table:true,taskList:true,strikethrough:true,footnote:true,unsafeLinkBlocked:true,widths:[]};
+  await writing.locator('summary').click();
+  const table = rich.locator('.message-table-wrap');
+  await table.evaluate(el => {
+    el.scrollIntoView({block:'center', behavior:'instant'});
+    el.scrollLeft = 40;
+    window.testReadingPosition = {table:el, link:el.closest('[data-message-id]').querySelector('a'),
+      left:el.scrollLeft,top:el.closest('.messages').scrollTop};
+  });
+  await composer.fill('합성 초안 입력으로 본문 갱신');
+  const reading = await table.evaluate(async el => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const before=window.testReadingPosition;delete window.testReadingPosition;
+    return {originalLeft:before.left, originalTop:before.top, sameTable:before.table===el, sameLink:before.link===el.closest('[data-message-id]').querySelector('a'),
+      horizontal:Math.abs(before.left-el.scrollLeft),vertical:Math.abs(before.top-el.closest('.messages').scrollTop)};
+  });
+  metrics.reading=reading;
+  assert(reading.originalLeft === 40 && reading.originalTop > 0, '표와 대화가 실제로 스크롤된 위치에서 검사합니다.');
+  assert(reading.sameTable && reading.sameLink, '초안을 입력한 뒤에도 본문 표와 링크를 보존합니다.');
+  assert(reading.horizontal <= 1 && reading.vertical <= 1, '읽던 위치 보존 '+JSON.stringify(reading));
+  assert.equal(await writing.locator('details[open]').count(),1);
+  assert.equal(await tool.locator('details[open]').count(),0);
+  await composer.fill('');await writing.locator('summary').click();
   for(const width of [1440,900,390,320]){await page.setViewportSize({width,height:900});await rich.locator('table').scrollIntoViewIfNeeded();const layout=await page.evaluate(()=>{const box=document.querySelector('.message-table-wrap'),messages=document.querySelector('.messages');return{width:innerWidth,overflow:document.documentElement.scrollWidth-innerWidth,messageOverflow:messages.scrollWidth-messages.clientWidth,tableWidth:box.clientWidth,tableScroll:box.scrollWidth,tableDisplay:getComputedStyle(box.querySelector('table')).display,tableMax:getComputedStyle(box.querySelector('table')).maxWidth};});assert(layout.overflow<=1);assert(layout.messageOverflow<=1);assert(layout.tableWidth>0);metrics.gfm.widths.push(layout);}
   assert(metrics.gfm.widths.some(row=>row.tableScroll>row.tableWidth+1),'넓은 표는 표 영역에 가로 스크롤을 만듭니다.');
   await page.setViewportSize({width:1440,height:1000});const saved=await page.evaluate(id=>window.flowrium.bootstrap().then(s=>s.sessions.find(x=>x.id===id)),session.id);assert.deepEqual(saved.messages,messages,'본문·도구 결과·사용자 원본은 저장 데이터에서 바뀌지 않습니다.');
