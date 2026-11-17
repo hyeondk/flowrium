@@ -38,48 +38,6 @@ async function closeInstalledApp(application,label='검사 앱 종료'){
   throw error;
  }
 }
-async function launchLegacyInstalledApp(binary,userData,env){
- const {spawn}=require('node:child_process'),{chromium}=require('playwright');
- const child=spawn(binary,['--remote-debugging-port=0','--user-data-dir='+userData],{env,windowsHide:false,stdio:['ignore','pipe','pipe']});
- const exited=new Promise(resolve=>child.once('exit',resolve));
- let browser;
- const endpoint=new Promise((resolve,reject)=>{
-  let output='';
-  child.on('error',reject);
-  child.once('exit',code=>reject(Error('이전 설치 앱이 화면 연결 전에 종료됐습니다. '+code)));
-  child.stderr.on('data',chunk=>{
-   output=(output+chunk).slice(-8192);
-   const match=output.match(/DevTools listening on (ws:\/\/127\.0\.0\.1:[^\s]+)/);
-   if(match)resolve(match[1]);
-  });
- });
- try{
-  browser=await chromium.connectOverCDP(await within(endpoint,45000,'이전 설치의 실제 화면 준비'),{timeout:30000});
-  const context=browser.contexts()[0];
-  const page=context.pages()[0]||await context.waitForEvent('page',{timeout:45000});
-  await page.waitForFunction(()=>typeof window.flowrium?.bootstrap==='function',undefined,{timeout:45000});
-  return {page,process:child,close:async()=>{
-   try{
-    await page.close({runBeforeUnload:true});
-    try{await within(exited,15000,'이전 실제 창 닫힘과 정상 종료');}
-    catch{
-     const protocol=await browser.newBrowserCDPSession();
-     await within(protocol.send('Browser.close').catch(error=>{
-      if(child.exitCode===null&&child.signalCode===null)throw error;
-     }),5000,'이전 앱 정상 종료 재요청');
-     await within(exited,15000,'이전 앱 종료 유예');
-    }
-    if(child.exitCode!==0||child.signalCode)throw Error('이전 검사 앱의 비정상 종료 '+JSON.stringify({code:child.exitCode,signal:child.signalCode}));
-   }catch(error){try{await killOwnedProcess(child);}catch(cleanup){error.cause=cleanup;}throw error;}
-   finally{await browser.close().catch(()=>{});}
-  }};
- }catch(error){
-  console.error('이전 설치 실제 화면 연결 실패',error);
-  try{await killOwnedProcess(child);}catch(cleanup){error.cause=cleanup;}
-  await browser?.close().catch(()=>{});
-  throw error;
- }
-}
 // 설치한 앱의 검사/다운로드/종료 코드는 그대로 사용한다. 테스트 릴리스의 HTTPS 응답 본문만 로컬 파일에서 공급한다.
 async function bindUpdateTransport(application, fixture) {
   await within(application.evaluate(({app}, data) => {
@@ -131,12 +89,34 @@ async function seedOldProject(userData,temporary) {
   await fs.mkdir(directory);
   await fs.mkdir(path.join(temporary,'codex'),{recursive:true});
   const store=new Store(userData);await store.load();
+  // 공개 0.6.0이 읽을 수 있는 설정으로 이전 버전의 자료를 구성합니다.
+  store.state.settings={effort:'medium',theme:'light'};
   const project=await store.addProject(directory);
   await store.requestProjectTrust(project.id,async folder=>folder.path===await fs.realpath(directory));
   const text='이전 설치에서 작성한 검증용 메시지';
   const message={id:randomUUID(),role:'user',text,createdAt:new Date().toISOString()};
   const session=await store.createSession(project.id,{title:'보존할 대화',messages:[message]});
   return {project:project.id,session:session.id,directory,message,draft:{text:'보내기 전의 검증 문장',mode:'plan'}};
+}
+async function checkLegacyProfile(archive,userData,temporary,fixture) {
+  const fs=require('node:fs/promises'),path=require('node:path'),assert=require('node:assert/strict'),asar=require('@electron/asar');
+  const directory=await fs.mkdtemp(path.join(temporary,'legacy-store-'));
+  try{
+    for(const entry of asar.listPackage(archive)){
+      const relative=entry.replace(/\\/g,'/').replace(/^\//,'');
+      if(!relative.startsWith('electron/')||!/\.(cjs|json)$/.test(relative))continue;
+      assert(!relative.split('/').includes('..'));
+      const target=path.join(directory,relative);
+      await fs.mkdir(path.dirname(target),{recursive:true});
+      await fs.writeFile(target,asar.extractFile(archive,relative));
+    }
+    const LegacyStore=require(path.join(directory,'electron','store.cjs')).Store;
+    const legacy=new LegacyStore(userData);await legacy.load();
+    assert(legacy.state.projects.some(project=>project.id===fixture.project));
+    const session=legacy.state.sessions.find(item=>item.id===fixture.session);
+    assert(session);assert.deepEqual(session.messages,[fixture.message]);
+    console.log('이전 공개 앱에 포함된 저장소 코드로 합성 프로젝트와 메시지 사전 확인');
+  }finally{await fs.rm(directory,{recursive:true,force:true,maxRetries:6,retryDelay:150});}
 }
 async function checkProject(page,fixture) {
   const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs/promises');
@@ -217,4 +197,4 @@ async function checkNewProfile(binary,temporary,userData,fixture,version) {
     console.log('새 설치본 재기동 / 이전 프로젝트 주소와 평문 메시지 / 보내지 않은 입력의 이전 및 복원 확인');
   } finally {await closeInstalledApp(app,'새 프로필 검사 앱 종료');}
 }
-module.exports={bindUpdateTransport,clickAvailable,seedOldProject,writeOldDraft,checkNewProfile,within,closeInstalledApp,launchLegacyInstalledApp,execFixture,killOwnedProcess};
+module.exports={bindUpdateTransport,clickAvailable,seedOldProject,checkLegacyProfile,writeOldDraft,checkNewProfile,within,closeInstalledApp,execFixture,killOwnedProcess};
