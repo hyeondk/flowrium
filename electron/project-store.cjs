@@ -72,7 +72,7 @@ function validateSession(session, projectId) {
       );
     if(message.sourceOnly!==undefined && (message.sourceOnly!==true || !message.requestSource))throw Error('긴 요청 원문 참조를 확인해 주세요.');
     if(message.requestSource!==undefined) {
-      const [source]=require("./chat-attachments.cjs").checkedAttachments([message.requestSource]);
+      const source=require("./chat-request-source.cjs").checkedRequestSource(message.requestSource);
       if(message.role!=="user" || source.name!=="request.txt" || source.type!=="text/plain")throw Error("긴 요청 원문 정보를 확인해 주세요.");
     }
     if(message.attachments!==undefined)require("./chat-attachments.cjs").checkedAttachments(message.attachments);

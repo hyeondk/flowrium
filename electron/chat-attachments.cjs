@@ -79,31 +79,7 @@ async function resolveAttachments(store,projectId,ids=[],includeBytes=false) {
   if(store.project(projectId)!==project)throw Error('첨부를 읽는 중 계정이나 프로젝트가 바뀌었습니다. 다시 확인해 주세요.');
   return result;
 }
-// Multiple sends and queued retries of the same large request can reuse the immutable source.
-async function storeRequestSource(store, projectId, text) {
-  const bytes = Buffer.from(text, 'utf8');
-  if(!bytes.length || bytes.length > MAX_FILE)throw Error(require('./mobile/chat-input.js').chatLengthError);
-  const sha256 = createHash('sha256').update(bytes).digest('hex');
-  const id = [sha256.slice(0,8),sha256.slice(8,12),'8'+sha256.slice(13,16),'a'+sha256.slice(17,20),sha256.slice(20,32)].join('-');
-  const record = {id, name:'request.txt', type:'text/plain', size:bytes.length, sha256};
-  const root = await attachmentRoot(store, projectId);
-  const target = path.join(root,id);
-  async function verify() {
-    const [source] = await resolveAttachments(store,projectId,[id]);
-    if (source.sha256 !== sha256 || source.name !== record.name) throw Error('긴 요청 원본의 내용이 달라졌습니다.');
-    return record;
-  }
-  try { return await verify(); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const stage = await fs.mkdtemp(path.join(root,'.request-'));
-  try {
-    await fs.writeFile(path.join(stage,record.name),bytes,{flag:'wx',mode:0o600});
-    await createJSON(path.join(stage,'attachment.json'),record);
-    try { await fs.rename(stage,target); }
-    catch (error) { if (!['EEXIST','ENOTEMPTY','EPERM'].includes(error.code)) throw error; }
-    return await verify();
-  } finally { await fs.rm(stage,{recursive:true,force:true}); }
-}
+function storeRequestSource(...args) { return require('./chat-request-source.cjs').storeRequestSource(...args); }
 function registerChatAttachments(register,store) {
   register('readRequestSource',(sessionId,messageId,offset)=>require('./chat-long-request.cjs').readRequestSource(store,sessionId,messageId,offset));
   register('addChatAttachments',(projectId,files)=>addAttachments(store,projectId,files));
@@ -120,4 +96,4 @@ function registerChatAttachments(register,store) {
     return {attachment,...(dataUrl?{dataUrl}:{})};
   });
 }
-module.exports={MAX_FILE,MAX_TOTAL,MAX_FILES,checkedAttachments,storeRequestSource,addAttachments,resolveAttachments,registerChatAttachments};
+module.exports={attachmentRoot,MAX_FILE,MAX_TOTAL,MAX_FILES,checkedAttachments,storeRequestSource,addAttachments,resolveAttachments,registerChatAttachments};

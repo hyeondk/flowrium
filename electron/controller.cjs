@@ -68,7 +68,7 @@ class Controller extends EventEmitter {
         const session=this.store.session(run.sessionId);
         if(session.scope)throw Error('일반 대화와 통합 채팅은 프로젝트 실행 도구를 사용할 수 없습니다.');
         if(params.tool===currentRequest.reader.name){
-          this.client.answerTool(requestId,currentRequest.projectPage(session,run,params.arguments));
+          this.client.answerTool(requestId,await currentRequest.projectPage(session,run,params.arguments));
           return;
         }
         const tools=await this.options.applicationTools?.(session)||[];
@@ -303,12 +303,14 @@ class Controller extends EventEmitter {
     let source, message;
     if(input.requestSourceId){
       const file=await requests.sourceRecord(this.store,session.projectId,input.requestSourceId);
-      [source]=require('./chat-attachments.cjs').checkedAttachments([file]);
+      source=require('./chat-request-source.cjs').checkedRequestSource(file);
       message=requests.sourceLabel(source);
     } else {
       message=chatInput(input.text,Boolean(attachmentIds.length));
       if(message.length > maxChatInput){
-        source=await require('./chat-attachments.cjs').storeRequestSource(this.store,session.projectId,message);
+        source=await require('./chat-attachments.cjs').storeRequestSource(this.store,session.projectId,message,{guard:()=>{
+          if(this.options.canRun?.()===false || ownerRevision!==(this.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
+        }});
         message=requests.sourceLabel(source);
       }
     }

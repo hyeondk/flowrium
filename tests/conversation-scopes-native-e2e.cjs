@@ -3,6 +3,9 @@ const assert=require('node:assert/strict'),fs=require('node:fs/promises'),http=r
 const {CodexClient,resolveCodex}=require('../electron/codex.cjs'),{Controller}=require('../electron/controller.cjs'),{Store}=require('../electron/store.cjs');
 const {addAttachments}=require('../electron/chat-attachments.cjs'),{registerConversationTools,threadTurns}=require('../electron/conversation-tools.cjs'),{registerConversationScopes}=require('../electron/conversation-scopes.cjs');
 const {createHash}=require('node:crypto');
+const {createLargeRequest}=require('./large-request-fixture.cjs');
+const {readRequestSource}=require('../electron/chat-long-request.cjs');
+const {itemPages}=require('../electron/codex-transfer-data.cjs');
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const readerName='flowrium_read_current_request';
 function longRequest(scope){
@@ -27,21 +30,33 @@ function modelReadsRequest(body,itemId,probe){
  const scope=(body.tools||[]).find(t=>t.type==='namespace'&&t.tools?.some(v=>v.name===readerName));
  const prefix='read_'+probe.scope+'_';
  const receipt=body.input.filter(v=>v.type==='function_call_output'&&v.call_id.startsWith(prefix)).at(-1);
+ const requested=(index)=>probe.probes?probe.probes[index].page:index+1;
  if(receipt){
   const page=toolPage(receipt.output);
-  assert.equal(page.page,probe.parts.length+1);
+  assert.equal(page.page,requested(probe.parts.length));
   assert.equal(receipt.call_id,prefix+page.page);
   assert.equal(page.pages,probe.total);
   assert(page.text.length>0&&page.text.length<=12000);
   assert(!/[\uD800-\uDBFF]$|^[\uDC00-\uDFFF]/u.test(page.text));
+  if(probe.probes){
+   assert.equal(page.sha256,probe.sha256);
+   const {marker,offset}=probe.probes[probe.parts.length];
+   const position=page.text.indexOf(marker);
+   assert(position>=0,'선택한 부분에 지정한 표식이 있어야 합니다.');
+   const start=offset-position;
+   assert.equal(start,(page.page-1)*probe.pageSize);
+   assert.equal(page.text,probe.text.slice(start,start+probe.pageSize),'도구가 선택한 쪽을 끝까지 전달해야 합니다.');
+   probe.markers.push(page.text.slice(position,position+marker.length));
+  }
   probe.parts.push(page.text);
  }
- if(probe.parts.length<probe.total){
-  const page=probe.parts.length+1;
+ if(probe.parts.length<(probe.probes?.length??probe.total)){
+  const page=requested(probe.parts.length);
   return {id:itemId,type:'function_call',call_id:prefix+page,name:readerName,...(scope&&{namespace:scope.name}),arguments:JSON.stringify({page})};
  }
- assert.equal(digest(probe.parts.join('')),digest(probe.text),'모델에 전달된 모든 부분이 원문과 일치해야 합니다.');
- return {id:itemId,type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:probe.answer,annotations:[]}]};
+ if(!probe.probes)assert.equal(digest(probe.parts.join('')),digest(probe.text),'모델에 전달된 모든 부분이 원문과 일치해야 합니다.');
+ const answer=probe.probes?probe.markers.join(' / '):probe.answer;
+ return {id:itemId,type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:answer,annotations:[]}]};
 }
 function done(c,id){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{c.off('event',handler);reject(Error('대화 완료 대기 시간 초과'));},20000);function handler(e){if(e.type==='done'&&e.sessionId===id){clearTimeout(timer);c.off('event',handler);if(e.status==='completed')resolve(e);else reject(Error(e.text));}}c.on('event',handler);});}
 async function main(){
@@ -78,7 +93,7 @@ async function main(){
   const general=await handlers.get('createHubConversation')({scope:'general'}),hub=await handlers.get('createHubConversation')({scope:'integrated'}),edit=handlers.get('editConversation');
   await edit(general.id,{action:'preferences',preferences:{sandbox:'danger-full-access',approval:'on-request',networkAccess:true}});
   const attachments=await addAttachments(store,general.projectId,[{name:'근거.txt',type:'text/plain',bytes:Buffer.from('명시적 첨부 근거 ABC')},{name:'화면.png',type:'image/png',bytes:require('./chat-fixtures.cjs').png}]);
-  async function send(id,text,extra={}){const completed=done(controller,id);await controller.send({sessionId:id,text,mode:'build',...extra});await completed;if(failure)throw failure;}
+  async function send(id,text,extra={}){const completed=done(controller,id);await Promise.all([completed,controller.send({sessionId:id,text,mode:'build',...extra})]);if(failure)throw failure;}
   await send(general.id,'일반첫요청',{attachments:attachments.map(a=>a.id)});assert(JSON.stringify(bodies[0]).includes('명시적 첨부 근거 ABC'));assert(/data:image\/[a-z]+;base64,/.test(JSON.stringify(bodies[0])));
   assert(!JSON.stringify(bodies[0]).includes('실제 프로젝트 업무'),'일반 대화에 프로젝트 내용이 없어야 합니다.');
   assert.equal(bodies.at(-1).model,'gpt-5.5');
@@ -112,8 +127,39 @@ async function main(){
    console.log(scope+' 긴 원문 '+text.length+'자 / '+longProbe.total+'부분 원문 대조 / 원본 턴 한 건과 답변 통과');
    longProbe=null;
   }
+  const large=createLargeRequest();
+  assert(large.byteLength>=25*1024*1024);
+  assert.deepEqual(large.probes.map(p=>p.page),[1,Math.ceil(large.pages/2),large.pages]);
+  const largeSession=await handlers.get('createHubConversation')({scope:'general'});
+  longProbe={...large,scope:'general',total:large.pages,parts:[],markers:[]};
+  await send(largeSession.id,large.text);
+  const saved=store.session(largeSession.id);
+  const user=saved.messages.filter(m=>m.role==='user');
+  const expected=large.probes.map(p=>p.marker).join(' / ');
+  assert.equal(user.length,1);
+  assert.equal(user[0].requestSource.sha256,large.sha256);
+  assert.equal(user[0].requestSource.size,large.byteLength);
+  const restoredSource=await readRequestSource(store,saved.id,user[0].id,'full');
+  assert.equal(digest(restoredSource.text),large.sha256);
+  assert.equal(Buffer.byteLength(restoredSource.text),large.byteLength);
+  assert.deepEqual(saved.messages.filter(m=>m.role==='assistant').map(m=>m.text),[expected]);
+  assert.equal(longProbe.parts.length,3);
+  const largeClient=await controller.conversationClient(saved);
+  const turns=await threadTurns(largeClient,saved.threadId);
+  assert.equal(turns.length,1);
+  assert.equal(turns[0].id,user[0].turnId);
+  assert.equal(turns[0].status,'completed');
+  const items=(await itemPages(largeClient,saved.threadId,turns[0].id)).map(e=>e.item||e);
+  assert.equal(items.filter(i=>i.type==='userMessage').length,1);
+  assert.deepEqual(items.filter(i=>i.type==='agentMessage').map(i=>i.text),[expected]);
+  console.log('일반 대화 '+large.byteLength+'바이트 / 선택한 원문 '+large.probes.map(p=>p.page).join(', ')+'쪽 / 저장 원문 해시와 원본 요청·답변 각 한 건 확인');
+  longProbe=null;
   await edit(general.id,{action:'model',model:''});await send(general.id,'기본 모델 복귀 확인');assert.equal(bodies.at(-1).model,'gpt-5.5');
   const restored=new Store(path.join(temp,'app'));await restored.load();restored.conversations.getOwner=()=>0;await restored.syncConversationOwner();assert.equal(restored.session(general.id).threadId,store.session(general.id).threadId);assert.equal(restored.session(fork.id).scope,'general');
+  const reopened=restored.session(largeSession.id);
+  assert.equal(reopened.threadId,saved.threadId);
+  assert.deepEqual(reopened.messages.filter(m=>m.role==='assistant').map(m=>m.text),[expected]);
+  assert.equal(digest((await readRequestSource(restored,reopened.id,user[0].id,'full')).text),large.sha256);
   console.log('번들 Codex 실제 RPC 통과 / 일반 대화의 프로젝트 격리 / 외부 실행 도구 미노출 / 위험 설정 강제 제한과 실제 파일 변경 시도 차단 / 첨부 텍스트와 이미지 모델 입력 / 실제 분기와 되감기 / 통합 현황 조회와 승인 대기 제안 / 모델 재지정·상속 실제 전송 / 재시작 영속 저장');
  }finally{
   await controller?.shutdown();client?.close();if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});

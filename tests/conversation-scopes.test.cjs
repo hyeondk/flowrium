@@ -30,8 +30,9 @@ for(const scope of ['일반','프로젝트'])test('기존 '+scope+' 대화는 �
  session.requestReaderThreadId=run.threadId;
  run.requestSource=user.requestSource;
  await scopedRequest({store},run,session,'긴 요청 첨부','selected-model',()=>{});
- assert.equal(run.requestPages.map((_,i)=>readPage(run,{page:i+1}).text).join(''),message);
- assert.throws(()=>readPage(run,{page:0}));assert.throws(()=>readPage(run,{page:1,path:'/'}));assert.throws(()=>readPage({}, {page:1}));
+ const parts=await Promise.all(Array.from({length:run.requestPages.length},(_,i)=>readPage(run,{page:i+1})));
+ assert.equal(parts.map(value=>value.text).join(''),message);
+ await assert.rejects(readPage(run,{page:0}));await assert.rejects(readPage(run,{page:1,path:'/'}));await assert.rejects(readPage({}, {page:1}));
 });
 class Client extends EventEmitter{
  constructor(){super();this.ready=true;this.options={};this.inputs=new Map();this.approvals=new Map();this.calls=[];this.number=0;}

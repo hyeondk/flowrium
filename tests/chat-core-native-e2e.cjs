@@ -1,4 +1,5 @@
 const {addTrustedFixtureProject} = require('./project-trust-fixture.cjs');
+const {createLargeRequest} = require('./large-request-fixture.cjs');
 // 실제 번들 Codex의 첨부 입력 / 동적 도구 / 내부 대화 fork와 revert를 로컬 모의 모델로 검증한다.
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),http=require('node:http'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 const {CodexClient,resolveCodex}=require('../electron/codex.cjs'),{Controller}=require('../electron/controller.cjs'),{Store}=require('../electron/store.cjs');
@@ -24,6 +25,7 @@ async function main(){
     if(!longProbe.sent){
      const prompt=JSON.stringify(body.input);
      assert(!prompt.includes(longProbe.head) && !prompt.includes('.flowrium/attachments/'));
+     if(longProbe.probes) assert(prompt.includes(longProbe.digest));
     }
     for(const receipt of body.input.filter(row=>row.type==='function_call_output' && row.call_id.startsWith('read_project_'))){
      if(longProbe.seen.has(receipt.call_id))continue;
@@ -32,18 +34,29 @@ async function main(){
      assert.equal(content.pages,longProbe.pages);
      assert.equal(content.sha256,longProbe.digest);
      assert.equal(receipt.call_id,'read_project_'+content.page);
+     if(longProbe.probes){
+      const probe=longProbe.probes.find(p=>p.page===content.page);
+      assert(probe,'요청한 세 부분만 모델에 전달합니다.');
+      assert.equal(content.text,longProbe.source.slice((probe.page-1)*longProbe.pageSize,probe.page*longProbe.pageSize));
+      assert.equal(content.text.indexOf(probe.marker)+(probe.page-1)*longProbe.pageSize,probe.offset);
+      const start=content.text.indexOf(probe.marker);
+      longProbe.markers.push(content.text.slice(start,start+probe.marker.length));
+     }
      longProbe.parts[content.page-1]=content.text;
      longProbe.seen.add(receipt.call_id);
     }
-    if(longProbe.sent<longProbe.pages){
-     const count=Math.min(12,longProbe.pages-longProbe.sent);
+    const requested=longProbe.probes?.length ?? longProbe.pages;
+    if(longProbe.sent<requested){
+     const count=longProbe.probes?1:Math.min(12,requested-longProbe.sent);
      batch=Array.from({length:count},()=>{
-      const page=++longProbe.sent;
+      const index=longProbe.sent++;
+      const page=longProbe.probes?longProbe.probes[index].page:index+1;
       return {id:itemId+'_'+page,type:'function_call',call_id:'read_project_'+page,name,...(namespace&&{namespace:namespace.name}),arguments:JSON.stringify({page})};
      });
     }else{
-     assert.equal(longProbe.seen.size,longProbe.pages);
-     item={id:itemId,type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:'긴 입력 전체 검증 완료',annotations:[]}]};
+     assert.equal(longProbe.seen.size,requested);
+     const answer=longProbe.markers?.join(' / ') ?? '긴 입력 전체 검증 완료';
+     item={id:itemId,type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:answer,annotations:[]}]};
     }
    }else item={id:itemId,type:'message' ,role:'assistant',status:'completed',content:[{type:'output_text',text:JSON.stringify(body.input).includes('합성 프로세스 목록')?JSON.stringify({candidates:[{pid:12345,reason:'합성 실행 자료의 자원 사용 확인'}],summary:'합성 분석 결과'}):'합성 검증 응답 '+number,annotations:[]}]};
    const output=batch||[item];
@@ -113,6 +126,23 @@ async function main(){
   const reopened=new Store(path.dirname(store.file));await reopened.load();
   const saved=await require('../electron/chat-long-request.cjs').readRequestSource(reopened,large.id,row.id,'full');assert.equal(saved.text,source);
   console.log('프로젝트 214만 자 단일 턴 / 번들 Codex 실제 입력 페이지 읽기 / 합성 모델에 앞·중간·끝과 전체 SHA-256 반환 / 동일 요청 재전송 억제 / 재기동 원문 전수 대조 통과');
+  const sample=createLargeRequest(), sampled=await store.createSession(project.id);
+  longProbe={head:sample.probes[0].marker,pages:sample.pages,probes:sample.probes,source:sample.text,pageSize:sample.pageSize,sent:0,seen:new Set(),parts:[],markers:[],digest:sample.sha256};
+  await send(sampled.id,sample.text);
+  assert.equal(longProbe.sent,3);assert.equal(longProbe.seen.size,3);
+  const sessionAfter=new Store(path.dirname(store.file));await sessionAfter.load();
+  const sampledStored=sessionAfter.session(sampled.id),sampledUsers=sampledStored.messages.filter(m=>m.role==='user'),answers=sampledStored.messages.filter(m=>m.role==='assistant');
+  const expected=sample.probes.map(probe=>probe.marker).join(' / ');
+  assert.equal(sampledUsers.length,1);assert.equal(answers.length,1);assert.equal(answers[0].text,expected);
+  const request=sampledUsers[0];assert.equal(request.requestSource.size,sample.byteLength);assert.equal(request.requestSource.sha256,sample.sha256);
+  const original=await require('../electron/chat-long-request.cjs').readRequestSource(sessionAfter,sampled.id,request.id,'full');
+  assert.equal(require('node:crypto').createHash('sha256').update(original.text).digest('hex'),sample.sha256);
+  const turns=await threadTurns(client,sampledStored.threadId);assert.equal(turns.length,1);assert.equal(turns[0].id,request.turnId);assert.equal(turns[0].status,'completed');
+  const items=(await require('../electron/codex-transfer-data.cjs').itemPages(client,sampledStored.threadId,turns[0].id)).map(entry=>entry.item||entry);
+  assert.equal(items.filter(item=>item.type==='userMessage').length,1);
+  assert.deepEqual(items.filter(item=>item.type==='agentMessage').map(item=>item.text),[expected]);
+  longProbe=null;
+  console.log('프로젝트 혼합 한글·이모지 원문 '+sample.byteLength+'바이트 / '+sample.pages+'부분 중 처음·중간·끝의 위치와 내용 / 재시작 원문 SHA-256 / 한 턴과 한 답변 통과');
   console.log('번들 Codex 실제 RPC 통과 / 래스터 이미지 모델 입력 / 앱 도구 왕복 / 도구 상태를 포함한 선택 턴 분기 / 실제 revert / 원본 보존 / 재기동 기록 / 파일 읽기 제한 프로필의 구조화 AI 분석');
  }finally{
   await workflow?.shutdown();await controller?.shutdown();client?.close();if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}
