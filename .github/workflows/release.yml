@@ -7,7 +7,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [elevated, unelevated]
+        mode: [nested, dotted]
     env:
       FLOWRIUM_TEST_WINDOWS_SANDBOX: ${{ matrix.mode }}
     runs-on: windows-latest

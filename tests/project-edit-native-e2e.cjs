@@ -62,23 +62,17 @@ async function main() {
     const store=new Store(path.join(temp,'flowrium')); await store.load();
     const project=await store.addProject(cwd); await store.saveSettings({model:'gpt-5.5'});
     controller=new Controller(store,{client,canRun:()=>true}); await controller.connect();
-    if (process.platform === 'win32') {
-      console.log('격리 준비 상태', await client.request('windowsSandbox/readiness', {}));
-      const mode = process.env.FLOWRIUM_TEST_WINDOWS_SANDBOX || 'elevated';
-      let listener;
-      const completed = new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(Error('Windows 파일 격리 준비 시간 초과')), 100000);
-        listener = ({method,params}) => {
-          if (method !== 'windowsSandbox/setupCompleted') return;
-          clearTimeout(timer);
-          params.success ? resolve() : reject(Error('Windows 파일 격리 준비 실패 ' + params.error));
-        };
-        client.on('notification', listener);
-      });
-      const [started] = await Promise.all([client.request('windowsSandbox/setupStart', {mode,cwd}), completed])
-        .finally(() => client.off('notification', listener));
-      assert(started.started);
-      console.log('격리 설정 후', await client.request('windowsSandbox/readiness', {}));
+    if(process.platform === 'win32') {
+      const userConfig = await client.request('config/read', {includeLayers:false});
+      console.log('보호 구성',userConfig.config.windows, Object.keys(userConfig.origins || {}).filter(k=>k.startsWith('windows')));
+      const raw = client.request.bind(client);
+      client.request = (method, params, ...rest) => {
+        if (method === 'thread/start' || method === 'thread/resume') {
+          const override = process.env.FLOWRIUM_TEST_WINDOWS_SANDBOX === 'nested' ? {windows:{sandbox:'unelevated'}} : {'windows.sandbox':'unelevated'};
+          params={...params,config:{...params.config,...override}};
+        }
+        return raw(method,params,...rest);
+      };
     }
     const baseline=process.argv.includes('--baseline');
     for(const writable of baseline?[false]:[true,false]){
