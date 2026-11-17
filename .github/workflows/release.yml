@@ -440,7 +440,8 @@ jobs:
             release/Flowrium-*-${{ matrix.os }}-${{ matrix.arch }}.exe
 
   windows_install:
-    if: inputs.test_scope != 'scopes' && inputs.test_scope != 'features'
+    # The Windows installer has its own artifact even if a Mac UI check fails.
+    if: ${{ !cancelled() && needs.build.result != 'skipped' && inputs.test_scope != 'scopes' && inputs.test_scope != 'features' }}
     name: Windows 설치와 업데이트 독립 검증
     needs: build
     runs-on: windows-latest
