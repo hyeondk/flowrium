@@ -23,9 +23,16 @@ export function usePresence(open: boolean, durationMs = 240) {
   useLayoutEffect(() => {
     if (open) setState({ present: true, phase: 'enter' });
     else setState(previous => previous.present ? { present: true, phase: 'exit' } : previous);
-    const timer = window.setTimeout(() => setState(open ? { present: true, phase: 'idle' } : { present: false, phase: 'exit' }), duration);
-    return () => window.clearTimeout(timer);
-  }, [open, duration]);
+    // CSS의 마지막 프레임까지 그린 뒤 배치에서 제거한다. 백그라운드 창의 rAF는 멈출 수 있다.
+    let frame=0, timer=0, fallback=0;
+    const finish=()=>setState(open ? {present:true,phase:'idle'} : {present:false,phase:'exit'});
+    if(reduced||document.hidden)timer=window.setTimeout(finish,reduced?0:duration);
+    else{
+      fallback=window.setTimeout(finish,duration+100);
+      frame=requestAnimationFrame(()=>{timer=window.setTimeout(()=>{clearTimeout(fallback);finish()},duration+16)});
+    }
+    return ()=>{cancelAnimationFrame(frame);window.clearTimeout(timer);window.clearTimeout(fallback)};
+  }, [open, duration, reduced]);
   return state;
 }
 
@@ -41,19 +48,23 @@ export function MotionOverlay({ open, onClose, children, label, className = '', 
 }) {
   const { present, phase } = usePresence(open, durationMs);
   const surface = useRef<HTMLElement>(null);
-  const lastOpen = useRef({children, label});
+  const lastOpen = useRef({children, label}), previousOpen=useRef(open);
   useLayoutEffect(() => {
     if (open) lastOpen.current = {children, label};
-    // An early dismissal should shrink from the currently visible frame.
-    const element = surface.current;
-    if (!element || kind !== 'popup') return;
-    if (open) {
-      element.style.removeProperty('--popup-start-transform');
-      element.style.removeProperty('--popup-start-opacity');
-    } else if (present && phase === 'enter') {
-      const style = getComputedStyle(element);
-      element.style.setProperty('--popup-start-transform', style.transform);
-      element.style.setProperty('--popup-start-opacity', style.opacity);
+    const changed=previousOpen.current!==open;
+    previousOpen.current=open;
+    const element=surface.current;
+    if (!element || kind !== 'popup' || !changed) return;
+    const interrupted=present && (open ? phase==='exit' : phase==='enter');
+    const prefix=open?'--popup-enter-':'--popup-start-';
+    if(interrupted){
+      const style=getComputedStyle(element);
+      const transform=style.transform,opacity=style.opacity;
+      element.style.setProperty(prefix+'transform',transform);
+      element.style.setProperty(prefix+'opacity',opacity);
+    }else{
+      element.style.removeProperty(prefix+'transform');
+      element.style.removeProperty(prefix+'opacity');
     }
   }, [open, children, label, present, phase, kind]);
   const frame = !open && present ? lastOpen.current : {children, label};

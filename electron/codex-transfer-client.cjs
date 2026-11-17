@@ -13,6 +13,7 @@ function createRunClient(controller,run){
  client.on('approval',request=>controller.forwardApproval(request,client));
  client.on('input',({requestId,params})=>{
   if(controller.runs.get(run.sessionId)!==run||run.finalized||run.cancelled||run.threadId!==params.threadId||controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local')||(run.turnId&&run.turnId!==params.turnId)){client.resolveInput(requestId,true);return;}
+  controller.noteRequest(run,'input:'+requestId,'사용자에게 질문을 보냈어요');
   controller.emitEvent({type:'input',sessionId:run.sessionId,requestId,questions:params.questions,isBlocking:params.isBlocking,text:'Codex가 사용자에게 질문했습니다.'});
  });
  client.on('inputResolved',({requestId})=>controller.emitEvent({type:'inputResolved',sessionId:run.sessionId,requestId}));

@@ -36,6 +36,7 @@ async function run() {
     await page.locator('.side-usage[data-connected=true]').waitFor();
     await page.locator('.workspace-side').hover();
     await page.locator('.side-project').getByText(project.name, { exact: true }).click();
+    await page.locator('.overview-tools>summary').click();
     const shortcuts = page.locator('.project-shortcuts');
     await shortcuts.waitFor();
     await page.evaluate(() => document.fonts.ready);

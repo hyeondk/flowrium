@@ -95,10 +95,10 @@ document.addEventListener('pointerup', event => {
   if (!pan) buttons[Math.round(fingerPosition(event.clientX))].click();
 });
 document.addEventListener('pointercancel', event => {
-  if (drag?.id === event.pointerId) clearDrag();
+  if (drag?.id === event.pointerId) {suppressClick=true;clearDrag();}
 });
 nav.addEventListener('lostpointercapture', event => {
-  if (event.target === nav && drag?.id === event.pointerId) clearDrag();
+  if (event.target === nav && drag?.id === event.pointerId) {suppressClick=true;clearDrag();}
 });
 window.addEventListener('blur', clearDrag);
 nav.addEventListener('click', event => {
@@ -138,3 +138,6 @@ nav.addEventListener('keydown', event => {
   buttons[next].focus();
   buttons[next].click();
 });
+
+document.addEventListener('keydown',()=>{document.documentElement.dataset.keyboardHint='';},true);
+document.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')delete document.documentElement.dataset.keyboardHint;},true);

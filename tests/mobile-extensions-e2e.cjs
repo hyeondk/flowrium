@@ -17,6 +17,7 @@ async function main(){
   let accountCredits={hasCredits:true,unlimited:false,balance:'1234.50'};
   let resetCredits=2;
   for(const [name,fn]of Object.entries({send:i=>controller.send(i),interrupt:id=>controller.interrupt(id),connect:()=>controller.connect(),saveSettings:v=>controller.saveSettings(v),listQueuedMessages:id=>controller.listQueuedMessages(id),cancelQueuedMessage:(id,q)=>controller.cancelQueuedMessage(id,q),resumeQueuedMessages:id=>controller.resumeQueuedMessages(id),securityPending:()=>[],readAccountUsage:()=>({checkedAt:Date.now(),allowed:true,credits:accountCredits,resetCredits,buckets:[{name:'Codex',plan:'시험',windows:[{key:'primary',usedPercent:24,minutes:300,resetsAt}]}]})}))register(name,fn);
+  register('readChatCitation',(...args)=>require('../electron/chat-citations.cjs').readChatCitation(store,...args));
   require('../electron/chat-attachments.cjs').registerChatAttachments(register,store);require('../electron/workbench.cjs').registerWorkbench(register,store,{});
   require('../electron/conversation-tools.cjs').registerConversationTools(register,controller);
   const teams=require('../electron/teams.cjs').registerTeams(register,store,controller,{canRun:()=>!locked});
@@ -154,6 +155,7 @@ async function main(){
   await btn('예약 알림').click();await page.getByLabel('예약 알림 내용',{exact:true}).fill('회의 자료 확인');const future=new Date(Date.now()+3600000),local=new Date(future.getTime()-future.getTimezoneOffset()*60000).toISOString().slice(0,16);await page.getByLabel('알림 시간',{exact:true}).fill(local);await btn('예약 알림 추가').click();await page.getByText('회의 자료 확인',{exact:true}).waitFor();await confirmAction(page,'예약 취소');assert((await workflow.state()).reminders[0].cancelled);
   await btn('설정').click();await confirmAction(page,'이 기기 알림 해제');assert.equal((await push.status()).devices.length,0);
   locked=true;await page.getByRole('heading',{name:'작업 공간이 잠겼습니다'}).waitFor();assert.equal(await page.getByText('화면 검증 기기',{exact:true}).count(),0);locked=false;await btn('다시 확인').click();await openProject();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await require('./mobile-design-checks.cjs').checkDesign(page,store,directory);
   const old=remote.issueLink({ttlMinutes:5});owner++;const invalid=await fetch(origin+'/api/mobile/handoff',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({handoff:new URLSearchParams(new URL(old.url).hash.slice(1)).get('handoff')})});assert.equal(invalid.status,400);
   console.log('모바일 확장 실제 화면 통과 / 단회 연결 주소 / 첨부 업로드·미리보기·전송 / 실행 중 지시 큐·취소 / 팀 생성·수동 배정·중지·재개·종료 / 비서 요청·결정·예약 / 모델 동작 설정·사용량 / 실제 서비스워커 등록과 모의 Push 구독·시험·해제 / 잠금·계정 격리');
  }catch(e){if(app)console.error('모바일 확장 진단',await(await app.firstWindow()).locator('body').innerText().catch(()=>''));throw e;}finally{if(app)await app.close();if(remote)await remote.shutdown();if(workflow)await workflow.shutdown();if(push)await push.shutdown();if(controller)await controller.shutdown();await fs.rm(directory,{recursive:true,force:true,maxRetries:6,retryDelay:200});}

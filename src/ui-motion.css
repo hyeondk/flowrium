@@ -29,7 +29,7 @@ button:active:not(:disabled){transition-timing-function:var(--ease-exit)}
 
 @keyframes ui-fade-in{from{opacity:0}to{opacity:1}}
 @keyframes ui-fade-out{from{opacity:1}to{opacity:0}}
-@keyframes ui-popup-in{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+@keyframes ui-popup-in{from{opacity:var(--popup-enter-opacity,0);transform:var(--popup-enter-transform,scale(.9))}to{opacity:1;transform:scale(1)}}
 @keyframes ui-popup-out{
   from{opacity:var(--popup-start-opacity,1);transform:var(--popup-start-transform,scale(1))}
   to{opacity:0;transform:scale(.78)}

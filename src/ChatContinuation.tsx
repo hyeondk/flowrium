@@ -1,25 +1,20 @@
-import {useCallback, useEffect, useRef, useState, type RefObject} from 'react';
-import {ArrowRight, Check, ChevronRight, Expand, LoaderCircle, Sparkles, X} from 'lucide-react';
+import {useEffect, useMemo, useRef, useState, type RefObject} from 'react';
+import {ArrowRight, Check, LoaderCircle, Sparkles} from 'lucide-react';
 import type {Session} from '../shared/types';
-import type {FollowupSuggestions} from '../shared/chat-continuation';
 import {awaitsContinuation} from '../shared/execution-state';
 import ResizableComposerInput from './ResizableComposerInput';
-import {MotionOverlay} from './ui-motion';
-import {followupFromAnswer, type DisplaySuggestion} from './answer-followup';
+import {originalAnswerFollowups} from './answer-followup';
 import './chat-continuation.css';
 
-export type SuggestionCache = Map<string, Promise<FollowupSuggestions>>;
 type Props = {
   session?: Session;
   running: boolean;
   authenticated: boolean;
-  model?: string;
   busy: boolean;
   active: boolean;
   draft: string;
   placeholder: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
-  cache: SuggestionCache;
   onChange(text: string): void;
   onSend(): void;
   onChoose(prompt: string): void;
@@ -33,7 +28,7 @@ function errorText(error: unknown) {
 }
 
 export default function ChatContinuation({
-  session, running, authenticated, model, busy, active, draft, placeholder, textareaRef, cache,
+  session, running, authenticated, busy, active, draft, placeholder, textareaRef,
   onChange, onSend, onChoose, onContinue,
 }: Props) {
   const last = session?.messages.at(-1);
@@ -42,109 +37,24 @@ export default function ChatContinuation({
     && !session.queuedMessages?.some(row => row.status === 'queued' || row.status === 'sending'));
   const sessionId = session?.id;
   const messageId = eligible ? last?.id : undefined;
-  const key = sessionId && messageId ? JSON.stringify([sessionId, messageId, model, session?.preferences?.effort]) : '';
-  const waiting = Boolean(session && awaitsContinuation(session));
-  const [focused, setFocused] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const displayedPreview = useRef<DisplaySuggestion | undefined>(undefined);
-  useEffect(() => { if (!active) setPreviewOpen(false); }, [active]);
-  const [loading, setLoading] = useState(false);
+  const key = messageId && sessionId ? sessionId + ':' + messageId : '';
+  const waiting = eligible && Boolean(session && awaitsContinuation(session));
   const [action, setAction] = useState<'continue'|'complete'|null>(null);
   const [error, setError] = useState('');
-  const [rows, setRows] = useState<DisplaySuggestion[]>();
-  const [index, setIndex] = useState(0);
+  const [accepted, setAccepted] = useState('');
   const revision = useRef(0);
-  const suggestionAttempt = useRef(0);
-  const flight = useRef(false);
   const continuingFlight = useRef(false);
-  const attempted = useRef(false);
   useEffect(() => {
     revision.current++;
-    flight.current = false;
     continuingFlight.current = false;
-    attempted.current = false;
-    setPreviewOpen(false);
-    setLoading(false); setAction(null); setRows(undefined); setIndex(0); setError('');
-    return () => { revision.current++; };
-  }, [key, authenticated]);
-
-  const requestSuggestions = useCallback((background = false) => {
-    const cached = cache.get(key);
-    if (cached) return cached;
-    const request = window.flowrium!.workflowAction({action:'followupSuggestions', sessionId:sessionId!, messageId:messageId!, background}) as Promise<FollowupSuggestions>;
-    cache.set(key, request);
-    if (cache.size > 20) cache.delete(cache.keys().next().value!);
-    request.catch(() => { if (cache.get(key) === request) cache.delete(key); });
-    return request;
-  }, [cache, key, sessionId, messageId]);
-
-  // Prepare only after a turn the reader actually saw running in this chat.
-  const visibleRun = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    if (!active || !authenticated || visibleRun.current !== sessionId) visibleRun.current = undefined;
-    if (running && active && authenticated) visibleRun.current = sessionId;
-    if (!running && !busy && key && visibleRun.current === sessionId && sessionId) {
-      visibleRun.current = undefined;
-      if (!draft && !document.hidden) void requestSuggestions(true).catch(() => {});
-    }
-  }, [key, active, authenticated, sessionId, running, busy, draft, requestSuggestions]);
-
-  const recommend = useCallback(async () => {
-    if (!messageId || !sessionId || !authenticated || !active || busy || flight.current) return;
-    const current = revision.current;
-    const attempt = ++suggestionAttempt.current;
-    const isCurrent = () => current === revision.current && attempt === suggestionAttempt.current;
-    flight.current = true;
-    attempted.current = true;
-    setLoading(true); setError('');
-    const text = last?.text || '';
-    let quoted: DisplaySuggestion | undefined;
-    // Give an already-prepared model response priority. If it takes longer,
-    // keep the previous answer's own offer usable while the model is working.
-    const timer = window.setTimeout(() => {
-      if (!isCurrent()) return;
-      quoted = followupFromAnswer(text);
-      if (quoted) { setRows([quoted]); setIndex(0); }
-    }, 1000);
-    try {
-      const value = await requestSuggestions();
-      if (!isCurrent()) return;
-      if (value.source !== 'model' || value.sessionId !== sessionId || value.messageId !== messageId || !Array.isArray(value.suggestions))
-        throw Error('추천 결과와 현재 대화가 일치하지 않습니다.');
-      const generated = value.suggestions.map(row => ({...row, source:'model' as const}));
-      const first = quoted || (!generated.length ? followupFromAnswer(text) : undefined);
-      setRows(first ? [first, ...generated.filter(row => row.prompt !== first.prompt)] : generated);
-    } catch (error) {
-      if (isCurrent()) {
-        const message = errorText(error);
-        const unavailable = /계정|잠금|인증|최신 답변|현재 대화가 일치/.test(message);
-        const first = unavailable ? undefined : quoted || followupFromAnswer(text);
-        setRows(first ? [first] : undefined);
-        setError(first ? '모델의 추가 추천을 가져오지 못했습니다.' : message);
-      }
-    } finally {
-      window.clearTimeout(timer);
-      if (isCurrent()) { flight.current = false; setLoading(false); }
-    }
-  }, [messageId, sessionId, authenticated, active, busy, last?.text, requestSuggestions]);
-
-  useEffect(() => {
-    if (!focused || draft || attempted.current || !active || !authenticated || busy || !key) return;
-    void recommend();
-  }, [focused, draft, active, authenticated, busy, key, recommend]);
-
-  const candidate = rows?.[index];
-  const preview = active && authenticated && !draft ? candidate?.prompt : undefined;
-  const dismiss = () => {
-    suggestionAttempt.current++; flight.current = false;
-    setRows(undefined); setError(''); setIndex(0); setLoading(false);
-  };
+    setAction(null); setError('');
+  }, [key]);
+  const candidate = useMemo(() => eligible && active && !draft && !busy && key !== accepted
+    ? originalAnswerFollowups(session)[0] : undefined, [eligible, active, draft, busy, key, accepted, session]);
+  const preview = candidate?.prompt;
   function accept() {
-    if (!candidate || !key || busy || !authenticated) return;
-    onChoose(candidate.prompt);
-    dismiss();
+    if (candidate) { setAccepted(key); onChoose(candidate.prompt); }
   }
-
   async function resolveWaiting(choice: 'continue'|'complete') {
     if (!messageId || !sessionId || busy || (choice==='continue' && !authenticated) || continuingFlight.current) return;
     continuingFlight.current = true;
@@ -161,33 +71,20 @@ export default function ChatContinuation({
   return <>
     <ResizableComposerInput textareaRef={textareaRef} aria-label="Codex에 보낼 작업 요청" value={draft}
       placeholder={preview || placeholder} data-inline-suggestion={Boolean(preview)}
-      onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} onChange={e => onChange(e.target.value)}
+      onChange={e => onChange(e.target.value)}
       onKeyDown={e => {
         if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
         if (e.key === 'Tab' && preview && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
           e.preventDefault(); accept();
-        } else if (e.key === 'Escape' && candidate) {
-          e.preventDefault(); dismiss();
         } else if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault(); onSend();
         }
       }}
     />
-    {key && <section className="chat-continuation" aria-label="다음 작업">
+    {(candidate || waiting || error) && <section className="chat-continuation" aria-label="다음 작업">
       <div className="chat-continuation-actions">
-        {candidate
-          ? <>
-            <button type="button" className="followup-accept" data-source={candidate.source} onClick={accept} disabled={busy || !authenticated} title={candidate.reason}
-              aria-label={candidate.title + ' 입력창에 추가'}><Sparkles size={13}/>{candidate.source==='conversation' && <small>직전 답변</small>}<span>{candidate.title}</span>{preview && <kbd>Tab</kbd>}</button>
-            <button type="button" className="followup-preview" aria-label="추천 전문 보기" title="추천 전문 보기"
-              aria-haspopup="dialog" onClick={() => {displayedPreview.current = candidate; setPreviewOpen(true);}}><Expand size={13}/></button>
-            {rows && rows.length > 1 && <button type="button" className="followup-cycle" aria-label="다른 추천 보기"
-              onClick={() => setIndex((index + 1) % rows.length)}>{index + 1}/{rows.length}<ChevronRight size={12}/></button>}
-            <button type="button" className="followup-dismiss" aria-label="추천 닫기" onClick={dismiss}><X size={13}/></button>
-          </>
-          : <button type="button" className="followup-request" aria-label="다음 작업 추천받기" onClick={() => void recommend()}
-              disabled={busy || loading || !authenticated}>{loading ? <LoaderCircle size={13} className="spin"/> : <Sparkles size={13}/>}
-              <span>{loading ? '추천 작성 중' : error ? '추천 다시 받기' : '다음 작업 추천'}</span></button>}
+        {candidate && <button type="button" className="followup-accept" data-source="conversation" onClick={accept}
+          aria-label={candidate.title + ' 입력창에 추가'}><Sparkles size={13}/><span>{candidate.title}</span><kbd>Tab</kbd></button>}
         {waiting && <>
           <button type="button" className="followup-proceed" disabled={busy || action!==null || !authenticated}
             onClick={() => void resolveWaiting('continue')}>{action==='continue' ? <LoaderCircle size={13} className="spin"/> : <ArrowRight size={13}/>}진행하기</button>
@@ -197,14 +94,6 @@ export default function ChatContinuation({
         </>}
       </div>
       {error && <p role="alert">{error}</p>}
-      {rows?.length === 0 && <p role="status">지금 이어서 추천할 작업이 없습니다.</p>}
     </section>}
-    <MotionOverlay open={Boolean(previewOpen && candidate && active)} label="다음 작업 추천 전문"
-      onClose={() => setPreviewOpen(false)} className="followup-preview-dialog">
-      <header><h2>{displayedPreview.current?.title}</h2><button className="icon-button" type="button" aria-label="추천 전문 닫기" onClick={() => setPreviewOpen(false)}><X size={16}/></button></header>
-      {displayedPreview.current?.source==='conversation' && <small>직전 답변에서 제안한 작업</small>}
-      <p>{displayedPreview.current?.prompt}</p>
-      <footer><button type="button" className="button primary" disabled={busy || !authenticated} onClick={() => {setPreviewOpen(false); accept();}}>입력창에 추가</button></footer>
-    </MotionOverlay>
   </>;
 }

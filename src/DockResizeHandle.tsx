@@ -8,7 +8,11 @@ export function useDockResize(panel:RefObject<HTMLElement|null>,overlay:boolean,
  const [preferred,setPreferred]=useState<number|undefined>(stored),[geometry,setGeometry]=useState(()=>({viewport:innerWidth,sidebar:72})),[resizing,setResizing]=useState(false),drag=useRef<{pointer:number;x:number;width:number;target:HTMLElement}|undefined>(undefined);
  const bounds=dockSizeBounds(geometry.viewport,geometry.sidebar,overlay),width=preferred===undefined?undefined:clampDockSize(preferred,bounds);
  const latest=useRef(bounds);latest.current=bounds;
- useEffect(()=>{if(!open)return;const root=element?.parentElement;if(!root)return;const side=root.querySelector('.workspace-side');const update=()=>setGeometry({viewport:root.getBoundingClientRect().width||innerWidth,sidebar:side?.getBoundingClientRect().width||72});const observer=new ResizeObserver(update);observer.observe(root);if(side)observer.observe(side);window.addEventListener('resize',update);update();return()=>{observer.disconnect();window.removeEventListener('resize',update)}},[element,open]);
+ useEffect(()=>{if(!open)return;const root=element?.parentElement;if(!root)return;const side=root.querySelector('.workspace-side');const update=()=>{
+  const style=getComputedStyle(root);
+  const spacing=overlay?0:parseFloat(style.paddingLeft)+parseFloat(style.paddingRight)+2*(parseFloat(style.columnGap)||0);
+  setGeometry({viewport:root.getBoundingClientRect().width||innerWidth,sidebar:(side?.getBoundingClientRect().width||72)+spacing});
+ };const observer=new ResizeObserver(update);observer.observe(root);if(side)observer.observe(side);window.addEventListener('resize',update);update();return()=>{observer.disconnect();window.removeEventListener('resize',update)}},[element,open,overlay]);
  useEffect(()=>{try{if(preferred===undefined)localStorage.removeItem(key);else localStorage.setItem(key,JSON.stringify(preferred))}catch{}},[preferred]);
  function finish(){const d=drag.current;drag.current=undefined;if(d?.target.hasPointerCapture(d.pointer))d.target.releasePointerCapture(d.pointer);setResizing(false);document.documentElement.removeAttribute('data-dock-resizing');window.dispatchEvent(new Event('flowrium-dock-resize-end'));}
  useEffect(()=>()=>{const d=drag.current;if(d?.target.hasPointerCapture(d.pointer))d.target.releasePointerCapture(d.pointer);document.documentElement.removeAttribute('data-dock-resizing');},[]);

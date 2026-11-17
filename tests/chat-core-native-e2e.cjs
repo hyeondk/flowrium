@@ -71,7 +71,7 @@ async function main(){
   const attachments=await addAttachments(store,project.id,[{name:'검증화면.png',type:'image/png',bytes:png},{name:'근거.txt',type:'text/plain',bytes:Buffer.from('합성 근거')}]);
   async function send(id,text,extra={}){const completed=done(controller,id,longProbe?120000:20000);await controller.send({sessionId:id,text,mode:'plan',...extra},{fromComposer:true});await completed;if(failure)throw failure;}
   await send(session.id,'원본첫요청',{attachments:attachments.map(a=>a.id)});
-  assert(JSON.stringify(bodies[0].input).includes('미완료 작업'),'일반 프로젝트의 직접 입력 턴에만 후속 후보 작성을 안내합니다.');
+  assert.doesNotMatch(JSON.stringify(bodies[0].input),/미완료 작업/,'실제 모델 입력에 추천용 지시를 덧붙이지 않습니다.');
   assert.equal(store.session(session.id).messages.find(row=>row.role==='user').text,'원본첫요청');
   assert(toolCalled,'동적 도구 응답을 실제 Codex가 요청해야 합니다.');
   assert(/data:image\/[a-z]+;base64,/.test(JSON.stringify(bodies[0])),'localImage가 실제 모델의 이미지 입력으로 변환돼야 합니다. / '+JSON.stringify(bodies[0].input).slice(-1500));

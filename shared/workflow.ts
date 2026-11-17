@@ -39,7 +39,6 @@ export interface WorkflowState {
   sessions:{id:string;projectId:string;title:string;running:boolean}[];
 }
 export type WorkflowAction =
-  |{action:'followupSuggestions';sessionId:string;messageId:string;background?:boolean}
   |{action:'completeContinuation';sessionId:string;messageId:string}
   |{action:'continueConversation';submissionId?:string;sessionId:string;messageId:string;text?:string;attachments?:string[];mode:Mode;model?:string;effort?:Effort}
   |{action:"preferences";value:Partial<WorkflowPreferences>}

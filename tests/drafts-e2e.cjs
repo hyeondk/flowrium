@@ -85,7 +85,8 @@ async function run() {
     await until(
       async () => (await composer().inputValue()) === "이전 버전의 미전송 문장",
     );
-    assert.equal(await page.getByLabel("작업 모드").inputValue(), "review");
+    assert.equal(await page.getByLabel("작업 모드").count(), 0);
+    await until(()=>page.evaluate(async id=>(await window.flowrium.readDrafts((await window.flowrium.securityState()).accountRevision))['session:'+id]?.mode==='review',session.id));
     assert.equal(
       await page.evaluate(() => localStorage.getItem("flowrium.drafts")),
       null,

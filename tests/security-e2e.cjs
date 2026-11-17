@@ -103,7 +103,7 @@ async function run() {
     await page.getByLabel("새 번호 확인").fill("7904");
     await btn("잠금 번호 설정").click();
     await page.getByText("잠금 번호를 저장했습니다.").waitFor();
-    await page.getByLabel("자리 비움 자동 잠금").selectOption("5");
+    await page.getByRole("combobox",{name:"자리 비움 자동 잠금"}).click();await page.getByRole("option",{name:"5분 후",exact:true}).click();
     await page.waitForFunction(
       async () =>
         (await window.flowrium.securityState()).preferences?.idleMinutes === 5,

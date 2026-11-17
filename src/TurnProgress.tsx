@@ -1,11 +1,11 @@
 import {useState} from 'react';
-import {Activity, ChevronRight, X} from 'lucide-react';
+import {Activity, ChevronDown} from 'lucide-react';
 import type {Message, WorkStep} from '../shared/types';
-import {MotionOverlay} from './ui-motion';
+import {workDuration} from '../electron/mobile/work-time.js';
 import MessageContent from './MessageContent';
 
 type Record = {message:Message} | {step:WorkStep};
-type Progress = {key:string; records:Record[]};
+type Progress = {key:string; records:Record[]; startedAt?:string; endedAt?:string};
 type Row = {message:Message} | {progress:Progress};
 
 export function historyRows(messages:Message[], first:number):Row[] {
@@ -17,14 +17,15 @@ export function historyRows(messages:Message[], first:number):Row[] {
     if(message.turnId&&!owners.has(message.turnId))owners.set(message.turnId,message.id);
     request=message.turnId?owners.get(message.turnId)!:message.id;
   }
-  const add=(key:string, record:Record)=>{
+  const add=(key:string, record?:Record)=>{
     let group=groups.get(key);
     if(!group) {
       group={key,records:[]};
       groups.set(key,group);
       rows.push({progress:group});
     }
-    group.records.push(record);
+    if (record) group.records.push(record);
+    return group;
   };
   for(let i=first-1; i>=0; i--) {
     if(messages[i].role==='user') { remember(messages[i]); break; }
@@ -38,6 +39,11 @@ export function historyRows(messages:Message[], first:number):Row[] {
       add(key,{message});
     } else {
       rows.push({message});
+      if (message.role === 'user' && message.workStartedAt) {
+        const group=add(key);
+        group.startedAt ||= message.workStartedAt;
+        group.endedAt = message.workCompletedAt || group.endedAt;
+      }
       for(const step of message.workSteps||[]) add(key,{step});
     }
   }
@@ -53,26 +59,27 @@ function logLabel(text:string) {
   return '작업 기록';
 }
 export function TurnProgress({progress}:{progress:Progress}) {
-  const [open,setOpen]=useState(false);
-  const live=progress.records.some(record=>'step' in record && record.step.state==='running');
+  const [manual,setManual]=useState<boolean>();
+  const live=Boolean(progress.startedAt && !progress.endedAt && progress.records.some(row=>'step' in row && row.step.state==='running'));
+  const open=manual ?? live;
+  const duration=workDuration(progress.startedAt,progress.endedAt);
+  const label=duration || '작업 내역 보기';
+  const stamp=(record:Record)=>'step' in record ? record.step.createdAt : record.message.createdAt;
+  const ordered=[...progress.records].sort((a,b)=>Date.parse(stamp(a))-Date.parse(stamp(b)));
   return <div className="turn-progress" data-message-id={'work:'+progress.key}>
-    <button className="turn-progress-trigger" type="button" aria-haspopup="dialog" aria-expanded={open}
-      aria-label={'작업 과정 보기 ('+progress.records.length+'건)'} onClick={()=>setOpen(true)}>
-      <Activity size={13} aria-hidden="true"/><span aria-hidden="true">작업 과정</span><small>{progress.records.length}건</small>
-      {live&&<span className="turn-progress-live">실행 중</span>}<ChevronRight size={13} aria-hidden="true"/>
+    <button className="turn-progress-trigger" type="button" aria-expanded={open} onClick={()=>setManual(!open)}>
+      <Activity size={13} aria-hidden="true"/><span>{label}</span><small>{ordered.length}건</small>
+      {live&&<span className="turn-progress-live">실행 중</span>}<ChevronDown size={13} aria-hidden="true"/>
     </button>
-    <MotionOverlay open={open} label="작업 과정" onClose={()=>setOpen(false)} className="turn-progress-dialog">
-      <header><h2>작업 과정</h2><button type="button" className="icon-button" aria-label="작업 과정 닫기" onClick={()=>setOpen(false)}><X size={16}/></button></header>
-      <ol>{open&&progress.records.map(record=>{
-        const instant='step' in record?record.step.createdAt:record.message.createdAt;
-        return <li key={'step' in record?'step:'+record.step.id:record.message.id}>
-          <div className="turn-progress-line"><strong>{'step' in record?record.step.label:logLabel(record.message.text)}</strong>
-            {'step' in record&&<span data-step-state={record.step.state}>{labels[record.step.state]}</span>}
-            <time dateTime={instant}>{clock.format(new Date(instant))}</time>
-          </div>
-          {'message' in record&&<MessageContent role="system" text={record.message.text}/>}
-        </li>;
-      })}</ol>
-    </MotionOverlay>
+    {open && <ol aria-label="작업 과정" className="turn-progress-list">{ordered.map(record=>{
+      const instant=stamp(record);
+      return <li key={'step' in record?'step:'+record.step.id:record.message.id}>
+        <div className="turn-progress-line"><strong>{'step' in record?record.step.label:record.message.progressCommentary?'진행 설명':logLabel(record.message.text)}</strong>
+          {'step' in record&&<span data-step-state={record.step.state}>{labels[record.step.state]}</span>}
+          <time dateTime={instant}>{clock.format(new Date(instant))}</time>
+        </div>
+        {'message' in record&&<MessageContent role={record.message.progressCommentary?'assistant':'system'} text={record.message.text}/>}
+      </li>;
+    })}{!ordered.length&&<li>기록된 세부 단계가 없습니다.</li>}</ol>}
   </div>;
 }

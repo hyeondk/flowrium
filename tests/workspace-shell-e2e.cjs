@@ -25,7 +25,7 @@ async function run(){
   const home=button('대화 홈으로');if(await home.isVisible())await home.click();
   await page.locator('.dock-scope-card[data-scope=general]').waitFor();
  }
- async function projectList(){await dockHome();await page.locator('.dock-project-row').filter({hasText:project.name}).click();await page.locator('.dock-session-list').waitFor();}
+ async function projectList(){await dockHome();const picker=page.locator('.dock-project-picker');if(!await picker.evaluate(node=>node.open))await picker.locator('summary').click();await page.locator('.dock-project-row').filter({hasText:project.name}).click();await page.locator('.dock-session-list').waitFor();}
   app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
   await page.bringToFront();await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].focus());await page.setViewportSize({width:1440,height:1000});await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('.side-usage')?.dataset.connected==='true');
   await page.evaluate(async()=>{await document.fonts.load('400 14px NanumSquareRound','프로젝트');await document.fonts.ready;});
@@ -52,7 +52,7 @@ async function run(){
   await projectList();await page.locator('.dock-new-conversation').click();await page.locator('.dock-chat .session-heading h2').filter({hasText:'새로운 작업'}).waitFor();await dashboard();
   snapshot=await page.evaluate(()=>window.flowrium.bootstrap());check(snapshot.sessions.length===before+3&&snapshot.sessions.filter(s=>!s.scope).length===4,'세 범위 대화의 독립 생성',snapshot.sessions.map(s=>({scope:s.scope||'project',title:s.title})));check(snapshot.projects.length===1,'개인 대화가 프로젝트 목록을 늘리지 않음');
   await projectList();await page.locator('.dock-session').filter({has:page.locator('strong',{hasText:running.title})}).click();await page.getByLabel('Codex에 보낼 작업 요청').fill('대기검증');await button('작업 보내기').click();await page.locator('.dock-status-tabs [data-state=running] strong').filter({hasText:'1'}).waitFor();await dashboard();
-  await projectList();await page.locator('.dock-session').filter({has:page.locator('strong',{hasText:decision.title})}).click();await page.getByLabel('작업 모드',{exact:true}).selectOption('build');await page.getByLabel('Codex에 보낼 작업 요청').fill('승인검증');await button('작업 보내기').click();await page.locator('.dock-status-tabs [data-state=decision] strong').filter({hasText:'1'}).waitFor();await dashboard();
+  await projectList();await page.locator('.dock-session').filter({has:page.locator('strong',{hasText:decision.title})}).click();assert.equal(await page.getByLabel('작업 모드',{exact:true}).count(),0);await page.getByLabel('Codex에 보낼 작업 요청').fill('승인검증');await button('작업 보내기').click();await page.locator('.dock-status-tabs [data-state=decision] strong').filter({hasText:'1'}).waitFor();await dashboard();
   const counts=await page.locator('.execution-summary>button').evaluateAll(nodes=>nodes.map(e=>({state:e.dataset.state,text:e.innerText.replace(/\s+/g,' ').trim(),count:Number(e.querySelector('strong').textContent)})));
   check(counts.length===3&&counts.every(e=>e.count===1),'작업중 / 대기 / 결정 집계',counts);
   for(const [state,title]of [['running','대기검증'],['waiting',waiting.title],['decision','승인검증']]){
@@ -61,7 +61,7 @@ async function run(){
    const titles=await page.locator('.dock-session strong').allTextContents();check(titles.length===1&&titles[0]===title,'진행 상태 필터 '+state,titles);
    check(await page.locator('.dock-session .execution-badge').getAttribute('data-state')===state,'대화 카드 상태 표시 '+state);await dashboard();
   }
-  await page.mouse.move(35,140);await page.waitForTimeout(280);check((await page.locator('.side-state[data-state=decision]').innerText()).includes('결정 1'),'프로젝트 메뉴의 결정 강조');await page.mouse.move(650,110);await page.waitForTimeout(280);
+  await page.mouse.move(35,140);await page.waitForTimeout(280);check((await page.locator('.side-project-label small[data-state=decision]').innerText()).includes('결정 1'),'프로젝트 메뉴의 결정 강조');await page.mouse.move(650,110);await page.waitForTimeout(280);
   // 세로 높이를 고정하고 각 폭에서 주요 영역과 내부 스크롤 폭을 함께 검사합니다.
   for(const width of [1440,1280,1024,390]){
    await page.setViewportSize({width,height:1000});await page.waitForTimeout(330);

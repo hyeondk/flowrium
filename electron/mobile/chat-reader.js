@@ -1,6 +1,7 @@
+import {workDuration} from './work-time.js';
 import MarkdownIt from './markdown-engine.js';
 
-const markdown=new MarkdownIt({html:false,linkify:true,breaks:true});
+const markdown=new MarkdownIt({html:false,linkify:true,breaks:true}).disable('strikethrough');
 markdown.renderer.rules.image=(tokens,index)=>markdown.utils.escapeHtml(tokens[index].content||'이미지');
 markdown.renderer.rules.link_open=(tokens,index,options,env,renderer)=>{
   tokens[index].attrSet('rel','noopener noreferrer');
@@ -29,74 +30,65 @@ export function markdownBody(text) {
   return body;
 }
 export function groupMobileHistory(messages,session,running) {
-  const rows=[],groups=new Map(),owners=new Map();
-  let owner='start',currentGroup;
+  const rows=[],groups=new Map(),owners=new Map(),timing=new Map();
+  let owner='start';
+  for(const m of messages)if(m.role==='user'){
+    if(m.turnId && !owners.has(m.turnId))owners.set(m.turnId,m.id);
+    const id=owners.get(m.turnId)||m.id;
+    const times=timing.get(id)||{};
+    times.start ||= m.workStartedAt;times.end ||= m.workCompletedAt;timing.set(id,times);
+  }
   function add(id,step) {
+    if(!step.label)return;
     let group=groups.get(id);
-    if(!group){group={id,steps:[]};groups.set(id,group);rows.push({group});}
+    if(!group){group={id:session.id+'|'+id,steps:[],...timing.get(id)};groups.set(id,group);rows.push({group});}
+    if(step.id){
+      const previous=group.steps.find(item=>item.id===step.id);
+      if(previous){Object.assign(previous,step);return;}
+    }
     group.steps.push(step);
-    if(id===owner)currentGroup=group;
   }
   for(const message of messages) {
-    if(message.role==='user'){
-      if(message.turnId&&!owners.has(message.turnId))owners.set(message.turnId,message.id);
-      owner=owners.get(message.turnId)||message.id;
-      currentGroup=groups.get(owner);
-    }
+    if(message.role==='user')owner=owners.get(message.turnId)||message.id;
     const key=owners.get(message.turnId)||message.turnId||owner;
-    if(message.role==='system'){
-      add(key,{label:message.text,createdAt:message.createdAt});
+    if(message.role==='system' || message.progressCommentary){
+      add(key,{id:message.id,label:message.text,createdAt:message.createdAt});
     }else{
-      rows.push({message});
+      if(message.role==='user')rows.push({message});
       for(const step of message.workSteps||[])add(key,step);
+      if(message.role!=='user')rows.push({message});
     }
   }
-  // 이전 데스크톱도 현재 공개된 상태 문구를 제공한다.
-  if(running&&!currentGroup)add(owner,{label:session.activity||'작업 진행',state:'running'});
+  if(running && session.activity && !groups.get(owner)?.steps.some(step=>step.label===session.activity))
+    add(owner,{label:session.activity,state:'running'});
+  if(groups.has(owner))groups.get(owner).running=running;
+  for(const group of groups.values())group.steps.sort((a,b)=>(Date.parse(a.createdAt)||Infinity)-(Date.parse(b.createdAt)||Infinity));
   return {rows,groups};
 }
-
-let dialog,listing,activeId;
-function dialogForProgress() {
-  if(dialog)return dialog;
-  dialog=element('dialog');dialog.className='mobile-work-dialog';dialog.setAttribute('aria-label','작업 과정');
-  const header=element('header'),close=element('button','닫기');
-  close.type='button';close.addEventListener('click',()=>dialog.close());
-  header.append(element('h2','작업 과정'),close);
-  listing=element('ol');dialog.append(header,listing);document.body.append(dialog);
-  dialog.addEventListener('close',()=>{
-    const id=activeId;activeId=undefined;listing.replaceChildren();
-    if(id)document.querySelector('[data-work-group="'+CSS.escape(id)+'"]')?.focus({preventScroll:true});
-  });
-  return dialog;
-}
-function showProgress(group) {
-  const rows=group.steps.map(step=>{
-    const row=element('li');
-    row.append(element('strong',step.label));
-    if(stepStates[step.state])row.append(element('span',stepStates[step.state]));
-    if(step.createdAt) {
-      const time=element('time',new Date(step.createdAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}));
-      time.dateTime=step.createdAt;row.append(time);
-    }
-    return row;
-  });
-  listing.replaceChildren(...rows);
-}
+const choices=new Map();
+export function syncProgress(groups,reset=false) {if(reset)choices.clear();}
 export function progressButton(group) {
-  const button=element('button','작업 과정 ('+group.steps.length+'건)');
-  button.type='button';button.className='mobile-progress-trigger';button.dataset.workGroup=group.id;
-  button.dataset.messageId='work:'+group.id;
-  button.setAttribute('aria-haspopup','dialog');
+  const wrap=element('div'),button=element('button'),list=element('ol');
+  wrap.className='mobile-work';wrap.dataset.messageId='work:'+group.id;
+  button.type='button';button.dataset.workGroup=group.id;
+  button.textContent=workDuration(group.start,group.end)||(group.running?'작업 진행 중':'작업 내역 보기');
+  button.setAttribute('aria-label',button.textContent);
+  list.id='work-'+group.id;list.setAttribute('aria-label','작업 과정');button.setAttribute('aria-controls',list.id);
+  for(const step of group.steps){
+    const item=element('li');item.append(element('strong',step.label));
+    if(stepStates[step.state])item.append(element('span',stepStates[step.state]));
+    if(Number.isFinite(Date.parse(step.createdAt))){
+      const time=element('time',new Date(step.createdAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}));
+      time.dateTime=step.createdAt;item.append(time);
+    }
+    list.append(item);
+  }
+  const open=value=>{button.setAttribute('aria-expanded',String(!!value));list.hidden=!value;};
+  open(choices.get(group.id)??group.running);
   button.addEventListener('click',()=>{
-    const window=dialogForProgress();activeId=group.id;
-    showProgress(group);if(!window.open)window.showModal();
+    const value=list.hidden;choices.set(group.id,value);
+    if(choices.size>500)choices.delete(choices.keys().next().value);
+    open(value);
   });
-  return button;
-}
-export function syncProgress(groups) {
-  if(!dialog?.open)return;
-  const group=groups?.get(activeId);
-  if(group)showProgress(group);
-  else dialog.close();
+  wrap.append(button,list);return wrap;
 }

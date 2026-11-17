@@ -150,6 +150,7 @@ async function main() {
       return cards.find(card => card.project.name === title)?.details?.goal;
     }, name);
     assert.equal(savedGoal, goalText);
+    await page.locator(".overview-tools>summary").click();
     const panels = page.locator(".pf-project-summary .pf-overview-group");
     await panels.last().waitFor();
     const bounds = await panels.evaluateAll(groups => groups.map(group => {

@@ -228,7 +228,7 @@ async function launch() {
   dotsRuntime=require('./dots-view.cjs').registerDotsView(register,{
     getWindow:()=>window,accountRevision:()=>security.accountRevision,
     ownerHash:()=>security.data.accountOwner||'unverified:'+security.accountRevision,
-    canShow:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling()&&!migration?.busy&&!codexTransfer?.isBusy()&&!controller?.trashRuntime?.isBusy(),
+    canShow:()=>controller?.client.ready===true&&controller.status.dotsEligible===true&&!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling()&&!migration?.busy&&!codexTransfer?.isBusy()&&!controller?.trashRuntime?.isBusy(),
     openExternal:url=>shell.openExternal(url),
   });
   voice = require("./voice.cjs").registerVoice(register, {
@@ -258,6 +258,7 @@ async function launch() {
       ? externalTools.call(input) : projectTools?.handles(input.name) ? projectTools.call(input) : workflowRuntime?.callTool(input),
   });
   require("./chat-attachments.cjs").registerChatAttachments(register, store);
+  register('readChatCitation',(sessionId,messageId,index,action)=>require('./chat-citations.cjs').readChatCitation(store,sessionId,messageId,index,action,file=>shell.showItemInFolder(file)));
   register("listQueuedMessages", id => controller.listQueuedMessages(id));
   register("cancelQueuedMessage", (id, queued) => controller.cancelQueuedMessage(id, queued));
   register("sendQueuedToCodex", (id, queued) => controller.messageQueue.sendToCodex(id, queued));
@@ -355,6 +356,8 @@ async function launch() {
     focus: ensureWindow,
   });
   const remote = require("./remote.cjs").registerRemote(register, {
+    accountOwner:()=>security.data.accountOwner,
+    pairing:new (require('./mobile-pairing.cjs').MobilePairing)(app.getPath('userData'),require('electron').safeStorage),
     mobileUpdateDirectory:app.getPath('userData'), mobileUpdateStorage:require('electron').safeStorage,
     store, controller, handlers: apiHandlers, isLocked: () => security.locked || security.loggingOut,
     readDecisionLinks: () => workflowRuntime.pendingDecisionLinks(),
@@ -424,6 +427,7 @@ async function launch() {
   security.on("state", state => { if (state.accountRevision !== remoteAccountRevision) { remoteAccountRevision = state.accountRevision; macPim.invalidate(); linkDelivery.invalidate(); webPush.invalidate(); voice?.cancel?.(); dotsRuntime?.invalidate(); void remote.stopAccess(); } });
   app.on("will-quit", () => { void remote.shutdown(); });
   security.on("state", (state) => {
+    if (!state.locked) remote.restore();
     if (state.locked) { microphoneUntil = 0; voice?.cancel?.(); webPush.invalidate(); dotsRuntime?.hide(); }
     if (window && !window.isDestroyed()) window.webContents.send("flowrium:security", state);
   });

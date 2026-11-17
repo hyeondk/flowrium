@@ -7,6 +7,8 @@ import {
   Check,
   ChevronRight,
   FileText,
+  MessagesSquare,
+  CalendarDays,
   FolderOpen,
   Plus,
   RefreshCw,
@@ -437,6 +439,19 @@ export function ProjectOverview({
     goal: data?.goal || "",
     dueDate: data?.dueDate || "",
   };
+  const now = new Date(), monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay()+6)%7));
+  const weekStart=localDay(monday.toISOString());
+  const weeklyGoals=(data?.periodGoals||[]).filter(goal=>goal.period==='week'&&goal.key===weekStart&&!goal.carriedTo);
+  const recent=own.filter(row=>row.messages.length).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,3);
+  const [checking,setChecking]=useState(false);
+  async function checkTask(id:string,done:boolean){
+    if(!api||!data||checking)return;
+    setChecking(true);
+    try{change(await api.updateProjectDetails(project.id,data.revision,{action:'check',id,done}));}
+    catch(e){setError(errorText(e));}
+    finally{setChecking(false);}
+  }
   const isNative = tab === "work" || tab === "team" || tab === "github";
   return (
     <div className={"pf-page pf-overview" + (isNative ? " pf-native" : "")}>
@@ -448,7 +463,7 @@ export function ProjectOverview({
         <header className="pf-heading">
           <div>
             <h1>{name}</h1>
-            {data?.goal && <p>{data.goal}</p>}
+            <p>{[meta.category,data?.goal].filter(Boolean).join(" / ")}</p>
           </div>
           <span
             className="pf-status"
@@ -483,6 +498,21 @@ export function ProjectOverview({
         {isNative && <div className="pf-native-pane">{renderPanel(tab)}</div>}
         {tab === "home" && (
           <>
+            <section className="overview-section" aria-label="이번 주 목표"><header><h2>이번 주 목표</h2><small>{localDay(now.toISOString())} 기준</small></header>
+              {weeklyGoals.length?weeklyGoals.map(goal=><div key={goal.id} className="overview-goal"><div><strong>{goal.text}</strong><small>{goal.target?(goal.current||0)+' / '+goal.target:goal.done?'완료':'진행 중'}</small></div>
+                {goal.target&&<progress aria-label={goal.text+' 진척'} value={goal.current||0} max={goal.target}/>}
+                {goal.due&&<small><CalendarDays size={13}/>기한 {goal.due}</small>}
+              </div>):<p className="overview-muted">이번 주에 등록한 목표가 없습니다.</p>}
+            </section>
+            <section className="overview-section" aria-label="프로젝트 할 일"><header><h2>프로젝트 할 일</h2><button onClick={()=>onTabChange('work')}>업무 현황 <ArrowRight size={13}/></button></header>
+              {data?.checklist.map(item=><label key={item.id} className="overview-task"><AnimatedCheckbox checked={item.done} disabled={checking} onChange={e=>void checkTask(item.id,e.target.checked)}/><span><strong>{item.text}</strong><small>{meta.category||name}</small></span><small>{item.done?'완료':'진행 예정'}</small></label>)}
+              {!data?.checklist.length&&<p className="overview-muted">등록한 할 일이 없습니다.</p>}
+            </section>
+            <section className="overview-section" aria-label="최근 활동"><header><h2>최근 활동</h2></header>
+              {recent.map(s=><button key={s.id} className="overview-activity" onClick={()=>onOpenSession(s)}><MessagesSquare size={15}/><span>{s.title}</span><time>{localDay(s.updatedAt)}</time></button>)}
+              {!recent.length&&<p className="overview-muted">아직 기록된 대화가 없습니다.</p>}
+            </section>
+            <details className="overview-tools"><summary>프로젝트 분석 및 관리</summary>
             <div className="pf-stats">
               <button onClick={() => onTabChange("work")}>
                 <span>진행 및 검토 업무</span>
@@ -613,6 +643,7 @@ export function ProjectOverview({
                 </div>
               </section>
             </div>
+            </details>
           </>
         )}
         {tab === "rules" && <ProjectMemory projectId={project.id} />}

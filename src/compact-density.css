@@ -18,3 +18,91 @@
  .app-shell .pf-page .pf-content :is(.pf-panel,.pf-form) :is(input:not([type=checkbox]):not([type=radio]),select){min-height:34px;padding:5px 10px;font-size:12px}.app-shell .pf-page .pf-content .project-ai-actions>button.pf-primary{min-height:32px;padding:4px 11px;font-size:12px}.app-shell .pf-page .pf-content .pf-goals>label{min-height:36px;padding:6px 0}
  .app-shell .dashboard-insights{margin:18px 0}.app-shell .dashboard-insights .di-metrics{gap:10px;grid-template-columns:repeat(auto-fit,minmax(min(100%,125px),1fr))}.app-shell .dashboard-insights .di-metrics article{padding:12px 16px;gap:4px}.app-shell .dashboard-insights .di-metrics strong{font-size:23px;line-height:30px}.app-shell .dashboard-insights .di-metrics small{font-size:10px;line-height:18px}.app-shell .dashboard-insights .di-grid{gap:14px;margin-top:14px}.app-shell .dashboard-insights .di-card{padding:16px}.app-shell .dashboard-insights .di-card h2{font-size:14px;line-height:22px}.app-shell .dashboard-insights .di-card header{margin-bottom:8px}.app-shell .dashboard-insights .di-phases li{min-height:28px;padding:4px 0;font-size:12px}.app-shell .dashboard-insights .di-distribution{min-height:16px;margin:14px 0}.app-shell .dashboard-insights .di-completion{min-height:152px;padding:10px 0}.app-shell .dashboard-insights .di-completion>div>div{height:100px}.app-shell .dashboard-insights .di-task{min-height:48px;padding:8px 0;font-size:12px}.app-shell .dashboard-insights .di-ai :is(p,label){font-size:12px;line-height:21px}.app-shell .dashboard-insights .di-ai :is(select,button){min-height:32px;padding:4px 10px;font-size:12px;line-height:22px}.app-shell .dashboard-insights .di-caption{font-size:10px;line-height:18px}
 }
+
+
+/* 독립적으로 고정되는 세 영역의 테두리와 시작선을 일치시킨다. */
+@media(min-width:900px){
+ .app-shell{padding:12px;gap:10px}
+ .app-shell .workspace-side{width:50px;flex-basis:50px;border:0;background:none}
+ .app-shell .workspace-side[data-pinned=true]{width:248px;flex-basis:248px}
+ .app-shell .workspace-side .sidebar-surface{inset:0 auto 0 0;width:50px;border-radius:12px;border-color:transparent;padding-inline:4px;box-shadow:none}
+ .app-shell .workspace-side[data-expanded=true] .sidebar-surface{width:248px;padding-inline:9px}
+ .app-shell .workspace-side[data-expanded=true]:not([data-pinned=true]) .sidebar-surface{box-shadow:0 6px 22px #13233e20;border-color:var(--line)}
+ .app-shell .main-shell{min-width:0;gap:0;padding:0;background:var(--panel);border:1px solid var(--line-soft);border-radius:12px;box-shadow:none}
+ .app-shell .main-shell>.topbar{flex:none;height:56px;min-height:56px;border:0;border-bottom:1px solid var(--line-soft);border-radius:0;box-shadow:none}
+ .app-shell .main-shell>:is(.pf-page,.page-scroll,.home-page,.history-page,.library-page,.workbench,.flow-activity){border:0;border-radius:0;background:var(--panel);box-shadow:none}
+ .app-shell .conversation-dock[data-layout-mode=docked]:not([data-minimized=true]){border:1px solid var(--line-soft);border-radius:12px;box-shadow:none}
+}
+.app-shell .workspace-side .side-brand{gap:9px}
+.app-shell .workspace-side .side-group .side-row,.app-shell .workspace-side .side-account-actions .side-row,.app-shell .workspace-side nav>.side-row{
+ height:auto;min-height:33px;font-size:13px;line-height:19px;padding-block:4px}
+.app-shell .workspace-side .side-project{height:auto;min-height:52px;font-size:13px;padding-block:6px;border-radius:8px;gap:9px}
+.app-shell .workspace-side[data-expanded=true] .side-project-head button{order:0}
+.app-shell .workspace-side .side-project-label {display:grid;gap:2px}
+.side-project-label strong {overflow:hidden;text-overflow:ellipsis}
+.side-project-label small {font-size:11px;line-height:17px;color:var(--muted);font-weight:400}
+.app-shell .workspace-side .side-project[aria-current=page]{background:var(--accent-fill);border-color:var(--accent-fill);color:white}
+.app-shell .workspace-side .side-project[aria-current=page] small{color:white}
+.workspace-side .side-project[aria-current=page]::before{display:none}
+.side-search{margin:2px 0 8px}
+.app-shell .side-search .command-trigger{display:flex;align-items:center;justify-content:flex-start;width:100%;height:33px;min-width:0;gap:8px;border:1px solid var(--line-soft);border-radius:8px;padding-inline:8px;background:var(--panel);color:var(--muted);font-size:12px}
+.side-search .command-trigger svg{flex:none}
+.side-search .command-trigger kbd{margin-left:auto;font:inherit}
+.workspace-side[data-expanded=false] .side-search .command-trigger{justify-content:center;border-color:transparent;background:none}
+.workspace-side[data-expanded=false] .side-search .command-trigger :is(span,kbd){display:none}
+.app-shell .workspace-side .side-group h2,.app-shell .workspace-side .side-project-head h2{font-size:11px;line-height:17px;min-height:17px}
+.app-shell .workspace-side .side-account-actions{display:flex;align-items:center;gap:4px;padding-block:5px}
+.app-shell .workspace-side[data-expanded=true] .side-account-actions .side-row{flex:1;justify-content:center!important;padding-inline:0}
+.app-shell .workspace-side[data-expanded=true] .side-account-actions .side-row>span{position:absolute;clip-path:inset(100%);width:1px;height:1px}
+.app-shell .workspace-side[data-expanded=false] .side-account-actions>.side-row:not(.settings-button){display:none}
+.app-shell .workspace-side .side-usage-details :is(strong,small,span),.app-shell .workspace-side .side-credit-row,.app-shell .workspace-side .side-usage-refresh{font-size:11px}
+@media(max-height:780px){.app-shell .workspace-side nav{overflow-y:auto}.workspace-side .side-projects{min-height:112px;flex:1 0 112px}}
+.app-shell .pf-page .pf-heading h1{font-size:25px;line-height:33px}
+.app-shell .pf-page .pf-content{font-size:14px;line-height:22px}
+.app-shell .pf-page .pf-overview-body .pf-row{min-height:62px}
+.app-shell .pf-content :is(.pf-panel,.pf-card,.pf-stats>button,.di-card,.di-metrics article){background:var(--panel);box-shadow:none}
+.app-shell .pf-content .pf-card:after{display:none}
+.app-shell .conversation-dock .messages{background:var(--panel)}
+.app-shell .pf-tabs{border:0;border-bottom:1px solid var(--line-soft);border-radius:0;box-shadow:none}
+body :is(kbd,.dock-heading time,.message-meta time,.model-select,.turn-progress-trigger,.shortcut-key){font-family:var(--font-ui)}
+
+.overview-section{margin:24px 0}
+.overview-section>header,.overview-goal>div,.overview-activity,.overview-task{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.app-shell .overview-section h2{font-size:15px;line-height:23px}
+.overview-section>header{margin-bottom:9px}
+.overview-section>header button,.overview-section small,.overview-section time,.overview-muted{font-size:12px;line-height:18px;color:var(--muted)}
+.overview-section>header button,.overview-goal>small{display:flex;gap:5px;align-items:center}
+.overview-goal{border:1px solid var(--line-soft);border-radius:9px;background:var(--card-subtle);padding:13px 16px;margin-bottom:7px}
+.overview-goal strong,.overview-task strong{font-size:14px;line-height:21px}
+.overview-goal progress{appearance:none;display:block;background:var(--line-soft);height:5px;border:0;border-radius:5px;width:100%;margin:10px 0}
+.overview-goal progress::-webkit-progress-bar{background:var(--line-soft);border-radius:5px}
+.overview-goal progress::-webkit-progress-value{border-radius:5px;background:var(--accent)}
+.overview-task{min-height:62px;border-bottom:1px solid var(--line-soft);padding:9px 4px;cursor:pointer}
+.overview-task>span:not(.ui-checkbox-control){display:grid;flex:1}
+.overview-task>small{flex:none}
+.overview-activity{width:100%;padding:8px 2px;border-bottom:1px solid var(--line-soft);text-align:left;background:none}
+.overview-activity>svg{color:var(--accent);flex:none}.overview-activity>span{flex:1}.overview-activity time{white-space:nowrap;font-variant-numeric:tabular-nums}
+.overview-tools>summary{padding:12px 0;border-block:1px solid var(--line-soft);font-size:13px;font-weight:700;cursor:pointer}
+.overview-tools[open]>summary{margin-bottom:18px}.overview-muted{padding-block:5px}
+
+@media(min-width:900px){
+ .app-shell .workspace-side[data-expanded=false] .side-brand{padding-left:4px}
+ .app-shell .conversation-dock[data-layout-mode=docked]:not([data-minimized=true]){
+   --dock-motion-width:var(--dock-user-width,var(--dock-default-width));
+   animation:none;opacity:1;margin-inline-end:0;
+   transition:margin-inline-end 280ms var(--ease-enter),opacity 280ms var(--ease-enter);
+ }
+ .app-shell .conversation-dock[data-layout-mode=docked][data-expanded=true]:not([data-minimized=true]){--dock-motion-width:var(--dock-user-width,var(--dock-expanded-width))}
+ .app-shell .conversation-dock[data-layout-mode=docked][data-phase=exit]:not([data-minimized=true]){
+   opacity:0;margin-inline-end:calc(-1 * (var(--dock-motion-width) + 10px));
+   transition-timing-function:var(--ease-exit);
+ }
+ @starting-style{
+  .app-shell .conversation-dock[data-layout-mode=docked][data-phase=enter]:not([data-minimized=true]){
+   opacity:0;margin-inline-end:calc(-1 * (var(--dock-motion-width) + 10px));
+  }
+ }
+}
+.side-usage-details progress{appearance:none}
+.side-usage-details progress::-webkit-progress-bar{background:var(--line);border-radius:4px}
+.side-usage-details progress::-webkit-progress-value{background:var(--accent);border-radius:4px}

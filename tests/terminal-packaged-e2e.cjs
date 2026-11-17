@@ -42,7 +42,7 @@ async function main() {
     assert.match(document.pdf.replace(/\s/g,''),/실제패키지본문읽기/);assert.match(document.pptx,/번들 문서 검증/);
     if(!win)assert.equal(document.native,true);
     const click = (name) => page.getByRole('button', { name, exact: true }).click();
-    await click('프로젝트 폴더 선택'); await click('터미널'); await click('터미널 추가');
+    await click('프로젝트 추가');await click('기존 폴더 연결'); await click('터미널'); await click('터미널 추가');
     const textbox = page.locator('.xterm-helper-textarea');
     async function send(command) {
       await textbox.focus();

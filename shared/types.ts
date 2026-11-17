@@ -69,6 +69,9 @@ export interface Project {
 export interface ChatAttachment {id:string;name:string;type:string;size:number;sha256:string}
 export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;waitingForWriter?:boolean;error?:string;nativeQueueAvailable?:boolean;nativeDelivery?:'submitting'|'queued'|'uncertain';nativeCleared?:boolean}
 export interface Message {
+  workStartedAt?: string;
+  workCompletedAt?: string;
+  progressCommentary?: true;
   workSteps?: WorkStep[];
   reaction?: 'like';
   requestSource?: ChatAttachment;
@@ -82,17 +85,20 @@ export interface Message {
   createdAt: string;
 }
 export interface WorkStep {
+  completedAt?: string;
   id: string;
   label: string;
   state: "running" | "completed" | "failed" | "interrupted";
   createdAt: string;
 }
 export interface Session {
+  defaultProjectMode?: "build";
   desktopThread?: {threadId:string;cwd:string;ownerHash:string};
   codexLink?:CodexTransferLink;
   scope?: ConversationScope;
   restoredDraft?:{text:string;attachments:ChatAttachment[]};
   personalAssistant?: true;
+  generalAssistant?: true;
   id: string;
   projectId: string;
   title: string;
@@ -121,11 +127,13 @@ export interface Settings {
   model?: string;
   effort: Effort;
   theme: "dark" | "light";
+  accentColor?: "blue" | "green" | "purple";
 }
 export interface ConnectionStatus {
   available: boolean;
   authenticated: boolean;
   accountLabel?: string;
+  dotsEligible?: boolean;
   cliPath?: string;
   error?: string;
 }
@@ -195,10 +203,12 @@ export interface FlowriumAPI
     ActivityAPI,
     TerminalAPI {
   reactMessage(input:{sessionId:string;messageId:string;liked:boolean}):Promise<Session>;
+  openGeneralAssistant():Promise<Session>;
   createHubConversation(input:{scope:ConversationScope;title?:string}):Promise<Session>;
   listHubConversations():Promise<{projects:Project[];sessions:Session[]}>;
   addChatAttachments(projectId:string,files:{name:string;type:string;bytes:Uint8Array}[]):Promise<ChatAttachment[]>;
   readRequestSource(sessionId:string,messageId:string,offset:number|"full"):Promise<{text:string;next:number|null}>;
+  readChatCitation(session:string,message:string,index:number,action:'preview'|'download'|'reveal'):Promise<{name:string;dataUrl?:string}>;
   readChatAttachment(projectId:string,id:string):Promise<{attachment:ChatAttachment;dataUrl?:string}>;
   listQueuedMessages(sessionId:string):Promise<QueuedMessage[]>;
   cancelQueuedMessage(sessionId:string,id:string):Promise<void>;

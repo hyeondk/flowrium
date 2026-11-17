@@ -18,7 +18,7 @@ const allowed = new Set([
   "readWorkbench",
   "readWorkArtifact",
   "saveTeam", "directTeam", "changeTeamRun", "workflowAction", "mobileWorkflowState",
-  "mobileSettings", "saveMobileSettings", "setMobileChatModel", "readAccountUsage", "readChatAttachment", "readRequestSource",
+  "mobileSettings", "saveMobileSettings", "setMobileChatModel", "readAccountUsage", "readChatAttachment", "readChatCitation", "readRequestSource",
   "listQueuedMessages", "cancelQueuedMessage", "resumeQueuedMessages", "sendQueuedToCodex", "clearUnconfirmedCodexQueue", "webPushState", "webPushAction",
   "checkMobileUpdate", "applyMobileUpdate",
 ]);
@@ -33,6 +33,9 @@ function mobileSummary(s, active, deciding, revision, activity) {
     createdAt,
     updatedAt,
     executionState,
+    defaultProjectMode: s.defaultProjectMode,
+    completedContinuationId:s.completedContinuationId,
+    scope: s.scope,
     canCompleteWaiting: executionState==='waiting' && !s.compacting && !s.queuedMessages?.some(q=>q.status==='queued'||q.status==='sending'),
     revision,
     activity,
@@ -49,6 +52,7 @@ function mobileSummary(s, active, deciding, revision, activity) {
     preferences: s.preferences && {
       model: s.preferences.model,
       effort: s.preferences.effort,
+      sandbox: s.preferences.sandbox,
     },
   };
 }
@@ -84,13 +88,13 @@ function mobileMessages(s, params, revision) {
   const messages = [];
   while (start > 0 && end - start < limit) {
     const m = items[start - 1],
-      visible = m.role === "assistant" || m.role === "user";
+      visible = m.role === "assistant" || m.role === "user" || (progress && m.progressCommentary === true);
     // 휴대폰에는 단계 이름, 상태, 시각만 전달한다. 명령과 도구 출력은 컴퓨터에 남긴다.
-    const toolLabel=progress && m.role==='system' && (
+    const toolLabel=progress && m.role==='system' && (m.progressCommentary===true ? m.text :
       m.text.startsWith('실행 도구 / 명령') ? '명령 실행' :
       m.text.startsWith('파일 변경 기록') ? '파일 변경' :
       m.text.startsWith('도구 실행 기록') ? '도구 실행' : undefined);
-    const workSteps=progress&&visible&&m.workSteps?.map(({id,label,state,createdAt})=>({id,label,state,createdAt}));
+    const workSteps=progress&&visible&&m.workSteps?.map(({id,label,state,createdAt,completedAt})=>({id,label,state,createdAt,...(completedAt && {completedAt})}));
     const text=m.role==='user'?attachmentDisplayText(m.text):m.text;
     const size = (visible ? Buffer.byteLength(text) : 0)+(workSteps?Buffer.byteLength(JSON.stringify(workSteps)):0);
     if (messages.length && bytes + size > 512 * 1024) break;
@@ -106,6 +110,9 @@ function mobileMessages(s, params, revision) {
         attachments: visible ? m.attachments : undefined,
         ...(visible && m.sourceOnly && {sourceOnly:true}),
         ...(progress && m.turnId && {turnId:m.turnId}),
+        ...(progress && m.workStartedAt && {workStartedAt:m.workStartedAt}),
+        ...(progress && m.workCompletedAt && {workCompletedAt:m.workCompletedAt}),
+        ...(progress && m.progressCommentary && {progressCommentary:true}),
         ...(workSteps && {workSteps}),
       });
       bytes += size;
@@ -169,6 +176,8 @@ function registerRemote(
     readDecisionLinks = () => [],
     tunnelFactory = spawn,
     accountRevision = () => 0,
+    accountOwner = () => "",
+    pairing = null,
     onContextChanged = () => {},
     now = Date.now,
   },
@@ -272,6 +281,7 @@ function registerRemote(
       if (input.action === "preferences" && Object.keys(input.value || {}).some(k => !["enabled","aiReports","intervalMinutes","startHour","endHour","weekdays","timezone","projectId"].includes(k)))
         throw Error("연결 서비스 설정은 데스크톱에서 바꿔 주세요.");
     }
+    if (method === 'readChatCitation' && (args.length!==4 || !['preview','download'].includes(args[3]))) throw Error('휴대폰에서 열 수 없는 파일 작업입니다.');
     if (method === "changeTeamRun" && !["automation","dispatch","pause","resume","stop","reopen","report","raiseLimit","finishStopped","answer","instruct","ask","explain","reassign","message","stopNode","completeNode","retry"].includes(args[2]?.action))
       throw Error("지원하지 않는 팀 작업입니다.");
     if (method === "directTeam") {
@@ -284,6 +294,7 @@ function registerRemote(
     const result = await handler(...args);
     return method === "workflowAction" && result?.pending ? workflowView(result) : result;
   }
+  let pairedLink, startFlight, reconnectTimer, shuttingDown = false;
   let sequence = 0;
   let connectionOwner = "";
   let server,
@@ -294,14 +305,15 @@ function registerRemote(
     running = new Set(),
     approvals = new Map();
   const state = () => ({
-    enabled: !!server,
-    localUrl: server?.listening
+    enabled: !!server && (!pairing || !!pairedLink),
+    localUrl: server?.listening && (!pairing || !!pairedLink)
       ? "http://127.0.0.1:" + server.address().port + "/#key=" + key
       : undefined,
     url: publicOrigin ? publicOrigin + "/#key=" + key : undefined,
     message: status || undefined,
   });
   function update(event) {
+    if (event.type === "status" && event.status === "connected") scheduleRestore();
     const run=controller.runs.get(event.sessionId);
     if(server && run && (event.type==='delta'||event.type==='session'||event.workProgress))runRevisions.set(run,revisionOf(event.sessionId)+1);
     if(server && run && event.type==='status' && typeof event.text==='string')runLabels.set(run,event.text.slice(0,180));
@@ -434,6 +446,9 @@ function registerRemote(
               })),
               sessions: snapshot.sessions.map(s=>mobileSummary(display(s),Boolean(controller.runs.get(s.id)&&!controller.runs.get(s.id).claimingWriter||externalPreview(s)),deciding.has(s.id),revisionOf(s.id),runLabels.get(controller.runs.get(s.id)))),
               settings: {
+                theme: snapshot.settings.theme === 'dark' ? 'dark' : 'light',
+                accentColor: ['blue','green','purple'].includes(snapshot.settings.accentColor) ? snapshot.settings.accentColor : 'blue',
+                sandbox: snapshot.settings.chatDefaults?.sandbox,
                 model: snapshot.settings.chatDefaults?.model || snapshot.settings.model,
                 effort: snapshot.settings.chatDefaults?.effort || snapshot.settings.effort,
               },
@@ -582,7 +597,11 @@ function registerRemote(
       "/composer-markdown.js": "composer-markdown.js",
       "/composer-markdown.css": "composer-markdown.css",
       "/chat-reader.js": "chat-reader.js",
+      "/work-time.js": "work-time.js",
+      "/project-mode.js": "project-mode.js",
+      "/answer-followup.js": "answer-followup.js",
       "/chat-input.js": "chat-input.js",
+      "/file-citations.js": "file-citations.js",
       "/attachment-text.js": "attachment-text.js",
       "/markdown-engine.js": "markdown-engine.js",
       "/navigation.js": "navigation.js",
@@ -639,7 +658,9 @@ function registerRemote(
       res.writeHead(503).end("모바일 화면을 준비하고 있습니다.");
     }
   }
-  async function stop() {
+  async function stop(revoke = true) {
+    clearTimeout(reconnectTimer);
+    pairedLink?.close(); pairedLink = undefined;
     sequence++;
     const child = tunnel;
     const active = server;
@@ -671,11 +692,28 @@ function registerRemote(
         child.kill("SIGKILL");
     }
     await closed;
+    if(revoke && pairing) await pairing.revoke();
     return state();
   }
   register("remoteAccess", () => state());
-  register("stopRemoteAccess", stop);
-  register("startRemoteAccess", async () => {
+  register("stopRemoteAccess", () => stop(true));
+  function scheduleRestore(delay=0) {
+    if (!pairing || shuttingDown || server || startFlight || !accountOwner() || !controller.status.authenticated || isLocked()) return;
+    clearTimeout(reconnectTimer);
+    reconnectTimer=setTimeout(()=>begin(false).catch(()=>scheduleRestore(30000)),delay);
+    reconnectTimer.unref?.();
+  }
+  function begin(explicit) {
+    if (startFlight) return explicit ? startFlight.then(value=>value.enabled?value:begin(true)) : startFlight;
+    startFlight=start(explicit).finally(()=>{startFlight=undefined;});
+    return startFlight;
+  }
+  register("startRemoteAccess", () => begin(true));
+  async function start(explicit) {
+    const expectedOwner=accountOwner(), previousSequence=sequence;
+    if(!explicit) {
+      if (!expectedOwner || isLocked() || !controller.status.authenticated || (await pairing?.read())?.owner!==expectedOwner || previousSequence!==sequence || shuttingDown) return state();
+    }
     if (server && connectionOwner !== String(accountRevision())) await stop();
     if (server) return state();
     if (!controller.status.authenticated)
@@ -702,6 +740,15 @@ function registerRemote(
         throw Error("휴대폰 연결 준비가 취소됐습니다.");
       }
       for (const run of controller.runs.values()) running.add(run.sessionId);
+      if (pairing) {
+        const onDisconnect=()=>{if(sequence===attempt)void stop(false).then(()=>scheduleRestore(2000));};
+        const link=await pairing.open(expectedOwner,ownServer,onDisconnect,explicit);
+        if(!link || attempt!==sequence || expectedOwner!==accountOwner() || shuttingDown){link?.close();throw Error("휴대폰 연결이 취소됐습니다.");}
+        pairedLink=link; publicOrigin=link.origin;key=link.key;status="";
+        checkScope(scopeId(),connectionOwner);
+        ownServer.unref();onContextChanged();
+        return state();
+      }
       let command = "cloudflared",
         env = { ...process.env };
       try {
@@ -781,14 +828,16 @@ function registerRemote(
       ownServer.unref();
       return state();
     } catch (e) {
-      if (attempt === sequence) await stop();
+      if (attempt === sequence) await stop(false);
       else ownServer.close();
       throw e;
     }
-  });
+  }
   controller.on("event", update);
+  scheduleRestore();
   return {
-    stopAccess: stop,
+    stopAccess: () => stop(true),
+    restore: scheduleRestore,
     state,
     getLink: state,
     pushContext: () => ({enabled:!!server?.listening && !!publicOrigin && !isLocked() && connectionOwner === String(accountRevision()),origin:publicOrigin,scopeId:scopeId()}),
@@ -803,8 +852,9 @@ function registerRemote(
       return {url:publicOrigin+"/#handoff="+nonce,expiresAt,scopeId:scope};
     },
     shutdown: async () => {
+      shuttingDown=true;
       controller.off("event", update);
-      await stop();
+      await stop(false);
     },
   };
 }

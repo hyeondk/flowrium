@@ -7,10 +7,10 @@ async function addReadingFixture(store,projectId){
   const initial=randomUUID(),second=randomUUID();
   const message=(role,text,turnId)=>({id:randomUUID(),role,text,turnId,createdAt:new Date().toISOString()});
   return store.createSession(projectId,{title:'휴대폰 읽기 확인',messages:[
-    message('user',photoHeader+'첫 요청',initial),message('system','실행 도구 / 명령\n시험용 출력 원문',initial),
+    {...message('user',photoHeader+'첫 요청',initial),workStartedAt:'2026-10-05T01:00:00Z',workCompletedAt:'2026-10-05T01:03:26Z'},message('system','실행 도구 / 명령\n시험용 출력 원문',initial),
     message('assistant','**진행**',initial),message('system','파일 변경 기록\n시험용 출력 원문',initial),
     message('user','다음 요청',second),message('system','도구 실행 기록\n시험용 출력 원문',second),
-    message('assistant','마지막 응답',second),
+    message('assistant','마지막 응답\n\n**다음 단계**\n- 인터뷰 질문을 한 쪽으로 정리',second),
   ]});
 }
 
@@ -22,16 +22,35 @@ async function checkReading(page,chat,origin,key,folder) {
   assert.equal(old.messages.filter(m=>m.role==='system').length,0);
   assert(!JSON.stringify(expanded).includes('시험용 출력 원문'));
   await page.getByRole('button',{name:/휴대폰 읽기 확인/}).click();
-  const first=page.getByRole('button',{name:'작업 과정 (2건)',exact:true});
+  const first=page.getByRole('button',{name:'3분 26초 동안 작업',exact:true}).first();
   await first.waitFor();assert.equal(await page.locator('[data-work-group]').count(),2);
   await first.click();
-  const popup=page.getByRole('dialog',{name:'작업 과정'});
+  const popup=page.getByRole('list',{name:'작업 과정'});
   assert.deepEqual(await popup.locator('li strong').allTextContents(),['명령 실행','파일 변경']);
-  await popup.getByRole('button',{name:'닫기'}).click();
+  await first.click();assert.equal(await first.getAttribute('aria-expanded'),'false');
   const user=page.locator('article[data-role=user]').first(),assistant=page.locator('article[data-role=assistant]').first();
   assert.equal(await user.locator('.mobile-markdown').textContent().then(s=>s.trim()),'첫 요청');
   assert((await user.boundingBox()).x>(await assistant.boundingBox()).x+20);
   await assistant.locator('strong').getByText('진행').waitFor();
+  const field=page.getByRole('textbox',{name:'요청',exact:true});
+  const candidate=page.locator('button.mobile-followup');
+  const started=Date.now();await candidate.waitFor();
+  const prompt=await candidate.locator('span').innerText();assert.equal(prompt,'인터뷰 질문을 한 쪽으로 정리해줘');
+  assert(Date.now()-started<10000);assert.equal(await page.getByLabel('작업 모드',{exact:true}).count(),0);
+  const actionTypes=[];
+  const watch=request=>{if(request.url().endsWith('/api/mobile/call'))actionTypes.push(request.postDataJSON()?.method);};
+  page.on('request',watch);
+  try {
+    await candidate.click();assert.equal(await field.inputValue(),prompt);
+    await field.fill('');await field.press('Tab');assert.equal(await field.inputValue(),prompt);
+    await field.fill('내가 고친 요청');assert.equal(await candidate.isVisible(),false);
+    await field.fill('');assert(!actionTypes.includes('send')&&!actionTypes.includes('workflowAction'));
+  }finally{page.off('request',watch);}
+  if(process.env.FLOWRIUM_MOBILE_CHAT_SCREENSHOT){
+    await page.setViewportSize({width:390,height:844});await page.evaluate(()=>{document.activeElement.blur();window.scrollTo(0,0);});
+    await page.evaluate(()=>document.fonts.ready);
+    await page.screenshot({path:process.env.FLOWRIUM_MOBILE_CHAT_SCREENSHOT,animations:'disabled'});
+  }
   const raw='# 미리보기\n\n**강조**와 `코드`\n\n- [x] 확인';
   const input=page.getByRole('textbox',{name:'요청',exact:true});
   await require('./inline-draft-checks.cjs').checkInlineDraft(page,input,raw);
@@ -61,7 +80,7 @@ async function checkReading(page,chat,origin,key,folder) {
   await page.route(url+'?**',route=>route.fulfill({json:legacy}));
   try{
     await page.getByRole('button',{name:/휴대폰 읽기 확인/}).click();
-    await page.getByText('마지막 응답',{exact:true}).waitFor();
+    await page.locator('article .mobile-markdown').getByText('마지막 응답',{exact:true}).waitFor();
     assert.equal(await page.locator('article[data-role=user] .mobile-markdown').first().textContent().then(s=>s.trim()),'첫 요청');
     assert.equal(await page.locator('[data-work-group]').count(),0);
     await page.getByRole('button',{name:'프로젝트로',exact:true}).click();

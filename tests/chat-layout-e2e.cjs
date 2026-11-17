@@ -18,7 +18,7 @@ async function verifyComposerResize(page, historyTitle, recommendationTitle) {
   await input.focus();
   await page.waitForFunction(()=>document.querySelector('.composer textarea')?.dataset.inlineSuggestion==='true');
   const preview=await input.getAttribute('placeholder');
-  assert(preview.length>240,'여러 줄 추천 원문');
+  assert(preview.length>65 && preview.length<=190,'여러 줄에 걸친 직전 답변의 후속 제안');
   const lineHeight=await input.evaluate(el=>parseFloat(getComputedStyle(el).lineHeight));
   assert((await height(input))>=lineHeight*3,'좁은 창에서 추천 세 줄 이상 표시');
   const waitingActions=page.locator('.chat-continuation-actions');
@@ -34,13 +34,7 @@ async function verifyComposerResize(page, historyTitle, recommendationTitle) {
   const previewHeight=await height(input);
   const before=await height(history);
   assert(before>=260,'추천 표시 중에도 본문 공간 보존');
-  await page.getByRole('button',{name:'추천 전문 보기'}).click();
-  const dialog=page.getByRole('dialog',{name:'다음 작업 추천 전문'});
-  assert.equal(await dialog.locator('p').innerText(),preview);
-  assert.equal(await input.inputValue(),'');
-  assert(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth+1));
-  await dialog.getByRole('button',{name:'입력창에 추가'}).click();
-  await dialog.waitFor({state:'hidden'});
+  await page.locator('.followup-accept[data-source="conversation"]').click();
   assert.equal(await input.inputValue(),preview);
   await input.fill('높이 조절 후 남아 있어야 하는 초안');
   await page.setViewportSize({width:1440,height:900});
@@ -94,7 +88,7 @@ async function run(){
   store.session(session.id).codexLink={version:1,mode:'linked',sourceThreadId:'synthetic-layout-thread',ownerHash:'a'.repeat(64),deviceHash:'b'.repeat(64),importedAt:new Date().toISOString(),sourceUpdatedAt:new Date().toISOString(),snapshotHash:'c'.repeat(64),archivePath:'.flowrium/codex-source/'+('a'.repeat(64))+'/'+('b'.repeat(64))+'.json',activeAtImport:true,sourceMessageIds:[]};await store.save();
   const recommendation=await store.createSession(project.id,{title:'긴 추천 확인',messages:[
    {id:randomUUID(),role:'user',text:'입력창 높이 검증',createdAt:new Date().toISOString()},
-   {id:randomUUID(),role:'assistant',text:'변경한 화면을 확인했습니다. 다음 검증도 진행할까요?',createdAt:new Date().toISOString()}]});
+   {id:randomUUID(),role:'assistant',text:'변경한 화면을 확인했습니다.\n다음 단계: 각 창의 폭에 맞춰 프로젝트 제목의 줄바꿈, 이전 메시지의 위치와 입력 영역의 높이를 다시 확인하고 최근 업데이트 전후의 화면 배치를 비교 검증해 주세요.',createdAt:new Date().toISOString()}]});
   const typing=await store.createSession(project.id,{title:'입력과 전송 확인'});
   await store.saveSettings({codexPath:path.join(__dirname,'continuation-fake-codex.cjs')});const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(20000);page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:900});await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();await page.evaluate(()=>document.fonts.ready);await openConversation(page,session.title,{expanded:false});await page.waitForTimeout(400);
@@ -102,7 +96,7 @@ async function run(){
   for(const [width,height]of [[1440,900],[1280,800],[1024,768],[800,700],[390,844],[320,568]]){
    await page.setViewportSize({width,height});await page.waitForTimeout(400);const m=await measure();measurements.push(m);assert.equal(m.focus,'false','대화가 본 화면을 숨기지 않음');if(width>=900){assert(m.dock.width>=350&&m.dock.width<=width*.46,'우측 대화 비율 '+width);assert(await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).isVisible(),'왼쪽 대시보드 유지 '+width);}else if(width<=760)assert(m.dock.width>=width-2,'작은 화면의 대화 폭 '+width);assert(m.messages.height>=height*.38,'본문 공간 '+width);assert(m.composer.height<=Math.max(185,height*.28),'입력 영역의 기본 높이 '+width);assert(m.messages.scroll<=m.messages.client+1,'본문 가로 넘침 없음 '+width);assert(m.dock.scroll<=m.dock.client+1&&m.documentOverflow<=1,'대화와 문서 가로 넘침 없음 '+width);assert(m.textarea.height>=42&&m.textarea.height<=90,'기본 입력 높이 '+width);
    assert.equal(await page.locator('.messages [data-message-id]').count(),100);assert(await page.locator('.messages').evaluate(e=>e.scrollHeight-e.clientHeight-e.scrollTop<3),'넓이 변경 후 최신 위치 유지');
-   const recommend=await page.getByRole('button',{name:'다음 작업 추천받기',exact:true}).boundingBox();assert(recommend&&recommend.height>=28&&recommend.y>=m.composer.y&&recommend.y+recommend.height<=m.composer.bottom+1,'추천 버튼 크기와 입력 영역 안의 노출 '+width);
+   assert.equal(await page.locator('.followup-accept').count(),0,'다음 단계가 없는 대화는 추천 공간을 차지하지 않음');
   }
   await page.setViewportSize({width:1440,height:900});
   await page.waitForTimeout(250);

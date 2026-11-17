@@ -1,18 +1,26 @@
 import {useMemo,useState,type ReactNode} from 'react';
 import {CircleAlert,ChevronDown,Copy,FileText,TerminalSquare} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import type {Processor} from 'unified';
+import type {Extension} from 'micromark-util-types';
 import remarkGfm from 'remark-gfm';
 import {messageContent,safeLogPreview} from './message-content';
 import './message-content.css';
+import ChatCitation from './ChatCitation';
+import {presentCitations} from '../electron/mobile/file-citations.js';
 
-type Props={text:string;role:'user'|'assistant'|'system';streaming?:boolean;hasLaterRequest?:boolean;retryAction?:ReactNode};
+type Props={sessionId?:string;messageId?:string;text:string;role:'user'|'assistant'|'system';streaming?:boolean;hasLaterRequest?:boolean;retryAction?:ReactNode};
 function failureTitle(text:string,previous:boolean){
  if(text.startsWith('답변은 보존했지만'))return previous?'이전 요청의 산출물 저장 실패':'산출물 저장 실패';
  return previous?'이전 요청 실패':'요청 실패';
 }
+function preserveTildes(this:Processor) {
+ const data=this.data() as {micromarkExtensions?: Extension[]};
+ (data.micromarkExtensions ||= []).push({disable:{null:['strikethrough']}});
+}
 function Markdown({text}:{text:string}){
  return <div className="markdown message-prose">
-  <ReactMarkdown remarkPlugins={[remarkGfm]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={{
+  <ReactMarkdown remarkPlugins={[remarkGfm, preserveTildes]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={{
     a:({node:_,href,children,...props})=> <a {...props} href={href} target={href?.startsWith('#')?undefined:'_blank'} rel="noopener noreferrer">{children}</a>,
     table:({node:_,...props})=><div className="message-table-wrap" role="region" aria-label="답변 표" tabIndex={0}><table {...props}/></div>,
   }}>{text}</ReactMarkdown>
@@ -47,8 +55,9 @@ function LogDetails({raw,title,failed=false,pending=false,requestFailure,childre
   </div>}
  </details>;
 }
-export default function MessageContent({text,role,streaming=false,hasLaterRequest=false,retryAction}:Props){
- const blocks=useMemo(()=>messageContent(text,role,streaming),[text,role,streaming]);
+export default function MessageContent({text,role,sessionId,messageId,streaming=false,hasLaterRequest=false,retryAction}:Props){
+ const citations=useMemo(()=>presentCitations(text,role,streaming),[text,role,streaming]);
+ const blocks=useMemo(()=>messageContent(citations.text,role,streaming),[citations.text,role,streaming]);
  return <div className="message-content">
   {blocks.map((block,index)=>block.kind==='markdown'?<Markdown key={index} text={block.text}/>:
    block.kind==='literal'?<pre key={index} className="message-literal"><code>{block.raw}</code></pre>:
@@ -59,5 +68,6 @@ export default function MessageContent({text,role,streaming=false,hasLaterReques
    </section>:role==='system'&&block.failed
     ?<LogDetails key={index} raw={block.raw} title={failureTitle(block.raw,hasLaterRequest)} failed requestFailure={hasLaterRequest?'previous':'failed'}>{retryAction}</LogDetails>
     :<LogDetails key={index} raw={block.raw} title={role==='system'?'작업 상태':'도구 실행 결과'} failed={block.failed} pending={block.pending}/>) }
+  {sessionId&&messageId&&citations.groups.map(group=><ChatCitation key={group.key} group={group} sessionId={sessionId} messageId={messageId}/>)}
  </div>;
 }

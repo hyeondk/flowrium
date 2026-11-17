@@ -109,6 +109,8 @@ jobs:
           node scripts/build-win-updater.cjs
           node tests/update-native-e2e.cjs --windows-helper-smoke
       - run: npm run build
+      - name: 프로젝트 대화의 실제 읽기 및 쓰기 권한 검사
+        run: node tests/project-edit-native-e2e.cjs
       - name: 가상 터미널 검증
         if: runner.os == 'Windows'
         timeout-minutes: 3

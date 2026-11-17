@@ -3,10 +3,10 @@
   --dock-expanded-width: clamp(416px, 40vw, 680px);
 }
 
-.app-shell .conversation-dock[data-chat-active=true]:not([data-minimized=true]) > .dock-heading {
-  height: 40px;
-  min-height: 40px;
-  padding: 4px 12px;
+.app-shell .conversation-dock:not([data-minimized=true]) > .dock-heading {
+  height: 36px;
+  min-height: 36px;
+  padding: 2px 12px;
 }
 .conversation-dock[data-chat-active=true] > .dock-scope-tabs,
 .conversation-dock[data-chat-active=true] > .dock-status-tabs {
@@ -108,7 +108,7 @@ html[data-composer-resizing], html[data-composer-resizing] * {cursor: row-resize
 .conversation-dock[data-chat-active=true] .message .message-meta strong {font-size:11px}
 .conversation-dock[data-chat-active=true] .message .message-prose,
 .conversation-dock[data-chat-active=true] .message .message-prose p {
-  font-size:13px; line-height:1.48; overflow-wrap:break-word; word-break:keep-all;
+  font-size:15px; line-height:20px; overflow-wrap:break-word; word-break:keep-all;
 }
 .conversation-dock .message .message-prose p {margin:0 0 6px}
 .conversation-dock .message .message-prose li {margin:0 0 2px}
@@ -123,13 +123,19 @@ html[data-composer-resizing], html[data-composer-resizing] * {cursor: row-resize
 .turn-progress {width:fit-content;max-width:100%;margin:2px 0 8px 27px}
 .turn-progress-trigger {display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid var(--line-soft);border-radius:20px;color:var(--muted);background:var(--panel);min-height:27px;font-size:11px;cursor:pointer}
 .turn-progress-trigger small,.turn-progress-live {font-size:10px;color:var(--accent)}
-.turn-progress-dialog .motion-surface {width:min(480px,100%);padding:16px 18px;overflow:auto}
-.turn-progress-dialog header,.turn-progress-line {display:flex;align-items:center;gap:8px}
-.turn-progress-dialog header {justify-content:space-between}
-.turn-progress-dialog h2 {margin:0;font-size:16px}
-.turn-progress-dialog ol {margin:12px 0 0;padding:0;list-style:none}
-.turn-progress-dialog li {border-top:1px solid var(--line-soft);padding-block:8px}
-.turn-progress-line strong {font-size:13px}
-.turn-progress-line time {margin-left:auto;white-space:nowrap;font-size:10px;color:var(--muted)}
-.turn-progress-line [data-step-state] {font-size:10px;color:var(--accent)}
-.turn-progress-dialog .message-detail {margin:5px 0 0}
+.turn-progress:has(.turn-progress-list){width:auto}
+.turn-progress-list{margin:6px 0 0;padding:0 12px;list-style:none;border-inline-start:2px solid var(--line-soft)}
+.turn-progress-list li{padding:6px 0}
+.turn-progress-line{display:flex;align-items:center;gap:7px}
+.turn-progress-line strong{font-size:13px}
+.turn-progress-line time{margin-left:auto;white-space:nowrap;font-size:12px;color:var(--muted)}
+.turn-progress-line [data-step-state]{font-size:12px;color:var(--accent)}
+.turn-progress-list .message-detail{margin:5px 0 0}
+.turn-progress-trigger[aria-expanded=true] svg:last-child{transform:rotate(180deg)}
+
+.conversation-dock .dock-heading .dock-eyebrow{display:none}
+.conversation-dock .dock-heading .dock-icon{width:30px;height:30px;min-height:30px}
+.conversation-dock .messages{container-type:inline-size}
+.conversation-dock .message-history-items,.conversation-dock .messages>.message.assistant {zoom:var(--chat-reading-scale,.9)}
+.conversation-dock .message-history-items :is(.message-prose img,.citation-image){max-width:min(100%,calc(92cqw - 54px))}
+@media(max-width:760px){.app-shell .conversation-dock:not([data-minimized=true])>.dock-heading{height:40px;min-height:40px}}

@@ -120,7 +120,7 @@ async function run() {
         stable.push(await measure());
       }
       assert.ok(stable.every(s => Math.abs(s.nav.scrollTop - stable[0].nav.scrollTop) < 1 && Math.abs(s.list.scrollTop - stable[0].list.scrollTop) < 1), `${width}×${height} 스크롤 정지 뒤 위치 유지`);
-      assert.ok(stable[2].rows.at(-1).bottom <= stable[2].nav.bottom + 1 && stable[2].rows.at(-1).top >= stable[2].nav.top - 1, `${width}×${height} 마지막 로그아웃 메뉴 접근`);
+      assert.ok(stable[2].rows.at(-1).bottom <= stable[2].nav.bottom + 1 && stable[2].rows.at(-1).top >= stable[2].nav.top - 1, `${width}×${height} 마지막 도구 메뉴 접근`);
       assert.ok(stable[2].list.scrollTop > 0, `${width}×${height} 긴 프로젝트 목록 내부 스크롤`);
       measurements.push({ initial: m, scrollStable: stable.map(s => ({ nav: s.nav.scrollTop, list: s.list.scrollTop })), lastRow: stable[2].rows.at(-1) });
       await page.mouse.move(width - 60, 90);
