@@ -58,7 +58,7 @@ async function checkInlineDraft(page,input,draft) {
     assert.equal(await input.inputValue(),'**한글** 각');
     await ink.waitFor();
   }finally{await ime.detach();}
-  const bulk='# 긴 문서\n'+('긴 본문 '.repeat(40000))+'\n**끝**';
+  const bulk='# 긴 문서\n'+('긴 본문 '.repeat(100)+'\n').repeat(400)+'\n**끝**';
   // Programmatic assignment, like a native paste, independently measures the
   // synchronous input handler without timing Playwright IPC or the OS clipboard.
   const elapsed=await input.evaluate((el,value)=>{
@@ -73,6 +73,17 @@ async function checkInlineDraft(page,input,draft) {
   await ink.locator('.md-strong').filter({hasText:'끝'}).waitFor({timeout:12000});
   assert.equal(await ink.textContent(),bulk);
   console.log('대량 원문 입력',bulk.length,'자 / 입력 이벤트',Math.round(elapsed),'밀리초 / 실제 한글 조합 완료');
+  const shortLines='합성 줄\n'.repeat(8500);
+  const hiddenLine=shortLines+'가'.repeat(60_000)+'🚦\n'+shortLines.repeat(2);
+  await input.evaluate((el,source)=>{
+    const transfer=new DataTransfer(); transfer.setData('text/plain',source);
+    el.focus();el.select();
+    el.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:transfer}));
+  },hiddenLine);
+  assert.equal(await input.getAttribute('data-draft-windowed'),'true','짧은 문단들 사이에 있는 긴 한 줄도 구간 편집');
+  assert.equal((await editorDigest(input)).hash,require('node:crypto').createHash('sha256').update(hiddenLine).digest('hex'));
+  await input.press(process.platform==='darwin'?'Meta+a':'Control+a');
+  await input.press('Backspace');
   await input.fill(draft);
 }
 async function checkLargeDraft(page,input,verifyFailedSend,send,folder,{verifyLargeFailure=false}={}) {

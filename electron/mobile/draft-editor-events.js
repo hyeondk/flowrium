@@ -1,4 +1,4 @@
-import {draftWindow,draftWindowSize,largeDraftThreshold} from './large-draft-editor.js';
+import {draftWindow,draftWindowSize,largeDraftThreshold,shouldWindowDraft} from './large-draft-editor.js';
 
 // Keep the original draft intact. Browsers only need to shape the visible part.
 export function attachDraftEditor(input,{read,change,render}) {
@@ -33,9 +33,10 @@ export function attachDraftEditor(input,{read,change,render}) {
     apply(source.slice(0,start)+text+source.slice(end),start+text.length,remember);
   }
   listen('input',()=>{
-    if(view.count===1 && input.value.length<=largeDraftThreshold) {
+    const nextView=view.count===1?draftWindow(input.value,0):undefined;
+    if(nextView?.count===1) {
       // Leave normal typing, selection and undo entirely with the native editor.
-      source=input.value;view=draftWindow(source,0);input.dataset.draftLength=String(source.length);
+      source=input.value;view=nextView;input.dataset.draftLength=String(source.length);
       edit=undefined;change(source);return;
     }
     const selecting=selectedAll;
@@ -50,7 +51,8 @@ export function attachDraftEditor(input,{read,change,render}) {
     if(!raw)return;
     const start=selectedAll?0:view.start+input.selectionStart;
     const end=selectedAll?source.length:view.start+input.selectionEnd;
-    if(view.count===1 && source.length-end+start+raw.length<=largeDraftThreshold)return;
+    if(view.count===1 && source.length-end+start+raw.length<=largeDraftThreshold
+      && !shouldWindowDraft(source.slice(0,start)+raw+source.slice(end)))return;
     event.preventDefault();
     const text=raw.includes('\r')?raw.replace(/\r\n?/g,'\n'):raw;
     replace(start,end,text,true);
