@@ -16,8 +16,27 @@ function execFixture(file,args,options={}){
 }
 async function closeInstalledApp(application,label='검사 앱 종료'){
  const child=application.process();console.log(label+' / 시작');
- try{await within(application.close(),30000,label);console.log(label+' / 완료');}
- catch(error){console.error(label+' / 실패 / '+error.message);try{await killOwnedProcess(child);}catch(failure){error.cause=failure;}throw error;}
+ const exited=new Promise(resolve=>{
+  if(child.exitCode!==null||child.signalCode!==null)resolve();else child.once('exit',resolve);
+ });
+ const closing=application.close();
+ try{
+  try{await within(closing,15000,label);}
+  catch(first){
+   console.log(label+' / 종료 유예 / '+JSON.stringify({pid:child.pid,exitCode:child.exitCode,signalCode:child.signalCode}));
+   if(child.exitCode===null&&child.signalCode===null){
+    try{await within(application.evaluate(({app})=>{setImmediate(()=>app.quit());}),5000,label+' 정상 종료 재요청');}
+    catch(requestError){console.error(label+' / 정상 종료 재요청 결과 / '+requestError.message);}
+   }
+   await within(exited,15000,label+' 정상 프로세스 종료 확인');
+   if(child.exitCode!==0||child.signalCode)throw first;
+  }
+  console.log(label+' / 완료');
+ }catch(error){
+  console.error(label+' / 실패 / '+error.message);
+  try{await killOwnedProcess(child);}catch(failure){error.cause=failure;}
+  throw error;
+ }
 }
 // 설치한 앱의 검사/다운로드/종료 코드는 그대로 사용한다. 테스트 릴리스의 HTTPS 응답 본문만 로컬 파일에서 공급한다.
 async function bindUpdateTransport(application, fixture) {

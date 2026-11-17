@@ -28,7 +28,22 @@ async function main(){
       const {_electron}=require('playwright'),testEnv={...env,CODEX_HOME:path.join(temp,'codex')};delete testEnv.ELECTRON_RUN_AS_NODE;delete testEnv.ELECTRON_RENDERER_URL;
       checkpoint('이전 앱 실행 시작');
       const oldApp=await _electron.launch({executablePath:path.join(destination,'Flowrium.exe'),args:['--user-data-dir='+data],env:testEnv,timeout:45000});
-      try{checkpoint('이전 앱 실행 완료');assert.equal(await within(oldApp.evaluate(({app})=>app.getVersion()),30000,'이전 버전 조회'),'0.6.0');const oldPage=await within(oldApp.firstWindow({timeout:45000}),45000,'이전 창 열기');oldPage.setDefaultTimeout(30000);oldPage.setDefaultNavigationTimeout(45000);await within(oldPage.setViewportSize({width:1440,height:1000}),30000,'이전 창 크기');checkpoint('이전 초안 생성 시작');await helpers.writeOldDraft(oldPage,legacyFixture);checkpoint('이전 초안 생성 완료');}finally{await closeInstalledApp(oldApp,'이전 검사 앱 종료');}
+      let previousFailure;
+      const oldProcess=oldApp.process();
+      oldProcess.stderr?.on('data',data=>console.error('이전 검사 앱 진단 / '+data.toString().slice(-4000)));
+      try{
+        checkpoint('이전 앱 실행 완료 / PID '+oldProcess.pid);
+        checkpoint('이전 버전 조회 시작');
+        assert.equal(await within(oldApp.evaluate(({app})=>app.getVersion()),30000,'이전 버전 조회'),'0.6.0');
+        checkpoint('이전 버전 조회 완료');
+        const oldPage=await within(oldApp.firstWindow({timeout:45000}),45000,'이전 창 열기');
+        oldPage.setDefaultTimeout(30000);oldPage.setDefaultNavigationTimeout(45000);
+        await within(oldPage.setViewportSize({width:1440,height:1000}),30000,'이전 창 크기');
+        checkpoint('이전 초안 생성 시작');await helpers.writeOldDraft(oldPage,legacyFixture);checkpoint('이전 초안 생성 완료');
+      }catch(error){previousFailure=error;console.error('이전 앱 검증 단계 실패',error);}
+      try{await closeInstalledApp(oldApp,'이전 검사 앱 종료');}
+      catch(error){if(previousFailure)throw new AggregateError([previousFailure,error],'이전 앱 검증과 정상 종료가 모두 실패했습니다.');throw error;}
+      if(previousFailure)throw previousFailure;
     }
     checkpoint('새 설치 시작');await install();checkpoint('새 설치 완료');
     checkpoint('새 프로필 검증 시작');
