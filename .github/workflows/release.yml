@@ -4,12 +4,6 @@ permissions:
   contents: read
 jobs:
   reproduce:
-    strategy:
-      fail-fast: false
-      matrix:
-        mode: [nested, dotted]
-    env:
-      FLOWRIUM_TEST_WINDOWS_SANDBOX: ${{ matrix.mode }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -18,4 +12,5 @@ jobs:
           node-version: '24'
           package-manager-cache: false
       - run: npm ci
+      - run: node --test tests/windows-project-sandbox.test.cjs
       - run: node tests/project-edit-native-e2e.cjs

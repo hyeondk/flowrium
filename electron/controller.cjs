@@ -469,9 +469,11 @@ class Controller extends EventEmitter {
       approvalsReviewer: "user",
       sandbox,
     };
+    const windowsSandbox = await require('./windows-project-sandbox.cjs').windowsProjectSandbox(client, cwd);
+    if (windowsSandbox) threadParams.config = windowsSandbox;
     const research = this.store.session(run.sessionId).workflow;
     if (research?.kind === "research" && research.searchMode)
-      threadParams.config = { web_search: research.searchMode };
+      threadParams.config = { ...threadParams.config, web_search: research.searchMode };
     const dynamicTools=await this.options.applicationTools?.(this.store.session(run.sessionId)) || [];
     if(this.options.canRun?.()===false||run.ownerRevision!==(this.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.');
     const model = input.model;

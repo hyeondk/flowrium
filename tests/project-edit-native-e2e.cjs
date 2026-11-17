@@ -57,26 +57,26 @@ async function main() {
     const base='http://127.0.0.1:'+server.address().port+'/v1';
     await fs.writeFile(path.join(profile,'config.toml'),['cli_auth_credentials_store = "file"','model = "gpt-5.5"','[model_providers.flowrium_test]','name = "Flowrium file test"','base_url = '+JSON.stringify(base),'wire_api = "responses"','env_key = "FLOWRIUM_OFFLINE_KEY"','supports_websockets = false'].join('\n'));
     client=new CodexClient({descriptor:await resolveCodex(),spawn:(cmd,args,opts)=>spawn(cmd,[...args,'-c','model_provider="flowrium_test"'],{...opts,env:{...opts.env,CODEX_HOME:profile,FLOWRIUM_OFFLINE_KEY:'synthetic-only',OPENAI_BASE_URL:base}})});
-    const request=client.request.bind(client);
-    client.request=(method,...args)=>method==='account/read'?Promise.resolve({account:{type:'chatgpt',planType:'test'}}):request(method,...args);
+    const request=client.request.bind(client), projectCalls=[];
+    client.request=(method, ...args)=>{
+      if (method === 'thread/start' || method === 'thread/resume') projectCalls.push({method,config:args[0].config});
+      return method==='account/read'?Promise.resolve({account:{type:'chatgpt',planType:'test'}}):request(method,...args);
+    };
     const store=new Store(path.join(temp,'flowrium')); await store.load();
     const project=await store.addProject(cwd); await store.saveSettings({model:'gpt-5.5'});
     controller=new Controller(store,{client,canRun:()=>true}); await controller.connect();
-    if(process.platform === 'win32') {
-      const userConfig = await client.request('config/read', {includeLayers:false});
-      console.log('보호 구성',userConfig.config.windows, Object.keys(userConfig.origins || {}).filter(k=>k.startsWith('windows')));
-      const raw = client.request.bind(client);
-      client.request = (method, params, ...rest) => {
-        if (method === 'thread/start' || method === 'thread/resume') {
-          const override = process.env.FLOWRIUM_TEST_WINDOWS_SANDBOX === 'nested' ? {windows:{sandbox:'unelevated'}} : {'windows.sandbox':'unelevated'};
-          params={...params,config:{...params.config,...override}};
-        }
-        return raw(method,params,...rest);
-      };
-    }
     const baseline=process.argv.includes('--baseline');
-    for(const writable of baseline?[false]:[true,false]){
-      const session=await store.createSession(project.id,writable||baseline?{}:{preferences:{sandbox:'read-only',approval:'never'}});
+    let original;
+    const originalProfile = await fs.readFile(path.join(profile,'config.toml'),'utf8');
+    for (const variant of baseline ? ['baseline'] : ['new','resume','readonly']) {
+      const writable = variant === 'new' || variant === 'resume';
+      if (variant === 'resume') {
+        const exit = once(client.proc, 'exit');
+        client.close(); await exit; await controller.connect();
+      }
+      const session = variant === 'resume' ? original : await store.createSession(project.id,
+        writable || baseline ? {} : {preferences:{sandbox:'read-only',approval:'never'}});
+      if (variant === 'new') original = session;
       current={id:randomUUID(),marker:'INPUT_'+randomUUID()};
       await fs.writeFile(path.join(cwd,'input.txt'),current.marker+'\n');await fs.rm(path.join(cwd,'copy.txt'),{force:true});
       const done=new Promise((resolve,reject)=>{
@@ -105,7 +105,16 @@ async function main() {
       if(writable){assert.match(source,/EDIT/);assert((await fs.readFile(path.join(cwd,'copy.txt'),'utf8')).includes(current.marker));}
       else{assert.equal(source,current.marker+'\n');await assert.rejects(fs.stat(path.join(cwd,'copy.txt')),{code:'ENOENT'});}
       assert(store.session(session.id).messages.some(m=>m.role==='assistant'&&m.text.includes(current.marker)));
-      console.log(writable?'새 프로젝트 기본값 / 실제 파일 읽기·수정·복사 확인':'읽기 전용 / 실제 읽기 및 수정 거부 확인');
+      console.log(variant === 'resume' ? '재연결한 같은 대화 / 실제 파일 읽기·수정·복사 확인' :
+        writable ? '새 프로젝트 기본값 / 실제 파일 읽기·수정·복사 확인' : '읽기 전용 / 실제 읽기 및 수정 거부 확인');
+    }
+    if (!baseline) {
+      assert.deepEqual(projectCalls.map(call => call.method), ['thread/start','thread/resume','thread/start']);
+      if (process.platform === 'win32') for (const { config } of projectCalls) {
+        assert.equal(config?.['features.prefer_mxc'], true);
+        assert.equal(config?.['windows.sandbox'], 'unelevated');
+      }
+      assert.equal(await fs.readFile(path.join(profile,'config.toml'),'utf8'), originalProfile);
     }
   } finally {await controller?.shutdown();client?.close();server?.closeAllConnections();if(server)await new Promise(r=>server.close(r));await fs.rm(temp,{recursive:true,force:true,maxRetries:5});}
 }
