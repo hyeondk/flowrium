@@ -15,7 +15,7 @@ const {_electron:electron}=require('playwright');
     fetchImpl:async url=>Response.json(url.endsWith('/oauth/token')?{access_token:'fixture-access',refresh_token:'fixture-refresh',expires_in:3600}:{result_code:0}),
    });
   },{root:path.resolve(__dirname,'..'),temp});
-  await page.locator('.settings-button').click();const panel=page.getByRole('region',{name:'연결 주소 전달'});await panel.waitFor();
+  await page.locator('.workspace-side').hover();await page.getByRole('button',{name:'업무 연결 / 비서',exact:true}).click();await page.locator('.work-resources>summary').click();const panel=page.getByRole('region',{name:'연결 주소 전달'});await panel.waitFor();
   await panel.getByText('카카오톡 연결',{exact:true}).click();await panel.getByLabel('REST API 키',{exact:true}).fill('fixture-rest-key-value');
   await panel.getByRole('button',{name:'카카오 설정 저장',exact:true}).click();await panel.getByText('설정을 반영했습니다.',{exact:true}).waitFor();
   await panel.getByRole('button',{name:'카카오 로그인',exact:true}).click();await panel.getByText(/브라우저에서 카카오 로그인을/).waitFor();

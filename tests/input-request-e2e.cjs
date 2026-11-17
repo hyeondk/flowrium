@@ -84,6 +84,7 @@ async function run() {
     );
     await form.getByRole("radio", { name: /상세/ }).check();
     await form.getByLabel("비밀 답변").fill("폐기할 임시 입력");
+    await page.locator(".workspace-side").hover();
     await button("잠금").click();
     await page.getByRole("heading", { name: "화면 잠금" }).waitFor();
     await assert.rejects(
