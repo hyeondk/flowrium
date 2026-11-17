@@ -15,6 +15,17 @@ const writeCommand = process.platform === 'win32'
 const {Store} = require('../electron/store.cjs');
 const {Controller} = require('../electron/controller.cjs');
 const {CodexClient, resolveCodex} = require('../electron/codex.cjs');
+const {killOwnedProcess,within}=require('./update-installed-ui.cjs');
+
+async function closeTestClient(client) {
+  const child=client?.proc;
+  if (!child) return;
+  const closed=once(child,'close');
+  // The isolated Windows sandbox can hold the temporary account open in a child process.
+  if (process.platform==='win32') await killOwnedProcess(child);
+  client.close();
+  await within(closed,15000,'시험용 Codex 프로세스 및 표준 입출력 종료');
+}
 
 async function main() {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-edit-proof-'));
@@ -92,8 +103,7 @@ async function main() {
       const legacySource=variant === 'legacy-origin';
       const writable=!legacySource;
       if (variant === 'resume') {
-        const exit = once(client.proc, 'exit');
-        client.close(); await exit; await controller.connect();
+        await closeTestClient(client); await controller.connect();
         assert.equal(await store.requestProjectTrust(project.id,async()=>assert.fail('이미 신뢰한 프로젝트')),true);
       }
       const session=legacySource || variant === 'resume' || variant==='hot-resume' ? legacy : await store.createSession(project.id);
@@ -152,6 +162,12 @@ async function main() {
       }
       assert.equal(await fs.readFile(path.join(profile,'config.toml'),'utf8'), beforeTrust);
     }
-  } finally {await controller?.shutdown();client?.close();server?.closeAllConnections();if(server)await new Promise(r=>server.close(r));await fs.rm(temp,{recursive:true,force:true,maxRetries:5});}
+  } finally {
+    await closeTestClient(client);
+    await controller?.shutdown();
+    server?.closeAllConnections();
+    if(server)await new Promise(r=>server.close(r));
+    await fs.rm(temp,{recursive:true,force:true,maxRetries:12,retryDelay:200});
+  }
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});
