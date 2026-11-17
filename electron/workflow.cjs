@@ -191,6 +191,7 @@ class WorkflowRuntime {
   async collect(){
     const projects=[];
     for(const project of this.store.state.projects){
+      if (!await this.store.isProjectTrusted(project.id)) continue;
       const sessions=this.store.state.sessions.filter(s=>s.projectId===project.id);
       const row={id:project.id,name:project.name,running:sessions.filter(s=>this.controller.runs.has(s.id)).length,
         open:sessions.filter(s=>s.workflow&&s.workflow.status!=="done").length,latest:sessions.slice(0,8).map(s=>({id:s.id,title:s.title,status:s.workflow?.status||"대화",updatedAt:s.updatedAt}))};
@@ -223,6 +224,7 @@ class WorkflowRuntime {
         if(home.connected&&this.record.preferences.projectId&&home.projectId!==this.record.preferences.projectId)throw new Error("비서의 보고 보관 프로젝트와 연결된 개인 비서 프로젝트가 다릅니다. 개인 비서 연결을 확인해 주세요.");
         const projectId=home.connected?home.projectId:this.record.preferences.projectId||this.store.state.projects[0]?.id;
         if(!projectId)throw new Error("보고를 보관할 프로젝트를 연결해 주세요.");
+        await this.store.requireProjectTrust(projectId);
         const session=await memory.openAssistant(projectId);
         record.sessionId=session.id;
         await this.sendMessage(null,session.id,"[개인 비서 상태 보고] 다음 실제 수집 결과를 바탕으로 완성된 한국어 보고서를 작성하세요. 결론 / 프로젝트별 수행 현황과 근거 / 결정할 사항 / 다음 행동 순서로 정리하세요. 원자료 JSON을 그대로 출력하거나 사용자가 본문을 다시 쓰게 하지 마세요. 확인하지 않은 완료나 배포를 주장하지 마세요. 사용자가 요청하지 않은 외부 변경은 실행하지 마세요.\n"+body,{kind:"report",reportId:record.id});
@@ -235,6 +237,7 @@ class WorkflowRuntime {
     const projectId=this.record.preferences.projectId||this.store.state.projects[0]?.id;
     if(!projectId)throw new Error("결정 추천을 보관할 프로젝트를 먼저 연결해 주세요.");
     const pending=this.record.proposals.filter(p=>p.status==="pending"&&!p.hidden).slice(0,40).map(p=>({id:p.id,title:p.title,body:p.body,targetId:p.targetId,projectId:p.projectId}));
+    await this.store.requireProjectTrust(projectId);
     const session=await this.store.createSession(projectId,{title:"결정 묶음 검토"});
     const job={id:randomUUID(),sessionId:session.id,before:session.messages.length,status:"running",at:this.stamp()};
     this.record.recommendations.unshift(job);this.record.recommendations=this.record.recommendations.slice(0,100);await this.save();
@@ -504,6 +507,7 @@ class WorkflowRuntime {
         const localParts=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:prefs.timezone,year:"numeric",month:"2-digit",day:"2-digit",weekday:"short",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(now).map(p=>[p.type,p.value]));
         const day=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(localParts.weekday),date=`${localParts.year}-${localParts.month}-${localParts.day}`,clock=`${localParts.hour}:${localParts.minute}`;
         for(const project of this.store.state.projects){
+          if (!await this.store.isProjectTrusted(project.id)) continue;
           const details=await this.options.readProjectDetails(project.id);
           for(const goal of details.schedule||[]){
             if(goal.day!==day||goal.time>clock)continue;

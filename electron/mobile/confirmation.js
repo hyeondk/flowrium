@@ -43,6 +43,9 @@ export function confirmationButton(label, id, heading, description, execute) {
     pending = {id:button.dataset.confirmAction, execute};
     title.textContent = heading;
     detail.textContent = typeof description === 'function' ? description() : description;
+    // An informational sheet can be dismissed, but cannot grant permission.
+    accept.hidden = !execute;
+    cancel.textContent = execute ? '취소' : '닫기';
     accept.textContent = label;
     sheet.dataset.phase = 'enter';
     sheet.showModal();

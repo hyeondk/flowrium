@@ -1,4 +1,6 @@
 const fs = require("node:fs/promises");
+const path = require("node:path");
+const {samePath, relativePath} = require("./path-boundary.cjs");
 const { EventEmitter } = require("node:events");
 const { randomUUID } = require("node:crypto");
 const { CodexClient, resolveCodex } = require("./codex.cjs");
@@ -14,11 +16,11 @@ const stepNames = {
 };
 
 const MODE_INSTRUCTIONS = {
-  plan: "계획을 세우고 설명해 주세요. 파일을 수정하거나 변경 명령을 실행하지 마세요.",
+  plan: "계획을 세우고 설명해 주세요. 사용자가 수정을 요청하면 프로젝트 범위에서 반영하세요.",
   build:
     "요청한 구현을 수행하고 적절히 검증해 주세요. 프로젝트 범위에서 작업해 주세요.",
   review:
-    "코드와 변경 사항을 검토하고 확인 가능한 문제를 설명해 주세요. 파일을 수정하지 마세요.",
+    "코드와 변경 사항을 검토하세요. 사용자가 요청한 수정은 프로젝트 범위에서 반영하고 결과를 설명하세요.",
 };
 class Controller extends EventEmitter {
   constructor(store, options = {}) {
@@ -115,7 +117,31 @@ class Controller extends EventEmitter {
     return result;
   }
   conversationClient(session){return session.scope?require('./conversation-scopes.cjs').scopeClient(this,session):Promise.resolve(this.client);}
-  conversationThreadParams(session){return session.scope?require('./conversation-scopes.cjs').scopeThreadParams(this,session):Promise.resolve({});}
+  async projectAccess(session,mode) {
+    const trusted = await this.store.requireProjectTrust(session.projectId);
+    const project = this.store.project(session.projectId);
+    const slot = await require('./team-worktrees.cjs').teamSessionAccess(this.store,session,mode,this);
+    let cwd = slot.cwd;
+    if (!session.workflow?.teamSlot?.isolated) {
+      const selected = this.options.resolveProjectDirectory
+        ? await this.options.resolveProjectDirectory(project,session)
+        : await require('./project-repositories.cjs').resolveProjectDirectory(this.store,project,session);
+      cwd = await fs.realpath(selected);
+      const relative = relativePath(trusted.path,cwd);
+      if (!samePath(selected,cwd) || relative==='..' || relative.startsWith('..'+path.sep) || path.isAbsolute(relative) || !(await fs.stat(cwd)).isDirectory())
+        throw Error('신뢰한 프로젝트 안의 실제 작업 폴더를 선택해 주세요.');
+    }
+    const prefs = require('./chat-preferences.cjs').resolved(this.store.state.settings.chatDefaults,session.preferences);
+    const approvalPolicy = prefs.approval || (mode==='build' ? 'on-request' : 'never');
+    const sandbox = slot.sharedReview ? 'read-only' : 'workspace-write';
+    return {key:trusted.key, prefs, cwd, sandbox, approvalPolicy};
+  }
+  async conversationThreadParams(session) {
+    if (session.scope) return require('./conversation-scopes.cjs').scopeThreadParams(this,session);
+    const mode = require('./mobile/project-mode.js').projectMode(session);
+    const {cwd,sandbox,approvalPolicy} = await this.projectAccess(session,mode);
+    return {cwd,sandbox,approvalPolicy,approvalsReviewer:'user'};
+  }
   cancelStructuredAnalyses(){for(const analysis of this.analysisRuns?.values()||[])analysis.cancel?.();}
   runStructuredAnalysis(input){return require("./structured-analysis.cjs").runStructuredAnalysis(this,input);}
   continueConversation(input){return require('./chat-continuation.cjs').continueConversation(this,input);}
@@ -269,6 +295,10 @@ class Controller extends EventEmitter {
       throw new Error("추론 강도를 확인해 주세요.");
     if (input.model) text(input.model, "모델", 300);
     const session = this.store.session(input.sessionId);
+    if (!session.scope) {
+      await this.store.requireProjectTrust(session.projectId);
+      for (const id of session.workflow?.reportProjects || []) if (id!==session.projectId) await this.store.requireProjectTrust(id);
+    }
     const requests=require('./chat-long-request.cjs');
     let source, message;
     if(input.requestSourceId){
@@ -454,14 +484,13 @@ class Controller extends EventEmitter {
     if(run.ownerRevision!==(this.options.queueOwner?.()??'local'))throw Error("연결 계정이 바뀌었습니다. 요청을 다시 확인해 주세요.");
     if (account.account?.type !== "chatgpt")
       throw new Error("작업하려면 ChatGPT 계정으로 로그인해 주세요.");
-    let cwd = await require("./team-worktrees.cjs").teamSessionDirectory(this.store, this.store.session(run.sessionId), input.mode, this);
-    if(cwd===project.path) {
-      if(this.options.resolveProjectDirectory) cwd=await this.options.resolveProjectDirectory(project,this.store.session(run.sessionId));
-      else {try {cwd=await require("./project-repositories.cjs").resolveProjectDirectory(this.store,project,this.store.session(run.sessionId));} catch(e) {if(e.code!=="MODULE_NOT_FOUND")throw e;} }
-    }
-    const prefs=require("./chat-preferences.cjs").resolved(this.store.state.settings.chatDefaults,this.store.session(run.sessionId).preferences);
-    const sandbox=prefs.sandbox || (input.mode === "build" ? "workspace-write" : "read-only");
-    const approvalPolicy=prefs.approval || (input.mode === "build" ? "on-request" : "never");
+    const access = await this.projectAccess(this.store.session(run.sessionId),input.mode);
+    const {cwd,prefs,sandbox,approvalPolicy} = access;
+    const verifyAccess = async () => {
+      const current = await this.projectAccess(this.store.session(run.sessionId),input.mode);
+      if (access.key!==current.key || !samePath(cwd,current.cwd) || sandbox!==current.sandbox || approvalPolicy!==current.approvalPolicy)
+        throw Error('프로젝트 작업 폴더나 권한이 변경됐습니다. 폴더를 확인하고 다시 보내 주세요.');
+    };
     run.approvalsAllowed=approvalPolicy === "on-request";
     const threadParams = {
       cwd,
@@ -479,15 +508,16 @@ class Controller extends EventEmitter {
     const model = input.model;
     if (model) threadParams.model = model;
     if(run.threadId && (linked || !this.loadedThreads.has(run.threadId))){
+      await verifyAccess();
       const resumed=await client.request('thread/resume',{threadId:run.threadId,...threadParams,excludeTurns:true})
         .catch(error=>{throw require('./codex-transfer-client.cjs').linkedError(error);});
       if(resumed.thread?.id!==run.threadId)throw Error('원래 대화 식별자를 확인하지 못했습니다. 새 요청을 보내지 않았습니다.');
     }
-    return {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model};
+    return {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model,verifyAccess};
   }
   async startRun(run,input,message,project) {
     if(this.store.session(run.sessionId).scope)return require('./conversation-scopes.cjs').startScopedRun(this,run,input,message,project);
-    const {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model}=
+    const {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model,verifyAccess}=
       run.prepared || await this.prepareProjectRun(run,input,project);
     let restoredContext = "";
     if (!run.threadId) {
@@ -507,6 +537,7 @@ class Controller extends EventEmitter {
       const binding = project.codexNameLink;
       const inRegisteredProject = binding && binding.owner === this.codexTransfer?.owner?.() &&
         require('./path-boundary.cjs').samePath(cwd, project.path);
+      await verifyAccess();
       const result = await client.request("thread/start", {
         ...threadParams,
         ...(inRegisteredProject && {projectId:binding.id}),
@@ -544,6 +575,9 @@ class Controller extends EventEmitter {
     const request = await currentRequest.scopedRequest(this,run,currentSession,message,model,guardRequest);
     if(run.cancelled || run.finalized) return this.finish(run,"interrupted");
     if(this.options.canRun?.()===false || run.ownerRevision!==(this.options.queueOwner?.()??'local')) throw Error("계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.");
+    await verifyAccess();
+    guardRequest();
+    run.verifyProjectAccess=verifyAccess;
     run.cwd=cwd;
     const turn = await client.request("turn/start", {
       ...(run.outputSchema && { outputSchema: run.outputSchema }),
@@ -555,10 +589,12 @@ class Controller extends EventEmitter {
       approvalPolicy,
       approvalsReviewer: "user",
       sandboxPolicy:
-        sandbox === "danger-full-access" ? {type:"dangerFullAccess"} : sandbox === "workspace-write"
+        sandbox === "workspace-write"
           ? {
               type: "workspaceWrite",
-              writableRoots: [...new Set([cwd, ...run.attachments.map(a=>require("node:path").dirname(a.path))])],
+              writableRoots: [cwd],
+              excludeSlashTmp: true,
+              excludeTmpdirEnvVar: true,
               networkAccess: prefs.networkAccess ?? false,
             }
           : { type: "readOnly" },

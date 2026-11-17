@@ -60,6 +60,7 @@ export type Effort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | 
 export type Mode = "plan" | "build" | "review";
 export type ConversationScope = "general" | "integrated";
 export interface Project {
+  trustedForFileAccess?: boolean;
   conversationScope?: ConversationScope;
   id: string;
   name: string;
@@ -223,6 +224,7 @@ export interface FlowriumAPI
   onUpdate(callback: (state: UpdateState) => void): () => void;
   bootstrap(): Promise<Bootstrap>;
   chooseProject(): Promise<Project | null>;
+  requestProjectTrust(projectId: string): Promise<boolean>;
   createSession(projectId: string, model?: string): Promise<Session>;
   deleteSession(id: string): Promise<void>;
   saveSettings(settings: Partial<Settings>): Promise<Settings>;

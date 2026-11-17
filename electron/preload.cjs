@@ -159,6 +159,7 @@ contextBridge.exposeInMainWorld(
     musicPlayer: () => invoke("musicPlayer"),
     bootstrap: () => invoke("bootstrap"),
     chooseProject: () => invoke("chooseProject"),
+    requestProjectTrust: projectId => invoke("requestProjectTrust",projectId),
     openGeneralAssistant: () => invoke("openGeneralAssistant"),
     createHubConversation: input => invoke("createHubConversation",input),
     listHubConversations: () => invoke("listHubConversations"),

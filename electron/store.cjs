@@ -72,7 +72,7 @@ function validateProject(project) {
     throw new Error("저장된 프로젝트 형식이 올바르지 않습니다.");
 }
 class Store {
-  constructor(directory) {
+  constructor(directory, {projectTrustOwner = () => 'local'} = {}) {
     this.file = path.join(directory, "workspace-v2.json");
     this.legacyFile = path.join(directory, "workspace.json");
     this.state = {
@@ -82,7 +82,15 @@ class Store {
     };
     this.queue = Promise.resolve();
     this.repositories = new Map();
+    this.projectTrust = new (require('./project-trust.cjs').ProjectTrust)(directory,
+      id => this.state.projects.find(project => project.id === id), projectTrustOwner);
     this.conversations = new (require('./conversation-store.cjs').ConversationStore)(directory);
+  }
+  requestProjectTrust(id, confirm) { return this.projectTrust.request(id, confirm); }
+  requireProjectTrust(id) { return this.projectTrust.require(id); }
+  async isProjectTrusted(id) {
+    try { await this.requireProjectTrust(id); return true; }
+    catch { return false; }
   }
   async load() {
     try {

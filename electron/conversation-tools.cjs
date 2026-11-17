@@ -21,6 +21,7 @@ function assignTurns(messages,turns) {
   if(user.length===turns.length)user.forEach((m,i)=>{m.turnId=turns[i].id;});
 }
 async function prepare(controller,session) {
+  if(!session.scope)await controller.store.requireProjectTrust(session.projectId);
   if(!session.threadId)throw Error('이 기기의 Codex 대화 상태가 없습니다. 원본 기기에서 대화를 실행한 뒤 다시 시도해 주세요.');
   const client=await controller.conversationClient?.(session)||controller.client;
   await client.start(controller.store.state.settings.codexPath);

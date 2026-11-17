@@ -119,6 +119,7 @@ async function openSlot(ctx, selected) {
 }
 async function prepareTeamWorktrees(store, projectId, runId, roles, {indices} = {}) {
   return serial(projectId,async () => {
+    await store.requireProjectTrust(projectId);
     const ctx=await location(store,projectId,runId,true), planned=normalizeRoles(roles);
     try { await fs.access(ctx.file); }
     catch (e) {
@@ -138,22 +139,27 @@ async function prepareTeamWorktrees(store, projectId, runId, roles, {indices} = 
     return { base:data.base, baseBranch:data.baseBranch };
   });
 }
-async function teamSessionDirectory(store, session, mode, controller) {
+async function teamSessionAccess(store, session, mode, controller) {
   const assignment=session?.workflow?.teamSlot;
-  if (!assignment?.isolated) return store.project(session.projectId).path;
+  if (!assignment?.isolated) return {cwd:store.project(session.projectId).path, sharedReview:false};
   if (jobs.has(session.projectId)) await jobs.get(session.projectId).catch(()=>{});
   const data=await manifest(await location(store,session.projectId,assignment.runId));
   const selected=slot(data,assignment.integration===true?-1:assignment.index);
-  if (!assignment.integration && selected.owner !== assignment.index && mode === 'build') throw new Error('다른 역할의 작업 폴더는 읽기 전용으로 검토할 수 있습니다.');
+  const sharedReview = !assignment.integration && selected.owner !== assignment.index;
+  if (sharedReview && mode === 'build') throw new Error('다른 역할의 작업 폴더는 읽기 전용으로 검토할 수 있습니다.');
   for (const other of controller?.runs.values() || []) {
-    if (other.sessionId === session.id || (mode !== 'build' && other.mode !== 'build')) continue;
+    if (other.sessionId === session.id) continue;
     const assigned = store.state.sessions.find((s)=>s.id===other.sessionId)?.workflow?.teamSlot;
     const owner=assigned?.integration===true?-1:data.roles[assigned?.index]?.owner;
-    if (assigned?.isolated && assigned.runId===assignment.runId && owner===selected.owner)
+    const otherShared = assigned && !assigned.integration && owner!==assigned.index;
+    if (assigned?.isolated && assigned.runId===assignment.runId && owner===selected.owner && !(sharedReview && otherShared))
       throw new Error('이 격리 폴더를 사용하는 다른 역할 작업을 마친 뒤 다시 요청해 주세요.');
   }
   if (!await registered(data,selected)) throw new Error('이 역할의 작업 폴더를 팀 실행의 변경 검토 화면에서 다시 열어 주세요.');
-  return selected.dir;
+  return {cwd:selected.dir, sharedReview};
+}
+async function teamSessionDirectory(store,session,mode,controller){
+  return (await teamSessionAccess(store,session,mode,controller)).cwd;
 }
 async function changes(dir) {
   return (await git(dir,['status','--porcelain=v1','--no-renames','--untracked-files=all','-z'])).split('\0')
@@ -234,6 +240,7 @@ async function remoteStatus(ctx,current) {
 function registerTeamWorktrees(register,store,controller,canChange=()=>true) {
   register('teamWorktrees',async (projectId,runId)=>summary(await manifest(await location(store,projectId,runId))));
   register('teamWorktreeAction',(projectId,runId,input)=>serial(projectId,async ()=>{
+    await store.requireProjectTrust(projectId);
     if (!input || typeof input!=='object') throw invalid();
     const ctx=await manifest(await location(store,projectId,runId)), current=slot(ctx,input.index);
     if (input.action==='remote' && input.index===-1) return remoteStatus(ctx,current);
@@ -328,4 +335,4 @@ function registerTeamWorktrees(register,store,controller,canChange=()=>true) {
   }));
   return ()=>jobs.size>0;
 }
-module.exports={prepareTeamWorktrees,teamSessionDirectory,registerTeamWorktrees};
+module.exports={prepareTeamWorktrees,teamSessionAccess,teamSessionDirectory,registerTeamWorktrees};

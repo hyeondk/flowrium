@@ -57,27 +57,47 @@ async function main() {
     const base='http://127.0.0.1:'+server.address().port+'/v1';
     await fs.writeFile(path.join(profile,'config.toml'),['cli_auth_credentials_store = "file"','model = "gpt-5.5"','[model_providers.flowrium_test]','name = "Flowrium file test"','base_url = '+JSON.stringify(base),'wire_api = "responses"','env_key = "FLOWRIUM_OFFLINE_KEY"','supports_websockets = false'].join('\n'));
     client=new CodexClient({descriptor:await resolveCodex(),spawn:(cmd,args,opts)=>spawn(cmd,[...args,'-c','model_provider="flowrium_test"'],{...opts,env:{...opts.env,CODEX_HOME:profile,FLOWRIUM_OFFLINE_KEY:'synthetic-only',OPENAI_BASE_URL:base}})});
-    const request=client.request.bind(client), projectCalls=[];
+    const request=client.request.bind(client), projectCalls=[], turns=[];
     client.request=(method, ...args)=>{
-      if (method === 'thread/start' || method === 'thread/resume') projectCalls.push({method,config:args[0].config});
+      // Import a real read-only source turn, then resume its original ID through Flowrium.
+      if (current?.legacySource) {
+        if (method === 'thread/start') args[0] = {...args[0],sandbox:'read-only',approvalPolicy:'never'};
+        if (method === 'turn/start') args[0] = {...args[0],sandboxPolicy:{type:'readOnly'},approvalPolicy:'never'};
+      }
+      if (method === 'turn/start') turns.push(args[0].sandboxPolicy.type);
+      if (method === 'thread/start' || method === 'thread/resume')
+        projectCalls.push({method,config:args[0].config,sandbox:args[0].sandbox,cwd:args[0].cwd});
       return method==='account/read'?Promise.resolve({account:{type:'chatgpt',planType:'test'}}):request(method,...args);
     };
     const store=new Store(path.join(temp,'flowrium')); await store.load();
     const project=await store.addProject(cwd); await store.saveSettings({model:'gpt-5.5'});
     controller=new Controller(store,{client,canRun:()=>true}); await controller.connect();
     const baseline=process.argv.includes('--baseline');
-    let original;
-    const originalProfile = await fs.readFile(path.join(profile,'config.toml'),'utf8');
-    for (const variant of baseline ? ['baseline'] : ['new','resume','readonly']) {
-      const writable = variant === 'new' || variant === 'resume';
+    const legacy = await store.createSession(project.id,{preferences:{sandbox:'read-only',approval:'on-request'}});
+    delete store.session(legacy.id).defaultProjectMode;
+    await store.save();
+    const beforeTrust = await fs.readFile(path.join(profile,'config.toml'),'utf8');
+    const guardPrompt = {sessionId:legacy.id,text:'승인 전 프로젝트 요청'};
+    await assert.rejects(controller.send(guardPrompt,{fromComposer:true}), /신뢰/);
+    assert.equal(projectCalls.length,0);
+    assert.equal(store.session(legacy.id).messages.length,0);
+    assert.equal(await store.requestProjectTrust(project.id,async()=>false),false);
+    await assert.rejects(controller.send(guardPrompt,{fromComposer:true}), /신뢰/);
+    assert.equal(await store.requestProjectTrust(project.id, async folder=>{
+      assert.equal(await fs.realpath(folder.path),await fs.realpath(cwd));
+      return true;
+    }),true);
+    let sourceId, oldHistory;
+    for (const variant of baseline ? ['legacy-origin'] : ['new','legacy-origin','hot-resume','resume','new-plan']) {
+      const legacySource=variant === 'legacy-origin';
+      const writable=!legacySource;
       if (variant === 'resume') {
         const exit = once(client.proc, 'exit');
         client.close(); await exit; await controller.connect();
+        assert.equal(await store.requestProjectTrust(project.id,async()=>assert.fail('이미 신뢰한 프로젝트')),true);
       }
-      const session = variant === 'resume' ? original : await store.createSession(project.id,
-        writable || baseline ? {} : {preferences:{sandbox:'read-only',approval:'never'}});
-      if (variant === 'new') original = session;
-      current={id:randomUUID(),marker:'INPUT_'+randomUUID()};
+      const session=legacySource || variant === 'resume' || variant==='hot-resume' ? legacy : await store.createSession(project.id);
+      current={id:randomUUID(),marker:'INPUT_'+randomUUID(),legacySource};
       await fs.writeFile(path.join(cwd,'input.txt'),current.marker+'\n');await fs.rm(path.join(cwd,'copy.txt'),{force:true});
       const done=new Promise((resolve,reject)=>{
         const timer=setTimeout(()=>{controller.off('event',listen);reject(issue||Error('파일 작업 시간 초과'));},30000);
@@ -99,22 +119,38 @@ async function main() {
           if(event.type==='done' && event.sessionId===session.id){clearTimeout(timer);controller.off('event',listen);resolve(event);}}
         controller.on('event',listen);
       });
-      await controller.send({sessionId:session.id,text:'프로젝트의 input.txt를 읽고 한 줄을 추가해 copy.txt에도 저장해줘.',...(baseline&&{mode:'plan'})},{fromComposer:true});
+      await controller.send({sessionId:session.id,text:'프로젝트의 input.txt를 읽고 한 줄을 추가해 copy.txt에도 저장해줘.',...((variant==='resume'||variant==='new-plan'||variant==='hot-resume')&&{mode:'plan'})},{fromComposer:true});
       const result=await done; if(issue)throw issue;assert.equal(result.status,'completed',result.text);
       const source=await fs.readFile(path.join(cwd,'input.txt'),'utf8');
       if(writable){assert.match(source,/EDIT/);assert((await fs.readFile(path.join(cwd,'copy.txt'),'utf8')).includes(current.marker));}
       else{assert.equal(source,current.marker+'\n');await assert.rejects(fs.stat(path.join(cwd,'copy.txt')),{code:'ENOENT'});}
       assert(store.session(session.id).messages.some(m=>m.role==='assistant'&&m.text.includes(current.marker)));
-      console.log(variant === 'resume' ? '재연결한 같은 대화 / 실제 파일 읽기·수정·복사 확인' :
-        writable ? '새 프로젝트 기본값 / 실제 파일 읽기·수정·복사 확인' : '읽기 전용 / 실제 읽기 및 수정 거부 확인');
+      if (legacySource) {
+        sourceId=store.session(session.id).threadId;
+        oldHistory=store.session(session.id).messages.filter(m=>m.role==='user'||m.role==='assistant').map(m=>m.text);
+      } else if (variant === 'resume' || variant==='hot-resume') {
+        const resumed=store.session(session.id);
+        assert.equal(resumed.threadId,sourceId);
+        const history=resumed.messages.filter(m=>m.role==='user'||m.role==='assistant').map(m=>m.text);
+        assert.deepEqual(history.slice(0,oldHistory.length),oldHistory);
+      }
+      console.log(legacySource ? '이전 읽기 전용 원본 대화 생성 / 실제 수정 거절 확인' :
+        variant==='hot-resume' ? '이미 열려 있는 읽기 전용 원본 ID 유지 / 같은 프로세스에서 실제 수정' :
+        variant==='resume' ? '이전 원본 ID·기록 유지 / 재시작 후 계획 모드로 파일 읽기·수정·복사' :
+        variant==='new-plan' ? '같은 프로젝트의 새 계획 대화 / 파일 읽기·수정·복사' :
+        '프로젝트 최초 신뢰 후 새 대화 / 파일 읽기·수정·복사');
     }
     if (!baseline) {
-      assert.deepEqual(projectCalls.map(call => call.method), ['thread/start','thread/resume','thread/start']);
+      assert.deepEqual(projectCalls.filter(c=>c.method==='thread/start').map(c=>c.sandbox),['workspace-write','read-only','workspace-write']);
+      const resumedCalls=projectCalls.filter(c=>c.method==='thread/resume');
+      assert(resumedCalls.length>=1 && resumedCalls.every(c=>c.sandbox==='workspace-write'));
+      assert.deepEqual(turns,['workspaceWrite','readOnly','workspaceWrite','workspaceWrite','workspaceWrite']);
+      for (const call of projectCalls) assert.equal(await fs.realpath(call.cwd),await fs.realpath(cwd));
       if (process.platform === 'win32') for (const { config } of projectCalls) {
         assert.equal(config?.['features.prefer_mxc'], true);
         assert.equal(config?.['windows.sandbox'], 'unelevated');
       }
-      assert.equal(await fs.readFile(path.join(profile,'config.toml'),'utf8'), originalProfile);
+      assert.equal(await fs.readFile(path.join(profile,'config.toml'),'utf8'), beforeTrust);
     }
   } finally {await controller?.shutdown();client?.close();server?.closeAllConnections();if(server)await new Promise(r=>server.close(r));await fs.rm(temp,{recursive:true,force:true,maxRetries:5});}
 }

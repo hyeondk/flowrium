@@ -40,6 +40,7 @@ class ChatQueue {
   serial(action){const task=this.tail.then(action);this.tail=task.catch(()=>{});return task;}
   enqueue(input){return this.serial(async()=>{
     const s=this.store.session(input.sessionId);
+    if (!s.scope) await this.store.requireProjectTrust(s.projectId);
     const revision=input.ownerRevision??this.controller.options.queueOwner?.()??'local', owner=await this.owner(revision);
     const files=await resolveAttachments(this.store,s.projectId,input.attachments||[]);
     const history=s.queuedMessages||[];
@@ -82,6 +83,7 @@ class ChatQueue {
     if(first!==entry)throw Error('앞선 대기 지시를 먼저 처리해 주세요.');
     if(entry.status!=='queued' || !entry.nativeDelivery && (!entry.waitingForWriter || entry.error ||
        session.messages.some(m=>m.id===queueId) || this.controller.runs.has(id)))throw Error('원본에 전달할 수 있는 대기 지시를 선택해 주세요.');
+    if (!session.scope) await this.store.requireProjectTrust(session.projectId);
     try {await native.submit(this,session,entry);}
     finally {if(entry.nativeDelivery)this.schedule(id);}
     return {accepted:true,queued:entry.status==='queued',queueId,...(entry.nativeDelivery&&{nativeDelivery:entry.nativeDelivery})};

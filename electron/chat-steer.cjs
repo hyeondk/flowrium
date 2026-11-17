@@ -15,6 +15,7 @@ async function deliver(controller, session, run, input, text, owner) {
   const files = await resolveAttachments(controller.store,session.projectId,input.attachments || []);
   // Each turn's paged reader stays bound to that turn's original submission.
   if (input.requestSourceId || text.length>require('./chat-long-request.cjs').projectInlineLimit || files.some(file=>!file.image) || (session.scope && files.length)) return false;
+  if(!session.scope && run.verifyProjectAccess) await run.verifyProjectAccess();
   guard();
   if (!current()) return false;
   const anchor=session.messages.at(-1);
