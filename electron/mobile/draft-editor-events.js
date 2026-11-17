@@ -68,6 +68,10 @@ export function attachDraftEditor(input,{read,change,render}) {
     if(command&&(key==='z'||key==='y')&&history(key==='y'||event.shiftKey,event))return;
     if(view.count===1)return;
     if(command&&key==='a'){event.preventDefault();selectedAll=true;input.select();return;}
+    if(selectedAll&&key==='escape'){
+      event.preventDefault();event.stopPropagation();selectedAll=false;
+      input.setSelectionRange(input.selectionEnd,input.selectionEnd);return;
+    }
     if(selectedAll&&(key==='backspace'||key==='delete')){
       event.preventDefault();apply('',0,true);return;
     }
@@ -97,6 +101,7 @@ export function attachDraftEditor(input,{read,change,render}) {
       selectedAll=false;show(page);
       input.focus();input.setSelectionRange(0,0);input.scrollTop=0;
     },
+    selectAll(){input.focus();selectedAll=view.count>1;input.select();},
     dispose(){controller.abort();}
   };
 }

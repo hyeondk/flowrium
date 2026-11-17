@@ -118,6 +118,7 @@ export default function ResizableComposerInput({textareaRef,value,onTextChange, 
         save(Math.max(minimum, Math.min(bounds.max, next)));
       }}><span aria-hidden="true"/></div>
     {largeDraft&&<nav className="composer-draft-pages" aria-label="긴 입력 편집 범위">
+      <button type="button" onClick={()=>draftEditor.current?.selectAll()}>전체 선택</button>
       <button type="button" disabled={!view.page} onClick={()=>draftEditor.current?.go(0)}>처음</button>
       <button type="button" disabled={!view.page} onClick={()=>draftEditor.current?.go(view.page-1)}>이전</button>
       <span>{view.page+1} / {view.count}</span>

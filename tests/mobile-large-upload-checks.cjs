@@ -18,9 +18,9 @@ async function checkLargeMobileUpload(page,store,project,controller,origin){
     return {size:bytes.length,length:raw.length,hash:Array.from(new Uint8Array(sum),b=>b.toString(16).padStart(2,'0')).join('')};
   });
   async function checkDraft(){
+    await page.getByRole('button',{name:'전체 선택',exact:true}).click();
     const actual=await page.evaluate(async()=>{
       const el=document.querySelector('.chat-compose textarea');
-      el.dispatchEvent(new KeyboardEvent('keydown',{key:'a',ctrlKey:true,bubbles:true,cancelable:true}));
       const clipboard=new DataTransfer();
       el.dispatchEvent(new ClipboardEvent('copy',{clipboardData:clipboard,bubbles:true,cancelable:true}));
       const raw=clipboard.getData('text/plain'),sum=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw));
@@ -33,6 +33,10 @@ async function checkLargeMobileUpload(page,store,project,controller,origin){
   await page.getByRole('button',{name:'프로젝트로',exact:true}).click();await open.click();await checkDraft();
   const part=page.getByRole('textbox',{name:'원문 편집 구간'});
   await part.fill('2');await part.press('Enter');await page.waitForFunction(()=>document.querySelector('[aria-label="원문 편집 구간"]').value==='2');
+  if(process.env.FLOWRIUM_MOBILE_LARGE_SCREENSHOT){
+    await page.locator('.mobile-draft-pages').scrollIntoViewIfNeeded();
+    await page.screenshot({path:process.env.FLOWRIUM_MOBILE_LARGE_SCREENSHOT,animations:'disabled'});
+  }
   await checkDraft();
   const uploadPattern='**/api/mobile/request-upload?**',sendPattern=origin+'/api/mobile/call';
   const offsets=[],begins=[],receiptIds=[];

@@ -1179,7 +1179,7 @@ function chat(root) {
       position.value=String(page+1);countLabel.textContent='/ '+count;
       previousPage.disabled=page===0;nextPage.disabled=page+1>=count;
   };
-  pages.append(action('전체 복사',async()=>{
+  pages.append(action('전체 선택',()=>mobileDraftEditor.selectAll()),action('전체 복사',async()=>{
     try{await navigator.clipboard.writeText(fullText());showNotice('원문 전체를 복사했습니다.');}
     catch{showNotice('클립보드에 복사할 수 없습니다. 브라우저의 클립보드 접근을 확인해 주세요.','error');}
   }));
