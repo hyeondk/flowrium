@@ -57,3 +57,7 @@
 .ag-time-field,.stepper-field{display:grid;gap:4px;color:var(--text)}
 .time-parts{width:100%}.app-shell .pf-page .pf-content .time-parts select{flex:1;min-width:0;border:0;background-color:transparent;color:var(--text);font-variant-numeric:tabular-nums}
 .app-shell .music-range input[type=range],.music-popup .music-range input[type=range]{accent-color:var(--accent-fill);min-height:28px;padding:0;cursor:pointer}
+.advanced-goals .ag-grid>:is(label,.stepper-field,.ag-time-field){display:grid;align-content:start;gap:7px;margin:10px 0;min-width:0}
+.advanced-goals .ag-grid :is(.time-parts,.numeric-stepper),.work-popup-models .numeric-stepper{box-sizing:border-box;height:34px;min-height:34px;align-self:start}
+.app-shell .pf-page .pf-content .advanced-goals :is(.time-parts select,.numeric-stepper input[role=spinbutton]),.work-action-fields .numeric-stepper input[role=spinbutton]{height:28px;min-height:28px;padding-block:1px;border:0;border-radius:5px;background-color:transparent}
+.advanced-goals .ag-grid .numeric-stepper>button,.work-popup-models .numeric-stepper>button{height:28px;min-height:28px}

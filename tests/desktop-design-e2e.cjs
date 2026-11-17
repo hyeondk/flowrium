@@ -194,13 +194,17 @@ async function run(){
     const expectedControls={target:10.5,due:day(now),period:'month',time:'13:47',volume:99};
     await expect.poll(()=>page.evaluate(checkControls),{timeout:10000}).toEqual(expectedControls);
     results.controls=await page.evaluate(checkControls);
-    if(screenshots){await goals.locator('.ag-schedule').scrollIntoViewIfNeeded();await page.screenshot({path:path.join(screenshots,'desktop-controls.png'),animations:'disabled'});}
+    const weekdayBox=await goals.getByRole('combobox',{name:'반복 일정 요일',exact:true}).boundingBox(),timeBox=await goals.locator('.time-parts').boundingBox();
+    assert(Math.abs(weekdayBox.y-timeBox.y)<1&&Math.abs(weekdayBox.height-timeBox.height)<1,'반복 일정 요일과 시각 기준선');
+    if(screenshots){
+      await goals.locator('.ag-schedule').evaluate(el=>{const view=el.closest('.pf-page');if(view){view.scrollTop+=el.getBoundingClientRect().top-view.getBoundingClientRect().top-view.clientHeight*.53;}});
+      await page.screenshot({path:path.join(screenshots,'desktop-controls.png'),animations:'disabled'});
+    }
     await page.getByRole('button',{name:'개인 비서 보기'}).click();
     await page.waitForFunction(async()=> (await window.flowrium.bootstrap()).sessions.some(s=>s.generalAssistant));
     const ids=await page.evaluate(async()=>{const api=window.flowrium;return Promise.all([api.openGeneralAssistant(),api.openGeneralAssistant()].map(p=>p.then(s=>s.id)))});
     assert.equal(ids[0],ids[1]);assert.equal(await page.getByRole('region',{name:'Dots 공식 화면'}).count(),0);
     assert(await page.evaluate(async()=>{try{await window.flowrium.showDotsView({x:20,y:60,width:300,height:400});return false}catch{return true}}));
-    const button=(name)=>page.getByRole('button',{name,exact:true});
     await page.locator('.workspace-side').getByRole('button',{name:'설정',exact:true}).click();const dialog=page.getByRole('dialog',{name:'설정',exact:true});
     await dialog.waitFor();assert.equal(await dialog.locator('[data-settings-target]').count(),6);
     const combo=page.getByRole('combobox',{name:'자리 비움 자동 잠금'});
