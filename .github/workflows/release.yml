@@ -1,4 +1,4 @@
-name: 데스크톱 설치 파일 만들기
+name: 동일 최종 소스의 Mac 26 ARM 검증
 
 on:
   push:
@@ -28,53 +28,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  scopes:
-    if: inputs.test_scope == 'scopes'
-    name: Windows 대화 접근 범위 점검
-    runs-on: windows-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          package-manager-cache: false
-      - run: npm ci
-      - run: node tests/conversation-scopes-native-e2e.cjs
-  features:
-    if: inputs.test_scope == 'features'
-    name: Windows 신규 기능 점검
-    runs-on: windows-latest
-    timeout-minutes: 25
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          package-manager-cache: false
-      - run: npm ci
-      - run: npm run prepare:runtime
-      - run: npm run build
-      - name: 신규 기능별 실제 앱 검사
-        run: |
-          result=0
-          for feature in migration voice-servers project-ports portfolio-reports-popup codex-transfer settings-layout long-conversation chat-layout navigation-layout feature-surfaces message-content workspace-interactions external-integrations dots-view dock-layout-modes trash-ui project-shortcuts repository-completion external-repositories decision-continuation trash-purge dock-resize-motion decision-notice-layout window-lifecycle
-          do
-            if ! node "tests/${feature}-e2e.cjs"
-            then
-              result=1
-            fi
-          done
-          exit "$result"
-      - name: 후속 작업 실제 프로토콜 검사
-        run: node tests/chat-continuation-native-e2e.cjs
-      - name: 두 앱이 같은 대화를 번갈아 쓰는지 확인
-        run: |
-          node tests/desktop-chat-sync-native.cjs
-          node tests/trash-sync-native-e2e.cjs
   build:
     if: inputs.test_scope != 'scopes' && inputs.test_scope != 'features'
     name: ${{ matrix.label }}
@@ -87,9 +40,27 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.platform == 'windows' && '[{"label":"Windows","runner":"windows-latest","os":"win","arch":"x64"}]' || '[{"label":"Mac Apple Silicon","runner":"macos-15","os":"mac","arch":"arm64"},{"label":"Windows","runner":"windows-latest","os":"win","arch":"x64"}]') }}
+        include:
+          - label: Mac Apple Silicon
+            runner: macos-26
+            os: mac
+            arch: arm64
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: 42513b9c25334f8f4fbb212d169de416a1930ba1
+      - name: 실제 체크아웃과 ARM 호스트 출처 확인
+        run: |
+          actual=$(git rev-parse HEAD)
+          test "$actual" = "42513b9c25334f8f4fbb212d169de416a1930ba1"
+          test "$(uname -m)" = "arm64"
+          printf '{"sourceSha":"%s","hostArch":"%s","runnerImage":"%s","runnerImageVersion":"%s","runId":"%s"}\n' "$actual" "$(uname -m)" "$ImageOS" "$ImageVersion" "$GITHUB_RUN_ID" > mac-provenance.json
+          cat mac-provenance.json
+      - uses: actions/upload-artifact@v6
+        with:
+          name: flowrium-mac-provenance
+          path: mac-provenance.json
+          retention-days: 14
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -438,75 +409,3 @@ jobs:
             release/Flowrium-*-${{ matrix.os }}-${{ matrix.arch }}.dmg
             release/Flowrium-*-${{ matrix.os }}-${{ matrix.arch }}.zip
             release/Flowrium-*-${{ matrix.os }}-${{ matrix.arch }}.exe
-
-  windows_install:
-    # The Windows installer has its own artifact even if a Mac UI check fails.
-    if: ${{ !cancelled() && needs.build.result != 'skipped' && inputs.test_scope != 'scopes' && inputs.test_scope != 'features' }}
-    name: Windows 설치와 업데이트 독립 검증
-    needs: build
-    runs-on: windows-latest
-    timeout-minutes: 35
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          package-manager-cache: false
-      - run: npm ci
-      - run: npm run prepare:runtime
-      - run: node scripts/build-win-updater.cjs
-      - run: npm run build
-      - uses: actions/download-artifact@v6
-        with:
-          name: flowrium-win-x64
-          path: release
-      - name: 검사할 설치 파일 체크섬
-        run: node scripts/create-checksums.mjs release
-      - name: 이전 버전에서 수동 설치 / 재설치 / 백업 / 초안 복원
-        id: install
-        continue-on-error: true
-        timeout-minutes: 18
-        run: node tests/installer-windows-e2e.cjs --installer "release/Flowrium-$(node -p '(require("./package.json").flowriumVersion || require("./package.json").version)')-win-x64.exe" --checksums release/SHA256SUMS.txt
-      - name: 날짜 버전 업데이트 버튼 / 실제 설치 / 재시작 / 초안 복원
-        id: update
-        continue-on-error: true
-        timeout-minutes: 12
-        run: node tests/update-native-e2e.cjs
-      - name: 설치와 업데이트 최종 결과 확인
-        if: ${{ !cancelled() }}
-        env:
-          INSTALL_OUTCOME: ${{ steps.install.outcome }}
-          UPDATE_OUTCOME: ${{ steps.update.outcome }}
-        run: node -e "if(process.env.INSTALL_OUTCOME!=='success'||process.env.UPDATE_OUTCOME!=='success')process.exit(1);console.log('Windows 실제 설치와 업데이트 모두 통과')"
-
-  draft:
-    if: startsWith(github.ref, 'refs/tags/') || (github.ref == 'refs/heads/main' && inputs.stage_release)
-    name: 초안 릴리스 저장
-    needs: [build, windows_install]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: '24'
-          package-manager-cache: false
-      - uses: actions/download-artifact@v6
-        with:
-          pattern: flowrium-*
-          merge-multiple: true
-          path: release
-      - name: 체크섬 생성
-        run: |
-          node scripts/prepare-release-assets.mjs release
-          node scripts/create-checksums.mjs release
-      - name: 초안 릴리스에만 업로드
-        run: node scripts/save-draft-release.mjs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          STAGE_FROM_MAIN: ${{ github.event_name == 'workflow_dispatch' && inputs.stage_release }}
-          EXPECT_MAC: ${{ github.event_name != 'workflow_dispatch' || inputs.platform != 'windows' }}
