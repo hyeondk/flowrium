@@ -37,12 +37,14 @@ async function main(){
       oldProcess.stderr?.on('data',data=>console.error('이전 검사 앱 진단 / '+data.toString().slice(-4000)));
       try{
         checkpoint('이전 앱 실행 완료 / PID '+oldProcess.pid);
-        assert.equal(path.resolve(oldProcess.spawnfile),path.resolve(binary));
         checkpoint('이전 버전 조회 시작');
-        assert.equal(await within(oldApp.evaluate(({app})=>app.getVersion()),30000,'이전 버전 조회'),'0.6.0');
+        const running=await within(oldApp.evaluate(({app})=>({version:app.getVersion(),binary:process.execPath,pid:process.pid})),30000,'이전 버전과 실행 출처 조회');
+        assert.equal(running.version,'0.6.0');
+        assert.equal(await fs.realpath(running.binary),await fs.realpath(binary));
+        checkpoint('이전 앱 실제 실행 PID '+running.pid);
         const oldPage=await within(oldApp.firstWindow({timeout:45000}),45000,'이전 창 열기');
         const installedURL=require('node:url').fileURLToPath(new URL(oldPage.url()));
-        assert.equal(path.relative(destination,installedURL),path.join('resources','app.asar','dist','index.html'));
+        assert.equal(path.relative(path.dirname(running.binary),installedURL),path.join('resources','app.asar','dist','index.html'));
         checkpoint('이전 앱 실행 파일·화면 주소·버전 확인');
         oldPage.setDefaultTimeout(30000);oldPage.setDefaultNavigationTimeout(45000);
         await within(oldPage.setViewportSize({width:1440,height:1000}),30000,'이전 창 크기');
