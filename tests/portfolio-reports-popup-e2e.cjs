@@ -1,3 +1,4 @@
+const {settledLayout} = require('./shell-test-helpers.cjs');
 const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
@@ -24,17 +25,17 @@ async function run() {
     await page.setViewportSize({ width: 1440, height: 1000 }); await page.getByRole('heading', { name: '프로젝트 대시보드', exact: true }).waitFor(); await page.waitForFunction(() => document.querySelector('.side-usage')?.dataset.connected === 'true');
     const originalView = await page.locator('.main-shell').getAttribute('data-view');
     const snapshot = () => page.evaluate(() => window.flowrium.bootstrap());
-    async function open(title) { await page.locator('.workspace-side').hover(); await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: title, exact: true }).click(); const dialog = page.getByRole('dialog', { name: title, exact: true }); await dialog.waitFor(); await dialog.getByLabel('보고서 AI 모델', { exact: true }).locator('option[value="test-model"]').waitFor({ state: 'attached' }); await page.waitForTimeout(300); return dialog; }
+    async function open(title) { await page.locator('.workspace-side').hover(); await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name: title, exact: true }).click(); const dialog = page.getByRole('dialog', { name: title, exact: true }); await dialog.waitFor(); await dialog.getByLabel('보고서 AI 모델', { exact: true }).locator('option[value="test-model"]').waitFor({ state: 'attached' }); await settledLayout(dialog); return dialog; }
     async function assertCentered(dialog, width) {
-      await page.setViewportSize({ width, height: 1000 }); await page.waitForTimeout(350);
-      const box = await dialog.boundingBox(); assert(Math.abs(box.x + box.width / 2 - width / 2) < 2, '팝업 수평 중앙'); assert(Math.abs(box.y + box.height / 2 - 500) < 2, '팝업 수직 중앙');
+      await page.setViewportSize({ width, height: 1000 });
+      const box = await settledLayout(dialog); assert(Math.abs(box.x + box.width / 2 - width / 2) < 2, '팝업 수평 중앙'); assert(Math.abs(box.y + box.height / 2 - 500) < 2, '팝업 수직 중앙');
       assert(box.x >= -1 && box.y >= -1 && box.x + box.width <= width + 1 && box.y + box.height <= 1001, '팝업 화면 안에 유지');
       assert.equal(await page.locator('.main-shell').getAttribute('data-view'), originalView, '원래 화면 유지');
       const overflow = await dialog.evaluate(element => ({ client: element.clientWidth, scroll: element.scrollWidth })); assert(overflow.scroll <= overflow.client + 1, '팝업 가로 넘침 없음');
     }
     let dialog = await open('주간업무보고');
     for (const width of [1440, 800, 390]) await assertCentered(dialog, width);
-    await page.setViewportSize({ width: 1440, height: 1000 }); await page.waitForTimeout(350);
+    await page.setViewportSize({ width: 1440, height: 1000 }); await settledLayout(dialog);
     assert.equal(await dialog.evaluate(element => element.parentElement?.parentElement === document.body), true, '본문 포털에 팝업 배치');
     await dialog.getByRole('button', { name: '전체 선택', exact: true }).click();
     await dialog.getByLabel('보고서 AI 모델', { exact: true }).selectOption('test-model');

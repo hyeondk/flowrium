@@ -1,3 +1,4 @@
+const {settledLayout} = require('./shell-test-helpers.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path'),net=require('node:net');
 const {_electron}=require('playwright');const {Store}=require('../electron/store.cjs');const {portOpen}=require('../electron/voice-servers.cjs');
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -18,7 +19,7 @@ async function free(){const server=net.createServer();await new Promise(resolve=
   const port=await free();endpoint='http://127.0.0.1:'+port;
   await card().getByLabel('음성 인식 서버 실행 파일',{exact:true}).fill(executable);await card().getByLabel('음성 인식 서버 작업 폴더',{exact:true}).fill(temporary);await card().getByLabel('음성 인식 서버 실행 인자',{exact:true}).fill([fixture,'--port',String(port)].join('\n'));await card().getByLabel('음성 인식 서버 주소',{exact:true}).fill(endpoint);await card().getByLabel('음성 인식 서버 준비 확인 경로',{exact:true}).fill('/health');
   assert.equal(await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).isDisabled(),true);await button('서버 설정 저장').click();await card().getByText('서버 설정을 저장했습니다. 실행 스위치를 켜면 실행 내용을 확인합니다.',{exact:true}).waitFor();
-  await prepare();const popup=page.getByRole('dialog',{name:'음성 서버 실행 확인',exact:true});await page.waitForTimeout(300);const box=await popup.boundingBox(),size=page.viewportSize();assert(Math.abs(box.x+box.width/2-size.width/2)<2);assert(Math.abs(box.y+box.height/2-size.height/2)<2);assert((await popup.innerText()).includes(executable));
+  await prepare();const popup=page.getByRole('dialog',{name:'음성 서버 실행 확인',exact:true});const box=await settledLayout(popup),size=page.viewportSize();assert(Math.abs(box.x+box.width/2-size.width/2)<2);assert(Math.abs(box.y+box.height/2-size.height/2)<2);assert((await popup.innerText()).includes(executable));
   await popup.getByRole('button',{name:'취소',exact:true}).click();await popup.waitFor({state:'hidden'});assert.equal(await portOpen(endpoint),false);
   await prepare();await confirm();const first=await page.evaluate(async()=>(await window.flowrium.voiceServersState()).servers[0].run.pid);
   assert.equal(await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).isChecked(),true);assert.equal(await card().getByLabel('음성 인식 서버 실행 파일',{exact:true}).isDisabled(),true);

@@ -1,3 +1,4 @@
+const {settledLayout}=require('./shell-test-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
@@ -113,7 +114,7 @@ async function run(){
     await openConversation(page,title);
     await page.locator('.message-prose img').evaluate(img=>img.decode());
     await page.evaluate(()=>document.fonts.ready);
-    await page.waitForTimeout(360);
+    await settledLayout(page.locator('.conversation-dock'));
     for(const scale of baseline?[1]:[1,.94,.9]){
       await page.evaluate(scale=>document.documentElement.style.setProperty('--chat-reading-scale',scale),scale);
       await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
@@ -212,7 +213,7 @@ async function run(){
     const combo=page.getByRole('combobox',{name:'자리 비움 자동 잠금'});
     for(const height of [940,650]){
       await page.setViewportSize({width:1440,height});
-      await combo.scrollIntoViewIfNeeded();await combo.click();await page.waitForTimeout(220);
+      await combo.scrollIntoViewIfNeeded();await combo.click();await settledLayout(page.getByRole('listbox',{name:'자리 비움 자동 잠금'}));
       const list=page.getByRole('listbox',{name:'자리 비움 자동 잠금'}),a=await combo.boundingBox(),b=await list.boundingBox();
       results.lock.push({height,xDifference:b.x-a.x,widthDifference:b.width-a.width,gap:b.y-a.y-a.height});
       assert(Math.abs(a.x-b.x)<1&&Math.abs(a.width-b.width)<1&&Math.abs(b.y-a.y-a.height-6)<1);
@@ -223,7 +224,7 @@ async function run(){
     const cdp=await page.context().newCDPSession(page);
     await cdp.send('Emulation.setDeviceMetricsOverride',{width:1180,height:740,deviceScaleFactor:1.5,mobile:false});
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(1.15));
-    await combo.scrollIntoViewIfNeeded();await combo.click();await page.waitForTimeout(240);
+    await combo.scrollIntoViewIfNeeded();await combo.click();await settledLayout(page.getByRole('listbox',{name:'자리 비움 자동 잠금'}));
     const zoomedList=page.getByRole('listbox',{name:'자리 비움 자동 잠금'});
     const zoomBoxes=await page.evaluate(()=>{
       const trigger=document.querySelector('.idle-picker [role=combobox]').getBoundingClientRect(),list=document.querySelector('.idle-picker [role=listbox]').getBoundingClientRect();

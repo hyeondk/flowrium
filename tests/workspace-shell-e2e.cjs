@@ -7,32 +7,7 @@ const {_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs');
 const {randomUUID}=require('node:crypto');
 
-async function settledRail(rail,{expanded,pinned,width},label) {
- const result=await rail.evaluate(async(node,expected)=>{
-  const surface=node.querySelector('.sidebar-surface');
-  const shell=node.closest('.app-shell'),main=shell.querySelector('.main-shell');
-  const deadline=performance.now()+8000;
-  let previous,frames=0,last;
-  do {
-   await new Promise(resolve=>requestAnimationFrame(resolve));
-   const width=surface.getBoundingClientRect().width;
-   const mainBox=main.getBoundingClientRect(),dock=shell.querySelector('.conversation-dock');
-   const moving=[surface,main,dock].some(element=>element?.getAnimations().some(animation=>
-     animation.effect?.getTiming().iterations!==Infinity&&(animation.pending||animation.playState==='running')));
-   last={expanded:node.dataset.expanded,pinned:node.dataset.pinned,width,mainX:mainBox.x,mainWidth:mainBox.width,moving,
-    hover:node.matches(':hover'),focus:document.activeElement?.getAttribute('aria-label')};
-   const target=expected.width===undefined?(expected.expanded?width>180:width<90):Math.abs(width-expected.width)<1;
-   const reached=target&&!moving&&last.expanded===String(expected.expanded)&&last.pinned===String(expected.pinned);
-   const stable=previous&&['width','mainX','mainWidth'].every(key=>Math.abs(previous[key]-last[key])<.1);
-   frames=reached&&stable?frames+1:0;
-   if(frames>=3)return {ok:true,...last};
-   previous=last;
-  }while(performance.now()<deadline);
-  return {ok:false,...last};
- },{expanded,pinned,width});
- assert(result.ok,label+' '+JSON.stringify(result));
- return result.width;
-}
+const {settledRail,settledLayout}=require('./shell-test-helpers.cjs');
 
 async function run(){
  const root=path.resolve(__dirname,'..'),temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-shell-ui-'));
@@ -99,7 +74,7 @@ async function run(){
   await page.mouse.move(35,140);await settledRail(rail,{expanded:true,pinned:false,width:expandedWidth},'프로젝트 상태 메뉴 열기');check((await page.locator('.side-project-label small[data-state=decision]').innerText()).includes('결정 1'),'프로젝트 메뉴의 결정 강조');await page.mouse.move(650,110);await settledRail(rail,{expanded:false,pinned:false,width:collapsedWidth},'프로젝트 상태 메뉴 닫기');
   // 세로 높이를 고정하고 각 폭에서 주요 영역과 내부 스크롤 폭을 함께 검사합니다.
   for(const width of [1440,1280,1024,390]){
-   await page.setViewportSize({width,height:1000});await page.waitForTimeout(330);
+   await page.setViewportSize({width,height:1000});await settledLayout(main);
    const dock=page.locator('.conversation-dock');if(await dock.count()){await dock.getByRole('button',{name:'대화함 접기',exact:true}).click();await dock.waitFor({state:'detached'});}
    const layout=await page.evaluate(()=>{
     const rect=e=>{const b=e.getBoundingClientRect();return{x:b.x,right:b.right,width:b.width,client:e.clientWidth,scroll:e.scrollWidth}};
@@ -107,14 +82,14 @@ async function run(){
    });
    check(layout.document<=width+1,'문서 가로 넘침 없음 '+width,layout);for(const key of ['main','topbar','page','content'])check(layout[key].scroll<=layout[key].client+1,'영역 내부 가로 넘침 없음 '+width+' '+key,layout[key]);
    check(layout.headerButtons.every(b=>b.right<=width+1&&b.height>=28),'헤더 버튼 잘림과 최소 높이 '+width,layout.headerButtons);check(new Set(layout.actions).size<=1&&layout.actions.every(h=>h>=32),'대시보드 같은 그룹 버튼 높이 일치 '+width,layout.actions);check(/NanumSquareRound/.test(layout.family)&&layout.wordBreak==='keep-all','글꼴과 어절 줄바꿈 '+width,{family:layout.family,wordBreak:layout.wordBreak});
-   await page.locator('.dock-toggle').click();await dock.waitFor();await page.waitForTimeout(320);
+   await page.locator('.dock-toggle').click();await dock.waitFor();await settledLayout(dock);
    const panel=await dock.evaluate(e=>{const b=e.getBoundingClientRect();const browser=e.querySelector('.dock-browser');return{left:b.left,right:b.right,width:b.width,scroll:e.scrollWidth,client:e.clientWidth,body:browser?{scroll:browser.scrollWidth,client:browser.clientWidth}:null,animation:getComputedStyle(e).animationName}});
    check(panel.left>=-1&&panel.right<=width+1&&panel.scroll<=panel.client+1&&(!panel.body||panel.body.scroll<=panel.body.client+1),'대화함 가로 넘침 없음 '+width,panel);if(width===390)check(panel.animation==='ui-sheet-in','모바일 대화함 하단 시트',panel);
    measurements.push({width,layout,panel});await dashboard();
   }
   await page.setViewportSize({width:1440,height:1000});
   if(await page.locator('.conversation-dock').count()){await button('대화함 접기').click();await page.locator('.conversation-dock').waitFor({state:'detached'});}
-  await button('설정').click();const settings=page.locator('.settings-modal[aria-labelledby="settings-title"]');await settings.waitFor();await page.waitForTimeout(30);
+  await button('설정').click();const settings=page.locator('.settings-modal[aria-labelledby="settings-title"]');await settings.waitFor();await settledLayout(settings);
   check(await settings.evaluate(e=>e.contains(document.activeElement)),'설정 팝업 최초 초점 이동',await page.evaluate(()=>({tag:document.activeElement?.tagName,label:document.activeElement?.getAttribute('aria-label')})));
   const focusables='button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]';
   await settings.evaluate((e,selector)=>[...e.querySelectorAll(selector)].filter(n=>n.getClientRects().length).at(-1)?.focus(),focusables);await page.keyboard.press('Tab');

@@ -1,3 +1,4 @@
+const {settledRail}=require('./shell-test-helpers.cjs');
 const {trustRegisteredFixtureFolder} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -44,15 +45,15 @@ async function run() {
     const goHome = async () => { await goDashboard(); await btn("업무 보드").click(); };
     const projectTabs = () => page.getByRole("navigation",{name:"프로젝트 상세 탭"});
     const goProject = async () => { await closeDockOverlay(); await sidebar().hover(); await sidebar().locator(".side-project").first().click(); };
-    await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='false');
+    await settledRail(sidebar(),{expanded:false,pinned:false},'기본 탐색 메뉴 접힘');
     await sidebar().hover();
-    await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');
+    await settledRail(sidebar(),{expanded:true,pinned:false},'탐색 메뉴 펼침');
     await page.mouse.move(600,100);
-    await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='false');
+    await settledRail(sidebar(),{expanded:false,pinned:false},'기본 탐색 메뉴 접힘');
     await sidebar().hover();
     await sidebar().getByRole('button',{name:'메뉴 고정',exact:true}).click();
     await page.mouse.move(600,100);
-    assert.equal(await sidebar().getAttribute('data-pinned'),'true');
+    await settledRail(sidebar(),{expanded:true,pinned:true},'메뉴 고정');assert.equal(await sidebar().getAttribute('data-pinned'),'true');
     assert.equal(await sidebar().getAttribute('data-expanded'),'true');
     await app.evaluate(({ dialog }, selection) => {
       dialog.showOpenDialog = async () => ({canceled: false, filePaths:[selection]});

@@ -1,3 +1,4 @@
+const {settledLayout}=require('./shell-test-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -78,14 +79,14 @@ async function run() {
     await portsPanel().getByText('번호와 포트 직접 설정', { exact: true }).click();
     const dimensions = [];
     for (const width of [1440, 800, 390]) {
-      await page.setViewportSize({ width, height: 1000 }); await page.waitForTimeout(330);
+      await page.setViewportSize({ width, height: 1000 }); await settledLayout(portsPanel());
       dimensions.push(await portsPanel().evaluate(element => ({ width: innerWidth, document: document.documentElement.scrollWidth, panel: element.clientWidth, scroll: element.scrollWidth })));
     }
     assert(dimensions.every(row => row.document <= row.width + 1 && row.scroll <= row.panel + 1), JSON.stringify(dimensions));
-    await page.setViewportSize({ width: 1440, height: 1000 }); await page.waitForTimeout(350); await page.mouse.move(1100, 100);
+    await page.setViewportSize({ width: 1440, height: 1000 }); await settledLayout(portsPanel()); await page.mouse.move(1100, 100);
     if (process.env.FLOWRIUM_PORTS_SCREENSHOT) {
       await fs.mkdir(path.dirname(process.env.FLOWRIUM_PORTS_SCREENSHOT), { recursive: true });
-      await portsPanel().evaluate(element => element.scrollIntoView({ block: 'start', inline: 'nearest' })); await page.waitForTimeout(350);
+      await portsPanel().evaluate(element => element.scrollIntoView({ block: 'start', inline: 'nearest' })); await settledLayout(portsPanel());
       await page.screenshot({ path: process.env.FLOWRIUM_PORTS_SCREENSHOT });
     }
     assert.deepEqual(errors, []);

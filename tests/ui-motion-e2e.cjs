@@ -1,3 +1,4 @@
+const {settledLayout} = require('./shell-test-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -88,14 +89,14 @@ async function run() {
     const popup=page.locator('.motion-surface[aria-label="검증 팝업"]'); await popup.waitFor();
     const popupMotion=await popup.evaluate(e=>{const a=e.getAnimations()[0];return {name:getComputedStyle(e).animationName,duration:a.effect.getTiming().duration,ease:getComputedStyle(e).animationTimingFunction,frames:a.effect.getKeyframes().map(k=>k.transform)};});
     assert.equal(popupMotion.name,'ui-popup-in');assert.equal(popupMotion.duration,240);assert.equal(popupMotion.ease,'cubic-bezier(0.16, 1, 0.3, 1)');assert.deepEqual(popupMotion.frames,['scale(0.9)','scale(1)']);
-    await page.waitForTimeout(260);const centered=await popup.boundingBox();const viewport=await page.evaluate(()=>({width:innerWidth,height:innerHeight}));assert.ok(Math.abs(centered.x+centered.width/2-viewport.width/2)<2,'변형된 부모 안에서도 팝업 가로 중앙');assert.ok(Math.abs(centered.y+centered.height/2-viewport.height/2)<2,'팝업 세로 중앙');
+    const centered=await settledLayout(popup);const viewport=await page.evaluate(()=>({width:innerWidth,height:innerHeight}));assert.ok(Math.abs(centered.x+centered.width/2-viewport.width/2)<2,'변형된 부모 안에서도 팝업 가로 중앙');assert.ok(Math.abs(centered.y+centered.height/2-viewport.height/2)<2,'팝업 세로 중앙');
     await page.getByRole('button',{name:'끝 버튼',exact:true}).focus();await page.keyboard.press('Tab');assert.equal(await page.getByRole('button',{name:'첫 버튼',exact:true}).evaluate(e=>e===document.activeElement),true);
     await page.keyboard.press('Escape');
     const exit=await page.locator('.motion-overlay').evaluate(e=>({phase:e.dataset.phase,ease:getComputedStyle(e).animationTimingFunction}));
     assert.equal(exit.phase,'exit');assert.equal(exit.ease,'cubic-bezier(0.7, 0, 0.84, 0)');
     await page.waitForTimeout(80);assert.equal(await popup.count(),1,'닫힘 도중 유지');assert.equal(await popup.locator('h2').textContent(),'검증 팝업','퇴장 중에도 기존 제목과 내용을 유지');await popup.waitFor({state:'detached'});
     assert.equal(await page.getByRole('button',{name:'팝업 열기'}).evaluate(e=>e===document.activeElement),true,'닫힌 뒤 시작 버튼으로 초점 복구');
-    await page.evaluate(()=>window.motion.setPopup(true));await popup.waitFor();await page.evaluate(()=>window.motion.setPopup(false));await page.waitForTimeout(90);await page.evaluate(()=>window.motion.setPopup(true));await page.waitForTimeout(280);assert.equal(await popup.count(),1,'닫히던 팝업을 다시 열면 이전 종료 취소');await page.evaluate(()=>window.motion.setPopup(false));await popup.waitFor({state:'detached'});
+    await page.evaluate(()=>window.motion.setPopup(true));await popup.waitFor();await page.evaluate(()=>window.motion.setPopup(false));await page.waitForTimeout(90);await page.evaluate(()=>window.motion.setPopup(true));await settledLayout(popup);assert.equal(await popup.count(),1,'닫히던 팝업을 다시 열면 이전 종료 취소');await page.evaluate(()=>window.motion.setPopup(false));await popup.waitFor({state:'detached'});
     for(const [kind,label] of [['toast','토스트 표시'],['snackbar','스낵바 표시']]){
       await page.getByRole('button',{name:label}).click();const surface=page.locator('[data-motion='+kind+']');await surface.waitFor();
       assert.equal(await surface.evaluate(e=>getComputedStyle(e).animationName),kind==='toast'?'ui-toast-rise':'ui-snackbar-in');
@@ -107,7 +108,7 @@ async function run() {
     assert.equal(await sheet.evaluate(e=>getComputedStyle(e).animationName),'ui-sheet-in');
     assert.equal(await page.locator('.motion-overlay').evaluate(e=>getComputedStyle(e).animationName),'ui-fade-in');
     await page.getByRole('button',{name:'시트 닫기'}).click();assert.equal(await sheet.evaluate(e=>getComputedStyle(e).animationName),'ui-sheet-out');await sheet.waitFor({state:'detached'});
-    await page.setViewportSize({width:1000,height:950});await page.getByRole('button',{name:'프로젝트와 화면 찾기'}).click();const command=page.locator('.command-scrim [role=dialog]');await command.waitFor();await page.waitForTimeout(260);const cb=await command.boundingBox();assert.ok(Math.abs(cb.y+cb.height/2-475)<2,'검색 팝업 세로 중앙');await page.getByRole('textbox',{name:'전체 검색어'}).fill('검증');await page.keyboard.press('Escape');assert.equal(await page.locator('.command-scrim').getAttribute('data-phase'),'exit');await command.waitFor({state:'detached'});
+    await page.setViewportSize({width:1000,height:950});await page.getByRole('button',{name:'프로젝트와 화면 찾기'}).click();const command=page.locator('.command-scrim [role=dialog]');await command.waitFor();const cb=await settledLayout(command);assert.ok(Math.abs(cb.y+cb.height/2-475)<2,'검색 팝업 세로 중앙');await page.getByRole('textbox',{name:'전체 검색어'}).fill('검증');await page.keyboard.press('Escape');assert.equal(await page.locator('.command-scrim').getAttribute('data-phase'),'exit');await command.waitFor({state:'detached'});
     await page.getByRole('button',{name:'개인 비서',exact:true}).click();const assistant=page.locator('dialog[aria-label="개인 비서 연결"]');await assistant.waitFor();assert.equal(await assistant.evaluate(e=>e.open),true);await page.keyboard.press('Escape');assert.equal(await assistant.getAttribute('data-phase'),'exit');assert.equal(await assistant.evaluate(e=>e.open),true,'기본 Escape 닫힘을 지연하여 종료 애니메이션 보장');await assistant.waitFor({state:'detached'});
     await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>window.motion.setPopup(true));await popup.waitFor();assert.equal(await popup.evaluate(e=>getComputedStyle(e).transform),'none');await page.evaluate(()=>window.motion.setPopup(false));await popup.waitFor({state:'detached'});
     assert.deepEqual(errors,[]);

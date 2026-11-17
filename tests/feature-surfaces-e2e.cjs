@@ -1,3 +1,4 @@
+const {settledLayout,settledRail}=require('./shell-test-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
@@ -32,7 +33,7 @@ async function run() {
     await page.waitForTimeout(300);
     await page.getByRole('navigation', { name: '주 메뉴' }).getByRole('button', { name, exact: true }).click();
     await page.mouse.move(900, 85);
-    await page.waitForTimeout(550);
+    await settledRail(page.locator('.workspace-side'),{expanded:false,pinned:false},'촬영 전 메뉴 접힘');
   }
   async function foldDock() {
     const fold = button('대화함 접기');
@@ -64,7 +65,7 @@ async function run() {
     if (!process.env.FLOWRIUM_FEATURE_SCREENSHOTS) return;
     await fs.mkdir(process.env.FLOWRIUM_FEATURE_SCREENSHOTS, { recursive: true });
     await page.mouse.move(900, 85);
-    await page.waitForTimeout(550);
+    await settledRail(page.locator('.workspace-side'),{expanded:false,pinned:false},'촬영 전 메뉴 접힘');
     await page.screenshot({ path: path.join(process.env.FLOWRIUM_FEATURE_SCREENSHOTS, name + '.png') });
   }
   try {
@@ -79,7 +80,7 @@ async function run() {
     await foldDock();
     for (const width of widths) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.waitForTimeout(360);
+      await settledLayout(page.locator('.main-shell'));
       await measure('대시보드 / ' + width);
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -89,7 +90,7 @@ async function run() {
     const tabs = ['홈', '업무 현황', '팀', 'GitHub', '규칙', '디자인 시안', '회의록', '문서', '프로젝트 설정'];
     for (const width of widths) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.waitForTimeout(360);
+      await settledLayout(page.locator('.main-shell'));
       for (const name of tabs) {
         await tab(name).click();
         if (name === 'GitHub') {
@@ -115,7 +116,7 @@ async function run() {
     await page.getByLabel('팀 이름', { exact: true }).fill('합성 검증 팀');
     for (const width of widths) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.waitForTimeout(360);
+      await settledLayout(page.locator('.main-shell'));
       await measure('팀 역할 편집 / ' + width);
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -127,7 +128,7 @@ async function run() {
     await page.locator('.pp-editor').first().locator('summary').click();
     for (const width of widths) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.waitForTimeout(360);
+      await settledLayout(page.locator('.main-shell'));
       await measure('프로젝트 상세와 포트 편집 / ' + width);
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -152,7 +153,7 @@ async function run() {
     const workflowTabs = page.getByRole('navigation', { name: '업무 연결 화면' });
     for (const width of widths) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.waitForTimeout(360);
+      await settledLayout(page.locator('.main-shell'));
       for (const name of [/^결정과 보고$/, /^알림 \d+$/, /^대화에 전달$/, /^비서와 예약$/]) {
         await workflowTabs.getByRole('button', { name }).click();
         await measure('업무 연결 / ' + name.source + ' / ' + width);
@@ -164,7 +165,7 @@ async function run() {
       await navigate(name);
       for (const width of [1440, 800, 390, 320]) {
         await page.setViewportSize({ width, height: 1000 });
-      await page.waitForTimeout(360);
+        await settledLayout(page.locator('.main-shell'));
         await measure(name + ' / ' + width);
       }
       await page.setViewportSize({ width: 1440, height: 1000 });
@@ -173,7 +174,7 @@ async function run() {
     await page.getByRole('heading', { name: '작업 현황', exact: true }).waitFor();
     for (const width of widths) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.waitForTimeout(360);
+      await settledLayout(page.locator('.main-shell'));
       await measure('작업 현황 / ' + width);
     }
     assert.deepEqual(errors, []);

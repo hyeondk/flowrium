@@ -1,3 +1,4 @@
+const {settledRail}=require('./shell-test-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -47,14 +48,10 @@ async function run() {
       await page.addStyleTag({ content: css });
     }
     assert.equal(path.relative(await fs.realpath(profile), await fs.realpath(await app.evaluate(({ app }) => app.getPath('userData')))), '', '개인 사용자 자료와 분리');
-    const waitForPanel = expanded => expect.poll(()=>page.evaluate(async expected => {
-      const side=document.querySelector('.workspace-side'),surface=side?.querySelector('.sidebar-surface');
-      if(!surface||side.dataset.expanded!==String(expected))return false;
-      const width=surface.getBoundingClientRect().width;
-      if([side,surface].some(node=>node.getAnimations().some(animation=>animation.playState==='running')))return false;
-      await new Promise(requestAnimationFrame);
-      return side.dataset.expanded===String(expected)&&Math.abs(surface.getBoundingClientRect().width-width)<0.1;
-    }, expanded),{timeout:15000}).toBe(true);
+    const waitForPanel = async expanded => {
+      const side=page.locator('.workspace-side');
+      await settledRail(side,{expanded,pinned:await side.getAttribute('data-pinned')==='true'},'탐색 메뉴 폭 안정');
+    };
     await page.mouse.move(30, 140);
     await waitForPanel(true);
     await page.evaluate(() => document.fonts.ready);

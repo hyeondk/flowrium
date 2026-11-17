@@ -1,3 +1,4 @@
+const {settledRail}=require('./shell-test-helpers.cjs');
 const {trustRegisteredFixtureFolder} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -70,16 +71,16 @@ async function main() {
     );
     await page.locator('.side-usage[data-connected=true]').waitFor();
     const rail=page.locator('.workspace-side');
-    await page.mouse.move(400,100);await page.waitForTimeout(300);
+    await page.mouse.move(400,100);await settledRail(rail,{expanded:false,pinned:false},'기본 메뉴 접힘');
     assert.equal(await rail.getAttribute('data-expanded'),'false');
     const before=await page.locator('.main-shell').boundingBox();
-    await rail.hover();await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');await page.waitForTimeout(300);
+    await rail.hover();await settledRail(rail,{expanded:true,pinned:false,width:248},'포인터로 메뉴 펼치기');
     assert.equal(await rail.getAttribute('data-expanded'),'true');
     assert.equal((await page.locator('.sidebar-surface').boundingBox()).width,248);
     assert.deepEqual(await page.locator('.main-shell').boundingBox(),before,'메뉴를 올려도 본문 배치 유지');
     await button('메뉴 고정').click();await page.mouse.move(400,100);
-    await page.waitForTimeout(300);assert.equal(await rail.getAttribute('data-expanded'),'true');
-    await button('메뉴 자동 접기').click();await page.mouse.move(500,100);await page.waitForTimeout(300);
+    await settledRail(rail,{expanded:true,pinned:true,width:248},'메뉴 고정 유지');assert.equal(await rail.getAttribute('data-expanded'),'true');
+    await button('메뉴 자동 접기').click();await page.mouse.move(500,100);await settledRail(rail,{expanded:false,pinned:false,width:50},'고정 해제 후 메뉴 접힘');
     assert.equal(await rail.getAttribute('data-expanded'),'false');
     await rail.hover();await nav.getByRole("button",{name:"프로젝트 추가"}).click();
     await page.getByLabel("프로젝트 이름", { exact: true }).fill(name);
