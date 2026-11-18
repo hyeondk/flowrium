@@ -181,7 +181,7 @@ async function run() {
       assert.equal(open.projects.length,8);
       assert(open.projects.every(p=>Math.abs(p.height-38)<0.1),'프로젝트 선택 면을 38px로 두고 기존 40px 중심 간격을 유지합니다.');
       assert(open.projects.slice(1).every((project,index)=>project.top-open.projects[index].bottom>=1.9),'인접한 프로젝트 선택 면 사이에 실제 2px 간격을 유지합니다.');
-      assert(Math.abs(open.projectListHeight-320)<0.1,'8개 프로젝트 외에 빈 예약 높이를 추가하지 않습니다.');
+      assert(Math.abs(open.projectListHeight-320)<0.2,'8개 프로젝트의 38px 행 / 2px 간격 / 상하 1px를 합친 320px 높이를 유지합니다. 87% 화면 배율의 누적 서브픽셀 반올림을 허용합니다. '+JSON.stringify({actual:open.projectListHeight,expected:320}));
       assert(open.largestNavGap<=42.1,'프로젝트 행 중심 간격은 42px 이하여야 합니다.');
       assert(open.lastToolBottom>=open.navBottom-2,'도구 그룹은 기존처럼 탐색 영역 아래쪽에 있습니다.');
       assert(open.navBottom<=open.footerTop,'탐색 스크롤은 하단 사용량과 설정을 가리지 않습니다.');

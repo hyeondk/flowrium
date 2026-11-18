@@ -4,7 +4,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { _electron } = require('playwright');
 const { Store } = require('../electron/store.cjs');
-const {dockHome}=require('./shell-test-helpers.cjs');
+const {dockHome,openProjectTab}=require('./shell-test-helpers.cjs');
 
 async function test() {
   const root = path.resolve(__dirname,'..');
@@ -47,7 +47,8 @@ async function test() {
     await hold(right,c,a);
     await expected([c,a,b]);
     assert.match(await page.locator('.main-shell').getAttribute('data-view'),/dashboard/);
-    await page.locator('.workspace-side').hover();await page.getByRole('button',{name:'메뉴 고정'}).click();
+    await page.locator('.workspace-side').hover();
+    if(await page.locator('.workspace-side').getAttribute('data-pinned')!=='true')await page.getByRole('button',{name:'메뉴 고정',exact:true}).click();
     await hold(left,b,c);
     await expected([b,c,a]);
     await page.locator(left+'[data-project-sort-id="'+c+'"]').focus();
@@ -57,7 +58,7 @@ async function test() {
     await expected([b,a,c]);
     // A normal click still opens the project. Rename through the project settings form.
     await page.locator(left+'[data-project-sort-id="'+a+'"]').click();
-    await page.getByRole('button',{name:'프로젝트 설정',exact:true}).click();
+    await openProjectTab(page,'프로젝트 설정');
     await page.getByRole('button',{name:'킥오프 수정',exact:true}).click();
     await page.getByLabel('프로젝트 이름',{exact:true}).fill('개정한 표시 이름');
     await page.getByRole('button',{name:'킥오프 저장',exact:true}).click();
@@ -70,7 +71,7 @@ async function test() {
     await page.getByRole('button',{name:'프로젝트 완료',exact:true}).click();
     await expected([b,c]);
     await page.locator('.workspace-side').hover();
-    await page.locator('.workspace-side').getByRole('button',{name:'완료',exact:true}).click();
+    await page.locator('.workspace-side').getByRole('button',{name:'완료한 업무',exact:true}).click();
     await page.getByRole('button',{name:'프로젝트 재개',exact:true}).click();
     await expected([b,a,c]);
 
