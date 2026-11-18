@@ -225,6 +225,8 @@ async function run() {
       return last.top>=nav.top&&last.bottom<=nav.bottom+1;
     });
     assert(bottomReachable,'짧은 화면에서도 스크롤하여 마지막 도구에 접근할 수 있어야 합니다.');
+    await side.hover();
+    await page.waitForFunction(()=>document.querySelector('.workspace-side').dataset.expanded==='true');
     await side.getByRole('button',{name:'메뉴 고정',exact:true}).click();
     await page.mouse.move(900,80);
     assert.equal(await side.getAttribute('data-expanded'),'true');
