@@ -505,9 +505,20 @@ async function run(){
     });
     assert(Math.abs(zoomBoxes.xDifference)<1&&Math.abs(zoomBoxes.widthDifference)<1&&zoomBoxes.gap>=3.5&&zoomBoxes.gap<=8.5);
     results.lock.push(zoomBoxes);
-    await zoomedList.getByRole('option',{name:'60분 후'}).click();
+    await app.evaluate(({ipcMain})=>{
+      const channel='flowrium:setSecurityPreferences';
+      const save=ipcMain._invokeHandlers.get(channel);
+      if(!save)throw Error('잠금 설정 저장 동작을 찾을 수 없습니다.');
+      ipcMain.removeHandler(channel);
+      ipcMain.handle(channel,async(...args)=>{
+        await new Promise(resolve=>setTimeout(resolve,300));
+        return save(...args);
+      });
+    });
+    await zoomedList.getByRole('option',{name:'30분 후'}).click();
     await zoomedList.waitFor({state:'detached'});
     await expect(combo).toBeFocused();
+    await page.waitForFunction(async()=>(await window.flowrium.securityState()).preferences.idleMinutes===30);
     await combo.click();await combo.press('Tab');await zoomedList.waitFor({state:'detached'});
     await combo.click();await dialog.getByRole('heading',{name:'화면 잠금',exact:true}).click();await zoomedList.waitFor({state:'detached'});
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(.87));

@@ -28,7 +28,7 @@ export default function ChoicePicker({label,value,options,onChange,disabled,edit
   const input = useRef<HTMLInputElement>(null);
   const popup = useRef<HTMLDivElement>(null);
   const outsidePointer = useRef(false);
-  const restoreFocus = useRef(false);
+  const restoreFocus = useRef<{previous:Element|null}|null>(null);
   const optionRows = useRef<(HTMLButtonElement | null)[]>([]);
   const [open,setOpen] = useState(false);
   const [cursor,setCursor] = useState(0);
@@ -50,7 +50,7 @@ export default function ChoicePicker({label,value,options,onChange,disabled,edit
   function choose(index: number) {
     const item = rows[index];
     if (!item || disabled) return;
-    restoreFocus.current = true;
+    restoreFocus.current = {previous:document.activeElement};
     onChange(item.value);
     setOpen(false);
   }
@@ -136,11 +136,15 @@ export default function ChoicePicker({label,value,options,onChange,disabled,edit
     return()=>{cancelAnimationFrame(frame);observer.disconnect();document.removeEventListener('scroll',onScroll,true);window.removeEventListener('resize',update);window.visualViewport?.removeEventListener('resize',update);window.visualViewport?.removeEventListener('scroll',update);if(supportsPopover&&list.matches(':popover-open'))list.hidePopover();};
   },[expanded,rows.length,placement,supportsPopover,menuMinWidth]);
   useLayoutEffect(()=>{
-    if (expanded || !restoreFocus.current) return;
-    restoreFocus.current = false;
-    // 기본 팝오버가 닫히면서 초점을 돌려놓은 뒤 선택 입력에 초점을 맞춥니다.
-    (editable ? input.current : trigger.current)?.focus({preventScroll:true});
-  },[expanded,editable]);
+    if (expanded || disabled || !restoreFocus.current) return;
+    const {previous}=restoreFocus.current;
+    restoreFocus.current = null;
+    const active=document.activeElement;
+    // 저장 중 비활성화된 입력은 다시 활성화된 뒤 초점을 받을 수 있습니다.
+    if (active===previous || active===document.body || root.current?.contains(active)) {
+      (editable ? input.current : trigger.current)?.focus({preventScroll:true});
+    }
+  },[expanded,disabled,editable]);
   useEffect(()=>{
     if (!expanded) return;
     const row=optionRows.current[cursor];
