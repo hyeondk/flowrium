@@ -1,4 +1,7 @@
 .project-shortcuts { word-break:keep-all; }
+.app-shell .pf-page .pf-content .project-shortcuts>.pf-section-header {flex-wrap:nowrap;align-items:center;gap:8px}
+.project-shortcuts>.pf-section-header>h2 {min-width:0}
+.project-shortcuts>.pf-section-header>button {flex:none;white-space:nowrap}
 .project-shortcut-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr)); gap:10px; margin:14px 0; }
 .project-shortcut-list article { min-width:0; padding:14px; border:1px solid var(--border); border-radius:12px; background:var(--panel-alt,var(--surface)); }
 .project-shortcut-summary { display:flex; gap:9px; align-items:center; min-height:32px; }

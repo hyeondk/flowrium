@@ -47,7 +47,7 @@ async function setup(store,temp){
   await store.createSession(project.id,{title:'긴 안내문',messages:[message('assistant',text)]});
   await store.saveSettings({codexPath:fixture,theme:'light',accentColor:'blue'});
 }
-const map='<svg xmlns="http://www.w3.org/2000/svg" width="420" height="160" viewBox="0 0 420 160"><rect width="420" height="160" fill="#eef3e9"/><path fill="#d4e7ea" d="m200 0 25 0-88 160h-25z"/><g fill="none" stroke="#fff" stroke-width="12"><path d="M0 70h420M40 20l335 120M45 155l33-155M300 165l62-165"/></g><path d="M48 112L82 70h98l65 25 78-54" fill="none" stroke="#2669aa" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/><g fill="white" stroke="#2669aa" stroke-width="3"><circle cx="48" cy="112" r="6"/><circle cx="180" cy="70" r="6"/><circle cx="323" cy="41" r="6"/></g><g fill="#314b55" font-size="14" font-family="sans-serif"><text x="23" y="138">중앙역</text><text x="152" y="51">골목 서점</text><text x="314" y="21">도시숲</text></g></svg>';
+const map='<svg xmlns="http://www.w3.org/2000/svg" width="360" height="137" viewBox="0 0 420 160"><rect width="420" height="160" fill="#eef3e9"/><path fill="#d4e7ea" d="m200 0 25 0-88 160h-25z"/><g fill="none" stroke="#fff" stroke-width="12"><path d="M0 70h420M40 20l335 120M45 155l33-155M300 165l62-165"/></g><path d="M48 112L82 70h98l65 25 78-54" fill="none" stroke="#2669aa" stroke-width="5" stroke-linejoin="round" stroke-linecap="round"/><g fill="white" stroke="#2669aa" stroke-width="3"><circle cx="48" cy="112" r="6"/><circle cx="180" cy="70" r="6"/><circle cx="323" cy="41" r="6"/></g><g fill="#314b55" font-size="14" font-family="sans-serif"><text x="23" y="138">중앙역</text><text x="152" y="51">골목 서점</text><text x="314" y="21">도시숲</text></g></svg>';
 async function sampleMotion(page,selector,button){
   return page.evaluate(({selector,button})=>new Promise(resolve=>{
     const frame=[];
@@ -84,7 +84,7 @@ async function sampleTextContrast(app,page) {
     const bitmap=await createImageBitmap(new Blob([Uint8Array.from(atob(png),s=>s.charCodeAt(0))],{type:'image/png'}));
     const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;
     const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(bitmap,0,0);bitmap.close();
-    const selectors={korean:'.message.assistant .message-meta strong',number:'.message.assistant .message-meta time'};
+    const selectors={korean:'.message.assistant .message-meta strong',number:'.message.assistant .message-time'};
     const values={};
     const luminance=rgb=>rgb.slice(0,3).reduce((value,ch,i)=>{const v=ch/255;return value+[.2126,.7152,.0722][i]*(v<=.04045?v/12.92:((v+.055)/1.055)**2.4)},0);
     for(const [key,selector] of Object.entries(selectors)){
@@ -449,10 +449,12 @@ async function run(){
     const choices=category.getByRole('listbox',{name:'프로젝트',exact:true});
     await settledLayout(choices);
     const choiceLayout=await projectChoice.evaluate(el=>{
-      const a=el.getBoundingClientRect(),b=document.getElementById(el.getAttribute('aria-controls')).getBoundingClientRect(),icon=el.querySelector('svg').getBoundingClientRect();
-      return {gap:b.top-a.bottom,left:b.left-a.left,width:b.width-a.width,center:Math.abs((icon.top+icon.bottom-a.top-a.bottom)/2),inset:a.right-icon.right};
+      const menu=document.getElementById(el.getAttribute('aria-controls'));
+      const a=el.getBoundingClientRect(),b=menu.getBoundingClientRect(),icon=el.querySelector(':scope > svg').getBoundingClientRect();
+      const placement=menu.dataset.placement;
+      return {placement,gap:placement==='up'?a.top-b.bottom:b.top-a.bottom,left:b.left-a.left,width:b.width-a.width,center:Math.abs((icon.top+icon.bottom-a.top-a.bottom)/2),inset:a.right-icon.right};
     });
-    assert(choiceLayout.gap>=5&&choiceLayout.gap<=7&&Math.abs(choiceLayout.left)<1&&Math.abs(choiceLayout.width)<1);
+    assert(choiceLayout.gap>=5&&choiceLayout.gap<=7&&Math.abs(choiceLayout.left)<1&&Math.abs(choiceLayout.width)<1,JSON.stringify(choiceLayout));
     assert(choiceLayout.center<1&&choiceLayout.inset>=11,JSON.stringify(choiceLayout));
     if(screenshots)await captureDesktop(app,path.join(screenshots,'desktop-choices.png'));
     await projectChoice.press('Escape');

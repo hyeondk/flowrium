@@ -40,15 +40,20 @@ async function main(){
    await page.setViewportSize({width,height:900});await settledLayout(dock);
    const metrics=await assistant.evaluate(row=>{
     const center=r=>(r.top+r.bottom)/2,box=e=>e.getBoundingClientRect();
-    const meta=['.message-avatar','.message-meta strong','.message-meta time'].map(s=>box(row.querySelector(s))),bubble=box(row.querySelector('.message-bubble'));
-    const user=document.querySelector('.message.user'),ownBubble=box(user.querySelector('.message-bubble')),copy=box(user.querySelector('.copy-message'));
+    const meta=['.message-avatar','.message-meta strong'].map(s=>box(row.querySelector(s))),bubble=box(row.querySelector('.message-bubble'));
+    const assistantTime=box(row.querySelector('.message-time')),assistantCopy=box(row.querySelector('.copy-message'));
+    const user=document.querySelector('.message.user'),ownBubble=box(user.querySelector('.message-bubble')),copy=box(user.querySelector('.copy-message')),userTime=box(user.querySelector('.message-time'));
     const token=box(document.querySelector('.chat-token-summary')),settings=box(document.querySelector('.session-details>summary'));
     return {width:innerWidth,metaCenters:meta.map(center),userCopyOutside:copy.top>=ownBubble.bottom,userCopyRight:Math.abs(copy.right-ownBubble.right),
+     userTimeOutside:userTime.right<=ownBubble.left-3&&Math.abs(userTime.bottom-ownBubble.bottom)<1,
+     userHeaderCount:user.querySelectorAll('.message-meta').length,assistantTimeBelow:assistantTime.top>=bubble.bottom,assistantFooterOffset:Math.abs(center(assistantTime)-center(assistantCopy)),
+     timestampsInsideBubbles:document.querySelectorAll('.message-bubble time').length,
      radius:parseFloat(getComputedStyle(row.querySelector('.message-bubble')).borderRadius),userRadius:parseFloat(getComputedStyle(user.querySelector('.message-bubble')).borderRadius),
      tokenBeforeSettings:token.right<=settings.left+1,overflow:document.documentElement.scrollWidth-innerWidth,messageOverflow:row.scrollWidth-row.clientWidth,
      bubbleWidth:bubble.width,scale:getComputedStyle(document.querySelector('.message-history-items')).zoom};
    });
-   assert(Math.max(...metrics.metaCenters)-Math.min(...metrics.metaCenters)<=1,'아이콘·Codex·시간의 세로 중심 일치');
+   assert(Math.max(...metrics.metaCenters)-Math.min(...metrics.metaCenters)<=1,'아이콘·Codex의 세로 중심 일치');
+   assert(metrics.userTimeOutside&&metrics.userHeaderCount===0&&metrics.assistantTimeBelow&&metrics.assistantFooterOffset<1&&metrics.timestampsInsideBubbles===0,'시간은 말풍선 밖 / 내 시간은 왼쪽 하단 / 응답 시간은 하단 도구와 나란히');
    assert(metrics.userCopyOutside&&metrics.userCopyRight<2,'사용자 복사 도구는 말풍선 바깥 우측 하단');
    assert(metrics.radius>=18&&metrics.userRadius>=18&&metrics.tokenBeforeSettings,'둥근 양측 말풍선 / 토큰은 설정 왼쪽');
    assert(metrics.overflow<=1&&metrics.messageOverflow<=1&&Number(metrics.scale)===.9,JSON.stringify(metrics));proof.sizes.push(metrics);

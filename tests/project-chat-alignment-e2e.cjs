@@ -65,7 +65,7 @@ async function run() {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openConversation(page, session.title);
     const message = page.locator('.message.assistant').first();
-    await page.locator('.message.user .message-avatar .lucide-user-round').waitFor();
+    await page.locator('.message.user .message-time').waitFor();
     const logo=message.locator('.message-avatar img');
     await logo.waitFor();
     assert(await logo.evaluate(img=>img.complete && img.naturalWidth>0 && /\/chatgpt(?:-[\w-]+)?\.svg$/.test(img.src)), '오프라인 번들 아이콘이 원래 비율로 열림');
@@ -87,7 +87,8 @@ async function run() {
         return {
           width: innerWidth, leftInset: copy.left-bubble.left,
           copyToVoice: voice.x - copy.right, voiceToLike: reaction.x - voice.right,
-          rowOffset: Math.max(...[avatar,name,time].map(box => Math.abs(center(box) - center(time)))),
+          rowOffset: Math.abs(center(avatar)-center(name)),
+          footerOffset:Math.max(...[voice,reaction,copy].map(box=>Math.abs(center(box)-center(time)))),
           actionsBelow:Math.min(voice.top,reaction.top,copy.top)>=bubble.bottom,
           bubbleRadius:parseFloat(getComputedStyle(row.querySelector('.message-bubble')).borderRadius),
           minTarget: Math.min(voice.height, voice.width, reaction.height, reaction.width, copy.width, copy.height),
@@ -109,7 +110,7 @@ async function run() {
     for (const m of chatMetrics) {
       assert(m.leftInset>=0&&m.leftInset<=4, `답변 말풍선 바깥 하단 도구 정렬 ${m.width}`);
       assert(m.copyToVoice >= 0 && m.copyToVoice <= 6 && m.voiceToLike >= 0 && m.voiceToLike <= 6, `도구 간격 ${m.width}`);
-      assert(m.rowOffset <= 1 && m.actionsBelow && m.bubbleRadius>=18 && m.overflow <= 1, `아이콘·Codex·시간 정렬 및 둥근 말풍선 ${m.width}`);
+      assert(m.rowOffset <= 1 && m.footerOffset <= 1 && m.actionsBelow && m.bubbleRadius>=18 && m.overflow <= 1, `아이콘·Codex 상단 정렬 / 시간·도구 하단 정렬 / 둥근 말풍선 ${m.width}`);
       assert(m.minTarget >= 24, `90% 읽기 배율에서 도구 클릭 영역 ${m.width}`);
     }
   } finally {

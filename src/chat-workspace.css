@@ -120,6 +120,7 @@
 .conversation-dock .dock-project-name,.conversation-dock .dock-session-project{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
 .conversation-dock .dock-project-name>strong,.conversation-dock .dock-session-project>span:last-child{min-width:0;word-break:keep-all;overflow-wrap:break-word}
 .conversation-dock .dock-project-name .project-category-label,.conversation-dock .dock-session-project .project-category-label{flex:none}
+.conversation-dock .dock-session-project{flex:1}
 .conversation-dock .dock-project-select {font-size:11px;line-height:16px;gap:4px;margin:1px 0 6px}
 .app-shell .conversation-dock .dock-browser .dock-project-select .choice-trigger {
   height:32px;min-height:32px;padding:4px 8px;border-radius:7px;font-size:12px;line-height:20px;
@@ -204,11 +205,14 @@
 .conversation-dock .message-body{min-width:0;width:auto;max-width:100%;padding:0;border:0;background:transparent;box-shadow:none}
 .conversation-dock .message-meta{display:flex;align-items:center;min-height:22px;margin:0 4px 4px;gap:6px;flex-wrap:nowrap;line-height:18px}
 .conversation-dock .message-meta strong{font-size:12px;line-height:18px;font-weight:700}
-.conversation-dock .message-meta time{flex:none;font-size:11px;line-height:18px;color:var(--muted);white-space:nowrap}
+.conversation-dock .message-time{flex:none;font-size:11px;line-height:18px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.conversation-dock .message-bubble-row{display:flex;align-items:flex-end;gap:7px;min-width:0;max-width:100%}
+.conversation-dock .message-bubble-row>.message-bubble{flex:1;min-width:0}
 .conversation-dock .message-bubble{min-width:0;max-width:100%;padding:9px 12px;border:1px solid var(--line-soft);border-radius:20px;background:var(--card-subtle);box-shadow:none}
 .conversation-dock .message.assistant{margin-inline:0 auto}
-.conversation-dock .message.user{max-width:92%;margin-inline:auto 0}
+.conversation-dock .message.user{max-width:96%;margin-inline:auto 0}
 .conversation-dock .message.user .message-bubble{background:var(--accent-bg);border-color:transparent}
+.conversation-dock .message.user .message-bubble-row>.message-time{padding-bottom:3px}
 .conversation-dock .message.user .message-meta{justify-content:flex-end;gap:5px}
 .conversation-dock .message.system .message-bubble{padding:0;border:0;background:transparent}
 .conversation-dock .markdown,.conversation-dock .message .message-prose,.conversation-dock .message .message-prose p{
@@ -228,6 +232,7 @@
 .conversation-dock .markdown img{max-width:100%;height:auto}
 .conversation-dock .markdown :is(a,code){overflow-wrap:anywhere;word-break:normal}
 .conversation-dock .message-meta-actions{display:flex;align-items:center;gap:2px;margin:3px 3px 0}
+.conversation-dock .message-meta-actions>.message-time{margin-inline-start:6px}
 .conversation-dock .message.user .message-meta-actions{justify-content:flex-end;margin-top:3px;margin-inline:0}
 .conversation-dock .message-meta-actions .copy-message{opacity:1}
 .conversation-dock .message-meta-actions :is(.icon-button,.ui-like-button){display:inline-grid;place-items:center;flex:none;width:28px;height:28px;min-width:28px;min-height:28px;margin:0;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted)}

@@ -1181,10 +1181,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       <article
                         className={`message ${message.role}`}
                         data-message-id={message.id}
+                        aria-label={message.role==="user"?"내 메시지":undefined}
                         key={message.id}
                       >
                         <div className="message-body">
-                          <div className="message-meta">
+                          {(message.role!=="user"||message.delegated)&&<div className="message-meta">
                         <span className={`message-avatar ${message.role}`}>
                           {message.role === "assistant" ? (
                             <img className="chatgpt-avatar" src={chatgptAvatar} width="24" height="24" alt="" draggable={false}/>
@@ -1201,14 +1202,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                   ? (message.delegated ? "전달된 요청" : "나")
                                   : "작업 상태"}
                             </strong>
-                            <time dateTime={message.createdAt}>
-                              {new Date(message.createdAt).toLocaleString(
-                                "ko-KR",
-                                message.role === "system" ? statusTime : messageTime,
-                              )}
-                            </time>
-
-                          </div>
+                          </div>}
+                          <div className="message-bubble-row">
+                          {message.role==="user"&&<time className="message-time" dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString("ko-KR",messageTime)}</time>}
                           <div className="message-bubble">
                           {Boolean(message.attachments?.length)&&project&&<ChatAttachmentList projectId={project.id} items={message.role==="assistant"?message.attachments!.filter(a=>!presentCitations(message.text).references.some(r=>r.attachmentId===a.id)):message.attachments!}/>}
                           <div className="markdown">
@@ -1218,6 +1214,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                 title={input.length||attachments.length?"입력창을 비우면 이 요청을 다시 담을 수 있습니다.":"요청을 입력창에 담아 다시 확인합니다."}
                                 onClick={()=>restoreFailedRequest(failedRequest)}>입력창에 다시 담기</button>}/>
                             {message.sourceOnly && <RequestSource sessionId={session.id} messageId={message.id}/>}
+                          </div>
                           </div>
                           </div>
                             <span className="message-meta-actions">
@@ -1251,6 +1248,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                   }}
                                 />
                               </>}
+                              {message.role!=="user"&&<time className="message-time" dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString("ko-KR",message.role==="system"?statusTime:messageTime)}</time>}
                             </span>
                         </div>
                       </article>
