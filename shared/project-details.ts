@@ -11,6 +11,7 @@ export interface ProjectDetails {
   services?: ProjectService[];
   chatCwd?: string;
   schedule?: ProjectSchedule[];
+  category?: string;
   kickoff?: Kickoff;
   periodGoals?: PeriodGoal[];
   projectId: string;
@@ -28,6 +29,7 @@ export type ProjectChange =
   | { action: "schedule"; entries: ProjectSchedule[] }
   | { action: "repositories"; repositories: ProjectRepository[]; chatCwd: string; services?:ProjectService[] }
   | { action: "repository-hide"; id: string; hidden: boolean }
+  | { action: "category"; category: string }
   | { action: "phase"; phase: string; name?: string }
   | { action: "goal-check"; id: string; done: boolean }
   | { action: "goal-remove"; id: string }
@@ -56,4 +58,8 @@ export interface RepositoryAccessSnapshot {
 export interface ExternalRepositoryAPI {
  repositoryAccessAction(projectId:string,input:{action:'sources'}|{action:'status';repositories:ProjectRepository[]}):Promise<RepositoryAccessSnapshot>;
  repositoryAccessAction(projectId:string,input:{action:'authorize'|'revoke';repositoryId:string;sourceProjectId:string}):Promise<{authorized?:boolean;revoked?:boolean;sourceProjectId?:string}|null>;
+}
+
+export function projectCategory(details?: ProjectDetails | null) {
+  return details?.kickoff?.category ?? details?.category ?? "";
 }

@@ -147,11 +147,13 @@ async function run() {
         measurements.at(-1).collapsedImmediateArchiveClickPassed = true;
         await page.mouse.move(width - 60, 90);
         await waitForPanel(false);
+        await page.locator('.workspace-side').hover();
+        await waitForPanel(true);
         await page.locator('.workspace-side').getByRole('button', { name: '프로젝트 추가', exact: true }).click();
         await page.locator('.main-shell[data-view=kickoff]').waitFor({ timeout: 3000 });
         await page.getByRole('button', { name: '대시보드', exact: true }).click();
         await page.locator('.main-shell[data-view=dashboard]').waitFor();
-        measurements.at(-1).collapsedImmediateProjectAddClickPassed = true;
+        measurements.at(-1).expandedProjectAddClickPassed = true;
       }
     }
     await page.setViewportSize({ width: 1440, height: 800 });

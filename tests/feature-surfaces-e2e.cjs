@@ -85,7 +85,7 @@ async function run() {
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
     await screenshot('dashboard');
-    await page.locator('.pf-card').filter({ hasText: project.name }).click();
+    await page.locator('.pf-project-entry').filter({ hasText: project.name }).click();
     await foldDock();
     const tabs = ['홈', '업무 현황', '팀', 'GitHub', '규칙', '디자인 시안', '회의록', '문서', '프로젝트 설정'];
     for (const width of widths) {

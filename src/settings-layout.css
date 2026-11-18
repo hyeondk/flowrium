@@ -1,0 +1,30 @@
+.settings-disclosure-layout .settings-nav .settings-nav-item {justify-content:space-between;gap:8px}
+.settings-disclosure-layout .settings-nav .settings-nav-item>svg {flex:none;transition:transform 180ms ease}
+.settings-disclosure-layout .settings-nav .settings-nav-item[aria-expanded=true] {
+  border-color:color-mix(in srgb,var(--accent) 18%,transparent);
+  background:var(--accent-bg);color:var(--accent-bright);font-weight:700;
+}
+.settings-disclosure-layout .settings-nav .settings-nav-item[aria-expanded=true]>svg {transform:rotate(90deg)}
+.settings-modal .settings-disclosure-layout .settings-content {scroll-behavior:auto}
+.settings-modal .settings-disclosure-layout .settings-group {flex:none;gap:12px;opacity:1;transform:translateY(0)}
+.settings-disclosure-layout .settings-group[data-selected=true] {
+  transition:opacity 180ms ease,transform 180ms ease,display 180ms allow-discrete;
+}
+.settings-disclosure-layout .settings-group[hidden] {display:none;opacity:0;transform:translateY(-4px)}
+.settings-disclosure-layout .settings-group>.settings-group-title {
+  margin:0;color:var(--text);font-size:16px;line-height:24px;font-weight:800;
+}
+.settings-modal .settings-disclosure-layout .settings-group>.settings-note {padding-inline:16px}
+.settings-modal .settings-disclosure-layout .settings-group>.text-link {padding-inline:16px}
+.settings-modal .update-history h3 {display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.settings-modal .update-history h3 small {font-size:12px;line-height:20px;color:var(--muted);font-weight:500}
+.settings-modal .update-history ul {margin:12px 0 0;padding-left:20px;display:grid;gap:8px;font-size:13px;line-height:21px;word-break:keep-all;overflow-wrap:anywhere}
+.settings-modal .update-history>.text-link {margin-top:12px}
+@starting-style {
+  .settings-disclosure-layout .settings-group[data-selected=true]:not([hidden]) {opacity:0;transform:translateY(-4px)}
+}
+@media(prefers-reduced-motion:reduce) {
+  .settings-disclosure-layout .settings-nav .settings-nav-item>svg,
+  .settings-disclosure-layout .settings-group[data-selected=true] {transition:none;transform:none}
+}
+.settings-modal .settings-disclosure-layout {height:var(--settings-reference-height,560px);flex:0 1 var(--settings-reference-height,560px)}

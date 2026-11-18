@@ -1,5 +1,6 @@
 import {workDuration} from './work-time.js';
 import MarkdownIt from './markdown-engine.js';
+import {parseQuestionReply} from './question-reply.js';
 
 const markdown=new MarkdownIt({html:false,linkify:true,breaks:true}).disable('strikethrough');
 markdown.renderer.rules.image=(tokens,index)=>markdown.utils.escapeHtml(tokens[index].content||'이미지');
@@ -28,6 +29,17 @@ export function markdownBody(text) {
     leading.before(checkbox);leading.textContent=leading.textContent.slice(prefix[0].length);
   }
   return body;
+}
+export function messageBody(text) {
+  const answers=parseQuestionReply(text);
+  if (!answers) return markdownBody(text);
+  const body=element('section'),label=element('div','응답 보냄'),list=element('dl');
+  body.className='mobile-question-reply';body.setAttribute('aria-label','보낸 질문 답변');
+  label.className='mobile-question-reply-label';
+  for(const row of answers){
+    const item=element('div');item.append(element('dt',row.question),element('dd',row.answer));list.append(item);
+  }
+  body.append(label,list);return body;
 }
 export function groupMobileHistory(messages,session,running) {
   const rows=[],groups=new Map(),owners=new Map(),timing=new Map();

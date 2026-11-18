@@ -1,4 +1,15 @@
 @font-face{font-family:NanumSquareRound;src:url("/fonts/NanumSquareRoundL.woff2") format("woff2");font-style:normal;font-weight:300;font-display:swap}
+.mobile-notification-card{box-sizing:border-box;display:flex;flex-direction:column;gap:8px;width:100%;min-height:176px;margin:10px 0;padding:15px;border:1px solid var(--line);border-radius:14px;background:var(--panel);color:var(--text);box-shadow:0 4px 18px #17395812;word-break:keep-all}
+.mobile-notification-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:20px}
+.mobile-notification-card>small,.mobile-notification-heading>small{font-size:12px;line-height:18px;color:var(--soft)}
+.mobile-notification-title{display:block;font-size:16px;line-height:22px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mobile-notification-card .mobile-notification-summary{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;white-space:pre-line;word-break:keep-all;font-size:13px;line-height:20px;min-height:40px;max-height:60px;margin:0;color:var(--soft)}
+.mobile-notification-actions{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:auto}
+.mobile-notification-card .mobile-notification-action{align-self:flex-end;min-height:40px;margin-top:auto;border:1px solid var(--line);border-radius:9px;padding:7px 12px;background:var(--selected,var(--panel));color:var(--focus);font:700 13px/22px var(--font-ui)}
+.mobile-response-notice{position:fixed;left:50%;top:max(12px,env(safe-area-inset-top));transform:translateX(-50%);z-index:15;width:min(360px,calc(100vw - 24px));margin:0;animation:mobile-response-arrive 180ms ease-out both}
+.mobile-notification-card .mobile-notification-close{display:grid;place-items:center;min-width:28px;min-height:28px;padding:0;border:0;background:transparent;color:var(--soft);font-size:20px}
+@keyframes mobile-response-arrive{from{opacity:0;translate:0 -6px}to{opacity:1;translate:0 0}}
+@media(prefers-reduced-motion:reduce){.mobile-response-notice{animation:none}}
 @font-face{font-family:NanumSquareRound;src:url("/fonts/NanumSquareRoundR.woff2") format("woff2");font-style:normal;font-weight:400;font-display:swap}
 @font-face{font-family:NanumSquareRound;src:url("/fonts/NanumSquareRoundB.woff2") format("woff2");font-style:normal;font-weight:700;font-display:swap}
 @font-face{font-family:NanumSquareRound;src:url("/fonts/NanumSquareRoundEB.woff2") format("woff2");font-style:normal;font-weight:800;font-display:swap}

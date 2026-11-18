@@ -113,3 +113,17 @@
 .artifact-viewer > button { display:flex; margin-left:auto; }
 .workbench section.wb-actions { display:block; }
 .workbench section.wb-actions > h2 { margin-bottom:16px; }
+
+/* 프로젝트 본문 안에서는 문서 자체의 여백을 사용한다. */
+.pf-native-pane .workbench { background: transparent; border: 0; }
+.pf-native-pane .workbench .wb-inner { padding: 0; background: transparent; }
+.pf-native-pane .workbench .wb-actions { margin-bottom: 14px; }
+.pf-native-pane .workbench .wb-actions > h2 { margin-bottom: 8px; }
+.pf-native-pane .workbench .wb-actions-grid { gap: 6px 12px; }
+.pf-native-pane .workbench .wb-actions-grid > button {
+  min-height: 52px; padding: 6px 8px; border: 0; border-radius: 6px; background: transparent; box-shadow: none;
+}
+.pf-native-pane .workbench .wb-actions-grid > button:hover { background: var(--card-subtle); }
+.pf-native-pane .workbench .wb-actions-grid small { margin-top: 2px; }
+.pf-native-pane .workbench .wb-line-item { min-height: 46px; padding: 6px 2px; }
+.pf-native-pane .workbench .wb-status-filters { margin: 8px 0 4px; }

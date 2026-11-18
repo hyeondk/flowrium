@@ -33,8 +33,44 @@ done
 [ -z "$requested" ] || native_version "$requested" >/dev/null || fail '버전 형식을 확인해 주세요.'
 [[ "$install_dir" = /* && "$install_dir" != / ]] || fail '설치 폴더는 루트 이외의 절대 경로로 지정하세요.'
 if [ -n "$package" ]; then [ -f "$package" ] && [ -n "$checksum_file" ] && [ -f "$checksum_file" ] || fail '로컬 설치 파일과 SHA256SUMS.txt를 함께 지정하세요.'; elif [ -n "$checksum_file" ]; then fail '로컬 체크섬은 --package와 함께 지정하세요.'; fi
-assert_stopped(){ if /usr/bin/pgrep -x Flowrium >/dev/null 2>&1 || /usr/bin/pgrep -f '/Flowrium[.]app/Contents/' >/dev/null 2>&1; then fail 'Flowrium이 실행 중입니다. 앱과 관련 작업을 종료한 뒤 다시 설치하세요.'; fi; }
-assert_stopped
+# 교체할 앱의 실행 파일만 확인한다. 명령 인수에 앱 경로가 적힌 외부 작업은 대상이 아니다.
+# 휴대폰 연결은 앱 종료 뒤에도 독립 Node와 그 자식 터널이 같은 주소를 유지한다.
+process_command(){ /bin/ps -ww -p "$1" -o command=; }
+target_is_idle(){
+ local bundle="$1" owner="$2" pid parent uid executable args tail port
+ local broker_pids=' ' tunnel_parents=' '
+ local runtime="$bundle/Contents/Resources/runtime/bin"
+ while read -r pid parent uid executable; do
+  [[ "$executable" == "$bundle"/Contents/* ]] || continue
+  [ "$uid" = "$owner" ] || return 1
+  case "$executable" in
+   "$runtime/node")
+    [ "$parent" = 1 ] || return 1
+    args=$(process_command "$pid") || return 1
+    [[ "$args" == "$executable --input-type=commonjs -e // The broker holds no account, chat or phone credential."*"function connectDesktop("*"function runBroker("*"startProcess();" ]] || return 1
+    broker_pids+="$pid "
+    ;;
+   "$runtime/cloudflared")
+    args=$(process_command "$pid") || return 1
+    [[ "$args" == "$executable tunnel --url http://127.0.0.1:"* ]] || return 1
+    tail=${args#"$executable tunnel --url http://127.0.0.1:"}
+    [[ "$tail" =~ ^([1-9][0-9]{0,4})\ --no-autoupdate$ ]] || return 1
+    port="${BASH_REMATCH[1]}"
+    (( 10#$port <= 65535 )) || return 1
+    tunnel_parents+="$parent "
+    ;;
+   *) return 1 ;;
+  esac
+ done
+ for pid in $broker_pids; do [[ "$tunnel_parents" == *" $pid "* ]] || return 1; done
+ for parent in $tunnel_parents; do [[ "$broker_pids" == *" $parent "* ]] || return 1; done
+ return 0
+}
+assert_stopped(){
+ local processes
+ processes=$(/bin/ps -ww -axo pid=,ppid=,uid=,comm=) || fail '대상 앱의 실행 상태를 확인하지 못했습니다.'
+ target_is_idle "$install_dir/Flowrium.app" "$(/usr/bin/id -u)" <<<"$processes" || fail '설치할 위치의 Flowrium 또는 관련 작업이 실행 중입니다. 종료한 뒤 다시 설치하세요.'
+}
 work=$(mktemp -d "${TMPDIR:-/tmp}/flowrium-install.XXXXXXXX")
 work=$(cd -P "$work" && pwd)
 staged='' backup='' backup_root='' installed=0 registration_needed=0
@@ -140,10 +176,10 @@ while IFS= read -r -d '' link; do resolved=$(resolve_link "$link") || fail '앱 
 [ "$(/usr/bin/lipo -archs "$app/Contents/MacOS/Flowrium")" = arm64 ] || fail 'Apple Silicon 전용 앱이 아닙니다.'
 /usr/bin/codesign --verify --deep --strict "$app" || fail '앱 서명 무결성 검증에 실패했습니다. 보안 설정은 변경하지 않았습니다.'
 if [ "$verify_only" -eq 1 ]; then printf '앱 구조 / Apple Silicon / 서명 무결성 검증 완료 / 설치하지 않았습니다.\n'; exit 0; fi
-assert_stopped
 mkdir -p "$install_dir"; install_dir=$(cd -P "$install_dir" && pwd)
 [ "$install_dir" != / ] || fail '설치 폴더로 파일 시스템 루트를 사용할 수 없습니다.'
 [ ! -L "$install_dir/Flowrium.app" ] || fail '설치 위치의 앱이 다른 위치를 가리키고 있습니다.'
+assert_stopped
 backup_root="$install_dir/.flowrium-backups.noindex"
 [ ! -L "$backup_root" ] || fail '백업 폴더가 다른 위치를 가리키고 있습니다. 링크가 아닌 폴더를 사용하세요.'
 if [ -e "$backup_root" ]; then backup_directory_safe || fail '백업 위치는 설치 폴더 안의 같은 파일 시스템에 있는 실제 폴더여야 합니다.'; fi
@@ -165,4 +201,10 @@ mv "$staged/Flowrium.app" "$install_dir/Flowrium.app" || fail '새 앱을 설치
 installed=1; registration_needed=1
 printf '설치 완료 / %s/Flowrium.app\n' "$install_dir"
 [ -z "$backup" ] || printf '이전 앱 백업 / %s\n' "$backup"
-printf '프로젝트와 대화 데이터는 보존했습니다. 설치한 앱을 직접 실행하세요.\n공개 다운로드본은 Apple 확인 경고가 표시될 수 있으며 이 설치기는 보안 정책을 변경하지 않습니다.\n'
+printf '프로젝트와 대화 데이터는 보존했습니다. 설치한 앱을 직접 실행하세요.\n'
+if [ -n "$backup" ]; then
+ printf '교체한 앱을 열 때 macOS가 실행이나 키체인 접근을 다시 물을 수 있습니다.\n'
+else
+ printf '처음 열 때 macOS의 앱 실행 확인이 표시될 수 있습니다.\n'
+fi
+printf 'Flowrium Safe Storage 확인 창이 뜨면 로그인 키체인 암호를 입력하세요. 기본값은 맥 로그인 암호입니다.\n'

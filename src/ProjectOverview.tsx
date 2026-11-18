@@ -1,8 +1,16 @@
+import {projectCategory} from "../shared/project-details";
+import LoadingProgress from './LoadingProgress';
 import { AnimatedCheckbox } from './ui-motion';
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ProjectMemory } from "./ProjectMemory";
 import {
   ArrowLeft,
+  BarChart3,
+  Folder,
+  ListTodo,
+  MoreHorizontal,
+  Menu,
+  Settings2,
   ArrowRight,
   Check,
   ChevronRight,
@@ -44,8 +52,11 @@ export const projectTabs: [ProjectTab, string][] = [
   ["docs", "문서"],
   ["settings", "프로젝트 설정"],
 ];
+const resourceTabs: ProjectTab[] = ["docs", "rules", "design", "meetings"];
+const menuTabs = projectTabs.filter(([key]) => key !== "home" && (key === "docs" || !resourceTabs.includes(key)));
 const noteNames = { rules: "규칙", design: "디자인 시안", meetings: "회의록" };
 interface Props {
+  headerActions?: ReactNode;
   nameLink?: import("../shared/portfolio").ProjectNameLink;
   project: Project;
   sessions: Session[];
@@ -53,7 +64,9 @@ interface Props {
   onTabChange(tab: ProjectTab): void;
   onOpenSession(session: Session): void;
   renderPanel(tab: ProjectTab): ReactNode;
-  onBack(): void;
+  onMenu(): void;
+  onCategory(): void;
+  categoryRevision: number;
   onDetailsChange?(details: Details): void;
 }
 function ProjectNotes({ project, kind, onOpen }: { project: Project; kind: NoteKind;onOpen(s:Session):void }) {
@@ -375,12 +388,15 @@ function Goals({
 
 export function ProjectOverview({
   project, nameLink,
+  headerActions,
   sessions,
   tab,
   onTabChange,
   onOpenSession,
   renderPanel,
-  onBack,
+  onMenu,
+  onCategory,
+  categoryRevision,
   onDetailsChange,
 }: Props) {
   const [data, setData] = useState<Details>(),
@@ -404,7 +420,7 @@ export function ProjectOverview({
     return () => {
       live = false;
     };
-  }, [project.id, project.name, rev, tab]);
+  }, [project.id, project.name, rev, tab, categoryRevision]);
   useEffect(() => {
     let live = true;
     setOverview(undefined);
@@ -435,6 +451,7 @@ export function ProjectOverview({
     ...emptyKickoff,
     name,
     ...data?.kickoff,
+    category: projectCategory(data),
     owner: data?.owner || "",
     goal: data?.goal || "",
     dueDate: data?.dueDate || "",
@@ -444,7 +461,32 @@ export function ProjectOverview({
   const weekStart=localDay(monday.toISOString());
   const weeklyGoals=(data?.periodGoals||[]).filter(goal=>goal.period==='week'&&goal.key===weekStart&&!goal.carriedTo);
   const recent=own.filter(row=>row.messages.length).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,3);
-  const [checking,setChecking]=useState(false);
+  const [checking,setChecking]=useState(false), [creating,setCreating]=useState(false);
+  const [menuOpen,setMenuOpen]=useState(false), [analysisOpen,setAnalysisOpen]=useState(false);
+  const menuRef=useRef<HTMLDivElement>(null), menuButton=useRef<HTMLButtonElement>(null), analysisRef=useRef<HTMLDetailsElement>(null);
+  useEffect(()=>{
+    if(!menuOpen)return;
+    const pointer=(event:PointerEvent)=>{if(!menuRef.current?.contains(event.target as Node))setMenuOpen(false);};
+    const key=(event:KeyboardEvent)=>{if(event.key==='Escape'){setMenuOpen(false);menuButton.current?.focus();}};
+    document.addEventListener('pointerdown',pointer);document.addEventListener('keydown',key);
+    return()=>{document.removeEventListener('pointerdown',pointer);document.removeEventListener('keydown',key);};
+  },[menuOpen]);
+  const chooseTab=(next:ProjectTab)=>{setEditing(false);setMenuOpen(false);onTabChange(next);};
+  async function createTask(){
+    if(!api||creating)return;
+    setCreating(true);setError('');
+    try{onOpenSession(await api.createSession(project.id));}
+    catch(e){setError(errorText(e));}
+    finally{setCreating(false);}
+  }
+  function showAnalysis(){
+    chooseTab('home');setAnalysisOpen(true);
+    requestAnimationFrame(()=>analysisRef.current?.scrollIntoView({block:'start',behavior:'auto'}));
+  }
+  const today=localDay(now.toISOString());
+  const phase=data?.archivedAt?'완료':meta.phase||'진행';
+  const activeTab=projectTabs.find(([key])=>key===tab)?.[1]||'홈';
+
   async function checkTask(id:string,done:boolean){
     if(!api||!data||checking)return;
     setChecking(true);
@@ -455,37 +497,36 @@ export function ProjectOverview({
   const isNative = tab === "work" || tab === "team" || tab === "github";
   return (
     <div className={"pf-page pf-overview" + (isNative ? " pf-native" : "")}>
-      <div className="pf-content">
-        <button className="pf-back" onClick={onBack}>
-          <ArrowLeft size={14} />
-          프로젝트 대시보드
-        </button>
-        <header className="pf-heading">
-          <div>
-            <h1>{name}</h1>
-            <p>{[meta.category,data?.goal].filter(Boolean).join(" / ")}</p>
+      <header className="project-document-toolbar">
+        <div className="project-toolbar-leading">
+          <button className="mobile-menu project-toolbar-icon" onClick={onMenu} aria-label="메뉴 열기" title="메뉴 열기"><Menu size={17}/></button>
+          {tab !== 'home' && <button className="project-back-button" onClick={()=>chooseTab('home')} aria-label="프로젝트 홈으로 돌아가기"><ArrowLeft size={14}/>뒤로</button>}
+          <span>{tab==='home'?'프로젝트':activeTab}</span>
+        </div>
+        <div className="project-toolbar-actions">
+          <div className="project-view-switch" role="group" aria-label="프로젝트 보기">
+            <button aria-label="업무" aria-pressed={tab==='home'&&!analysisOpen} onClick={()=>{chooseTab('home');setAnalysisOpen(false);}}><ListTodo size={14}/><span>업무</span></button>
+            <button aria-label="분석" aria-pressed={tab==='home'&&analysisOpen} onClick={showAnalysis}><BarChart3 size={14}/><span>분석</span></button>
           </div>
-          <span
-            className="pf-status"
-            data-phase={data?.archivedAt ? "완료" : meta.phase}
-          >
-            {data?.archivedAt ? "완료" : meta.phase || "진행"}
-          </span>
+          <div className="project-menu" ref={menuRef}>
+            <button ref={menuButton} className="project-toolbar-icon" aria-label="프로젝트 메뉴" title="프로젝트 메뉴" aria-expanded={menuOpen} aria-controls="project-detail-navigation" onClick={()=>setMenuOpen(!menuOpen)}><MoreHorizontal size={18}/></button>
+            {menuOpen&&<nav id="project-detail-navigation" className="project-detail-navigation" aria-label="프로젝트 상세 탭">
+              {menuTabs.map(([key,label])=><button key={key} aria-current={(tab===key || (key==='docs' && resourceTabs.includes(tab)))?'page':undefined} onClick={()=>chooseTab(key)}>{label}{tab===key&&<Check size={14}/>}</button>)}
+            </nav>}
+          </div>
+          {headerActions}
+        </div>
+      </header>
+      <div className="project-document-scroll">
+      <div className="pf-content project-document-content" data-project-tab={tab}>
+        <header className="project-document-heading">
+          <div>
+            <div className="project-document-path"><Folder size={13}/><span>{[meta.category||'프로젝트',phase].join(' / ')}</span></div>
+            <h1>{name}</h1>
+            {data?.goal&&<p>{data.goal}</p>}
+          </div>
+          <button className="project-new-task" onClick={()=>void createTask()} disabled={creating}><Plus size={14}/>{creating?'준비 중…':'새 업무'}</button>
         </header>
-        <nav className="pf-tabs" aria-label="프로젝트 상세 탭">
-          {projectTabs.map(([key, label]) => (
-            <button
-              key={key}
-              aria-current={tab === key ? "page" : undefined}
-              onClick={() => {
-                setEditing(false);
-                onTabChange(key);
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
         {error && (
           <p role="alert" className="pf-error">
             {error}{" "}
@@ -495,24 +536,38 @@ export function ProjectOverview({
             </button>
           </p>
         )}
+        {!data && !error && <LoadingProgress label="프로젝트 정보를 불러오는 중입니다." />}
+        {resourceTabs.includes(tab) && <nav className="project-resource-nav" aria-label="자료 종류">
+          {projectTabs.filter(([key])=>resourceTabs.includes(key)).map(([key,label])=>
+            <button key={key} aria-current={tab===key?'page':undefined} onClick={()=>chooseTab(key)}>{label}</button>)}
+        </nav>}
         {isNative && <div className="pf-native-pane">{renderPanel(tab)}</div>}
         {tab === "home" && (
           <>
-            <section className="overview-section" aria-label="이번 주 목표"><header><h2>이번 주 목표</h2><small>{localDay(now.toISOString())} 기준</small></header>
-              {weeklyGoals.length?weeklyGoals.map(goal=><div key={goal.id} className="overview-goal"><div><strong>{goal.text}</strong><small>{goal.target?(goal.current||0)+' / '+goal.target:goal.done?'완료':'진행 중'}</small></div>
-                {goal.target&&<progress aria-label={goal.text+' 진척'} value={goal.current||0} max={goal.target}/>}
-                {goal.due&&<small><CalendarDays size={13}/>기한 {goal.due}</small>}
-              </div>):<p className="overview-muted">이번 주에 등록한 목표가 없습니다.</p>}
+            <section className="overview-section" aria-label="이번 주 목표">
+              <header><h2>이번 주 목표</h2><small>{today.replaceAll('-','.')} 기준</small></header>
+              {weeklyGoals.length?weeklyGoals.map(goal=><div key={goal.id} className="overview-goal">
+                <div className="overview-goal-heading"><strong>{goal.text}</strong><small>{goal.target!==undefined?(goal.current||0)+' / '+goal.target:goal.done?'완료':'진행 중'}</small></div>
+                {goal.target!==undefined&&<progress aria-label={goal.text+' 진척'} value={Math.min(goal.current||0,goal.target)} max={goal.target}/>}
+                <div className="overview-goal-footer"><small>{goal.target!==undefined?'남은 목표 '+Math.max(0,goal.target-(goal.current||0)):goal.done?'목표를 완료했습니다.':'목표를 진행하고 있습니다.'}</small>{goal.due&&<small className="overview-deadline" data-today={goal.due===today}><CalendarDays size={12}/>{goal.due===today?'오늘 기한':'기한 '+goal.due}</small>}</div>
+              </div>):<div className="overview-empty"><p>이번 주에 등록한 목표가 없습니다.</p><button onClick={showAnalysis}>목표 추가 <ArrowRight size={13}/></button></div>}
             </section>
-            <section className="overview-section" aria-label="프로젝트 할 일"><header><h2>프로젝트 할 일</h2><button onClick={()=>onTabChange('work')}>업무 현황 <ArrowRight size={13}/></button></header>
-              {data?.checklist.map(item=><label key={item.id} className="overview-task"><AnimatedCheckbox checked={item.done} disabled={checking} onChange={e=>void checkTask(item.id,e.target.checked)}/><span><strong>{item.text}</strong><small>{meta.category||name}</small></span><small>{item.done?'완료':'진행 예정'}</small></label>)}
-              {!data?.checklist.length&&<p className="overview-muted">등록한 할 일이 없습니다.</p>}
+            <section className="overview-section" aria-label="프로젝트 할 일">
+              <header><h2>프로젝트 할 일 <small>{data?.checklist.length||0}</small></h2><button onClick={()=>chooseTab('work')}>업무 현황 <ArrowRight size={13}/></button></header>
+              {!!data?.checklist.length&&<div className="overview-task-list">{data.checklist.map(item=><label key={item.id} className="overview-task" data-completed={item.done}>
+                <AnimatedCheckbox checked={item.done} disabled={checking} onChange={e=>void checkTask(item.id,e.target.checked)}/>
+                <span className="overview-task-copy"><strong>{item.text}</strong><small>{meta.category||name}</small></span><small className="overview-task-state">{item.done?'완료':'진행 예정'}</small>
+              </label>)}</div>}
+              {!data?.checklist.length&&<div className="overview-empty"><p>등록한 할 일이 없습니다.</p><button onClick={()=>chooseTab('settings')}>할 일 추가 <ArrowRight size={13}/></button></div>}
             </section>
-            <section className="overview-section" aria-label="최근 활동"><header><h2>최근 활동</h2></header>
-              {recent.map(s=><button key={s.id} className="overview-activity" onClick={()=>onOpenSession(s)}><MessagesSquare size={15}/><span>{s.title}</span><time>{localDay(s.updatedAt)}</time></button>)}
+            <section className="overview-section" aria-label="최근 활동">
+              <header><h2>최근 활동</h2><small>최근 대화</small></header>
+              <div className="overview-activity-list">{recent.map(s=><button key={s.id} className="overview-activity" onClick={()=>onOpenSession(s)}><span className="overview-activity-symbol"><MessagesSquare size={14}/></span><span>{s.title}</span><time dateTime={s.updatedAt}>{localDay(s.updatedAt)===today?'오늘':localDay(s.updatedAt)}</time></button>)}</div>
               {!recent.length&&<p className="overview-muted">아직 기록된 대화가 없습니다.</p>}
             </section>
-            <details className="overview-tools"><summary>프로젝트 분석 및 관리</summary>
+            <details ref={analysisRef} className="overview-tools" open={analysisOpen} onToggle={e=>setAnalysisOpen(e.currentTarget.open)}>
+              <summary><ChevronRight size={14}/><span>프로젝트 분석</span><small>업무 흐름 / 목표 진척</small></summary>
+              <div className="overview-tools-body">
             <div className="pf-stats">
               <button onClick={() => onTabChange("work")}>
                 <span>진행 및 검토 업무</span>
@@ -643,7 +698,7 @@ export function ProjectOverview({
                 </div>
               </section>
             </div>
-            </details>
+            </div></details>
           </>
         )}
         {tab === "rules" && <ProjectMemory projectId={project.id} />}
@@ -660,10 +715,11 @@ export function ProjectOverview({
             refresh={() => reload((r) => r + 1)}
           />
         )}
+        {tab === "settings" && <div className="pf-section-header"><h2>카테고리</h2><button onClick={onCategory}>{projectCategory(data) || "미분류"} / 카테고리 관리</button></div>}
         {tab === "settings" && data && <ProjectRepositories project={project} data={data} onChange={change}/>}
         {tab === "settings" && data && <ProjectShortcuts project={project} data={data} editable onChange={change}/>}
         {tab === "settings" && (
-          <>
+          <section className="kickoff-settings">
             <div className="pf-section-header">
               <h2>킥오프 정보</h2>
               {!editing && (
@@ -700,8 +756,10 @@ export function ProjectOverview({
                 if (d.revision !== data?.revision) change(d);
               }}
             />
-          </>
+          </section>
         )}
+        {tab === 'home' && <footer className="project-document-actions"><button onClick={()=>chooseTab('settings')}><Settings2 size={14}/>프로젝트 설정</button></footer>}
+      </div>
       </div>
     </div>
   );

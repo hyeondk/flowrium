@@ -179,8 +179,9 @@ class Controller extends EventEmitter {
     if(this.options.queueOwner?.()!==owner)throw Error('연결 계정이 바뀌었습니다. 다시 확인해 주세요.');
     const previous=this.status.authenticated, previousDots=this.status.dotsEligible;
     const authenticated = record?.type === "chatgpt";
+    const plan = typeof record?.planType === "string" ? record.planType.trim().toLowerCase() : "";
     const accountLabel = authenticated
-      ? `ChatGPT${record.planType ? ` / ${record.planType}` : ""}`
+      ? `ChatGPT${plan ? `(${plan[0].toUpperCase()}${plan.slice(1)})` : ""}`
       : undefined;
     this.status = {
       available: true,

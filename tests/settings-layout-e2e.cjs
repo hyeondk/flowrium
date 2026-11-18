@@ -27,7 +27,7 @@ async function run(){
   await page.setViewportSize({width:1440,height:1000});await page.locator('.workspace-side').hover();await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');await page.getByRole('button',{name:'설정',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'설정',exact:true});await dialog.waitFor();await settledLayout(dialog);
   for(const [width,height]of [[1440,1000],[800,1000],[390,844],[320,844]]){
-   await page.setViewportSize({width,height});await page.locator('.settings-nav-item[data-settings-target="security"]').click();
+   await page.setViewportSize({width,height});const securityTab=page.locator('.settings-nav-item[data-settings-target="security"]');if(await securityTab.getAttribute('aria-expanded')!=='true')await securityTab.click();
    await page.waitForFunction(()=>{const panel=document.querySelector('.security-panel'),content=document.querySelector('.settings-content');if(!panel||!content)return false;const p=panel.getBoundingClientRect(),c=content.getBoundingClientRect();return p.top>=c.top-1&&p.top<c.top+70;});await settledLayout(dialog);
    const m=await page.evaluate(()=>{
     const panel=document.querySelector('.security-panel'),dialog=document.querySelector('[aria-labelledby="settings-title"]'),content=document.querySelector('.settings-content'),box=panel.getBoundingClientRect(),style=getComputedStyle(panel),modal=dialog.getBoundingClientRect();

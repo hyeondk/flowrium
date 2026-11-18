@@ -1,3 +1,4 @@
+import LoadingProgress from './LoadingProgress';
 import {modelDisplayName} from '../shared/model-display';
 import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -128,7 +129,7 @@ export function ArtifactPanel({ overview, project, sessions, onOpen, refresh }: 
         {source && <button className="wb-secondary" onClick={() => onOpen(source)}><MessageSquare size={15}/> 원본 대화</button>}</div>
       {error && <p className="wb-error" role="alert">{error}</p>}
       <ArtifactViewer project={project} artifact={selected} onChange={refresh}/>
-      {!/\.html?$/i.test(selected.path) && selected.preview ? (loading ? <p>불러오는 중…</p> : !error && <pre className="wb-preview">{body}</pre>) : <p>파일 위치를 열어 원본 문서를 확인하세요.</p>}
+      {!/\.html?$/i.test(selected.path) && selected.preview ? (loading ? <LoadingProgress label="문서를 불러오는 중입니다." /> : !error && <pre className="wb-preview">{body}</pre>) : <p>파일 위치를 열어 원본 문서를 확인하세요.</p>}
     </section>;
   }
   const items = (overview?.artifacts || []).filter((a) => !filter || a.path.toLocaleLowerCase().includes(filter.toLocaleLowerCase()));
@@ -199,7 +200,7 @@ function ProjectWorkbench(props: Props & { project: Project }) {
       </>}
       {tab === "files" && <ArtifactPanel project={project} overview={overview} sessions={sessions} onOpen={onOpen} refresh={() => setRefresh((v) => v + 1)}/>}
       {tab === "git" && <RepoPanel overview={overview}/>}
-      {loading && tab !== "board" && <p className="wb-caption" role="status">프로젝트 자료를 불러오는 중…</p>}
+      {loading && tab !== "board" && <LoadingProgress label="프로젝트 자료를 불러오는 중입니다." />}
     </>}
   </div></main>;
 }

@@ -5,10 +5,10 @@ function fixture({diagnostics=false,reentrant=false}={}){
  Object.assign(app,{setName(){},quitCalls:0,quit(){this.quitCalls++},isPackaged:false,isReady:()=>ready,requestSingleInstanceLock:()=>true,whenReady:()=>new Promise(()=>{})});
  class Window extends EventEmitter{
   static getAllWindows(){return windows.filter(row=>!row.destroyed)}
-  constructor(){super();this.destroyed=false;this.visible=true;this.minimized=false;this.focuses=0;this.enabled=true;this.webContents=Object.assign(new EventEmitter(),{session:{setPermissionRequestHandler(){},setPermissionCheckHandler(){}},setWindowOpenHandler(){}});windows.push(this);if(reentrant)app.emit('activate');}
+  constructor(options){super();this.options=options;this.destroyed=false;this.visible=true;this.minimized=false;this.focuses=0;this.enabled=true;let zoom=options.webPreferences.zoomFactor;this.webContents=Object.assign(new EventEmitter(),{isDestroyed:()=>this.destroyed,getZoomFactor:()=>zoom,setZoomFactor:value=>zoom=value,session:{setPermissionRequestHandler(){},setPermissionCheckHandler(){}},setWindowOpenHandler(){}});windows.push(this);if(reentrant)app.emit('activate');}
   isDestroyed(){return this.destroyed}isMinimized(){return this.minimized}restore(){this.minimized=false}show(){this.visible=true}focus(){this.focuses++}setEnabled(value){this.enabled=value}setTitle(){}loadURL(){return Promise.resolve()}close(){this.destroyed=true;this.emit('closed')}
  }
- const modules={electron:{app,BrowserWindow:Window,ipcMain:{handle(){}}},'./store.cjs':{},'./controller.cjs':{},'./errors.cjs':{},'./version.cjs':{},'./updater.cjs':{},'./workbench.cjs':{}};
+ const modules={electron:{app,BrowserWindow:Window,ipcMain:{handle(){}}},'./store.cjs':{},'./controller.cjs':{},'./errors.cjs':{},'./version.cjs':{},'./updater.cjs':{},'./workbench.cjs':{},'./desktop-zoom.cjs':require('../electron/desktop-zoom.cjs')};
  const context=vm.createContext({require:name=>name==='node:fs'?{writeSync:(_,value)=>logs.push(value)}:Object.hasOwn(modules,name)?modules[name]:require(name),process:{env:diagnostics?{FLOWRIUM_LIFECYCLE_DIAGNOSTICS:'1'}:{},platform:'darwin'},__dirname:path.join(__dirname,'../electron'),setImmediate:callback=>scheduled.push(callback)});
  vm.runInContext(source+`\nsecurity={state:()=>({hasPin:false})};drafts={beginMigration(){}};globalThis.probe={ensure:ensureWindow,complete(){launchComplete=true},quit(){quitting=true},pending:()=>windowRequestPending,current:()=>window,prepareQuit(shutdown,flush,queue){controller={shutdown};teamRuntime={flush};drafts.queue=queue}};`,context,{filename:'main-lifecycle-fixture.cjs'});
  return{app,windows,logs,scheduled,api:context.probe,ready:()=>ready=true};
@@ -36,4 +36,11 @@ test('정리·팀·초안 저장을 모두 기다린 뒤 다음 이벤트 차례
  f.api.prepareQuit(()=>services,()=>teams,drafts);f.app.emit('before-quit',{preventDefault(){prevented=true}});assert(prevented);assert.equal(window.enabled,false);assert.equal(f.app.quitCalls,0);
  finishServices();await tick();assert.equal(f.scheduled.length,0);finishTeams();await tick();assert.equal(f.scheduled.length,0);finishDrafts();await tick();assert.equal(f.scheduled.length,1);assert.equal(f.app.quitCalls,0);assert.equal(window.enabled,false);
  f.scheduled[0]();assert.equal(window.enabled,true);assert.equal(f.app.quitCalls,1);
+});
+
+test('실제 창 생성 경로에 87%를 적용하고 재생성 후에도 기본 배율을 유지한다',()=>{
+ const f=fixture();f.ready();f.api.complete();f.api.ensure();const first=f.api.current();
+ assert.equal(first.options.webPreferences.zoomFactor,.87);first.webContents.setZoomFactor(1);first.webContents.emit('did-finish-load');assert.equal(first.webContents.getZoomFactor(),.87);
+ first.webContents.setZoomFactor(1.25);first.webContents.emit('did-finish-load');assert.equal(first.webContents.getZoomFactor(),1.25);
+ first.close();f.app.emit('activate');assert.equal(f.api.current().webContents.getZoomFactor(),.87);
 });

@@ -87,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.platform == 'windows' && '[{"label":"Windows","runner":"windows-latest","os":"win","arch":"x64"}]' || '[{"label":"Mac Apple Silicon","runner":"macos-15","os":"mac","arch":"arm64"},{"label":"Windows","runner":"windows-latest","os":"win","arch":"x64"}]') }}
+        include: ${{ fromJSON(inputs.platform == 'windows' && '[{"label":"Windows","runner":"windows-latest","os":"win","arch":"x64"}]' || '[{"label":"Mac Apple Silicon","runner":"macos-26","os":"mac","arch":"arm64"},{"label":"Windows","runner":"windows-latest","os":"win","arch":"x64"}]') }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
@@ -204,6 +204,15 @@ jobs:
         id: verify_1
         continue-on-error: true
         run: node tests/desktop-e2e.cjs
+      - name: 좌측 패널과 설정 / 선택 목록과 말풍선
+        id: verify_design_refinement
+        continue-on-error: true
+        timeout-minutes: 6
+        run: |
+          node tests/sidebar-geometry-e2e.cjs
+          node tests/settings-spacing-e2e.cjs
+          node tests/choice-overlay-e2e.cjs
+          node tests/chat-refinement-e2e.cjs
       - name: 탐색 레일·대화함·동작·실행 상태
         id: verify_2
         continue-on-error: true

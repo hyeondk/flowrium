@@ -25,11 +25,14 @@ async function main() {
     await button('개인 비서').waitFor();
   }
   const waitForChoice = value => page.waitForFunction(expected => {
-    const select = document.querySelector('select[aria-label="이 채팅의 모델"]');
-    return select && !select.disabled && select.value === expected;
+    const picker = document.querySelector('.chat-model-picker');
+    return picker && !picker.querySelector('[role=combobox]').disabled && picker.dataset.model === expected;
   }, value);
   async function choose(value) {
-    await picker().selectOption(value);
+    await picker().click();
+    const label={'catalog-preview':'추가된 시험 모델','gpt-6.1-sol':'GPT-6.1 Sol','gpt-6.1-terra':'GPT-6.1 Terra'}[value];
+    const list=page.getByRole('listbox',{name:'이 채팅의 모델',exact:true});
+    await list.getByRole('option',{name:label||/^기본 설정 따르기/,exact:Boolean(label)}).click();
     await waitForChoice(value);
     assert.equal(await page.getByRole('dialog', {name:'설정', exact:true}).count(), 0);
   }
@@ -56,11 +59,11 @@ async function main() {
     await launch();
     await openConversation(page, a.title);
     await waitForChoice('');
-    assert.match(await picker().locator('option:checked').innerText(), /기본 설정 따르기.*GPT-6.1 Sol/);
+    assert.match(await page.locator('.chat-model-picker').getAttribute('title'), /기본 설정 따르기.*GPT-6.1 Sol/);
     await fs.writeFile(env.FLOWRIUM_TEST_CATALOG_FILE,'합성 모델 출시');
     await picker().focus();
     await page.getByText('새 모델을 사용할 수 있습니다. 추가된 시험 모델',{exact:true}).waitFor();
-    assert(await picker().locator('option[value="catalog-preview"]').count());
+    await picker().click();await page.getByRole('listbox',{name:'이 채팅의 모델',exact:true}).getByRole('option',{name:'추가된 시험 모델',exact:true}).waitFor();await picker().press('Escape');
     await choose('catalog-preview');
     await verifyTurn(a.id,'catalog-preview','high');
     assert.equal(await button('이 대화에서 프로젝트 편집 허용').count(),0);

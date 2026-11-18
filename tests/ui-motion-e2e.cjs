@@ -18,7 +18,7 @@ async function run() {
       import React, {useState, useRef, useEffect} from 'react';
       import {createRoot} from 'react-dom/client';
       import {MotionOverlay, Snackbar, Toast, AnimatedCheckbox, AnimatedSwitch, LikeButton} from '/src/ui-motion.tsx';
-      import CommandCenter from '/src/CommandCenter.tsx';
+      import CommandCenter, {openCommandCenter} from '/src/CommandCenter.tsx';
       import {AssistantShortcut} from '/src/ProjectMemory.tsx';
       import '/src/styles.css'; import '/src/ui-motion.css'; import '/src/shell.css'; import '/src/design-system.css';
       window.flowrium = {portfolioAction: async()=>({shortcuts:{search:'mod+k'}}),assistantHome:async()=>({connected:false})};
@@ -37,6 +37,7 @@ async function run() {
           <button onClick={()=>setToast('저장했습니다.')}>토스트 표시</button>
           <button onClick={()=>setSnack('실행을 취소했습니다.')}>스낵바 표시</button>
           <div data-motion="loading" aria-label="로딩" style={{width:20,height:20}}>◌</div>
+          <button type="button" onClick={openCommandCenter}>프로젝트와 화면 찾기</button>
           <CommandCenter projects={[]} sessions={[]} onProject={()=>{}} onSession={()=>{}} onView={()=>{}} onNew={()=>{}}/>
           <AssistantShortcut projects={[]} onOpen={()=>{}}/>
           <MotionOverlay open={popup} onClose={()=>setPopup(false)} label={popup?"검증 팝업":"닫힘"}>{popup && <><h2>검증 팝업</h2><button>첫 버튼</button><button>끝 버튼</button></>}</MotionOverlay>

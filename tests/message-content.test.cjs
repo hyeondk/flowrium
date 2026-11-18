@@ -1,6 +1,25 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const modulePromise=import('../src/message-content.ts');
 const envelope=()=>({type:'mcpToolCall',state:'completed',result:{content:[{type:'text',text:JSON.stringify({messages:[{role:'assistant',content:':::writing{variant="email"}\n# 중첩된 비공개 본문\n:::'}],access_token:'nested-sensitive-token'})}],structuredContent:null,_meta:null},error:null,durationMs:120,startedAtMs:1000,completedAtMs:1120});
+const questionReply=rows=>'<send_user_message_question_reply>'+JSON.stringify(rows)+'</send_user_message_question_reply>';
+const replyRow=()=>({questionItemId:['request_user_input_async','sample-question',0],question:'어느 기간의 매출을 비교할까요?',answer:'최근 3개월'});
+
+test('완성된 질문 응답 전달 형식은 원문을 보존한 읽기 전용 답변 기록으로 표시한다',async()=>{
+ const {messageContent,messagePreview}=await modulePromise,rows=[replyRow(),{...replyRow(),questionItemId:JSON.stringify(['request_user_input_async','second',0]),question:'비교 기준을 선택해 주세요.',answer:'월별 / 채널별'}],raw=questionReply(rows);
+ const expected=rows.map(({question,answer})=>({question,answer}));
+ for(const role of ['user','assistant'])assert.deepEqual(messageContent(raw,role),[{kind:'question-reply',answers:expected,raw}]);
+ assert.equal(messagePreview(raw,'user'),'응답 보냄 / 최근 3개월 / 월별 / 채널별');
+ assert.equal(messageContent(raw,'system')[0].kind,'log');
+ const displayed=messageContent(raw,'user')[0];assert.equal(displayed.raw,raw);assert(!Object.hasOwn(displayed,'requestId'));
+});
+
+test('질문 응답처럼 보이는 코드 / 인용 / 설명 / 잘못된 구조를 사용자 답변으로 오인하지 않는다',async()=>{
+ const {messageContent}=await modulePromise,raw=questionReply([replyRow()]);
+ const examples=['```text\n'+raw+'\n```','    '+raw,'\t'+raw,'> '+raw,'이 형식을 검토해줘\n'+raw,raw+'\n추가 설명',raw.slice(0,-10),questionReply([]),questionReply([{...replyRow(),answer:{text:'답변'}}]),questionReply([{...replyRow(),questionItemId:['unknown-tool','id']}]),questionReply([{...replyRow(),extra:'보존할 필드'}])];
+ for(const text of examples)assert.deepEqual(messageContent(text,'user'),[{kind:'markdown',text}]);
+ const hostile=questionReply([{...replyRow(),answer:'<script>alert(1)</script> **원문 선택**'}]);
+ assert.equal(messageContent(hostile,'user')[0].answers[0].answer,'<script>alert(1)</script> **원문 선택**');
+});
 test('작성 서식의 본문을 표시하고 작성 지시문과 정확한 원문을 따로 보존한다',async()=>{
  const {messageContent}=await modulePromise,raw='소개\n\n:::writing{variant="email" id="123" subject="민감 제목"}\n# 안내문\n\n**확인**해 주세요.\n:::\n\n끝';
  const blocks=messageContent(raw,'assistant');assert.deepEqual(blocks.map(b=>b.kind),['markdown','writing','markdown']);assert.equal(blocks[1].text,'# 안내문\n\n**확인**해 주세요.\n');assert(blocks[1].raw.includes('subject="민감 제목"'));assert.equal(blocks.map(b=>b.kind==='markdown'?b.text:b.raw).join(''),raw);

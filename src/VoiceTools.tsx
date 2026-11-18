@@ -127,6 +127,11 @@ export function VoiceComposer({onText,onSubmit,disabled=false,suspend=false}:{on
   useEffect(()=>{alive.current=true;const hide=()=>{if(document.hidden){armed.current=false;cancel();}};document.addEventListener("visibilitychange",hide);return()=>{alive.current=false;armed.current=false;cancel();document.removeEventListener("visibilitychange",hide);};},[]);
   useEffect(()=>{if(suspend){armed.current=false;cancel();setMessage("");}},[suspend]);
   useEffect(()=>{if(disabled){cancel();if(armed.current)setMessage("답변이 끝나면 연속 듣기를 이어갑니다.");}else if(armed.current)restart.current();},[disabled]);
+  useEffect(()=>{
+    if(!message||recording||busy)return;
+    const timer=window.setTimeout(()=>setMessage(""),5000);
+    return()=>window.clearTimeout(timer);
+  },[message,recording,busy]);
   return <span className="voice-composer">
     <input ref={input} type="file" accept="audio/webm,audio/wav,audio/mpeg,audio/mp4,audio/x-m4a,audio/ogg,audio/flac" hidden onChange={event=>{const file=event.target.files?.[0];if(file){const token=++generation.current;enqueue(file,token,null);}event.currentTarget.value="";}}/>
     <button type="button" className="icon-button" aria-label={recording?"녹음 끝내기":"음성으로 입력"} disabled={disabled||suspend||(busy&&!recording)} onClick={()=>{if(recording){armed.current=false;capture.current?.stop(true);}else void start();}}>{recording?<Square size={15}/>:<Mic size={15}/>}</button>

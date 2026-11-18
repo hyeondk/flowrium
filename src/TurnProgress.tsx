@@ -64,9 +64,15 @@ export function TurnProgress({progress,active}:{progress:Progress;active:boolean
   const live=active && Boolean(progress.startedAt && !progress.endedAt);
   const open=manual ?? live;
   const duration=workDuration(progress.startedAt,progress.endedAt);
-  const label=duration || '작업 내역 보기';
   const stamp=(record:Record)=>'step' in record ? record.step.createdAt : record.message.createdAt;
   const ordered=[...progress.records].sort((a,b)=>Date.parse(stamp(a))-Date.parse(stamp(b)));
+  const recent=[...ordered].reverse();
+  const latestStep=recent.find(record=>'step' in record && record.step.state==='running');
+  const latestComment=recent.find(record=>'message' in record && record.message.progressCommentary);
+  const liveLabel=latestStep && 'step' in latestStep ? latestStep.step.label
+    : latestComment && 'message' in latestComment ? latestComment.message.text.split(/\r?\n/,1)[0].slice(0,84)
+    : '요청을 처리하고 있어요';
+  const label=live ? liveLabel : duration || '작업 내역 보기';
   return <div className="turn-progress" data-message-id={'work:'+progress.key}>
     <button className="turn-progress-trigger" type="button" aria-expanded={open} onClick={()=>setManual(!open)}>
       <Activity size={13} aria-hidden="true"/><span>{label}</span><small>{ordered.length}건</small>

@@ -1,134 +1,255 @@
-/* 대화는 본문을 중심으로 열고, 보조 패널은 사용자가 선택했을 때만 사용합니다. */
+/* 우측 대화의 문서면 / 탐색 / 메시지. 입력창과 읽기 배율은 composer-layout.css에서 관리합니다. */
+@media(min-width:900px){
+ .app-shell .conversation-dock[data-layout-mode=docked]:not([data-minimized=true]){
+  position:relative;inset:auto;flex:0 0 auto;width:var(--dock-default-width);min-width:0;height:100%;margin:0;
+  border:1px solid var(--line-soft);border-radius:12px;box-shadow:none;
+ }
+ .app-shell .conversation-dock[data-layout-mode=docked][data-expanded=true]:not([data-minimized=true]){width:var(--dock-expanded-width)}
+ .app-shell .dock-mobile-scrim{display:none}
+ .conversation-dock .dock-layout-toggle{display:inline-grid}
+}
+@media(min-width:761px) and (max-width:899px){
+ .app-shell .conversation-dock[data-layout-mode=docked]:not([data-minimized=true]){position:fixed;inset:10px 10px 10px auto;width:min(424px,calc(100vw - 76px));min-width:0;height:calc(100dvh - 20px);margin:0;border:1px solid var(--line);border-radius:12px}
+}
+@media(max-width:760px){
+ .app-shell .conversation-dock[data-layout-mode=docked]:not([data-minimized=true]){position:fixed;inset:0;width:100%;min-width:0;height:100dvh;margin:0;border:0;border-radius:0}
+}
+.conversation-dock {
+  --chat-gutter:14px;
+  background:var(--panel);
+}
 .app-shell[data-chat-focus=true]>.main-shell{display:none}
-.app-shell[data-chat-focus=true]>.conversation-dock{position:relative;inset:auto;flex:1;min-width:0;width:auto;height:calc(100dvh - 28px);margin:14px 18px 14px 0;border:1px solid var(--line);border-radius:16px;box-shadow:0 4px 24px #081f4806;animation:ui-fade-in 240ms var(--ease-enter) both}
-.app-shell[data-chat-focus=true]>.conversation-dock[data-phase=exit]{animation:ui-fade-out 280ms var(--ease-exit) both}
+.app-shell[data-chat-focus=true]>.conversation-dock{
+  position:relative;inset:auto;flex:1;min-width:0;width:auto;height:calc(100dvh - 24px);
+  margin:12px 12px 12px 0;border:1px solid var(--line-soft);border-radius:12px;box-shadow:none;
+}
 .app-shell[data-chat-focus=true]>.dock-mobile-scrim{display:none}
-.app-shell .conversation-dock[data-chat-active=true]{min-width:0;width:clamp(500px,43vw,680px);background:var(--panel)}
-.app-shell[data-chat-focus=true]>.conversation-dock[data-chat-active=true]{width:auto}
-.conversation-dock .dock-navigation-toggle{display:none}
-.conversation-dock[data-chat-active=true]>.dock-heading{height:52px;min-height:52px;padding:8px 20px;background:var(--panel);gap:12px}
-.conversation-dock[data-chat-active=true] .dock-eyebrow{display:none}
-.conversation-dock[data-chat-active=true] .dock-heading h2{font-size:13px;line-height:22px;color:var(--muted);font-weight:600}
-.conversation-dock .dock-heading-actions{gap:4px}
-.conversation-dock .dock-icon{padding:0;min-height:32px;width:32px;height:32px;border:0;background:transparent}
-.conversation-dock[data-chat-active=true]>.dock-status-tabs{position:absolute;z-index:2;top:9px;left:145px;right:120px;display:flex;justify-content:center;gap:4px;padding:0}
-.conversation-dock[data-chat-active=true]>.dock-status-tabs>button{min-height:30px;gap:5px;padding:3px 8px;border:0;background:transparent;font-size:11px;line-height:20px}
-.conversation-dock[data-chat-active=true]>.dock-status-tabs strong{font-size:11px}
-.conversation-dock[data-chat-active=true]>.dock-decisions{display:none}
+.app-shell .conversation-dock[data-chat-active=true]{min-width:0;background:var(--panel)}
+
+.app-shell .conversation-dock:not([data-minimized=true])>.dock-heading{
+  height:36px;min-height:36px;padding:2px var(--chat-gutter);gap:6px;background:var(--card-subtle);
+}
+.conversation-dock .dock-heading>div{gap:5px;min-width:0}
+.conversation-dock .dock-heading h2{font-size:14px;line-height:20px;font-weight:700;color:var(--text)}
+.conversation-dock .dock-heading-actions{gap:2px;flex:none}
+.conversation-dock .dock-icon{
+  display:inline-grid;place-items:center;width:28px;height:28px;min-width:28px;min-height:28px;
+  padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted);
+}
+.conversation-dock .dock-icon svg{width:16px;height:16px}
+.conversation-dock .dock-icon:hover{background:var(--selected);color:var(--accent)}
+.conversation-dock .dock-scope-tabs{
+  display:flex;align-items:stretch;gap:2px;flex:none;margin:9px var(--chat-gutter) 1px;padding:2px;
+  border:1px solid var(--line-soft);border-radius:7px;background:var(--panel-alt);
+}
+.conversation-dock .dock-scope-tabs>button{
+  display:flex;align-items:center;justify-content:center;gap:4px;flex:1;min-width:0;
+  min-height:25px;padding:3px 5px;border:0;border-radius:5px;background:transparent;
+  font-size:12px;line-height:17px;color:var(--muted);white-space:normal;word-break:keep-all;
+}
+.conversation-dock .dock-scope-tabs>button[aria-pressed=true]{background:var(--accent-bg);color:var(--accent);box-shadow:none}
+.conversation-dock .dock-scope-tabs small{font-size:10px;line-height:15px;padding:0 3px;border-radius:4px;color:var(--accent);background:var(--selected)}
+.dock-navigation-row {
+  display:flex;
+  align-items:center;
+  flex:none;
+  gap:6px;
+  padding:2px var(--chat-gutter);
+}
+.conversation-dock .dock-navigation-row .dock-back {
+  display:inline-flex;
+  align-items:center;
+  gap:3px;
+  min-height:23px;
+  padding:2px 4px;
+  color:var(--muted);
+  background:transparent;
+  border:0;
+  border-radius:5px;
+  font-size:11px;
+  line-height:17px;
+}
+.conversation-dock .dock-back:is(:hover,:focus-visible) {color:var(--accent);background:var(--selected)}
+.app-shell > .dock-reopen-tab {
+  position:fixed;
+  inset:46% 0 auto auto;
+  z-index:45;
+  display:grid;
+  place-items:center;
+  gap:2px;
+  min-height:52px;
+  padding:6px;
+  border:1px solid var(--line);
+  border-inline-end:0;
+  border-radius:9px 0 0 9px;
+  background:var(--panel);
+  color:var(--accent);
+  box-shadow:0 2px 8px #17304c12;
+  font-size:11px;
+  line-height:16px;
+}
+.app-shell > .dock-reopen-tab:is(:focus-visible,:hover) {background:var(--selected)}
+@media (pointer:coarse) {.app-shell > .dock-reopen-tab{min-width:44px}}
+.conversation-dock .dock-status-tabs{
+  position:static;display:flex;justify-content:flex-end;gap:10px;flex:none;
+  margin-inline-start:auto;padding:0;border:0;background:var(--panel);
+}
+.conversation-dock .dock-status-tabs>button{
+  display:flex;align-items:center;justify-content:center;gap:4px;min-height:23px;
+  padding:2px 4px;border:0;border-radius:5px;background:transparent;color:var(--muted);font-size:11px;line-height:17px;
+}
+.conversation-dock .dock-status-tabs>button[aria-pressed=true]{background:var(--selected);color:var(--accent)}
+.conversation-dock .dock-status-tabs strong{font-size:11px;font-weight:700}
+.conversation-dock .dock-status-tabs i{width:5px;height:5px}
+.conversation-dock>.dock-decisions{margin:3px var(--chat-gutter) 7px;padding:5px 8px;min-height:30px;border-radius:6px;font-size:11px}
 .conversation-dock[data-chat-active=true]>.dock-footer{display:none}
-.conversation-dock[data-chat-active=true] .session-heading{padding:12px 24px;min-height:58px;gap:16px;background:var(--panel)}
-.conversation-dock[data-chat-active=true] .session-heading .eyebrow{display:none}
-.conversation-dock[data-chat-active=true] .session-heading h2{font-size:17px;line-height:26px;font-weight:800;letter-spacing:0;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.conversation-dock .dock-dots{background:var(--panel);z-index:2}
+.conversation-dock .dock-browser{padding:3px var(--chat-gutter) 12px;scrollbar-gutter:stable}
+.conversation-dock .dock-intro{font-size:12px;line-height:19px;margin:6px 0 14px;color:var(--muted)}
+.conversation-dock .dock-scope-card{border-color:var(--line-soft);border-radius:9px;margin-bottom:10px;box-shadow:none}
+.conversation-dock .dock-scope-open{min-height:62px;padding:11px;gap:9px}
+.conversation-dock .dock-scope-open strong{font-size:13px;line-height:21px;font-weight:700}
+.conversation-dock .dock-scope-open small{font-size:11px;line-height:18px;margin-top:2px}
+.conversation-dock .dock-scope-icon{width:30px;height:30px;border-radius:7px}
+.conversation-dock .dock-scope-card>footer{padding:4px 11px;min-height:30px;font-size:11px}
+.conversation-dock .dock-project-picker{margin-top:16px;border-top:1px solid var(--line-soft)}
+.conversation-dock .dock-project-picker summary{display:flex;align-items:center;justify-content:space-between;padding:10px 2px;font-size:12px;font-weight:700;cursor:pointer;list-style:none}
+.conversation-dock .dock-project-picker[open] summary svg{transform:rotate(90deg)}
+.conversation-dock .dock-project-row{min-height:50px;padding:8px;gap:9px;border-radius:6px}
+.conversation-dock .dock-project-copy{display:grid;gap:3px;min-width:0;flex:1}
+.conversation-dock .dock-project-name,.conversation-dock .dock-session-project{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.conversation-dock .dock-project-name>strong,.conversation-dock .dock-session-project>span:last-child{min-width:0;word-break:keep-all;overflow-wrap:break-word}
+.conversation-dock .dock-project-name .project-category-label,.conversation-dock .dock-session-project .project-category-label{flex:none}
+.conversation-dock .dock-project-select {font-size:11px;line-height:16px;gap:4px;margin:1px 0 6px}
+.app-shell .conversation-dock .dock-browser .dock-project-select .choice-trigger {
+  height:32px;min-height:32px;padding:4px 8px;border-radius:7px;font-size:12px;line-height:20px;
+}
+.app-shell .conversation-dock .dock-browser .dock-search {
+  height:32px;min-height:32px;margin:0 0 7px;padding:0 8px;border:1px solid var(--line-soft);border-radius:7px;
+}
+.app-shell .conversation-dock .dock-browser .dock-search:focus-within {border-color:var(--accent)}
+.app-shell .conversation-dock .dock-browser .dock-search input {
+  height:100%;min-height:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;outline:0;font-size:12px;line-height:20px;
+}
+.conversation-dock .dock-session-list{gap:0}
+.conversation-dock .dock-session{padding:11px 4px;border:0;border-bottom:1px solid var(--line-soft);border-radius:0;box-shadow:none}
+.conversation-dock .dock-session:hover,.conversation-dock .dock-session[data-selected=true]{background:var(--card-subtle)}
+.conversation-dock .dock-session strong{font-size:13px;line-height:20px;white-space:normal;word-break:keep-all}
+.conversation-dock .dock-session p{font-size:12px;line-height:19px;margin:4px 0 6px}
+.conversation-dock .dock-session :is(time,footer){font-size:11px}
+.conversation-dock .dock-new-conversation{min-height:32px;margin-top:12px;border-radius:7px;font-size:12px}
+.conversation-dock .dock-footer{font-size:11px;line-height:18px;padding:7px var(--chat-gutter);color:var(--muted)}
+
+/* 대화의 제목은 한 곳에 두고, 상태와 도구는 본문을 밀어내지 않는 짧은 행으로 표시합니다. */
+.conversation-dock[data-chat-active=true] .session-heading{
+  position:relative;z-index:4;min-height:42px;padding:3px var(--chat-gutter) 5px;gap:6px;align-items:center;background:var(--panel);
+  border-bottom:1px solid var(--line-soft);
+}
+.conversation-dock .session-heading>div:first-child{flex:1;min-width:0}
+.conversation-dock[data-chat-active=true] .session-heading .eyebrow{display:flex;align-items:center;gap:5px;margin:0;font-size:11px;line-height:16px;color:var(--muted)}
+.conversation-dock .session-heading .eyebrow svg{width:13px;height:13px;flex:none}
+.conversation-dock[data-chat-active=true] .session-heading h2{font-size:15px;line-height:19px;font-weight:700;letter-spacing:-.2px;white-space:normal;word-break:keep-all;margin:0}
 .conversation-dock .session-actions{flex:none;align-items:center;gap:4px}
-.conversation-dock .conversation-tools>.button{font-size:12px;min-height:32px;padding:4px 8px}
-.conversation-dock .codex-link-bar{flex:none;padding:4px 24px;min-height:38px;gap:4px 12px;background:var(--card-subtle);font-size:11px;line-height:20px;align-items:flex-start}
+.chat-token-summary{display:grid;gap:0;justify-items:end;min-width:0;max-width:130px;padding-inline-end:3px;color:var(--muted);font-size:11px;line-height:15px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.chat-token-summary>small{font-size:10px;line-height:13px;color:var(--muted)}
+.session-details>summary {
+  display:grid; place-items:center; width:30px; height:30px; color:var(--muted);
+  cursor:pointer; list-style:none; border-radius:7px;
+}
+.session-details>summary::-webkit-details-marker {display:none}
+.session-details[open]>summary,.session-details>summary:hover {color:var(--accent); background:var(--accent-bg)}
+.session-details-body {
+  position:absolute; inset:calc(100% + 4px) var(--chat-gutter) auto auto;
+  width:min(360px,calc(100% - 2 * var(--chat-gutter))); max-height:min(52dvh,470px); overflow:auto;
+  padding:8px; border:1px solid var(--line); border-radius:10px; background:var(--panel);
+  box-shadow:0 8px 24px #1529411a; animation:choice-reveal 175ms ease-out both;
+}
+.session-details-body .wb-session {margin:0}
+.session-details-body .codex-link-bar {padding-inline:6px}
+.conversation-question {margin-block:8px; scroll-margin:8px; border-radius:10px}
+@media(prefers-reduced-motion:reduce) {.session-details-body {animation:none}}
+.conversation-dock .session-actions>.icon-button{width:26px;height:28px;min-width:26px;min-height:28px;padding:0;border:0;border-radius:5px;background:transparent}
+ .conversation-dock .conversation-tools>.conversation-menu-trigger{display:grid;place-items:center;flex:none;width:28px;height:28px;min-width:28px;min-height:28px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--muted);box-shadow:none}
+.conversation-dock .conversation-tools>.conversation-menu-trigger:hover{background:var(--selected);color:var(--accent)}
+.conversation-utility-actions{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin:0 0 10px;padding-bottom:10px;border-bottom:1px solid var(--line-soft)}
+.conversation-utility-actions>button{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:4px 7px;border:0;border-radius:6px;background:transparent;color:var(--muted);font-size:12px;line-height:20px}
+.conversation-utility-actions>button:hover{background:var(--selected);color:var(--accent)}
+.conversation-dock .codex-link-bar{display:grid;grid-template-columns:minmax(0,1fr) 28px;flex:none;padding:2px var(--chat-gutter);min-height:32px;gap:3px 7px;background:var(--panel);font-size:12px;line-height:18px;align-items:start;border-bottom:1px solid var(--line-soft)}
 .conversation-dock .codex-link-details{flex:1;min-width:0;max-width:100%}
-.conversation-dock .codex-link-details summary{display:flex;align-items:center;gap:6px;min-height:30px;cursor:pointer;list-style:none;color:var(--muted)}
+.conversation-dock .codex-link-details summary{display:flex;align-items:center;gap:5px;min-height:28px;padding:0;cursor:pointer;list-style:none;color:var(--muted)}
 .conversation-dock .codex-link-details summary::-webkit-details-marker{display:none}
-.conversation-dock .codex-link-details summary::after{content:'⌄';margin-left:2px;color:var(--dim)}
+.conversation-dock .codex-link-details summary::after{content:'⌄';margin-left:2px}
 .conversation-dock .codex-link-details[open] summary::after{transform:rotate(180deg)}
-.conversation-dock .codex-link-details p{margin:4px 0 8px;font-size:12px;line-height:20px;color:var(--muted)}
-.conversation-dock .codex-link-bar>.button{flex:none;min-height:30px;padding:3px 6px;font-size:11px;line-height:20px}
-.conversation-dock .chat-context{flex:none;padding:4px 24px;font-size:11px;line-height:20px;border-bottom:1px solid var(--line-soft)}
-.conversation-dock .chat-queue-panel{max-height:160px;overflow:auto;flex:none;margin:8px 24px;padding:10px 12px}
-.conversation-dock .messages{width:100%;min-width:0;overflow-x:hidden;overflow-y:auto;padding:20px 28px 16px;scrollbar-gutter:stable;flex:1;min-height:0;background:var(--panel)}
-.conversation-dock .message-history-controls{position:relative;top:auto;z-index:auto;display:flex;align-items:center;justify-content:space-between;gap:4px 12px;margin-bottom:24px;padding:4px 0 10px;background:transparent}
-.conversation-dock .message-history-controls>div{gap:4px}
-.conversation-dock .message-history-controls .button{font-size:11px;line-height:20px;min-height:28px;padding:3px 7px}
-.conversation-dock .message-history-controls p{font-size:11px;line-height:20px}
-.conversation-dock .message-history-items{width:100%;min-width:0}
-.conversation-dock .message{width:100%;max-width:1120px;margin:0 auto 28px;gap:12px}
-.conversation-dock .message-avatar{width:28px;height:28px;border-radius:9px}
-.conversation-dock .message-body{min-width:0;width:0;flex:1}
-.conversation-dock .message-meta{min-height:28px;margin-bottom:6px;gap:10px;flex-wrap:wrap}
-.conversation-dock .message-meta strong{font-size:12px;line-height:20px;font-weight:700}
-.conversation-dock .message-meta time{font-size:10px;line-height:18px}
-.conversation-dock .markdown{font-size:14px;line-height:1.8;word-break:keep-all;overflow-wrap:normal;min-width:0;max-width:100%}
-.conversation-dock .markdown p{font-size:inherit;line-height:1.8;word-break:keep-all;overflow-wrap:normal;margin-bottom:14px}
-.conversation-dock .markdown :is(h1,h2,h3){font-size:17px;line-height:28px;font-weight:700;margin:24px 0 12px}
+.conversation-dock .codex-link-details p{margin:4px 0 8px;font-size:12px;line-height:19px}
+.conversation-dock .codex-link-bar>.button{display:grid;place-items:center;align-self:start;flex:none;width:28px;height:28px;min-height:28px;padding:0;font-size:12px;line-height:18px;border:0;background:transparent}
+.conversation-dock .chat-context{flex:none;padding:4px var(--chat-gutter);font-size:11px;line-height:18px;border-bottom:1px solid var(--line-soft)}
+.conversation-dock .chat-queue-panel{max-height:150px;overflow:auto;flex:none;margin:6px var(--chat-gutter);padding:7px 9px;border-radius:7px}
+.conversation-dock .dock-chat-content{display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden}
+.conversation-dock .dock-chat-content>.workspace-main{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.app-shell .conversation-dock .workspace-main.has-session{overflow:hidden;scrollbar-gutter:auto;width:100%}
+.app-shell .conversation-dock .dock-chat-content>.workspace-main{height:auto;flex:1;min-height:0}
+.conversation-dock .dock-chat-content>.update-banner{flex:none;margin:0;padding:9px var(--chat-gutter);border-radius:0;border:0;border-bottom:1px solid var(--line-soft);font-size:12px}
+.conversation-dock .dock-chat-content>.update-banner p{font-size:12px;line-height:19px}
+.conversation-dock .messages{
+  width:100%;min-width:0;overflow-x:hidden;overflow-y:auto;padding:10px var(--chat-gutter) 6px;container-type:inline-size;
+  scrollbar-gutter:stable;flex:1;min-height:0;background:var(--panel);overscroll-behavior-y:contain;
+}
+.conversation-dock .message-history-controls{position:relative;top:auto;z-index:auto;display:flex;align-items:center;justify-content:space-between;gap:4px 8px;margin:0 0 16px;padding:2px 0 8px;background:transparent}
+.conversation-dock .message-history-controls>div{gap:3px;flex-wrap:wrap}
+.conversation-dock .message-history-controls .button{font-size:11px;line-height:18px;min-height:26px;padding:3px 5px}
+.conversation-dock .message-history-controls p{font-size:11px;line-height:18px}
+.conversation-dock .message-history-items{width:100%;min-width:0;zoom:var(--chat-reading-scale,.9)}
+.conversation-dock .message{position:relative;display:block;width:fit-content;max-width:96%;margin:0 auto 12px 0;gap:6px;align-items:flex-start}
+.conversation-dock .message-avatar{position:static;width:20px;height:20px;border-radius:50%;flex:none;margin:0}
+.conversation-dock .message-body{min-width:0;width:auto;max-width:100%;padding:0;border:0;background:transparent;box-shadow:none}
+.conversation-dock .message-meta{display:flex;align-items:center;min-height:22px;margin:0 4px 4px;gap:6px;flex-wrap:nowrap;line-height:18px}
+.conversation-dock .message-meta strong{font-size:12px;line-height:18px;font-weight:700}
+.conversation-dock .message-meta time{flex:none;font-size:11px;line-height:18px;color:var(--muted);white-space:nowrap}
+.conversation-dock .message-bubble{min-width:0;max-width:100%;padding:9px 12px;border:1px solid var(--line-soft);border-radius:20px;background:var(--card-subtle);box-shadow:none}
+.conversation-dock .message.assistant{margin-inline:0 auto}
+.conversation-dock .message.user{max-width:92%;margin-inline:auto 0}
+.conversation-dock .message.user .message-bubble{background:var(--accent-bg);border-color:transparent}
+.conversation-dock .message.user .message-meta{justify-content:flex-end;gap:5px}
+.conversation-dock .message.system .message-bubble{padding:0;border:0;background:transparent}
+.conversation-dock .markdown,.conversation-dock .message .message-prose,.conversation-dock .message .message-prose p{
+  font-size:16px;line-height:21px;word-break:keep-all;overflow-wrap:break-word;min-width:0;max-width:100%;
+}
+.conversation-dock .message .message-prose p{margin:0 0 5px}
+.conversation-dock .message .message-prose li{margin:0 0 3px}
+.conversation-dock .message .message-prose :is(ul,ol){margin:4px 0 5px;padding-inline-start:20px}
+.conversation-dock .message .message-prose li>:is(ul,ol){margin-block:3px}
+.conversation-dock .message .message-prose :is(h1,h2,h3,h4){margin:13px 0 6px;font-size:16px;line-height:22px;font-weight:700}
+.conversation-dock .message .message-prose :is(blockquote,pre,.message-table-wrap){margin-block:8px}
+.conversation-dock .message .message-prose>:first-child{margin-top:0}
+.conversation-dock .message .message-prose>:last-child,.conversation-dock .message .message-prose li:last-child{margin-bottom:0}
 .conversation-dock .markdown :is(pre,table){display:block;max-width:100%;overflow-x:auto;overscroll-behavior-x:contain}
-.conversation-dock .message-prose pre{padding:16px;border-radius:10px;font-size:12px;line-height:22px;white-space:pre}
+.conversation-dock .message-prose pre{padding:12px;border-radius:7px;font-size:12px;line-height:20px;white-space:pre}
 .conversation-dock .message-prose pre code{white-space:pre;overflow-wrap:normal;word-break:normal}
 .conversation-dock .markdown img{max-width:100%;height:auto}
 .conversation-dock .markdown :is(a,code){overflow-wrap:anywhere;word-break:normal}
-.app-shell .conversation-dock .composer-area,.app-shell .conversation-dock .has-session .composer-area{padding:12px 24px 10px;background:var(--panel);border-top:1px solid var(--line-soft);margin:0;flex:none;width:100%;max-width:none;max-height:45%;overflow-y:auto;overflow-x:hidden}
-.app-shell .conversation-dock .workspace-main.has-session{overflow:hidden;scrollbar-gutter:auto;width:100%}
-.app-shell .conversation-dock .dock-chat-content>.workspace-main{height:auto;flex:1;min-height:0}
-.conversation-dock .dock-chat-content>.update-banner{flex:none;margin:0;padding:12px 20px;border-radius:0;border:0;border-bottom:1px solid var(--line-soft);font-size:12px}
-.conversation-dock .dock-chat-content>.update-banner p{font-size:12px;line-height:20px}
-.conversation-dock .attachment-composer{max-width:1120px;margin:0 auto}
-.app-shell .conversation-dock .composer{padding:8px 12px;border:1px solid var(--line);border-radius:14px;background:var(--input);box-shadow:0 2px 8px #081f4805;overflow:visible}
-.conversation-dock .has-session .composer:not(.working) .composer-topline{display:none}
-.conversation-dock .composer-topline{padding:0 4px 4px;min-height:22px}
-.conversation-dock .composer-topline>span{font-size:11px;line-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
-.app-shell .conversation-dock .composer textarea{height:48px;min-height:48px;max-height:132px;line-height:24px;display:block;width:100%;padding:10px 4px 8px;margin:0;border:0;border-radius:0;background:transparent;font-size:14px;resize:none;box-shadow:none;word-break:keep-all;overflow-y:auto}
-.app-shell .conversation-dock[data-chat-active] .composer textarea{border:0;border-radius:0;background:transparent;padding:10px 4px 8px;box-shadow:none}
-.conversation-dock .composer-toolbar{padding:4px 0 0;gap:8px;align-items:center;flex-wrap:nowrap;min-height:38px}
-.conversation-dock .composer-options{align-items:center;flex-wrap:wrap;gap:4px;min-width:0;flex:1}
-.app-shell .conversation-dock .composer :is(.composer-attach,.voice-composer>button){display:inline-grid;place-items:center;width:32px;height:32px;min-width:32px;min-height:32px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted)}
-.conversation-dock .composer :is(.composer-attach,.voice-composer>button):hover{background:var(--panel-alt);color:var(--text)}
-.conversation-dock .composer .voice-composer{display:inline-flex;align-items:center;gap:2px;position:relative}
-.conversation-dock .composer .voice-message:not(:empty){position:absolute;bottom:calc(100% + 10px);left:0;min-width:180px;max-width:280px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 6px 20px #081f4814;z-index:4}
-.conversation-dock .composer .mode-select{display:inline-flex;align-items:center;background:transparent;border:0;padding:0 4px;gap:4px;font-size:12px;border-radius:8px;min-height:32px}
-.app-shell .conversation-dock .composer .mode-select select{font-size:12px;line-height:20px;min-height:32px;padding:5px 18px 5px 4px;border:0;border-radius:8px;background:transparent;box-shadow:none;color:var(--muted);max-width:100px}
-.conversation-dock .composer .mode-select>svg:first-child{display:none}
-.conversation-dock .composer .mode-select>svg:last-child{right:4px}
-.conversation-dock .composer .option-divider{height:16px;margin:0 2px;background:var(--line)}
-.app-shell .conversation-dock .composer .model-select{display:inline-flex;align-items:center;gap:4px;max-width:230px;min-height:32px;padding:4px 6px;border:0;background:transparent;font-size:12px;line-height:20px;color:var(--muted);border-radius:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.conversation-dock .composer .model-select .small-codex-icon{display:none}
-.conversation-dock .chat-run-controls{gap:6px;flex:none;align-items:center}
-.app-shell .conversation-dock .composer .send-button{width:36px;height:36px;min-width:36px;min-height:36px;padding:0;border-radius:12px;display:grid;place-items:center;background:var(--primary-gradient);color:var(--on-primary);border:0}
-.app-shell .conversation-dock .composer-area>.chat-continuation{padding-block:4px}
-.conversation-dock .composer-footnote{max-width:1120px;margin:0 auto;font-size:10px;line-height:18px;padding:4px 2px 0;gap:8px;min-height:0}
-.conversation-dock .composer-footnote>span{font-size:10px;line-height:18px}
-.conversation-dock .composer-footnote>span:first-child{gap:5px;min-width:0;display:flex;align-items:center}
-.conversation-dock .composer-footnote>span:first-child>svg{flex:none}
-.conversation-dock .composer-footnote>span:last-child{display:none}
-.conversation-dock .chat-attachment-list{max-height:104px;overflow:auto;padding:0 0 8px;gap:6px}
-.conversation-dock .chat-attachment-list li{background:var(--card-subtle);border-color:var(--line-soft);padding:6px 8px}
-.conversation-dock .chat-attachment-list img{height:38px;width:44px}
-@media(max-width:1049px){.app-shell .conversation-dock[data-chat-active=true]{width:min(680px,calc(100vw - 88px))}.app-shell[data-chat-focus=true]>.conversation-dock{width:auto}.conversation-dock .dock-layout-toggle{display:none}}
-@media(max-width:760px){.app-shell[data-chat-focus=true]>.conversation-dock{position:fixed;inset:0;flex:none;width:100%;height:100dvh;margin:0;border:0;border-radius:0;animation:ui-sheet-in 280ms var(--ease-enter) both}.app-shell .conversation-dock[data-chat-active=true]{width:100%;height:100dvh;border-radius:0}.conversation-dock .dock-navigation-toggle{display:inline-grid}.conversation-dock[data-chat-active=true]>.dock-heading{padding:8px 12px}.conversation-dock[data-chat-active=true] .session-heading{padding:10px 16px;min-height:52px;gap:8px}.conversation-dock[data-chat-active=true] .session-heading h2{font-size:15px;line-height:24px}.conversation-dock .session-actions{gap:0}.conversation-dock .session-actions .conversation-tools>.button{font-size:11px;padding:4px 6px}.conversation-dock .codex-link-bar{padding:3px 16px;gap:4px;min-height:36px}.conversation-dock .codex-link-bar>.button{font-size:10px;padding:3px 4px}.conversation-dock .messages{padding:16px 16px 12px}.conversation-dock .message{gap:8px;margin-bottom:24px}.conversation-dock .message-avatar{width:24px;height:24px}.conversation-dock .markdown{font-size:13px}.conversation-dock .message-meta{gap:6px}.conversation-dock .message-meta-actions{gap:2px}.conversation-dock .message-history-controls{flex-direction:column;align-items:flex-start;gap:2px;margin-bottom:20px}.conversation-dock .message-history-controls>div{width:100%;justify-content:space-between;gap:2px}.conversation-dock .message-history-controls .button{font-size:10px;padding:3px 4px}.app-shell .conversation-dock .composer-area,.app-shell .conversation-dock .has-session .composer-area{padding:10px 12px max(8px,env(safe-area-inset-bottom));max-height:42%}.conversation-dock .composer-toolbar{gap:4px}.conversation-dock .composer-options{gap:2px}.conversation-dock .composer .option-divider{display:none}.app-shell .conversation-dock .composer .model-select{max-width:145px;font-size:11px}.app-shell .conversation-dock .composer .mode-select select{font-size:11px;max-width:75px;padding-right:14px}.conversation-dock[data-chat-active=true]>.dock-decisions{position:static;max-width:none;align-self:stretch;margin:4px 12px;padding:4px 10px}.conversation-dock .composer .voice-composer{gap:0}}
-@media(max-width:360px){.app-shell .conversation-dock .composer .model-select{max-width:125px}.conversation-dock .composer-options{column-gap:0;row-gap:2px}.conversation-dock .composer-footnote{font-size:9px}.conversation-dock .composer-footnote>span{font-size:9px}}
-@media(max-width:760px){.conversation-dock[data-chat-active=true]>.dock-status-tabs{left:82px;right:82px;gap:2px}.conversation-dock[data-chat-active=true]>.dock-status-tabs>button{font-size:10px;gap:4px;padding:3px 4px}.conversation-dock[data-chat-active=true]>.dock-heading>div:first-child>div{display:none}}
-@media(max-width:360px){.conversation-dock[data-chat-active=true]>.dock-status-tabs{left:78px;right:78px;gap:0}.conversation-dock[data-chat-active=true]>.dock-status-tabs>button{font-size:9px;gap:3px;padding:3px}.conversation-dock[data-chat-active=true]>.dock-status-tabs strong{font-size:10px}.conversation-dock[data-chat-active=true]>.dock-status-tabs i{width:4px;height:4px}}
-@media(max-width:760px) and (max-height:650px){.conversation-dock[data-chat-active=true]>.dock-heading{height:44px;min-height:44px;padding-block:4px}.conversation-dock[data-chat-active=true] .session-heading{min-height:44px;padding-block:6px}.conversation-dock[data-chat-active=true] .session-heading>div:first-child{flex:1;min-width:0}.conversation-dock[data-chat-active=true] .session-heading h2{display:block;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.conversation-dock .has-session .composer-footnote{display:none}.app-shell .conversation-dock .has-session .composer-area{padding-block:8px}.conversation-dock .codex-link-bar{padding-block:2px}}
-@media(max-width:360px) and (max-height:650px){.app-shell .conversation-dock .has-session .composer-area{padding-block:6px}.app-shell .conversation-dock .composer{padding:4px 10px}.app-shell .conversation-dock .composer textarea{height:42px;min-height:42px}.conversation-dock .composer-toolbar{padding-top:0}}
-@media(prefers-reduced-motion:reduce){.app-shell[data-chat-focus=true]>.conversation-dock{animation:none!important}}
-
-/* 세 버튼의 오른쪽 끝을 답변 본문의 끝에 맞춥니다. */
-.conversation-dock .message-meta-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  margin-inline-start: auto;
-}
-.conversation-dock .message-meta-actions .copy-message { opacity: 1; }
-.conversation-dock .message-meta-actions :is(.icon-button,.ui-like-button) {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  min-height: 32px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 8px;
-  color: var(--muted);
-}
-.conversation-dock .message-meta-actions :is(.icon-button,.ui-like-button):hover {
-  color: var(--accent-bright);
-  background: var(--accent-bg);
-}
-.conversation-dock .message-meta-actions .ui-like-button > span:last-child { display: none; }
-@media (pointer: coarse) {
-  .conversation-dock .message-meta-actions :is(.icon-button,.ui-like-button) {
-    width: 40px;
-    height: 40px;
-  }
-}
-
+.conversation-dock .message-meta-actions{display:flex;align-items:center;gap:2px;margin:3px 3px 0}
+.conversation-dock .message.user .message-meta-actions{justify-content:flex-end;margin-top:3px;margin-inline:0}
+.conversation-dock .message-meta-actions .copy-message{opacity:1}
+.conversation-dock .message-meta-actions :is(.icon-button,.ui-like-button){display:inline-grid;place-items:center;flex:none;width:28px;height:28px;min-width:28px;min-height:28px;margin:0;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted)}
+.conversation-dock .message-meta-actions :is(.icon-button,.ui-like-button):hover{color:var(--accent);background:var(--selected)}
+.conversation-dock .message-meta-actions .ui-like-button>span:last-child{display:none}
 .message-avatar.assistant:has(.chatgpt-avatar){background:transparent;border:0}
 .chatgpt-avatar{display:block;max-width:100%;max-height:100%;object-fit:contain}
+
+@media(max-width:760px){
+ .conversation-dock{--chat-gutter:12px}
+ .app-shell[data-chat-focus=true]>.conversation-dock{position:fixed;inset:0;flex:none;width:100%;height:100dvh;margin:0;border:0;border-radius:0}
+ .app-shell .conversation-dock:not([data-minimized=true])>.dock-heading{height:40px;min-height:40px}
+
+ .conversation-dock[data-chat-active=true] .session-heading{min-height:42px;padding-block:4px}
+ .conversation-dock .session-actions>.icon-button{width:28px;min-width:28px}
+ .conversation-dock .session-actions .conversation-tools>.button{max-width:54px;font-size:11px;padding-inline:3px}
+ .conversation-dock .message-history-controls{align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}
+ .conversation-dock .message-history-controls>div{justify-content:space-between;gap:2px}
+ .conversation-dock .message-meta{gap:5px}
+}
+@media(pointer:coarse){
+ .conversation-dock .dock-icon{min-width:32px;width:32px;min-height:32px;height:32px}
+ .conversation-dock .message-meta-actions :is(.icon-button,.ui-like-button){width:36px;height:36px;min-width:36px;min-height:36px}
+ .conversation-dock .dock-scope-tabs>button{min-height:32px}
+}

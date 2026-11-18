@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from "react";
-import { MessageSquareText } from "lucide-react";
+import { Check, MessageSquareText } from "lucide-react";
 import type { FlowriumEvent, InputQuestion } from "../shared/types";
 import "./input-request.css";
 
@@ -22,6 +22,7 @@ export default function InputRequestPanel({
     [error, setError] = useState("");
   const sending = useRef(false);
   const [answered,setAnswered]=useState(false);
+  const [expired,setExpired]=useState(false);
   const questions = event.questions || [];
   function update(id: string, change: Draft) {
     setDrafts((prev) => new Map(prev).set(id, { ...prev.get(id), ...change }));
@@ -38,9 +39,11 @@ export default function InputRequestPanel({
     <form
       className="input-request"
       aria-label="Codex 질문"
+      data-answered={answered}
+      data-expired={expired}
       onSubmit={async (e) => {
         e.preventDefault();
-        if (!valid || sending.current || answered || !event.requestId) return;
+        if (!valid || sending.current || answered || expired || !event.requestId) return;
         sending.current = true;
         setBusy(true);
         setError("");
@@ -52,8 +55,10 @@ export default function InputRequestPanel({
             requestId: event.requestId,
             answers,
           });
-          setDrafts(new Map());setAnswered(true);onResolved?.();
+          setDrafts(previous=>new Map([...previous].filter(([id])=>!questions.some(q=>q.id===id&&q.isSecret))));
+          setAnswered(true);onResolved?.();
         } catch (e) {
+          if (e instanceof Error && /이 질문은 이미 종료됐습니다/.test(e.message)) setExpired(true);
           setError(
             e instanceof Error ? e.message : "답변을 전송하지 못했습니다.",
           );
@@ -64,18 +69,21 @@ export default function InputRequestPanel({
       }}
     >
       <header>
+        <div className="input-request-heading">
+        {title && <span className="input-request-context">{title}</span>}
         <h3>
           <MessageSquareText size={16} />
-          {title || "Codex 질문"}
+          {answered ? "답변을 전달했어요" : expired ? "종료된 질문입니다" : "진행 방향을 알려주세요"}
         </h3>
+        </div>
         {onOpen && (
           <button type="button" className="button subtle" onClick={onOpen}>
             대화 열기
           </button>
         )}
       </header>
-      <p>
-        {event.isBlocking
+      <p className="input-request-description">
+        {answered ? "선택한 답변을 작업 대화에 전달했습니다." : expired ? "작업 상태가 바뀌어 더 이상 답할 수 없습니다." : event.isBlocking
           ? "작업을 계속하려면 질문에 답해 주세요."
           : "진행 중인 작업에 답변을 전달할 수 있습니다."}
       </p>
@@ -83,7 +91,7 @@ export default function InputRequestPanel({
         const draft = drafts.get(q.id),
           direct = !q.options.length || draft?.choice === -1;
         return (
-          <fieldset key={q.id} disabled={busy||answered}>
+          <fieldset key={q.id} disabled={busy||answered||expired}>
             <legend>{q.header || "질문 " + (i + 1)}</legend>
             <p>{q.question}</p>
             {q.options.map((option, j) => (
@@ -136,9 +144,12 @@ export default function InputRequestPanel({
         );
       })}
       {error && <p role="alert">{error}</p>}
-      <button className="button primary" disabled={busy || answered || !valid}>
-        {answered?'답변을 전달했습니다':'답변 보내기'}
-      </button>
+      <footer className="input-request-footer">
+        {answered ? <span role="status"><Check size={14}/>답변 전달 완료</span> : <small>{expired ? "현재 작업 상태를 확인해 주세요." : "답변 보내기를 눌러야 전달됩니다."}</small>}
+        {!answered && !expired && <button type="submit" className="button primary" disabled={busy || !valid}>
+          {busy ? '답변 전달 중…' : '답변 보내기'}
+        </button>}
+      </footer>
     </form>
   );
 }

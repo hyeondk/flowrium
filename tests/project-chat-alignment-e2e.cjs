@@ -78,17 +78,18 @@ async function run() {
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const metrics = await message.evaluate(row => {
         const rect = selector => row.querySelector(selector).getBoundingClientRect();
-        const heading = rect('.message-meta');
+        const heading = rect('.message-meta'),bubble=rect('.message-bubble'),avatar=rect('.message-avatar'),name=rect('.message-meta strong');
         const voice = rect('.voice-read button');
         const reaction = rect('.ui-like-button');
         const copy = rect('.copy-message');
         const time = rect('time');
         const center = box => box.y + box.height / 2;
         return {
-          width: innerWidth, rightInset: heading.right - reaction.right,
+          width: innerWidth, leftInset: copy.left-bubble.left,
           copyToVoice: voice.x - copy.right, voiceToLike: reaction.x - voice.right,
-          rowOffset: Math.max(...[voice, reaction, copy].map(box => Math.abs(center(box) - center(time)))),
-          overlap: time.right - Math.min(copy.x, voice.x, reaction.x),
+          rowOffset: Math.max(...[avatar,name,time].map(box => Math.abs(center(box) - center(time)))),
+          actionsBelow:Math.min(voice.top,reaction.top,copy.top)>=bubble.bottom,
+          bubbleRadius:parseFloat(getComputedStyle(row.querySelector('.message-bubble')).borderRadius),
           minTarget: Math.min(voice.height, voice.width, reaction.height, reaction.width, copy.width, copy.height),
           overflow: row.scrollWidth - row.clientWidth,
         };
@@ -106,10 +107,10 @@ async function run() {
       assert(m.pageOverflow <= 1, `프로젝트 가로 넘침 ${m.width}`);
     }
     for (const m of chatMetrics) {
-      assert(Math.abs(m.rightInset) <= 1, `좋아요 우측 정렬 ${m.width}`);
+      assert(m.leftInset>=0&&m.leftInset<=4, `답변 말풍선 바깥 하단 도구 정렬 ${m.width}`);
       assert(m.copyToVoice >= 0 && m.copyToVoice <= 6 && m.voiceToLike >= 0 && m.voiceToLike <= 6, `도구 간격 ${m.width}`);
-      assert(m.rowOffset <= 2 && m.overlap <= 0 && m.overflow <= 1, `도구와 시간 정렬 ${m.width}`);
-      assert(m.minTarget >= 28, `도구 클릭 영역 ${m.width}`);
+      assert(m.rowOffset <= 1 && m.actionsBelow && m.bubbleRadius>=18 && m.overflow <= 1, `아이콘·Codex·시간 정렬 및 둥근 말풍선 ${m.width}`);
+      assert(m.minTarget >= 24, `90% 읽기 배율에서 도구 클릭 영역 ${m.width}`);
     }
   } finally {
     if (app) await app.close();

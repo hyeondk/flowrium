@@ -1,6 +1,8 @@
 import {attachmentDisplayText} from '../electron/mobile/attachment-text.js';
+import {parseQuestionReply,type QuestionReply} from '../electron/mobile/question-reply.js';
 export type MessageContentBlock =
   | {kind:'markdown';text:string}
+  | {kind:'question-reply';answers:QuestionReply[];raw:string}
   | {kind:'writing';text:string;raw:string}
   | {kind:'literal';raw:string}
   | {kind:'log';raw:string;pending?:boolean;failed?:boolean};
@@ -55,7 +57,9 @@ function lines(text:string){const result:{start:number;end:number;text:string}[]
 }
 export function messageContent(text:string,role:'user'|'assistant'|'system',streaming=false):MessageContentBlock[]{
   if(role==='system')return [{kind:'log',raw:text,failed:/^(?:작업을 완료하지 못했습니다|답변은 보존했지만 산출물)/.test(text)}];
-  if(role==='user')return [{kind:'markdown',text:attachmentDisplayText(text)}];
+  const display=role==='user'?attachmentDisplayText(text):text,answers=parseQuestionReply(display);
+  if(answers)return [{kind:'question-reply',answers,raw:text}];
+  if(role==='user')return [{kind:'markdown',text:display}];
   if(!text)return [{kind:'markdown',text}];
   if(text.trimStart().startsWith('"')){
     const encoded=parse(text.trim()),decoded=typeof encoded==='string'?parse(encoded):undefined;
@@ -149,6 +153,8 @@ export function speakableMessage(text:string,role:'user'|'assistant'|'system'='a
 
 /** 목록 미리보기에서도 전달 JSON과 작성 메타데이터를 본문처럼 노출하지 않는다. */
 export function messagePreview(text:string,role:'user'|'assistant'|'system',limit=90):string{
+  const answers=role!=='system'&&parseQuestionReply(role==='user'?attachmentDisplayText(text):text);
+  if(answers)return ('응답 보냄 / '+answers.map(row=>row.answer).join(' / ')).slice(0,limit);
   if(role==='user')return attachmentDisplayText(text).slice(0,limit);
   if(role==='system')return '작업 상태';
   const start=text.trimStart();

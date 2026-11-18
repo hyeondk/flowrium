@@ -76,7 +76,7 @@ async function run() {
       await form.getByRole("button", { name: "답변 보내기" }).click();
       await form.waitFor({ state: "detached" });
     }
-    await page.locator(".pf-card").waitFor();
+    await page.locator(".pf-project-entry").waitFor();
     await page.evaluate(() => window.flowrium.setSecurityPin("", "7195"));
     await launchQuestion();
     await openInbox();

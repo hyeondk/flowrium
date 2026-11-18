@@ -115,11 +115,13 @@ export function attachComposerMarkdown(input, ink, scope=input) {
     notifyInput(redo?'historyRedo':'historyUndo');
   }
   function keydown(event) {
+    if(composing||event.isComposing||event.keyCode===229)return;
     if(!(event.metaKey||event.ctrlKey) || event.altKey)return;
     const key=event.key.toLowerCase();
     if(key==='z'||(key==='y'&&!event.shiftKey))history(event,event.shiftKey||key==='y');
   }
   function beforeinput(event) {
+    if(composing||event.isComposing)return;
     if(event.inputType==='historyUndo'||event.inputType==='historyRedo')history(event,event.inputType==='historyRedo');
   }
   function startComposition(){composing=true;revision++;stopWorker();plain();}

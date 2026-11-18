@@ -658,6 +658,7 @@ function registerRemote(
       "/composer-markdown.js": "composer-markdown.js",
       "/composer-markdown.css": "composer-markdown.css",
       "/chat-reader.js": "chat-reader.js",
+      "/question-reply.js": "question-reply.js",
       "/work-time.js": "work-time.js",
       "/project-mode.js": "project-mode.js",
       "/request-upload.js": "request-upload.js",

@@ -1,0 +1,55 @@
+const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path');
+const {_electron}=require('playwright');
+const {Store}=require('../electron/store.cjs');
+const {addTrustedFixtureProject,backendFixtureAccount}=require('./project-trust-fixture.cjs');
+const {closeInstalledApp}=require('./update-installed-ui.cjs');
+async function run(){
+ const root=path.resolve(__dirname,'..'),base=path.join(root,'.flowrium-tmp/qa-261115_03');
+ await fs.mkdir(base,{recursive:true});const temporary=await fs.mkdtemp(path.join(base,'notification-design-'));
+ const output=path.join(root,'artifacts/actual-design-20261118');await fs.mkdir(output,{recursive:true});
+ let app;
+ try{
+  const profile=path.join(temporary,'profile'),folder=path.join(temporary,'온라인 스토어 매출 분석');await fs.mkdir(folder);
+  const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store,folder,{account:backendFixtureAccount});
+  const session=await store.createSession(project.id,{title:'상반기 매출 분석'});
+  await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});
+  const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temporary,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
+  app=await _electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();page.setDefaultTimeout(16000);
+  await page.setViewportSize({width:1440,height:900});await page.locator('.side-usage[data-connected=true]').waitFor();
+  await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'입력질문검증',mode:'plan'}),session.id);
+  const questionNotice=page.locator('.flow-question-notice[data-tone=question]');await questionNotice.waitFor();
+  assert.equal(await questionNotice.count(),1);assert(!/비밀|검증 문구|명령/.test(await questionNotice.innerText()));
+  const questionBox=await questionNotice.boundingBox();assert(Math.abs(questionBox.width-360)<1);assert(questionBox.height>=175.5,JSON.stringify(questionBox));
+  await page.screenshot({path:path.join(output,'안내-질문.png'),animations:'disabled'});
+  const captureNotice=async(locator,name)=>{const box=await locator.boundingBox(),width=await page.evaluate(()=>innerWidth),scale=page.viewportSize().width/width;await page.screenshot({path:path.join(output,name),clip:{x:box.x*scale,y:box.y*scale,width:box.width*scale,height:box.height*scale},animations:'disabled'});};
+  await captureNotice(questionNotice,'알림-질문-확대.png');
+  await questionNotice.getByRole('button',{name:'대화에서 답하기',exact:true}).click();
+  const form=page.locator('.conversation-question .input-request');await form.waitFor();
+  assert.equal(await page.locator('.composer-area .input-request').count(),0);
+  assert.equal(await form.locator('input:checked').count(),0);assert(await form.getByRole('button',{name:'답변 보내기',exact:true}).isDisabled());
+  assert.equal(await page.locator('.flow-question-notice[data-tone=question]').count(),0);
+  await page.screenshot({path:path.join(output,'대화-질문카드.png'),animations:'disabled'});
+  await form.getByRole('radio',{name:/요약/}).check();await form.getByRole('radio',{name:'직접 입력',exact:true}).check();
+  await form.getByLabel('직접 답변').fill('매출 비교 자료');await form.getByLabel('비밀 답변').fill('임시 합성 확인값');
+  await form.getByRole('button',{name:'답변 보내기',exact:true}).click();await form.waitFor({state:'detached'});
+  await page.locator('.message.assistant').filter({hasText:'질문 응답 형식 확인 / 요약 / 매출 비교 자료'}).waitFor();
+  const completed=page.locator('.flow-question-notice[data-tone=success]');await completed.waitFor();
+  assert.equal(await completed.locator('.flow-notice-summary p').count(),3);
+  const completeText=await completed.innerText();assert.match(completeText,/검증 내용은 대화에서 확인/);assert(!completeText.includes('임시 합성 확인값'));
+  const completeBox=await completed.boundingBox();assert(Math.abs(completeBox.width-360)<1);assert(completeBox.height>=175.5,JSON.stringify(completeBox));
+  await page.screenshot({path:path.join(output,'안내-완료.png'),animations:'disabled'});
+  await captureNotice(completed,'알림-완료-확대.png');
+  const state=await page.evaluate(()=>window.flowrium.bootstrap());assert(!JSON.stringify(state).includes('임시 합성 확인값'));
+  await page.setViewportSize({width:390,height:844});const small=await completed.boundingBox(),viewport=await page.evaluate(()=>innerWidth);assert(small.x>=-0.5&&small.x+small.width<=viewport+0.5,JSON.stringify({small,viewport}));
+  await page.setViewportSize({width:1440,height:900});
+  await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'승인검증',mode:'build'}),session.id);
+  const approvalNotice=page.locator('.flow-question-notice[data-tone=question]');await approvalNotice.getByText('승인 요청이 도착했어요',{exact:true}).waitFor();
+  assert((await page.evaluate(()=>window.flowrium.securityPending())).some(event=>event.type==='approval'));
+  await approvalNotice.getByRole('button',{name:'대화에서 확인하기',exact:true}).click();
+  const approval=page.locator('.conversation-dock').getByRole('region',{name:'실행 승인 요청'});await approval.waitFor();
+  await approval.getByRole('button',{name:'거절',exact:true}).click();await approval.waitFor({state:'detached'});
+  await fs.writeFile(path.join(output,'알림-질문-검증.json'),JSON.stringify({passed:true,questionBox,completeBox,small,questionInsideConversation:true,noAutoSelection:true,threeSummaryLines:true,secretNotStored:true,approvalNoticeAndExplicitDecline:true},null,2)+'\n');
+  console.log('알림 / 360px 공통 너비 / 176px 기본 높이 / 같은 대화 질문 이동 / 자동 선택 없음 / 명시 제출 / 3줄 실제 요약 / 비밀 답변 비보관 / 390px 화면 경계 검사 통과');
+ }finally{try{if(app)await closeInstalledApp(app,'알림과 질문 전용 검사 앱 종료')}finally{await fs.rm(temporary,{recursive:true,force:true,maxRetries:6,retryDelay:150})}}
+}
+run().catch(error=>{console.error(error);process.exitCode=1});

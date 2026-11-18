@@ -179,3 +179,43 @@ test("일반 대화의 팀 위임은 사용자 승인 뒤 시작하고 계획 �
   phase="done";await s.controller.send({sessionId:s.b.id,text:"팀 최종 보고",mode:"plan"});await s.controller.finish(s.b.id,"검증한 결과 보고");
   await s.wait(d=>d.proposals[0].status==="completed");assert.equal(s.controller.sent.at(-1).input.sessionId,s.a.id);assert.match(s.controller.sent.at(-1).input.text,/위임한 팀 업무 결과/);
 });
+
+test('완료 알림은 3줄 요약만 전달하고 같은 사건의 중복 수신을 억제하며 대화 원문은 보존한다', async t=>{
+ const sent=[],s=await setup(t,{notify:record=>sent.push(record)});
+ const body='## 완료한 내용\n메뉴의 간격을 정리했습니다.\n## 검증 결과\n자동 검사는 통과했지만 설치본은 확인하지 않았습니다.\n## 남은 사항\n설치본의 화면 검증이 남았습니다.\n'+('추가 설명입니다. '.repeat(1000));
+ await s.controller.finish(s.a.id,body);
+ await s.wait(state=>state.notifications.length===1);
+ s.controller.emit('event',{type:'done',status:'completed',sessionId:s.a.id});
+ const once=await s.workflow.state();
+ assert.equal(once.notifications.length,1);assert.equal(sent.length,1);
+ assert.equal(once.notifications[0].body.split('\n').length,3);
+ assert.match(once.notifications[0].body,/설치본은 확인하지 않았습니다/);
+ assert.equal(s.store.session(s.a.id).messages.at(-1).text,body);
+ await s.controller.finish(s.a.id,'두 번째 답변입니다.');
+ const twice=await s.wait(state=>state.notifications.length===2);
+ assert.equal(twice.notifications.length,2);assert.equal(sent.length,2);
+});
+
+test('새 작업이 답변 없이 실패하면 지난 작업의 검증 성공을 알림으로 재사용하지 않는다',async t=>{
+ const s=await setup(t);
+ await s.controller.finish(s.a.id,'## 검증 결과\n모든 검사가 통과했습니다.');
+ await s.wait(state=>state.notifications.length===1);
+ await s.controller.send({sessionId:s.a.id,text:'새 작업',mode:'plan'});
+ s.controller.runs.delete(s.a.id);
+ s.controller.emit('event',{type:'done',status:'failed',sessionId:s.a.id});
+ const state=await s.wait(value=>value.notifications.length===2);
+ assert.equal(state.notifications[0].kind,'error');
+ assert.match(state.notifications[0].body,/작업을 완료하지 못했습니다/);
+ assert.doesNotMatch(state.notifications[0].body,/통과/);
+});
+
+test('비밀 질문이 있었던 턴은 답변 원문을 완료 알림 요약에 인용하지 않는다',async t=>{
+ const s=await setup(t);
+ s.controller.emit('event',{type:'input',sessionId:s.a.id,requestId:'합성-비밀-질문',questions:[{id:'secret',isSecret:true}],isBlocking:true});
+ await s.wait(state=>state.notifications.length===1);
+ await s.controller.finish(s.a.id,'## 완료한 내용\n임시 보호 값은 요약에 표시하면 안 됩니다.');
+ const state=await s.wait(value=>value.notifications.length===2);
+ assert.equal(state.notifications[0].kind,'done');
+ assert.doesNotMatch(state.notifications[0].body,/임시 보호 값/);
+ assert.match(state.notifications[0].body,/결과는 대화에서 확인/);
+});

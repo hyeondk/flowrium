@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { _electron } = require("playwright");
 const {expect} = require("playwright/test");
-const {closeSettings}=require("./shell-test-helpers.cjs");
+const {closeSettings,settledRail}=require("./shell-test-helpers.cjs");
 const { Store } = require("../electron/store.cjs");
 
 async function run() {
@@ -74,15 +74,18 @@ async function run() {
     const frames = await closeWithMotion(page.locator('.security-lock-layer'), btn("잠금 해제"), "ui-unlock", 360);
     assert.deepEqual(frames, ["translateY(0px)", "translateY(-100%)"]);
     await page
-      .locator(".pf-card")
+      .locator(".pf-project-entry")
       .filter({ hasText: "잠금 검증 프로젝트" })
       .waitFor();
   }
   try {
     await launch();
     const side=page.locator('.workspace-side'), credits=side.locator('.side-credit-row');
+    await side.waitFor();
+    if(await side.getAttribute('data-pinned')==='true')await btn('메뉴 자동 접기').click();
     await page.mouse.move(900,80);
     await side.getByText('63%',{exact:true}).first().waitFor();
+    await settledRail(side,{expanded:false,pinned:false},'접힌 탐색 패널의 사용량');
     assert.equal(await credits.count(),0);
     const collapsedSettings=await btn("설정").boundingBox();
     await side.hover();
@@ -97,6 +100,7 @@ async function run() {
     await credits.waitFor({state:'detached'});
     await side.hover();
     await btn("설정").click();
+    await page.locator('[data-settings-target=security]').click();
     const accountCredits=page.getByLabel('계정 크레딧',{exact:true});
     await accountCredits.getByText('1,234.50').waitFor();
     await accountCredits.getByText('2회',{exact:true}).waitFor();
@@ -125,7 +129,7 @@ async function run() {
     await assert.rejects(fs.access(blockedExport),{code:'ENOENT'});
     await app.evaluate(({dialog})=>{dialog.showSaveDialog=globalThis.flowriumSaveTest.original;delete globalThis.flowriumSaveTest;});
     await page.evaluate(()=>window.flowrium.unlockSecurity('7904'));
-    await page.locator('.pf-card').filter({hasText:'잠금 검증 프로젝트'}).waitFor();
+    await page.locator('.pf-project-entry').filter({hasText:'잠금 검증 프로젝트'}).waitFor();
     await page.evaluate(async (id) => {
       await window.flowrium.send({
         sessionId: id,
@@ -177,9 +181,9 @@ async function run() {
     await sidebar.getByRole("button", { name: "Flowrium 홈" }).hover();
     const projectButton = sidebar.getByRole("button", { name: project.name, exact: true });
     await projectButton.hover();
-    const decisionBadge = projectButton.locator('.side-project-label small[data-state="decision"]');
+    const decisionBadge = projectButton.locator('.side-project-markers [data-state="decision"]');
     await decisionBadge.waitFor({ state: "visible" });
-    assert.match(await decisionBadge.innerText(), /결정 1건/);
+    assert.match(await projectButton.locator('.side-project-markers').getAttribute('aria-label'), /결정 1건/);
     await page.evaluate(
       (q) =>
         window.flowrium.approval({

@@ -1,6 +1,7 @@
 import { AnimatedSwitch } from './ui-motion';
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Check, ChevronDown, LockKeyhole, ShieldCheck } from "lucide-react";
+import ChoicePicker from './ChoicePicker';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LockKeyhole, ShieldCheck } from "lucide-react";
 import type {
   SecurityPreferences,
   SecurityState,
@@ -174,27 +175,12 @@ function windowName(minutes: number | null, key: string) {
 const choices = [0, 5, 10, 15, 30, 60];
 
 function IdleLockPicker({minutes,disabled,onChange}:{minutes:number;disabled:boolean;onChange(value:number):void}){
-  const [open,setOpen]=useState(false),[cursor,setCursor]=useState(0);
-  const root=useRef<HTMLDivElement>(null),button=useRef<HTMLButtonElement>(null),list=useId();
-  const label=(value:number)=>value?value+'분 후':'사용 안 함';
-  function begin(){setCursor(Math.max(0,choices.indexOf(minutes)));setOpen(true)}
-  function select(index:number){onChange(choices[index]);setOpen(false);button.current?.focus()}
-  useEffect(()=>{
-    if(!open)return;
-    const outside=(e:PointerEvent)=>{if(e.target instanceof Node&&!root.current?.contains(e.target))setOpen(false)};
-    document.addEventListener('pointerdown',outside);return()=>document.removeEventListener('pointerdown',outside);
-  },[open]);
-  useEffect(()=>{if(open)document.getElementById(list+'-'+cursor)?.scrollIntoView({block:'nearest'})},[cursor,open,list]);
-  return <div className="security-row idle-row"><span id={list+'-label'}>자리 비움 자동 잠금</span>
-    <div ref={root} className="idle-picker"><button ref={button} type="button" role="combobox" aria-labelledby={list+'-label'} aria-haspopup="listbox" aria-expanded={open} aria-controls={list} aria-activedescendant={open?list+'-'+cursor:undefined} disabled={disabled} onClick={()=>open?setOpen(false):begin()} onKeyDown={e=>{
-      if(e.key==='Tab'){setOpen(false);return}
-      if(e.key==='Escape'&&open){e.stopPropagation();e.preventDefault();setOpen(false);return}
-      if(['ArrowDown','ArrowUp','Home','End'].includes(e.key)){
-        e.preventDefault();if(!open){begin();return}
-        setCursor(i=>e.key==='Home'?0:e.key==='End'?choices.length-1:Math.min(choices.length-1,Math.max(0,i+(e.key==='ArrowDown'?1:-1))));
-      } else if(open&&(e.key==='Enter'||e.key===' ')){e.preventDefault();select(cursor)}
-    }}>{label(minutes)}<ChevronDown size={15}/></button>
-    {open&&<div id={list} role="listbox" aria-labelledby={list+'-label'} className="idle-options">{choices.map((m,i)=><button id={list+'-'+i} key={m} role="option" aria-selected={m===minutes} tabIndex={-1} type="button" data-active={cursor===i} onPointerDown={e=>e.preventDefault()} onClick={()=>select(i)}>{label(m)}{m===minutes&&<Check size={14}/>}</button>)}</div>}</div></div>;
+  return <div className="security-row idle-row">
+    <span>자리 비움 자동 잠금</span>
+    <ChoicePicker className="idle-picker" label="자리 비움 자동 잠금" value={String(minutes)} disabled={disabled}
+      options={choices.map(value=>({value:String(value),label:value?value+'분 후':'사용 안 함'}))}
+      onChange={value=>onChange(Number(value))}/>
+  </div>;
 }
 
 const switches = [

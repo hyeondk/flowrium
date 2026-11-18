@@ -1,1 +1,1 @@
-export {followupFromAnswer, originalAnswerFollowups} from '../electron/mobile/answer-followup.js';
+export {followupFromAnswer, originalAnswerFollowups, latestFollowupAnswer} from '../electron/mobile/answer-followup.js';

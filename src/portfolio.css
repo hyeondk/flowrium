@@ -669,27 +669,6 @@
   .app-shell .pf-page .pf-content .pf-stats > * { min-height:56px; padding:12px 16px; flex-wrap:nowrap; }
 }
 
-.app-shell .pf-overview .pf-content > .pf-heading {
-  align-items: baseline;
-  margin-bottom: 14px;
-}
-.app-shell .pf-overview .pf-content > .pf-heading > div { min-width: 0; }
-.app-shell .pf-overview .pf-content .pf-tabs {
-  padding: 0;
-  margin-block: 0 16px;
-  gap: 2px;
-  border: 0;
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-  background: transparent;
-}
-.app-shell .pf-overview .pf-content .pf-tabs button {
-  border-radius: 7px 7px 0 0;
-  flex-shrink: 0;
-}
-.app-shell .pf-overview .pf-content .pf-tabs button[aria-current=page] {
-  box-shadow: inset 0 -2px var(--accent);
-}
 .app-shell .pf-overview .pf-content .pf-panel {
   padding: 16px;
   border-radius: 12px;
@@ -782,3 +761,258 @@
 .app-shell .pf-overview .pf-content .pf-overview-group:nth-of-type(even) > .pf-overview-body {
   background: var(--card-subtle);
 }
+
+/* 프로젝트 문서면: 도구막대와 독립 스크롤, 읽는 순서에 따른 행 배치. */
+.app-shell .pf-overview {
+  display:flex; flex-direction:column; min-height:0; overflow:hidden; background:var(--panel);
+}
+.project-document-toolbar {
+  display:flex; align-items:center; justify-content:space-between; flex:none;
+  height:42px; min-height:42px; padding:0 24px; gap:12px;
+  border-bottom:1px solid var(--line-soft); background:var(--card-subtle);
+}
+.project-toolbar-leading,.project-toolbar-actions,.project-view-switch {display:flex; align-items:center; gap:8px; min-width:0}
+.project-toolbar-leading {gap:14px; color:var(--muted); font-size:13px; line-height:20px}
+.project-toolbar-icon {
+  display:inline-grid; place-items:center; flex:none; width:28px; height:28px;
+  padding:0; border:0; border-radius:6px; background:transparent; color:var(--muted);
+}
+.project-document-toolbar .mobile-menu {display:none}
+@media(max-width:760px) {.project-document-toolbar .mobile-menu {display:inline-grid; margin:0}}
+.project-toolbar-icon:hover {color:var(--text); background:var(--panel-alt)}
+.project-view-switch {gap:2px; padding:2px; border:1px solid var(--line-soft); border-radius:7px; background:var(--panel-alt)}
+.project-view-switch>button {
+  display:flex; align-items:center; gap:5px; justify-content:center; min-height:25px;
+  padding:2px 8px; border:0; border-radius:5px; background:transparent;
+  color:var(--muted); font:inherit; font-size:12px; line-height:19px;
+}
+.project-view-switch>button[aria-pressed=true] {background:var(--panel); color:var(--text); box-shadow:0 1px 3px #142b4b12}
+.project-menu {position:relative}
+.project-detail-navigation {
+  position:absolute; right:0; top:calc(100% + 8px); z-index:30; width:190px; padding:5px;
+  border:1px solid var(--line); border-radius:9px; background:var(--panel); box-shadow:0 8px 24px #172a421a;
+  animation:ui-fade-in 200ms ease-out both;
+}
+.project-detail-navigation>button {
+  width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px;
+  min-height:33px; padding:6px 10px; border:0; border-radius:6px;
+  background:transparent; color:var(--text); font:inherit; font-size:13px; line-height:21px; text-align:start;
+}
+.project-detail-navigation>button:is(:hover,[aria-current=page]) {color:var(--accent); background:var(--accent-bg)}
+.project-document-scroll {flex:1; min-height:0; overflow:auto; scrollbar-gutter:stable}
+.app-shell .pf-overview .project-document-content {
+  display:flex; flex-direction:column; gap:13px; width:100%; max-width:none; min-height:0;
+  margin:0; padding:20px 26px; font-size:14px; line-height:22px;
+}
+.project-document-heading {display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:54px}
+.project-document-heading>div {flex:1; min-width:0}
+.project-document-path {display:flex; align-items:center; gap:5px; margin-bottom:6px; color:var(--muted); font-size:12px; line-height:19px}
+.project-document-path>svg {flex:none}
+.app-shell .pf-overview .project-document-content h1 {font-size:25px; line-height:33px; letter-spacing:-.025em; font-weight:800; overflow-wrap:normal}
+.app-shell .pf-overview .project-document-heading p {margin-top:7px; color:var(--muted); font-size:13px; line-height:21px}
+.app-shell .pf-overview .project-document-content .project-new-task {
+  display:inline-flex; align-items:center; justify-content:center; flex:none; gap:5px;
+  min-height:33px; padding:6px 11px; border:1px solid transparent; border-radius:7px;
+  background:var(--accent-fill); color:var(--on-primary); font-size:12px; line-height:19px;
+}
+.project-new-task:disabled {opacity:.5}
+.overview-section {min-width:0}
+.overview-section>header {display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 12px; min-height:24px; margin-bottom:7px}
+.app-shell .pf-overview .overview-section h2 {display:flex; align-items:baseline; gap:8px; color:var(--text); font-size:14px; line-height:22px; font-weight:700; letter-spacing:0}
+.overview-section>header small,.overview-goal small,.overview-task small,.overview-activity time {color:var(--muted); font-size:12px; line-height:19px; font-weight:400}
+.overview-section>header>button,.overview-empty>button {display:flex; align-items:center; gap:5px; min-height:28px; padding:3px 0; border:0; background:transparent; color:var(--accent); font-size:12px; line-height:19px}
+.overview-goal {padding:10px 12px; margin-top:8px; border:1px solid var(--line-soft); border-radius:8px; background:var(--card-subtle)}
+.overview-goal-heading,.overview-goal-footer {display:flex; align-items:center; justify-content:space-between; gap:12px}
+.overview-goal-heading>strong {min-width:0; color:var(--text); font-size:14px; line-height:22px; font-weight:700}
+.overview-goal-heading>small {flex:none; font-variant-numeric:tabular-nums}
+.overview-goal progress {appearance:none; display:block; width:100%; height:4px; margin:12px 0 8px; border:0; border-radius:3px; background:var(--line-soft); overflow:hidden}
+.overview-goal progress::-webkit-progress-bar {background:var(--line-soft); border-radius:3px}
+.overview-goal progress::-webkit-progress-value {background:var(--accent-fill); border-radius:3px}
+.overview-goal-footer {margin-top:8px; flex-wrap:wrap}
+.overview-goal .overview-deadline {display:flex; align-items:center; gap:4px}
+.overview-goal .overview-deadline[data-today=true] {color:#8a571c}
+[data-theme=dark] .overview-goal .overview-deadline[data-today=true] {color:#efc08e}
+.overview-empty {display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; padding:15px 0; border-block:1px solid var(--line-soft); color:var(--muted); font-size:13px; line-height:21px}
+.overview-task-list {border-top:1px solid var(--line-soft)}
+.overview-task {display:flex; align-items:center; gap:10px; min-height:48px; padding:6px 0; border-bottom:1px solid var(--line-soft); cursor:pointer}
+.overview-task-copy {display:grid; gap:3px; flex:1; min-width:0}
+.overview-task-copy>strong {color:var(--text); font-size:14px; line-height:21px; font-weight:400}
+.overview-task[data-completed=true] .overview-task-copy>strong {color:var(--muted); text-decoration:line-through; text-decoration-color:var(--dim)}
+.overview-task-state {flex:none; min-width:45px; text-align:end}
+.overview-task .ui-checkbox-control {width:17px; height:17px; flex:none}
+.overview-task .ui-checkbox-control svg rect {rx:4px}
+.overview-activity-list {margin-top:-3px}
+.overview-activity {
+  width:100%; display:flex; align-items:center; gap:9px; min-height:44px; padding:8px 0;
+  border:0; border-radius:6px; background:transparent; text-align:start; color:var(--muted); font-size:13px; line-height:21px;
+}
+.overview-activity:hover {background:var(--card-subtle)}
+.overview-activity-symbol {width:26px; height:26px; flex:none; display:grid; place-items:center; border-radius:6px; background:var(--card-subtle); color:var(--dim)}
+.overview-activity>span:not(.overview-activity-symbol) {flex:1; min-width:0; font-weight:400}
+.overview-activity time {flex:none; white-space:nowrap; font-variant-numeric:tabular-nums}
+.overview-muted {color:var(--muted); font-size:13px; line-height:21px; padding:5px 0}
+.overview-tools {min-width:0; padding-top:15px; border-top:1px solid var(--line-soft); scroll-margin-top:20px}
+.overview-tools>summary {display:flex; align-items:center; gap:6px; list-style:none; cursor:pointer; color:var(--muted); font-size:12px; line-height:20px; min-height:28px}
+.overview-tools>summary::-webkit-details-marker {display:none}
+.overview-tools>summary>svg {flex:none; transition:transform 220ms ease-in-out}
+.overview-tools[open]>summary>svg {transform:rotate(90deg)}
+.overview-tools>summary>small {margin-left:auto; font-size:11px; line-height:18px}
+.overview-tools-body {display:grid; gap:20px; padding-top:18px; animation:ui-fade-in 200ms ease-out both}
+.project-document-actions {display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:0; padding-top:4px}
+.project-document-actions>button {display:inline-flex; align-items:center; gap:5px; min-height:28px; padding:2px 0; border:0; background:transparent; color:var(--muted); font-size:12px; line-height:19px}
+.project-document-actions>button:hover {color:var(--accent)}
+.project-document-footer {display:flex; justify-content:space-between; align-items:center; flex:none; flex-wrap:wrap; gap:6px 12px; min-height:29px; padding:6px 24px; border-top:1px solid var(--line-soft); background:var(--card-subtle); color:var(--muted); font-size:11px; line-height:17px}
+.project-document-footer>span:first-child {display:flex; align-items:center; gap:5px}
+@container portfolio (max-width:580px) {
+  .project-document-toolbar {padding-inline:16px}
+  .app-shell .pf-overview .project-document-content {padding:18px 18px; gap:14px}
+  .project-document-heading {gap:12px}
+  .app-shell .pf-overview .project-document-content h1 {font-size:23px; line-height:31px}
+  .project-document-footer {padding-inline:16px}
+}
+@container portfolio (max-width:380px) {
+  .project-toolbar-leading {gap:7px}
+  .project-document-toolbar {padding-inline:12px; gap:8px}
+  .project-toolbar-actions {gap:3px}
+  .project-document-heading {flex-wrap:wrap}
+  .project-document-heading>div {flex-basis:100%}
+  .app-shell .pf-overview .project-document-content {padding:20px 16px}
+  .overview-task-state {min-width:0}
+  .overview-tools>summary {flex-wrap:wrap}
+  .overview-tools>summary>small {margin-left:20px}
+}
+@media(prefers-reduced-motion:reduce) {
+  .project-detail-navigation,.overview-tools-body {animation:none}
+  .overview-tools>summary>svg {transition:none}
+}
+
+/* 프로젝트와 최근 업무를 같은 열에 정렬합니다. */
+.app-shell .pf-portfolio-dashboard .pf-content {
+  max-width:1120px;
+  padding:24px clamp(16px,3cqw,32px);
+}
+.app-shell .pf-portfolio-dashboard .dashboard-heading {
+  align-items:center; margin:0 0 14px; gap:12px;
+}
+.app-shell .pf-portfolio-dashboard .dashboard-heading h1 {
+  font-size:clamp(23px,4cqw,31px); line-height:1.2; font-weight:800;
+}
+.dashboard-heading .pf-primary {display:inline-flex; align-items:center; gap:5px; flex:none}
+.pf-dashboard-summary {
+  display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0; margin:0 0 22px;
+  padding:0; border:1px solid var(--line-soft); border-radius:10px;
+  background:color-mix(in srgb,var(--accent-bg) 42%,var(--panel));
+}
+.app-shell .pf-page .pf-content .pf-dashboard-summary>* {
+  display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:8px;
+  min-width:0; min-height:46px; padding:6px 12px; border:0; border-radius:9px; background:transparent;
+  color:var(--muted); text-align:start; font-size:12px; line-height:16px;
+}
+.pf-dashboard-summary>*+* {border-inline-start:1px solid var(--line-soft)!important; border-start-start-radius:0!important; border-end-start-radius:0!important}
+.pf-dashboard-summary svg {width:15px; height:15px; color:var(--accent)}
+.pf-dashboard-summary strong {justify-self:end; font-size:22px; line-height:26px; color:var(--text); font-variant-numeric:tabular-nums}
+.pf-dashboard-summary>button:hover {color:var(--accent); background:var(--accent-bg)}
+.dashboard-projects,.dashboard-recent {margin-block:0 22px; min-width:0}
+.dashboard-projects h2 small {font-size:12px; color:var(--muted); margin-inline-start:4px}
+.pf-project-entries,.pf-recent-cards {
+  display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; align-items:stretch;
+}
+.pf-recent-cards {grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px 10px}
+.app-shell .pf-page .pf-content .pf-project-entry {
+  display:flex; flex-direction:column; align-items:stretch; gap:5px;
+  width:100%; min-width:0; min-height:122px; padding:11px 12px;
+  border:1px solid var(--line-soft); border-radius:10px; background:var(--panel); text-align:start;
+  word-break:keep-all; overflow-wrap:anywhere;
+  transition:background-color 160ms ease,border-color 160ms ease;
+}
+.app-shell .pf-page .pf-content .pf-project-entry:hover {
+  background:var(--card-subtle); border-color:var(--accent);
+}
+.pf-project-card-top,.pf-project-card-foot {display:flex; align-items:center; justify-content:space-between; gap:6px}
+.pf-project-card-heading {display:flex; align-items:center; gap:7px; min-width:0}
+.pf-project-card-heading .pf-category {
+  min-width:0; padding:2px 7px; border:1px solid color-mix(in srgb,var(--accent) 16%,transparent);
+  border-radius:6px; background:var(--accent-bg); color:var(--accent);
+  font-size:12px; line-height:18px; font-weight:800; word-break:keep-all; overflow-wrap:break-word;
+}
+.pf-project-card-foot {margin-top:auto; color:var(--muted); font-size:12px; line-height:18px}
+.pf-project-card-foot svg {color:var(--accent); flex:none}
+.pf-project-symbol {
+  display:grid; place-items:center; width:29px; height:29px; flex:none;
+  border-radius:8px; color:var(--accent); background:var(--accent-bg);
+}
+.pf-project-name {display:block; color:var(--text); font-size:14px; line-height:20px}
+.pf-project-description {
+  font-size:12px; line-height:18px; color:var(--muted); display:-webkit-box;
+  -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden;
+}
+.pf-project-phase {flex:none; color:var(--muted); font-size:11px; line-height:17px}
+.app-shell .pf-page .pf-content .pf-recent-cards>.pf-row {
+  width:100%; min-width:0; min-height:50px; margin:0; padding:6px 10px; gap:8px;
+  border:1px solid var(--line-soft); border-radius:8px; background:var(--panel); text-align:start; flex-wrap:nowrap;
+}
+.app-shell .pf-page .pf-content .pf-recent-cards>.pf-row strong {font-size:13px; line-height:19px}
+.app-shell .pf-page .pf-content .pf-recent-cards>.pf-row small {margin-top:0; font-size:12px; line-height:17px}
+.app-shell .pf-page .pf-content .pf-recent-cards>.pf-row:hover {border-color:var(--accent); background:var(--card-subtle)}
+.pf-recent-cards .pf-row>svg {color:var(--accent); flex:none}
+.pf-recent-cards .pf-row>span {min-width:0; overflow-wrap:anywhere}
+.pf-recent-cards .pf-row time {font-size:11px; color:var(--muted); white-space:nowrap}
+.pf-project-search {
+  display:flex; min-width:0; max-width:100%; align-items:center; gap:6px; padding:3px 9px;
+  border:1px solid var(--line-soft); border-radius:8px; background:var(--panel); color:var(--muted);
+}
+.pf-project-search>svg {flex:none}
+.pf-project-search:focus-within {border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-bg)}
+.app-shell .pf-portfolio-dashboard .pf-content .pf-section-header .pf-project-search input {
+  width:min(17ch,100%); max-width:100%; min-width:0; min-height:28px; padding:2px 0;
+  border:0; border-radius:0; box-shadow:none; background:transparent; font:inherit; font-size:13px;
+}
+.app-shell .pf-portfolio-dashboard .pf-content .pf-section-header .pf-project-search input:focus-visible {
+  outline:0; box-shadow:none;
+}
+@container portfolio (max-width:450px) {
+  .pf-dashboard-summary {font-size:11px}
+  .app-shell .pf-page .pf-content .pf-dashboard-summary>* {padding:6px; gap:3px 4px}
+  .app-shell .pf-page .pf-content .pf-dashboard-summary svg {width:13px; height:13px}
+}
+
+.settings-section.category-settings { display:grid; gap:10px; align-content:start; }
+.category-settings label { display:grid; gap:4px; min-width:0; }
+.category-settings select,.category-settings input { width:100%; min-width:0; }
+.category-edit-form { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:8px; align-items:end; }
+.category-edit-form small { grid-column:1 / -1; }
+@container portfolio (max-width:530px) {
+  .pf-project-entries { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@container portfolio (max-width:410px) {
+  .pf-project-entries,.pf-recent-cards { grid-template-columns:minmax(0,1fr); }
+  .pf-dashboard-summary {gap:0}
+}
+
+
+.project-toolbar-leading .project-back-button {
+  display: inline-flex; align-items: center; gap: 4px;
+  min-height: 28px; padding: 2px 8px; border: 1px solid var(--line-soft);
+  border-radius: 7px; background: var(--panel); color: var(--muted);
+}
+.project-resource-nav { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
+.project-resource-nav button { padding: 4px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); }
+.project-resource-nav button[aria-current=page] { color: var(--accent); background: var(--accent-bg); }
+.app-shell .pf-overview .project-document-content .kickoff-settings {
+  display: grid; align-content: start; gap: 6px;
+}
+.app-shell .pf-overview .kickoff-settings > .pf-section-header { margin: 0; }
+.app-shell .pf-overview .kickoff-settings > .project-details {
+  padding: 8px 0; margin: 2px 0 0; border: 0; border-top: 1px solid var(--line-soft);
+  border-radius: 0; background: transparent;
+}
+
+/* 프로젝트 설정에서는 페이지와 각 설정을 별도 카드로 중복 포장하지 않는다. */
+.app-shell .pf-overview .project-document-content[data-project-tab=settings] > :is(.pf-panel,.project-ports) {
+  margin: 0; padding: 12px 0; border: 0; border-bottom: 1px solid var(--line-soft);
+  border-radius: 0; background: transparent; box-shadow: none;
+}
+.app-shell .pf-overview .project-document-content :is(.pf-section-header,.portfolio-tools):not(:first-child) {
+  margin-block-start: 8px;
+}
+.app-shell .pf-overview .project-document-content .overview-tools-body { gap: 12px; }

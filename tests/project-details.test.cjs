@@ -69,3 +69,17 @@ test('상태별 보드에서 완료된 프로젝트를 재개하면 양쪽 목�
   assert.equal(resumed.archivedAt,null);
   assert.equal(resumed.kickoff.phase,'진행');
 });
+
+test("카테고리만 변경하면 기존 프로젝트 이름·단계·업무 기록을 유지한다", async t => {
+  const {api, project} = await fixture(t);
+  const save = (revision, change) => api.updateProjectDetails(project.id, revision, change);
+  const details = await save(null, {action:"details", owner:"담당자", goal:"목표", dueDate:""});
+  const first = await save(details.revision, {action:"category", category:"업무"});
+  assert.deepEqual(first, {...details, revision:first.revision, category:"업무"});
+  const phased = await save(first.revision, {action:"phase", phase:"유지보수", name:"기존 프로젝트"});
+  assert.equal(phased.kickoff.category, "업무");
+  const next = await save(phased.revision, {action:"category", category:"개인"});
+  assert.deepEqual(next, {...phased, revision:next.revision, kickoff:{...phased.kickoff, category:"개인"}});
+  await assert.rejects(save(phased.revision, {action:"category", category:"이전 값"}), /변경/);
+  assert.equal((await save(next.revision, {action:"category", category:""})).kickoff.category, "");
+});

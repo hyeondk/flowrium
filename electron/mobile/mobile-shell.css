@@ -229,8 +229,11 @@ body {background: var(--bg); color: var(--text); font-size: 14px; line-height: 1
 #content .row span {min-width:0}
 #content .row i{white-space:normal}
 body:has(#content[data-view=chat]) .bar{display:none}
-.mobile-chat-heading {min-height:40px;border-bottom:1px solid var(--line);padding:0 0 3px}
+.mobile-chat-heading {min-height:44px;border-bottom:1px solid var(--line);padding:2px 0;margin-bottom:9px}
 #content .mobile-chat-heading h1{font-size:1rem;line-height:1.3;margin:0;min-width:0}
+.mobile-chat-title{min-width:0;flex:1}
+#content .mobile-chat-title h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mobile-chat-title .chat-context{margin:1px 0 0;font-size:12px;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mobile-chat-heading button{flex:none;min-width:40px;min-height:40px;padding:0;border:0;background:transparent;color:var(--focus)}
 .mobile-chat-heading button::before{content:"";width:9px;height:9px;display:inline-block;border:solid currentColor;border-width:0 0 2px 2px;transform:rotate(45deg)}
 .mobile-chat-heading .chat-state{margin:0 0 0 auto;flex:none}
@@ -314,3 +317,32 @@ html[data-mobile-keyboard] .chat-compose:focus-within{scroll-margin-block:8px}
 .repeat-segment input:focus-visible+span{outline:2px solid var(--focus);outline-offset:-2px}
 .mobile-time-parts{display:flex;gap:6px;justify-content:end;border-top:1px solid var(--line);padding-top:9px;margin-top:9px}
 .mobile-time-parts select {min-height:44px;padding:4px 7px;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:8px;font:inherit}
+
+/* 질문 응답 이력은 전송 버튼 없이 선택한 내용만 보여 준다. */
+.mobile-question-reply{min-width:0;padding:2px 0;word-break:keep-all;overflow-wrap:break-word}
+.mobile-question-reply-label{color:var(--focus);font-size:13px;line-height:19px;font-weight:700}
+.mobile-question-reply-label::before{content:'✓';margin-inline-end:5px}
+.mobile-question-reply dl{display:grid;gap:8px;margin:6px 0 0}
+.mobile-question-reply dt{font-size:13px;line-height:19px;color:var(--soft);margin:0 0 2px;white-space:pre-wrap}
+.mobile-question-reply dd{font-size:15px;line-height:21px;color:var(--text);margin:0;white-space:pre-wrap}
+#content .chat-compose .mobile-followup{margin:0;padding:6px 9px;border-radius:8px;line-height:19px;min-height:40px}
+#content .chat-compose .main-action{border-radius:9px}
+#content .chat-compose textarea{padding:5px 7px;line-height:22px;min-height:44px;max-height:132px}
+#content .chat-compose .chat-options select{padding-inline:6px 28px;height:40px;min-height:40px;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#content label:has(.ui-checkbox-control){min-height:40px;align-items:center;gap:9px}
+.ui-checkbox-control{align-self:center}
+
+/* 지원 브라우저는 화면 경계를 인식하는 기본 선택 팝업을 사용한다. */
+#content select,.mobile-time-parts select{appearance:none;padding-inline-end:34px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%23566d83' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;background-size:16px}
+:root[data-theme=dark] #content select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' stroke='%23c1ced9' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E")}
+@supports(appearance:base-select){
+ #content select,.mobile-time-parts select{appearance:base-select;background-image:none;padding-inline-end:12px;align-items:center;gap:8px}
+ #content select::picker-icon,.mobile-time-parts select::picker-icon{color:var(--soft);font-size:14px;margin-inline-start:auto;align-self:center;transition:rotate 180ms ease-out}
+ #content select:open::picker-icon,.mobile-time-parts select:open::picker-icon{rotate:180deg}
+ select::picker(select){appearance:base-select;max-height:min(320px,60dvh);overflow-y:auto;margin-block:6px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);font:14px/1.45 var(--font-ui);padding:5px;box-shadow:0 12px 30px #14395726;opacity:1;transform:scaleY(1);transform-origin:top;transition:opacity 180ms ease-out,transform 180ms ease-out,display 180ms allow-discrete,overlay 180ms allow-discrete}
+ select option{min-height:40px;padding:8px 10px;border-radius:7px;white-space:normal;word-break:keep-all}
+ select option:checked{background:var(--selected);color:var(--focus);font-weight:700}
+ select option::checkmark{color:var(--focus)}
+ @starting-style{select::picker(select){opacity:0;transform:scaleY(.94)}}
+ @media(prefers-reduced-motion:reduce){select::picker(select),#content select::picker-icon{transition:none}}
+}

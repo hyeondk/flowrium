@@ -7,7 +7,7 @@ import {projectMode} from './project-mode.js';
 import {creditBalance} from './usage-credits.js';
 import {attachComposerMarkdown} from './composer-markdown.js';
 import {attachmentDisplayText} from './attachment-text.js';
-import {markdownBody,groupMobileHistory,progressButton,clearProgressChoices} from './chat-reader.js';
+import {messageBody,groupMobileHistory,progressButton,clearProgressChoices} from './chat-reader.js';
 import {installDatePicker} from './date-picker.js';
 import {settingsGuides, reconnectForm} from './install.js';
 import {mobileUpdateSection, resetUpdate, resumeUpdateSettings} from './mobile-update.js';
@@ -101,6 +101,87 @@ let settingsDraft;
 let workflowTab='decisions',editingTeam=null;
 let teamDraft={name:'',roles:[{name:'',instruction:'',mode:'plan'},{name:'',instruction:'',mode:'review'}]};
 const pushLabels={decision:'결정 / 승인',done:'작업 완료',error:'오류',report:'보고서',reminder:'예약 알림',message:'업무 메시지'};
+const arrivedQuestions=new Map(),seenQuestions=new Set();
+let arrivalInitialized=false,arrivalCard,arrivalTimer,arrivalComposing=false,arrivalQuietUntil=0;
+function availableQuestions(){
+  if(gate || !key || !data?.connection?.authenticated)return [];
+  return (data.approvals||[]).filter(entry=>entry.type==='input' && entry.requestId && !entry.desktopOnly
+    && entry.questions?.length && !entry.questions.some(q=>q.isSecret) && session(entry.sessionId));
+}
+function clearQuestionArrival(){
+  clearTimeout(arrivalTimer);arrivalCard?.remove();arrivalCard=undefined;
+  arrivedQuestions.clear();seenQuestions.clear();arrivalInitialized=false;arrivalComposing=false;arrivalQuietUntil=0;
+}
+function reconcileQuestionArrival(){
+  const questions=availableQuestions(),ids=new Set(questions.map(entry=>entry.requestId));
+  for(const id of arrivedQuestions.keys())if(!ids.has(id))arrivedQuestions.delete(id);
+  for(const entry of questions){
+    if(!seenQuestions.has(entry.requestId) && arrivalInitialized)arrivedQuestions.set(entry.requestId,{at:Date.now(),sessionId:entry.sessionId});
+    seenQuestions.add(entry.requestId);
+  }
+  while(seenQuestions.size>512)seenQuestions.delete(seenQuestions.values().next().value);
+  if(data?.connection?.authenticated)arrivalInitialized=true;
+  renderQuestionArrival();
+}
+function renderQuestionArrival(){
+  clearTimeout(arrivalTimer);
+  const entry=availableQuestions().find(row=>arrivedQuestions.has(row.requestId));
+  if(!entry || arrivalComposing || document.hidden || document.querySelector('dialog[open]')){
+    arrivalCard?.remove();arrivalCard=undefined;return;
+  }
+  if(arrivalCard && arrivalCard.dataset.requestId!==entry.requestId){arrivalCard.remove();arrivalCard=undefined;}
+  const wait=Math.max(arrivedQuestions.get(entry.requestId).at+800,arrivalQuietUntil)-Date.now();
+  if(wait>0){arrivalTimer=setTimeout(renderQuestionArrival,wait);return;}
+  if(arrivalCard?.dataset.requestId===entry.requestId)return;
+  arrivalCard?.remove();
+  const card=node('aside',undefined,'mobile-notification-card mobile-response-notice'),header=node('div',undefined,'mobile-notification-heading');
+  card.dataset.requestId=entry.requestId;card.setAttribute('role','status');card.setAttribute('aria-live','polite');
+  header.append(node('small','Flowrium / 응답 요청'));
+  const dismiss=action('×',()=>{arrivedQuestions.delete(entry.requestId);renderQuestionArrival();},'mobile-notification-close');dismiss.setAttribute('aria-label','응답 요청 알림 닫기');header.append(dismiss);
+  card.append(header,node('strong','응답 요청이 도착했어요','mobile-notification-title'),node('p','작업을 이어가기 위해 확인이 필요해요.\n대화에서 질문을 확인하고 답해 주세요.','mobile-notification-summary'));
+  card.append(action('대화에서 답하기',()=>{
+    const current=availableQuestions().find(row=>row.requestId===entry.requestId);
+    if(!current || busy || arrivalComposing)return;
+    arrivedQuestions.delete(entry.requestId);renderQuestionArrival();go('chat',current.sessionId);
+    requestAnimationFrame(()=>{
+      if(gate || route!=='chat' || selectedSession!==current.sessionId)return;
+      const target=content.querySelector('[data-input-request="'+CSS.escape(current.requestId)+'"]');
+      target?.scrollIntoView({block:'center',behavior:'instant'});
+      target?.querySelector('input,select,textarea,button')?.focus({preventScroll:true});
+    });
+  },'mobile-notification-action'));
+  arrivalCard=card;document.body.append(card);
+}
+document.addEventListener('compositionstart',event=>{
+  arrivalComposing=true;
+  if(event.target instanceof HTMLElement && content.contains(event.target) && event.target.matches('input,textarea,[contenteditable="true"]')){
+    composingField=event.target;compositionContext={route,session:selectedSession,epoch:accessEpoch};
+  }
+  renderQuestionArrival();
+},true);
+document.addEventListener('compositionend',event=>{
+  arrivalComposing=false;arrivalQuietUntil=Date.now()+500;renderQuestionArrival();
+  if(composingField===event.target)queueMicrotask(()=>{
+    if(composingField!==event.target)return;composingField=undefined;compositionContext=undefined;
+    if(pendingComposerRender)requestAnimationFrame(()=>{if(pendingComposerRender&&!composingField)render();});
+  });
+},true);
+document.addEventListener('submit',event=>{
+  if(composingField?.isConnected && event.target instanceof HTMLFormElement && event.target.contains(composingField)){
+    event.preventDefault();event.stopImmediatePropagation();
+  }
+},true);
+function notificationPreview(source){
+  let fence=false;const lines=[];
+  for(const line of String(source||'').split(/\r?\n/)){
+    if(/^\s*(?:```|~~~)/.test(line)){fence=!fence;continue;}
+    if(fence || /^\s*(?:<|\{|\[|:codex-file-citation)/.test(line))continue;
+    const text=line.replace(/^\s{0,3}#{1,6}\s+/,'').replace(/\*\*|__/g,'').trim();
+    if(text)lines.push(text);
+    if(lines.length===3)break;
+  }
+  return lines.join('\n')||'자세한 결과는 대화에서 확인해 주세요.';
+}
 
 const node = (tag, text, className) => {
   const result = document.createElement(tag);
@@ -266,6 +347,7 @@ function applyAppearance(settings={}) {
   document.querySelector('meta[name="theme-color"]').content=dark?'#18212b':'#ffffff';
 }
 function clearPrivateState(nextGate) {
+  clearQuestionArrival();
   shownFolderGuides.clear();
   if(nextGate==='expired'){clearProgressChoices();applyAppearance();}
 
@@ -338,6 +420,7 @@ async function poll() {
     applyAppearance(next.settings);
     signature = fresh;
     gate = "";
+    reconcileQuestionArrival();
     connection.toggleAttribute('data-connected', Boolean(data.connection?.authenticated));
     connection.textContent = data.connection?.authenticated
       ? "데스크톱 연결됨"
@@ -589,6 +672,7 @@ function sessionRow(s) {
 }
 function inputCard(entry) {
   const card = node("section", undefined, "box mobile-question");
+  card.dataset.inputRequest=entry.requestId;
   card.setAttribute("aria-label", "추가 질문");
   card.append(
     node("h2", "추가 질문"),
@@ -1038,7 +1122,7 @@ function chatModelPicker(s){
   const models=mobileSettings?.models||chatModels||[],own=s.preferences?.model||'';
   const inherited=data.settings.model||models.find(m=>m.isDefault)?.id;
   const name=id=>modelDisplayName(models.find(row=>row.id===id)||id);
-  const options=[['',inherited?'기본 설정 따르기 ('+name(inherited)+')':'기본 설정 따르기']];
+  const options=[['',inherited?name(inherited)+' / 기본':'기본 설정 따르기']];
   if(own&&!models.some(m=>m.id===own))options.push([own,name(own)]);
   for(const model of models)options.push([model.id,modelDisplayName(model)]);
   const picker=select(options,own);
@@ -1059,8 +1143,9 @@ function chat(root) {
   const heading=node('header',undefined,'mobile-chat-heading'),origin=recentRoutes.at(-1);
   const backLabel=origin?.view==='projects'?'대시보드로':chatOriginStatus?executionNames[chatOriginStatus]+' 대화 목록으로':'프로젝트로';
   const back=action('',()=>goBack('project',s.projectId));back.setAttribute('aria-label',backLabel);back.title=backLabel;
-  heading.append(back,node('h1',s.title));
-  root.append(heading,node('p',(project(s.projectId)?.name||'')+' / '+(kinds[s.workflow?.kind]||'대화'),'chat-context'));
+  const title=node('div',undefined,'mobile-chat-title'),name=node('h1',s.title);name.title=s.title;
+  title.append(name,node('p',(project(s.projectId)?.name||'')+' / '+(kinds[s.workflow?.kind]||'대화'),'chat-context'));
+  heading.append(back,title);root.append(heading);
   if(!s.scope)folderGuide(root,project(s.projectId));
   const pending = data.approvals.filter((a) => a.sessionId === s.id);
   if (pending.length) approvals(pending, root);
@@ -1091,7 +1176,7 @@ function chat(root) {
         "small",
         (m.role === "user" ? "나" : m.role === "assistant" ? "Codex" : "작업 상태") + " / " + date(m.createdAt),
       ),
-      markdownBody(m.role==='user'&&!m.attachmentHeaderRemoved?attachmentDisplayText(citations.text):citations.text),
+      messageBody(m.role==='user'&&!m.attachmentHeaderRemoved?attachmentDisplayText(citations.text):citations.text),
     );
     const cited=new Set(citations.references?.map(ref=>ref.attachmentId).filter(Boolean));
     appendAttachments(block,(m.attachments||[]).filter(file=>!cited.has(file.id)),s.projectId,m.id);
@@ -1170,7 +1255,7 @@ function chat(root) {
   let pageNumber=draftPages.get(draftId)||0;
   const goToTypedPage=()=>{const value=Number(position.value);if(Number.isSafeInteger(value)&&value>=1)mobileDraftEditor.go(value-1);else position.value=String(pageNumber+1);};
   position.addEventListener('change',goToTypedPage);
-  position.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();goToTypedPage();text.focus({preventScroll:true});}});
+  position.addEventListener('keydown',e=>{if(e.isComposing||e.keyCode===229||composingField===position)return;if(e.key==='Enter'){e.preventDefault();goToTypedPage();text.focus({preventScroll:true});}});
   pages.append(node('span','원문 편집'),previousPage,position,countLabel,nextPage);form.append(pages);
   const requestedPage=pageNumber;
   const updatePage=({page,count})=>{
@@ -1219,7 +1304,7 @@ function chat(root) {
       const sync=()=>{button.hidden=!!text.value || !!composingField;};
       text.addEventListener('input',sync,listener);text.addEventListener('compositionstart',()=>button.hidden=true,listener);text.addEventListener('compositionend',()=>queueMicrotask(sync),listener);
       text.addEventListener('keydown',event=>{
-        if(event.key==='Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing && !text.value && !button.hidden){
+        if(event.key==='Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing && event.keyCode!==229 && !composingField && !text.value && !button.hidden){
           event.preventDefault();accept();
         }
       },listener);
@@ -1587,7 +1672,14 @@ function assistantPage(root){
     for(const p of visible){const card=node('section',undefined,'box');card.append(node('h2',p.title),node('p',p.body,'body'),node('small',p.status));if(p.preview)card.append(node('p',[p.preview.action,p.preview.calendarName,p.preview.event?.title,p.preview.event?.at].filter(Boolean).join(' / '),'hint'));
       if(p.status==='pending'){const check=node('input');check.type='checkbox';check.checked=selectedProposals.has(p.id);check.addEventListener('change',()=>{if(check.checked)selectedProposals.set(p.id,p.revision);else selectedProposals.delete(p.id);updateSelection();});card.append(label(p.title+' 선택',check));const buttons=node('div',undefined,'actions');for(const [title,act]of [['승인','approve'],['거절','reject'],['숨기기','hide']])buttons.append(action(title,()=>workflowDo({action:act,id:p.id,revision:p.revision})));buttons.append(action('한 시간 뒤 확인',()=>workflowDo({action:'snooze',id:p.id,revision:p.revision,minutes:60})));card.append(buttons)}if(p.result)card.append(node('p',p.result,'body'));root.append(card)}
     const events=node('section',undefined,'box');events.append(node('h2','최근 알림'));
-    for(const n of workflowData.notifications.slice(0,40)){const line=node('div',undefined,'queue-line');line.append(node('strong',n.title),node('p',n.body,'body'));if(!n.readAt)line.append(action('확인한 알림',()=>workflowDo({action:'read',ids:[n.id]})));if(n.sessionId&&session(n.sessionId))line.append(action('알림 대화 열기',()=>go('chat',n.sessionId)));events.append(line)}root.append(events);
+    for(const n of workflowData.notifications.slice(0,40)){
+      const line=node('article',undefined,'mobile-notification-card'),buttons=node('div',undefined,'mobile-notification-actions');
+      line.dataset.notificationKind=n.kind;
+      line.append(node('small',n.kind==='done'?'작업 완료':n.kind==='error'?'확인 필요':'작업 알림'),node('strong',n.title,'mobile-notification-title'),node('p',notificationPreview(n.body),'mobile-notification-summary'));
+      if(!n.readAt)buttons.append(action('확인한 알림',()=>workflowDo({action:'read',ids:[n.id]})));
+      if(n.sessionId&&session(n.sessionId))buttons.append(action('알림 대화 열기',()=>go('chat',n.sessionId),'mobile-notification-action'));
+      line.append(buttons);events.append(line);
+    }root.append(events);
   }else if(workflowTab==='messages'){
     const form=node('form'),target=select(data.sessions.map(s=>[s.id,s.title]),data.sessions[0]?.id),text=bindDraft(node('textarea'),'workflow/send','');text.required=true;const title=bindDraft(node('input'),'workflow/title','');
     form.append(label('대상 대화',target),label('요청 제목',title),label('보낼 내용',text));const mode=select([['send','기존 대화에 메시지'],['request','업무 요청 제안']],'send');form.append(label('연결 방식',mode));const submit=node('button','업무 연결 보내기','main-action');submit.type='submit';submit.disabled=busy||!data.sessions.length;form.append(submit);form.addEventListener('submit',e=>{e.preventDefault();void workflowDo(mode.value==='send'?{action:'send',targetId:target.value,text:text.value}:{action:'request',targetId:target.value,title:title.value||'업무 요청',text:text.value})});root.append(form);
@@ -1728,9 +1820,9 @@ function visibleMessageAnchor(){
   const first=messages[lo],top=first?.getBoundingClientRect().top;
   if(first && top<innerHeight)return {id:first.dataset.messageId,top};
 }
-let mobileEditor, mobileDraftEditor, mobileDraftSurface, composingField, composerHistory, chatRenderEvents, pendingComposerRender=false;
+let mobileEditor, mobileDraftEditor, mobileDraftSurface, composingField, compositionContext, composerHistory, chatRenderEvents, pendingComposerRender=false;
 function render() {
-  if (composingField?.isConnected && route==='chat' && renderedChatId===selectedSession && !gate && data && key) {
+  if (composingField?.isConnected && compositionContext?.route===route && compositionContext?.session===selectedSession && compositionContext?.epoch===accessEpoch && !gate && data && key) {
     pendingComposerRender=true;return;
   }
   const calendar = document.querySelector('.flow-date-picker[open]');
@@ -1740,7 +1832,7 @@ function render() {
   }
   mobileEditor?.dispose();mobileEditor=undefined;
   chatRenderEvents?.abort();chatRenderEvents=new AbortController();
-  composingField=undefined;pendingComposerRender=false;
+  composingField=undefined;compositionContext=undefined;pendingComposerRender=false;
   photoObserver?.disconnect();
   const galleryPositions=new Map([...content.querySelectorAll('[data-gallery]')].map(strip=>[strip.dataset.gallery,strip.scrollLeft]));
   const active = document.activeElement,
@@ -1811,11 +1903,6 @@ function render() {
   if(composingInput){
     if(composerHistory?.id!==selectedSession)composerHistory={id:selectedSession};
     mobileEditor=attachComposerMarkdown(composingInput,composingInput.nextElementSibling,composerHistory);
-    composingInput.addEventListener('compositionstart',()=>{composingField=composingInput;},{signal:chatRenderEvents.signal});
-    composingInput.addEventListener('compositionend',()=>{
-      composingField=undefined;
-      if(pendingComposerRender)requestAnimationFrame(()=>{if(pendingComposerRender)render();});
-    },{signal:chatRenderEvents.signal});
   }else{
     composerHistory=undefined;mobileDraftEditor?.dispose();mobileDraftEditor=undefined;mobileDraftSurface=undefined;
   }
@@ -1847,6 +1934,7 @@ document.querySelector("#home").addEventListener("click", () => go("projects"));
 for (const btn of navigation.querySelectorAll("button"))
   btn.addEventListener("click", () => go(btn.dataset.view));
 document.addEventListener("visibilitychange", () => {
+  renderQuestionArrival();
   if (!document.hidden) void poll();
 });
 render();

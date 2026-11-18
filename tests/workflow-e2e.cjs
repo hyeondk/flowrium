@@ -81,7 +81,7 @@ async function main(){
     const when=new Date(Date.now()+120000);when.setSeconds(0,0);const local=new Date(when.getTime()-when.getTimezoneOffset()*60000).toISOString().slice(0,16);
     await page.getByLabel("알릴 시각",{exact:true}).fill(local);await page.getByLabel("알릴 내용",{exact:true}).fill("검증 예약 알림");await button("예약 알림 등록").click();await page.getByRole("heading",{name:"검증 예약 알림",exact:true}).waitFor();
     await app.close();app=null;await launch();await button("업무 연결 / 비서").click();data=await state();assert.equal(data.proposals[0].status,"completed");assert(data.reminders.some(r=>r.text==="검증 예약 알림"));assert.match(data.reports[0].body,/현황 보고/);
-    await button("대시보드").click();await page.locator(".pf-card").filter({hasText:project.name}).click();await page.getByRole("navigation",{name:"프로젝트 상세 탭"}).getByRole("button",{name:"규칙",exact:true}).click();
+    await button("대시보드").click();await page.locator(".pf-project-entry").filter({hasText:project.name}).click();await page.getByRole("navigation",{name:"프로젝트 상세 탭"}).getByRole("button",{name:"규칙",exact:true}).click();
     await page.getByText("메모 백업과 가져오기",{exact:true}).click();const output=path.join(temp,"기억 백업.json");
     await app.evaluate(({session},destination)=>{session.defaultSession.once("will-download",(_event,item)=>item.setSavePath(destination));},output);
     await button("기억 묶음 내보내기").click();let exported;for(let n=0;n<100;n++){try{exported=JSON.parse(await fs.readFile(output,"utf8"));break;}catch{await page.waitForTimeout(30);}}

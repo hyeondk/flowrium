@@ -82,7 +82,9 @@ test("초기화 후 계정과 모델을 조회하고 인증 정보를 노출하�
   const { controller } = await fixture(t);
   const result = await controller.connect();
   assert.equal(result.status.authenticated, true);
-  assert.equal(result.accountLabel, "ChatGPT / pro");
+  assert.equal(result.accountLabel, "ChatGPT(Pro)");
+  assert.equal(result.status.accountLabel, "ChatGPT(Pro)");
+  assert.equal(result.status.dotsEligible, true);
   assert.equal(result.models[0].id, "test-model");
   assert.equal(
     JSON.stringify(result).includes("개인정보를 출력하지 않음"),

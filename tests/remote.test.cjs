@@ -89,6 +89,9 @@ test("휴대폰 연결은 키와 출처·잠금을 검사하고 종료 즉시 �
     base = address.origin,
     headers = { Authorization: "Bearer " + key };
   assert.equal((await fetch(base + "/api/mobile/state")).status, 401);
+  const replyModule=await fetch(base+'/question-reply.js');
+  assert.equal(replyModule.status,200);
+  assert((await replyModule.text()).includes('export function parseQuestionReply'));
   assert.equal(
     (await fetch(base + "/api/mobile/state", { headers })).status,
     200,

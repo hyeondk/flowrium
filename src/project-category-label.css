@@ -1,0 +1,7 @@
+.project-category-label {
+ display:inline-flex;align-items:center;gap:4px;flex:none;min-width:0;max-width:50%;padding:2px 7px;
+ border:1px solid color-mix(in srgb,var(--accent) 16%,transparent);border-radius:6px;
+ background:var(--accent-bg);color:var(--accent);font-size:12px;line-height:18px;font-weight:800;
+}
+.project-category-label>svg {flex:none}
+.project-category-label>span {min-width:0;word-break:keep-all;overflow-wrap:anywhere}

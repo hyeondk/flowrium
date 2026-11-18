@@ -33,6 +33,7 @@ async function run(){
   await page.bringToFront();await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].focus());await page.setViewportSize({width:1440,height:1000});await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('.side-usage')?.dataset.connected==='true');
   await page.evaluate(async()=>{await document.fonts.load('400 14px NanumSquareRound','프로젝트');await document.fonts.ready;});
   const rail=page.locator('.workspace-side'),surface=page.locator('.sidebar-surface'),main=page.locator('.main-shell');
+  if(await rail.getAttribute('data-pinned')==='true')await button('메뉴 자동 접기').click();
   await page.mouse.move(650,110);
   const collapsedWidth=await settledRail(rail,{expanded:false,pinned:false},'기본 레일 접힘');
   const base=await main.boundingBox();
@@ -43,7 +44,7 @@ async function run(){
   await page.mouse.move(650,110);await settledRail(rail,{expanded:false,pinned:false,width:collapsedWidth},'포인터 이탈 후 자동 접힘');check(sameBox(base,await main.boundingBox()),'메뉴를 접은 뒤 본문 위치와 크기 유지');
   await page.evaluate(()=>document.activeElement instanceof HTMLElement&&document.activeElement.blur());await page.keyboard.press('Tab');await settledRail(rail,{expanded:true,pinned:false,width:expandedWidth},'키보드로 메뉴 진입');
   check(await rail.getAttribute('data-expanded')==='true','키보드 탭으로 메뉴 진입 시 확장');check(await rail.evaluate(e=>e.contains(document.activeElement)),'키보드 초점이 메뉴 안에 있음');
-  await page.locator('.dock-toggle').focus();await settledRail(rail,{expanded:false,pinned:false,width:collapsedWidth},'메뉴 밖으로 초점 이동 시 접힘');
+  await page.locator('.workspace-utilities .assistant-entry').focus();await settledRail(rail,{expanded:false,pinned:false,width:collapsedWidth},'메뉴 밖으로 초점 이동 시 접힘');
   await page.mouse.move(35,140);await button('메뉴 고정').click();await page.mouse.move(650,110);await settledRail(rail,{expanded:true,pinned:true,width:expandedWidth},'고정 뒤 포인터 이탈');
   check(await rail.getAttribute('data-pinned')==='true'&&await rail.getAttribute('data-expanded')==='true','고정 후 포인터를 벗어나도 유지');check(await page.evaluate(()=>localStorage.getItem('flowrium.navigation.pinned'))==='true','고정 선택 저장');
   await page.reload();await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();check(await rail.getAttribute('data-pinned')==='true','새로 열어도 메뉴 고정 유지');
@@ -53,7 +54,7 @@ async function run(){
   await settledRail(rail,{expanded:false,pinned:false,width:collapsedWidth},'고정 해제 후 자동 접기 복구');
   assert(sameBox(base,await main.boundingBox()),'고정 해제 후 본문 공간 복원');
   await slower.evaluate(node=>node.remove());
-  if(!await page.locator('.conversation-dock').isVisible())await page.locator('.dock-toggle').click();await page.locator('.conversation-dock').waitFor();
+  if(!await page.locator('.conversation-dock').isVisible())await page.locator('.dock-reopen-tab').click();await page.locator('.conversation-dock').waitFor();
   const before=(await page.evaluate(()=>window.flowrium.bootstrap())).sessions.length;
   await button('새 통합 대화').click();await page.locator('.dock-chat .session-heading h2').filter({hasText:'새 통합 채팅'}).waitFor();await dashboard();
   let snapshot=await page.evaluate(()=>window.flowrium.bootstrap());check(snapshot.sessions.some(s=>s.scope==='integrated'),'통합 채팅 생성과 저장');
@@ -71,7 +72,7 @@ async function run(){
    const titles=await page.locator('.dock-session strong').allTextContents();check(titles.length===1&&titles[0]===title,'진행 상태 필터 '+state,titles);
    check(await page.locator('.dock-session .execution-badge').getAttribute('data-state')===state,'대화 카드 상태 표시 '+state);await dashboard();
   }
-  await page.mouse.move(35,140);await settledRail(rail,{expanded:true,pinned:false,width:expandedWidth},'프로젝트 상태 메뉴 열기');check((await page.locator('.side-project-label small[data-state=decision]').innerText()).includes('결정 1'),'프로젝트 메뉴의 결정 강조');await page.mouse.move(650,110);await settledRail(rail,{expanded:false,pinned:false,width:collapsedWidth},'프로젝트 상태 메뉴 닫기');
+  await page.mouse.move(35,140);await settledRail(rail,{expanded:true,pinned:false,width:expandedWidth},'프로젝트 상태 메뉴 열기');check(await page.locator('.side-project-markers [data-state=decision]').isVisible(),'프로젝트 폴더의 결정 강조');await page.mouse.move(650,110);await settledRail(rail,{expanded:false,pinned:false,width:collapsedWidth},'프로젝트 상태 메뉴 닫기');
   // 세로 높이를 고정하고 각 폭에서 주요 영역과 내부 스크롤 폭을 함께 검사합니다.
   for(const width of [1440,1280,1024,390]){
    await page.setViewportSize({width,height:1000});await settledLayout(main);
@@ -82,7 +83,7 @@ async function run(){
    });
    check(layout.document<=width+1,'문서 가로 넘침 없음 '+width,layout);for(const key of ['main','topbar','page','content'])check(layout[key].scroll<=layout[key].client+1,'영역 내부 가로 넘침 없음 '+width+' '+key,layout[key]);
    check(layout.headerButtons.every(b=>b.right<=width+1&&b.height>=28),'헤더 버튼 잘림과 최소 높이 '+width,layout.headerButtons);check(new Set(layout.actions).size<=1&&layout.actions.every(h=>h>=32),'대시보드 같은 그룹 버튼 높이 일치 '+width,layout.actions);check(/NanumSquareRound/.test(layout.family)&&layout.wordBreak==='keep-all','글꼴과 어절 줄바꿈 '+width,{family:layout.family,wordBreak:layout.wordBreak});
-   await page.locator('.dock-toggle').click();await dock.waitFor();await settledLayout(dock);
+   await page.locator('.dock-reopen-tab').click();await dock.waitFor();await settledLayout(dock);
    const panel=await dock.evaluate(e=>{const b=e.getBoundingClientRect();const browser=e.querySelector('.dock-browser');return{left:b.left,right:b.right,width:b.width,scroll:e.scrollWidth,client:e.clientWidth,body:browser?{scroll:browser.scrollWidth,client:browser.clientWidth}:null,animation:getComputedStyle(e).animationName}});
    check(panel.left>=-1&&panel.right<=width+1&&panel.scroll<=panel.client+1&&(!panel.body||panel.body.scroll<=panel.body.client+1),'대화함 가로 넘침 없음 '+width,panel);if(width===390)check(panel.animation==='ui-sheet-in','모바일 대화함 하단 시트',panel);
    measurements.push({width,layout,panel});await dashboard();

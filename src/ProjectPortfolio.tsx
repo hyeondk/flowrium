@@ -1,3 +1,5 @@
+import {projectCategory} from "../shared/project-details";
+import LoadingProgress from './LoadingProgress';
 import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -27,6 +29,7 @@ import "./portfolio.css";
 import PortfolioBoard from "./PortfolioBoard";
 import ArtifactViewer from "./ArtifactViewer";
 import DashboardInsights from "./DashboardInsights";
+import ChoicePicker from "./ChoicePicker";
 
 const api = window.flowrium;
 export const errorText = (error: unknown) =>
@@ -164,10 +167,11 @@ export function KickoffForm({
           />
         </label>
         <div className="pf-grid2">
-          {input("프로젝트 구분", "category", 80, {
-            list: "flowrium-project-categories", placeholder: "구분을 선택하거나 직접 입력",
-          })}
-          <datalist id="flowrium-project-categories"><option value="개인"/><option value="업무"/></datalist>
+          <div className="category-choice-field"><span>프로젝트 구분</span>
+            <ChoicePicker label="프로젝트 구분" editable maxLength={80} value={values.category}
+              options={[{value:"개인",label:"개인"},{value:"업무",label:"업무"}]}
+              onChange={value=>field("category",value)} placeholder="구분을 선택하거나 직접 입력"/>
+          </div>
           {input("발주처 또는 대상", "client", 200)}
           {input("담당자 또는 내 역할", "owner", 150)}
           {input("참여자", "members", 1500)}
@@ -287,6 +291,8 @@ interface Props {
   onCreated(project: Project): void;
   onSessionChange?(session: Session): void;
   onArchived?(id: string, value: boolean): void;
+  onProjectMenu(event: React.MouseEvent, project: Project): void;
+  categoryRevision: number;
   tools?: React.ReactNode;
 }
 type FileRow = Artifact & { project: Project };
@@ -421,7 +427,7 @@ function OutputIndex({
         </select>
         <button onClick={() => reload((r) => r + 1)}>새로 고침</button>
       </div>
-      {loading && <p role="status">프로젝트 문서를 불러오는 중입니다.</p>}
+      {loading && <LoadingProgress label="프로젝트 문서를 불러오는 중입니다." />}
       {unread.length > 0 && (
         <p role="status">확인이 필요한 폴더: {unread.join(", ")}</p>
       )}
@@ -464,6 +470,8 @@ export function ProjectPortfolio({
   onCreated,
   onSessionChange,
   onArchived,
+  onProjectMenu,
+  categoryRevision,
   tools,
 }: Props) {
   const [cards, setCards] = useState<PortfolioCard[]>([]),
@@ -491,7 +499,7 @@ export function ProjectPortfolio({
     return () => {
       live = false;
     };
-  }, [keys, rev, view]);
+  }, [keys, rev, view, categoryRevision]);
   useEffect(() => {
     setQ("");
     setDay("");
@@ -511,7 +519,7 @@ export function ProjectPortfolio({
         c.project.name,
         c.details?.owner,
         c.details?.goal,
-        c.details?.kickoff?.category,
+        projectCategory(c.details),
         c.details?.kickoff?.members,
       ),
     );
@@ -588,9 +596,9 @@ export function ProjectPortfolio({
     }
   }
   return (
-    <div className="pf-page">
+    <div className={"pf-page"+(view==="dashboard"?" pf-portfolio-dashboard":"")}>
       <div className="pf-content">
-        <header className="pf-heading">
+        <header className={view === "dashboard" ? "pf-heading dashboard-heading" : "pf-heading"}>
           <div>
             <h1>
               {
@@ -603,10 +611,10 @@ export function ProjectPortfolio({
                 }[view]
               }
             </h1>
-            <p>
+            {view !== "dashboard" && <p>
               {
                 {
-                  dashboard: "프로젝트의 목표와 다음 업무를 한눈에 확인하세요.",
+                  dashboard: "",
                   kickoff:
                     "프로젝트의 목표와 담당자를 정하고 작업할 폴더를 선택하세요.",
                   archive:
@@ -616,8 +624,9 @@ export function ProjectPortfolio({
                   timeline: "날짜와 검색어로 요청, 응답, 완료 기록을 찾으세요.",
                 }[view]
               }
-            </p>
+            </p>}
           </div>
+          {view === "dashboard" && <button className="pf-primary" onClick={() => onNavigate("kickoff")}><Plus size={16}/>새 프로젝트</button>}
           {view === "kickoff" && <div className="pf-actions"><button onClick={onChooseProject}><FolderOpen size={15}/>기존 폴더 연결</button></div>}
         </header>
         {error && (
@@ -650,7 +659,7 @@ export function ProjectPortfolio({
         )}
         {view === "dashboard" && (
           <>
-            <div className="pf-stats">
+            <div className="pf-dashboard-summary">
               <div>
                 <FolderOpen size={17} />
                 <span>진행 프로젝트</span>
@@ -673,52 +682,39 @@ export function ProjectPortfolio({
                 <strong>{complete.length}</strong>
               </button>
             </div>
-            <DashboardInsights cards={cards} sessions={records} onOpen={onOpenSession} onProject={id=>{const p=projects.find(p=>p.id===id);if(p)onProject(p,"home");}}/>
-            <PortfolioBoard tools={tools} cards={cards} onOpen={p=>onProject(p,"home")} onImported={onCreated} onChange={(id,archived)=>{if(id)onArchived?.(id,!!archived);reload(r=>r+1);}}/>
+            <section className="dashboard-projects" aria-label="프로젝트 목록">
             <div className="pf-section-header">
-              <h2>프로젝트</h2>
-              <div className="pf-filter">
-                <Search size={15} />
+              <h2>프로젝트 <small>{activeCards.length}</small></h2>
+              <label className="pf-project-search">
+                <Search size={15} aria-hidden="true" />
                 <input
                   aria-label="프로젝트 검색"
                   placeholder="이름, 담당자, 목표 검색"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                 />
-              </div>
+              </label>
             </div>
-            <div className="pf-cards">
+            <div className="pf-project-entries">
               {filtered(activeCards).map((c) => {
                 const own = records.filter((s) => s.projectId === c.project.id);
                 return (
                   <button
-                    className="pf-card"
+                    className="pf-project-entry"
+                    onContextMenu={(event) => onProjectMenu(event, c.project)}
                     key={c.project.id}
                     onClick={() => onProject(c.project, "home")}
                   >
-                    <div className="pf-card-top">
-                      <FolderOpen size={19} />
-                      <strong className="pf-category" data-personal={c.details?.kickoff?.category === "개인"}>{c.details?.kickoff?.category || "미분류"}</strong>
-                      <small
-                        className="pf-status"
-                        data-phase={c.details?.kickoff?.phase || "진행"}
-                      >
-                        {c.details?.kickoff?.phase || "진행"}
-                      </small>
-                    </div>
-                    <h3>{cardName(c)}</h3>
-                    <p>
-                      {c.error ||
-                        c.details?.goal ||
-                        "프로젝트 홈에서 목표와 다음 업무를 정하세요."}
-                    </p>
-                    <footer>
-                      <span>
-                        {c.details?.owner || "담당자 미지정"} (업무{" "}
-                        {own.length}개)
+                    <span className="pf-project-card-top">
+                      <span className="pf-project-card-heading">
+                        <span className="pf-project-symbol"><FolderOpen size={17}/></span>
+                        <span className="pf-category">{projectCategory(c.details) || "미분류"}</span>
                       </span>
-                      <ArrowRight size={15} />
-                    </footer>
+                      <small className="pf-project-phase" data-phase={c.details?.kickoff?.phase||"진행"}>{c.details?.kickoff?.phase||"진행"}</small>
+                    </span>
+                    <span className="pf-project-name"><strong>{cardName(c)}</strong></span>
+                    <span className="pf-project-description">{c.error || c.details?.goal || c.details?.owner || "등록한 목표 없음"}</span>
+                    <span className="pf-project-card-foot"><small>업무 {own.length}개</small><ArrowRight size={14}/></span>
                   </button>
                 );
               })}
@@ -737,13 +733,15 @@ export function ProjectPortfolio({
             {!!activeCards.length && !filtered(activeCards).length && (
               <p className="pf-empty">조건에 맞는 프로젝트가 없습니다.</p>
             )}
+            </section>
+            <section className="dashboard-recent" aria-label="최근 업무">
             <div className="pf-section-header">
               <h2>최근 업무</h2>
               <button onClick={() => onNavigate("timeline")}>
                 날짜별 기록 <ArrowRight size={14} />
               </button>
             </div>
-            <div className="pf-list">
+            <div className="pf-recent-cards">
               {records
                 .filter((s) =>
                   matches(q, s.title, byProject.get(s.projectId)?.project.name),
@@ -774,6 +772,9 @@ export function ProjectPortfolio({
                 프로젝트에서 업무를 열면 최근 대화가 여기에 표시됩니다.
               </p>
             )}
+            </section>
+            <DashboardInsights cards={cards} sessions={records} onOpen={onOpenSession} onProject={id=>{const p=projects.find(p=>p.id===id);if(p)onProject(p,"home");}}/>
+            <PortfolioBoard tools={tools} cards={cards} onOpen={p=>onProject(p,"home")} onImported={onCreated} onChange={(id,archived)=>{if(id)onArchived?.(id,!!archived);reload(r=>r+1);}}/>
           </>
         )}
         {view === "archive" && (

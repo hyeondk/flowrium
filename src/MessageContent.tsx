@@ -1,5 +1,5 @@
 import {useMemo,useState,type ReactNode} from 'react';
-import {CircleAlert,ChevronDown,Copy,FileText,TerminalSquare} from 'lucide-react';
+import {CheckCheck,CircleAlert,ChevronDown,Copy,FileText,TerminalSquare} from 'lucide-react';
 import ReactMarkdown, {type Components} from 'react-markdown';
 import type {Processor} from 'unified';
 import type {Extension} from 'micromark-util-types';
@@ -65,6 +65,10 @@ export default function MessageContent({text,role,sessionId,messageId,streaming=
  const blocks=useMemo(()=>messageContent(citations.text,role,streaming),[citations.text,role,streaming]);
  return <div className="message-content">
   {blocks.map((block,index)=>block.kind==='markdown'?<Markdown key={index} text={block.text}/>:
+   block.kind==='question-reply'?<section key={index} className="message-question-reply" aria-label="보낸 질문 답변">
+    <div className="message-question-reply-label"><CheckCheck size={14} aria-hidden="true"/>응답 보냄</div>
+    <dl>{block.answers.map((row,i)=><div key={i}><dt>{row.question}</dt><dd>{row.answer}</dd></div>)}</dl>
+   </section>:
    block.kind==='literal'?<pre key={index} className="message-literal"><code>{block.raw}</code></pre>:
    block.kind==='writing'?<section className="message-writing" aria-label="작성 내용" key={index}>
     <div className="message-writing-label"><FileText size={13} aria-hidden="true"/>작성 내용</div>

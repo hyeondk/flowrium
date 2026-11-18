@@ -1,147 +1,86 @@
-:root {
-  --dock-default-width: clamp(350px, 30vw, 480px);
-  --dock-expanded-width: clamp(416px, 40vw, 680px);
-}
+:root{--dock-default-width:clamp(350px,30vw,480px);--dock-expanded-width:clamp(416px,40vw,680px)}
 
-.app-shell .conversation-dock:not([data-minimized=true]) > .dock-heading {
-  height: 36px;
-  min-height: 36px;
-  padding: 2px 12px;
+/* 입력창은 대화 배율과 독립적으로 유지하며, 사용자가 높이를 직접 조절할 수 있습니다. */
+.app-shell .conversation-dock .composer-area,.app-shell .conversation-dock .has-session .composer-area{
+  padding:5px 12px max(8px,env(safe-area-inset-bottom));background:var(--panel);border-top:0;
+  margin:0;flex:none;width:100%;max-width:none;max-height:45%;overflow-y:auto;overflow-x:hidden;
 }
-.conversation-dock[data-chat-active=true] > .dock-scope-tabs,
-.conversation-dock[data-chat-active=true] > .dock-status-tabs {
-  padding-block: 3px;
+.app-shell .conversation-dock .composer-area:has(.composer-input[data-height-mode=manual]){max-height:68%}
+.conversation-dock .attachment-composer{max-width:1120px;margin:0 auto}
+.app-shell .conversation-dock .composer{
+  position:relative;padding:6px 8px 5px;border:1px solid var(--line);border-radius:10px;
+  background:var(--panel);box-shadow:0 0 0 2px color-mix(in srgb,var(--selected) 28%,transparent);overflow:visible;
 }
-.conversation-dock[data-chat-active=true] .session-heading {
-  min-height: 42px;
-  padding: 5px 12px;
+.app-shell .conversation-dock .composer:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 10%,transparent)}
+.conversation-dock .has-session .composer:not(.working) .composer-topline{display:none}
+.conversation-dock .composer-topline{padding:0 2px 4px;min-height:21px}
+.conversation-dock .composer-topline>span{font-size:11px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.app-shell .conversation-dock .composer textarea.composer-input[data-height-mode]{
+  height:auto;min-height:26px;max-height:min(104px,var(--composer-limit));display:block;width:100%;
+  padding:2px 1px;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;
+  font-size:13px;line-height:20px;word-break:keep-all;overflow-y:auto;field-sizing:content;resize:none;
 }
-.conversation-dock[data-chat-active=true] .session-heading h2 {font-size: 14px; line-height: 21px;}
-.conversation-dock[data-chat-active=true] .messages {padding: 12px 12px 8px;}
-.conversation-dock[data-chat-active=true] .message {margin-bottom: 16px;}
-.conversation-dock[data-chat-active=true] .markdown,
-.conversation-dock[data-chat-active=true] .markdown p {line-height: 1.65;}
+.app-shell .conversation-dock .composer textarea.composer-input[data-height-mode=manual]{field-sizing:fixed;max-height:var(--composer-limit)}
+.app-shell .conversation-dock .composer textarea.composer-input[data-height-mode=auto][data-large-draft]{field-sizing:fixed;height:min(104px,var(--composer-limit))}
+.composer-draft-pages{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px;margin:2px 4px;color:var(--muted);font-size:12px}
+.composer-draft-pages button{border:0;border-radius:6px;padding:3px 6px;background:var(--selected);color:var(--accent)}
+.composer .composer-resize-handle{position:absolute;z-index:2;top:-6px;left:50%;width:66px;height:14px;transform:translateX(-50%);cursor:row-resize;touch-action:none;display:grid;place-items:center;border-radius:12px}
+.composer-resize-handle>span{width:28px;height:3px;border-radius:4px;background:var(--muted);opacity:.3;transition:opacity .2s ease-in-out}
+.composer-resize-handle:is(:hover,:focus-visible)>span,html[data-composer-resizing] .composer-resize-handle>span{background:var(--accent);opacity:1}
+html[data-composer-resizing],html[data-composer-resizing] *{cursor:row-resize!important;user-select:none!important}
+.conversation-dock .composer-toolbar{padding:3px 0 0;gap:6px;align-items:center;flex-wrap:nowrap;min-height:31px}
+.conversation-dock .composer-options{align-items:center;flex-wrap:wrap;gap:3px;min-width:0;flex:1}
+.app-shell .conversation-dock .composer :is(.composer-attach,.voice-composer>button){display:inline-grid;place-items:center;width:27px;height:27px;min-width:27px;min-height:27px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--muted)}
+.conversation-dock .composer :is(.composer-attach,.voice-composer>button):hover{background:var(--selected);color:var(--accent)}
+.conversation-dock .composer .voice-composer{display:inline-flex;align-items:center;gap:2px;position:relative}
+.conversation-dock .composer .voice-message:not(:empty){position:absolute;bottom:calc(100% + 10px);left:0;min-width:180px;max-width:280px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel);box-shadow:0 6px 20px #081f4814;z-index:4}
+.conversation-dock .composer .option-divider{display:none}
+.app-shell .conversation-dock .composer .model-select{display:inline-flex;align-items:center;gap:4px;max-width:170px;min-height:28px;padding:3px 5px;border:0;background:transparent;font-size:11px;line-height:19px;color:var(--muted);border-radius:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conversation-dock .composer .model-select .small-codex-icon{display:none}
+.conversation-dock .chat-run-controls{gap:5px;flex:none;align-items:center}
+.app-shell .conversation-dock .composer .send-button{width:30px;height:30px;min-width:30px;min-height:30px;padding:0;border-radius:50%;display:grid;place-items:center;background:var(--primary-gradient);color:var(--on-primary);border:0;box-shadow:none}
+.conversation-dock .composer .send-button svg{width:18px;height:18px}
+.conversation-dock .composer-footnote{max-width:1120px;margin:0 auto;font-size:11px;line-height:18px;padding:4px 2px 0;gap:6px;min-height:0}
+.conversation-dock .composer-footnote>span{font-size:11px;line-height:18px}
+.conversation-dock .composer-footnote>span:first-child{gap:5px;min-width:0;display:flex;align-items:center}
+.conversation-dock .composer-footnote>span:first-child>svg{flex:none}
+.conversation-dock .composer-footnote>span:last-child{display:none}
+.app-shell .conversation-dock .composer .followup-accept {
+  min-height:27px; padding:3px 7px; width:100%; background:var(--accent-bg); color:var(--accent);
+}
+.conversation-dock .followup-accept span {flex:1}
+.conversation-dock .chat-attachment-list{max-height:110px}
+.conversation-dock .chat-file-list{overflow:auto;padding:0 0 7px;gap:6px}
+.conversation-dock .chat-file-list li{background:var(--card-subtle);border-color:var(--line-soft);padding:6px 8px}
+.conversation-dock .chat-image-strip{padding:4px 2px 8px}
+.conversation-dock .chat-image-strip .chat-image-tile img{width:100%;height:100%}
 
-.app-shell .conversation-dock[data-chat-active=true] .has-session .composer-area {
-  padding: 6px 10px max(5px, env(safe-area-inset-bottom));
-}
-.app-shell .conversation-dock[data-chat-active=true] .composer-area:has(.composer-input[data-height-mode=manual]) {
-  max-height: 68%;
-}
-.app-shell .conversation-dock[data-chat-active=true] .composer {
-  position: relative;
-  padding: 5px 8px;
-}
-.app-shell .conversation-dock .composer textarea.composer-input[data-height-mode] {
-  height: auto;
-  min-height: 42px;
-  max-height: min(104px, var(--composer-limit));
-  padding: 7px 4px 5px;
-  font-size: 13px;
-  line-height: 21px;
-  field-sizing: content;
-  resize: none;
-}
-.app-shell .conversation-dock .composer textarea.composer-input[data-height-mode=manual] {
-  field-sizing: fixed;
-  max-height: var(--composer-limit);
-}
-.app-shell .conversation-dock .composer textarea.composer-input[data-height-mode=auto][data-large-draft] {
-  field-sizing: fixed;
-  height: min(104px, var(--composer-limit));
-}
-.composer-draft-pages {display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px;margin:2px 4px;color:var(--muted);font-size:12px;}
-.composer-draft-pages button {border:0;border-radius:6px;padding:3px 6px;background:var(--selected);color:var(--accent);}
-.composer .composer-resize-handle {
-  position: absolute;
-  z-index: 2;
-  top: -6px;
-  left: 50%;
-  width: 66px;
-  height: 14px;
-  transform: translateX(-50%);
-  cursor: row-resize;
-  touch-action: none;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-}
-.composer-resize-handle > span {
-  width: 28px;
-  height: 3px;
-  border-radius: 4px;
-  background: var(--muted);
-  opacity: .45;
-  transition: opacity .2s ease-in-out;
-}
-.composer-resize-handle:is(:hover,:focus-visible) > span,
-html[data-composer-resizing] .composer-resize-handle > span {background: var(--accent); opacity: 1;}
-html[data-composer-resizing], html[data-composer-resizing] * {cursor: row-resize !important; user-select: none !important;}
-
-.conversation-dock .composer-toolbar {min-height: 32px; padding-top: 1px;}
-.app-shell .conversation-dock .composer :is(.composer-attach,.voice-composer>button) {width: 28px; height: 28px; min-width: 28px; min-height: 28px;}
-.app-shell .conversation-dock .composer .send-button {width: 32px; height: 32px; min-width: 32px; min-height: 32px;}
-.composer .chat-continuation-actions {column-gap: 2px;}
-.composer .chat-continuation-actions .followup-preview {flex: none; width: 24px; justify-content: center; padding-inline: 0;}
-.followup-preview-dialog > .motion-surface {width: min(480px, calc(100vw - 28px)); max-height: min(70dvh, 520px); overflow: auto; padding: 18px;}
-.followup-preview-dialog header {display: flex; align-items: center; justify-content: space-between; gap: 10px;}
-.followup-preview-dialog h2 {font-size: 15px; line-height: 22px; margin: 0; word-break: keep-all;}
-.followup-preview-dialog p {white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; font-size: 14px; line-height: 1.65; margin: 14px 0;}
-.followup-preview-dialog footer {display: flex; justify-content: flex-end;}
-
-/* 말풍선의 가장자리는 화자 쪽에 두고 문단과 목록의 간격을 따로 맞춘다. */
-.conversation-dock[data-chat-active=true] .messages {padding-inline:10px}
-.conversation-dock[data-chat-active=true] .message:is(.user,.assistant) {
-  width:fit-content; max-width:96%; margin:0 auto 10px 0; gap:6px; align-items:flex-start;
-}
-.conversation-dock[data-chat-active=true] .message.user {
-  max-width:90%; margin-inline: auto 0; flex-direction:row-reverse;
-}
-.conversation-dock[data-chat-active=true] .message:is(.user,.assistant)>.message-body {
-  width:auto; min-width:0; flex:0 1 auto; padding:5px 10px 8px;
-  border:1px solid var(--line-soft); border-radius:4px 15px 15px 15px;
-  background:var(--panel);
-}
-.conversation-dock[data-chat-active=true] .message.user>.message-body {
-  border-radius:15px 4px 15px 15px;
-  background:color-mix(in srgb,var(--selected) 70%,var(--panel));
-  border-color:color-mix(in srgb,var(--accent) 20%,var(--line-soft));
-}
-.conversation-dock[data-chat-active=true] .message .message-avatar {
-  width:22px; height:22px; margin-top:4px; flex:none;
-}
-.conversation-dock[data-chat-active=true] .message .message-meta {min-height:23px;margin:0 0 2px;gap:5px}
-.conversation-dock[data-chat-active=true] .message .message-meta strong {font-size:11px}
-.conversation-dock[data-chat-active=true] .message .message-prose,
-.conversation-dock[data-chat-active=true] .message .message-prose p {
-  font-size:15px; line-height:20px; overflow-wrap:break-word; word-break:keep-all;
-}
-.conversation-dock .message .message-prose p {margin:0 0 6px}
-.conversation-dock .message .message-prose li {margin:0 0 2px}
-.conversation-dock .message .message-prose :is(ul,ol) {margin:4px 0 7px;padding-inline-start:19px}
-.conversation-dock .message .message-prose li>:is(ul,ol) {margin-block:2px}
-.conversation-dock .message .message-prose :is(h1,h2,h3,h4) {margin:10px 0 5px;font-size:14px;line-height:1.4}
-.conversation-dock .message .message-prose :is(blockquote,pre,.message-table-wrap) {margin-block:6px}
-.conversation-dock .message .message-prose > :first-child {margin-top:0}
-.conversation-dock .message .message-prose > :last-child,
-.conversation-dock .message .message-prose li:last-child {margin-bottom:0}
-
-.turn-progress {width:fit-content;max-width:100%;margin:2px 0 8px 27px}
-.turn-progress-trigger {display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border:1px solid var(--line-soft);border-radius:20px;color:var(--muted);background:var(--panel);min-height:27px;font-size:11px;cursor:pointer}
-.turn-progress-trigger small,.turn-progress-live {font-size:10px;color:var(--accent)}
-.turn-progress:has(.turn-progress-list){width:auto}
-.turn-progress-list{margin:6px 0 0;padding:0 12px;list-style:none;border-inline-start:2px solid var(--line-soft)}
+/* 작업 내역은 답변 사이에 카드가 아닌 한 줄 접기 항목으로 이어집니다. */
+.turn-progress{max-width:100%;margin:2px 0 7px}
+.turn-progress-trigger{display:inline-flex;align-items:center;gap:6px;padding:3px 0;border:0;border-radius:5px;color:var(--muted);background:transparent;min-height:26px;font-size:12px;line-height:19px;cursor:pointer;text-align:left;flex-wrap:wrap}
+.turn-progress-trigger:hover{color:var(--accent)}
+.turn-progress-trigger small,.turn-progress-live{font-size:11px;color:var(--muted)}
+.turn-progress-live{color:var(--accent)}
+.turn-progress-list{margin:4px 0 0 6px;padding:0 0 0 12px;list-style:none;border-inline-start:1px solid var(--line)}
 .turn-progress-list li{padding:6px 0}
-.turn-progress-line{display:flex;align-items:center;gap:7px}
-.turn-progress-line strong{font-size:13px}
-.turn-progress-line time{margin-left:auto;white-space:nowrap;font-size:12px;color:var(--muted)}
-.turn-progress-line [data-step-state]{font-size:12px;color:var(--accent)}
+.turn-progress-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.turn-progress-line strong{font-size:12px;line-height:19px}
+.turn-progress-line time{margin-left:auto;white-space:nowrap;font-size:11px;line-height:18px;color:var(--muted)}
+.turn-progress-line [data-step-state]{font-size:11px;color:var(--accent)}
 .turn-progress-list .message-detail{margin:5px 0 0}
+.turn-progress-trigger svg:last-child{transition:transform .2s ease-in-out}
 .turn-progress-trigger[aria-expanded=true] svg:last-child{transform:rotate(180deg)}
-
-.conversation-dock .dock-heading .dock-eyebrow{display:none}
-.conversation-dock .dock-heading .dock-icon{width:30px;height:30px;min-height:30px}
-.conversation-dock .messages{container-type:inline-size}
-.conversation-dock .message-history-items,.conversation-dock .messages>.message.assistant {zoom:var(--chat-reading-scale,.9)}
-.conversation-dock .message-history-items :is(.message-prose img,.citation-image){max-width:min(100%,calc(92cqw - 54px))}
-@media(max-width:760px){.app-shell .conversation-dock:not([data-minimized=true])>.dock-heading{height:40px;min-height:40px}}
+/* 그림은 본문과 같은 배율을 쓰며 대화 영역보다 커지지 않습니다. */
+.conversation-dock .message-history-items :is(.message-prose img,.citation-image){max-width:min(100%,100cqw)}
+@media(max-width:760px){
+ .app-shell .conversation-dock .composer-area,.app-shell .conversation-dock .has-session .composer-area{padding:7px 10px max(8px,env(safe-area-inset-bottom));max-height:42%}
+ .conversation-dock .composer-toolbar{gap:4px}
+ .conversation-dock .composer-options{gap:2px}
+ .app-shell .conversation-dock .composer .model-select{max-width:145px}
+}
+@media(max-width:360px){
+ .app-shell .conversation-dock .composer .model-select{max-width:125px}
+ .conversation-dock .composer-options{column-gap:0;row-gap:2px}
+}
+@media(max-width:760px) and (max-height:650px){.conversation-dock .has-session .composer-footnote{display:none}.app-shell .conversation-dock .has-session .composer-area{padding-block:6px}}
+@media(prefers-reduced-motion:reduce){.turn-progress-trigger svg:last-child,.composer-resize-handle>span{transition:none}}

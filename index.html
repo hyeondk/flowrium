@@ -12,10 +12,17 @@
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://i.ytimg.com https://img.youtube.com; media-src 'self' blob:; connect-src 'self' ws://127.0.0.1:5173; font-src 'self'; frame-src http://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'none'"
     />
     <title>Flowrium</title>
+    <link rel="stylesheet" href="/src/loading-progress.css" />
     <link rel="icon" type="image/png" href="./flowrium.png" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="flow-loading flow-loading-startup" role="status">
+        <img src="./flowrium.png" width="40" height="40" alt="Flowrium" />
+        <span>작업 공간을 준비하고 있습니다.</span>
+        <span class="flow-loading-track" role="progressbar" aria-label="작업 공간을 준비하고 있습니다."></span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

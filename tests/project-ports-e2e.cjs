@@ -26,7 +26,7 @@ async function run() {
       await app.evaluate(({ clipboard }) => { clipboard.writeText = text => { globalThis.flowriumPortCopied = text; }; });
     }
     async function openPorts() {
-      await page.locator('.pf-card').filter({ hasText: project.name }).click();
+      await page.locator('.pf-project-entry').filter({ hasText: project.name }).click();
       await page.getByRole('navigation', { name: '프로젝트 상세 탭' }).getByRole('button', { name: '프로젝트 설정', exact: true }).click();
       await page.getByRole('region', { name: '자동 포트표', exact: true }).waitFor();
       await page.getByRole('switch', { name: '프로젝트 포트 배정', exact: true }).waitFor();

@@ -1,4 +1,4 @@
-export interface DotsState {available:boolean;visible:boolean;loading:boolean;error?:string;externalHost?:string}
+export interface DotsState {available:boolean;visible:boolean;loading:boolean;error?:string;externalHost?:string;noticeKey?:string;loginReady?:boolean}
 export interface DotsBounds {x:number;y:number;width:number;height:number}
 export interface DotsAPI {
  readDotsState():Promise<DotsState>;

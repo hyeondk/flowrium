@@ -1,0 +1,53 @@
+.choice-picker {position:relative; min-width:0; width:100%}
+.choice-picker .choice-trigger,.choice-picker .choice-edit {
+  display:flex; align-items:center; gap:12px; width:100%; min-height:36px;
+  padding:4px 12px; border:1px solid var(--line); border-radius:8px;
+  background:var(--input); color:var(--text); font:inherit; line-height:22px; text-align:start;
+}
+.choice-picker .choice-trigger>span {min-width:0; flex:1; word-break:keep-all; overflow-wrap:anywhere}
+.choice-picker :is(.choice-trigger,.choice-edit) svg {flex:none; color:var(--muted)}
+.choice-picker .choice-edit {padding:0 3px 0 0; gap:0}
+.choice-picker .choice-edit > input[role=combobox] {
+  flex:1; min-width:0; margin:0; padding:5px 11px; min-height:34px; line-height:22px;
+  border:0; border-radius:7px; background:transparent; box-shadow:none; outline:none; font:inherit;
+}
+.settings-modal .category-choice-field .choice-edit > input[role=combobox] {
+  border:0; background:transparent; box-shadow:none;
+}
+.choice-picker .choice-chevron {
+  display:grid; place-items:center; flex:none; width:34px; min-width:34px; height:32px; min-height:32px;
+  border:0; border-radius:6px; padding:0; background:transparent; color:var(--muted);
+}
+.choice-picker .choice-chevron:hover,.choice-picker .choice-trigger:hover {background:var(--card-subtle)}
+.choice-picker :is(.choice-trigger,.choice-edit):is([aria-expanded=true],[data-expanded=true]) {border-color:var(--accent)}
+.choice-picker .choice-edit:focus-within {outline:2px solid var(--accent); outline-offset:2px}
+.choice-picker .choice-trigger[aria-expanded=true]>svg,.choice-picker .choice-edit[data-expanded=true]>.choice-chevron>svg {rotate:180deg}
+.choice-options {
+  position:fixed; inset:auto; z-index:1400; display:grid; gap:2px; margin:0; padding:4px;box-sizing:border-box;
+  max-height:min(224px,38dvh); overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain;
+  font:13px/20px var(--font-ui); white-space:normal;
+  background:var(--panel); border:1px solid var(--line); border-radius:9px;box-shadow:0 6px 20px #152c4b14;
+  transform-origin:top; animation:choice-reveal 175ms cubic-bezier(.2,.7,.2,1) both;
+}
+.choice-options button[role=option] {
+  display:flex; align-items:center; justify-content:space-between; gap:10px; width:100%;
+  min-height:34px; padding:5px 9px; border:0; border-radius:6px; background:transparent;
+  color:var(--text); text-align:start; font:inherit; line-height:20px; white-space:normal; min-width:0; word-break:keep-all; overflow-wrap:anywhere;
+}
+.choice-options button:is([data-active=true],:hover) {color:var(--accent); background:var(--selected)}
+.choice-options svg {flex:none; color:var(--accent)}
+.choice-value {display:flex;align-items:center;gap:7px;min-width:0;flex:1}
+.choice-value>span:not(.project-category-label) {min-width:0;word-break:keep-all;overflow-wrap:anywhere}
+.choice-options[data-placement=up] {transform-origin:bottom;animation-name:choice-reveal-up}
+.choice-options::backdrop {background:transparent;pointer-events:none}
+.category-choice-field {display:grid; gap:4px; min-width:0; align-content:start}
+.category-edit-form>button {align-self:start; margin-block-start:26px; min-height:36px}
+@keyframes choice-reveal {
+  from {opacity:0; clip-path:inset(0 0 100% 0 round 9px); translate:0 -4px}
+  to {opacity:1; clip-path:inset(0 round 9px); translate:0 0}
+}
+@keyframes choice-reveal-up {
+  from {opacity:0; clip-path:inset(100% 0 0 0 round 9px); translate:0 4px}
+  to {opacity:1; clip-path:inset(0 round 9px); translate:0 0}
+}
+@media (prefers-reduced-motion:reduce) {.choice-options {animation:none}}

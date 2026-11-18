@@ -14,6 +14,7 @@ const { pathToFileURL } = require("node:url");
 const { Store, text } = require("./store.cjs");
 const { Controller } = require("./controller.cjs");
 const { publicMessage } = require("./errors.cjs");
+const { DEFAULT_DESKTOP_ZOOM, initializeDesktopZoom, resetDesktopZoom } = require("./desktop-zoom.cjs");
 
 const { displayVersion } = require("./version.cjs");
 const { DesktopUpdater, acknowledgeUpdateLaunch } = require("./updater.cjs");
@@ -162,6 +163,7 @@ function createWindow() {
     icon: path.join(__dirname, "..", "assets", "flowrium.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
+      zoomFactor: DEFAULT_DESKTOP_ZOOM,
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
@@ -169,6 +171,7 @@ function createWindow() {
     },
   });
   const createdWindow = window;
+  initializeDesktopZoom(createdWindow.webContents);
   lifecycleDiagnostic('create-window');
   window.once('ready-to-show', () => lifecycleDiagnostic('ready-to-show'));
   drafts.beginMigration(window.webContents);
@@ -621,7 +624,7 @@ async function launch() {
     {
       label: "보기",
       submenu: [
-        { role: "resetZoom", label: "기본 크기" },
+        { id: "flowrium-reset-zoom", label: "기본 크기 (87%)", accelerator: "CommandOrControl+0", click: () => { resetDesktopZoom(window); dotsRuntime?.resetZoom(DEFAULT_DESKTOP_ZOOM); } },
         { role: "zoomIn", label: "확대" },
         { role: "zoomOut", label: "축소" },
         { role: "togglefullscreen", label: "전체 화면" },

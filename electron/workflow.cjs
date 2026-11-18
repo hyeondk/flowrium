@@ -5,6 +5,7 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { UUID, readJSON } = require("./project-store.cjs");
 const {visibleProposals}=require('./execution-state.js');
+const {completionSummary}=require('./notification-summary.cjs');
 const run = promisify(execFile);
 const copy = value => structuredClone(value);
 const invalid = () => new Error("업무 연결과 알림 요청의 형식을 확인해 주세요.");
@@ -56,7 +57,7 @@ const TOOL_SPECS = [
 class WorkflowRuntime {
   constructor(store,controller,options={}){
     this.store=store;this.controller=controller;this.options=options;this.queue=Promise.resolve();this.record=null;
-    this.owner=null;this.closed=false;this.transitions=0;this.runOwners=new Map();this.tickRunning=false;
+    this.owner=null;this.closed=false;this.transitions=0;this.runOwners=new Map();this.tickRunning=false;this.secretAnswerSessions=new Set();
     this.now=options.now||Date.now;
     this.listener=e=>{
       if(e.type==="status"&&e.status==="running")this.runOwners.set(e.sessionId,this.account());
@@ -116,9 +117,10 @@ class WorkflowRuntime {
     this.queue=next.catch(()=>{});
     return next.finally(()=>this.transitions--);
   }
-  notification(kind,title,body,sessionId,group){
+  notification(kind,title,body,sessionId,group,eventKey){
+    if(eventKey){const existing=this.record.notifications.find(n=>n.eventKey===eventKey);if(existing)return existing;}
     const record={id:randomUUID(),kind,title:String(title).slice(0,200),body:String(body||"").slice(0,6000),sessionId:sessionId||null,
-      group:group||sessionId||kind,createdAt:this.stamp(),readAt:null};
+      group:group||sessionId||kind,createdAt:this.stamp(),readAt:null,...(eventKey?{eventKey}:{})};
     this.record.notifications.unshift(record);
     this.record.notifications=this.record.notifications.slice(0,2000);
     try{Promise.resolve(this.options.notify?.(record)).catch(error=>this.noticeError(error));}catch(error){this.noticeError(error);}
@@ -460,7 +462,11 @@ class WorkflowRuntime {
     if(event.type==="done"){
       const session=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===event.sessionId);if(!session)return;
       const body=session.messages.findLast(m=>m.role==="assistant")?.text||event.text||"";
-      this.notification(event.status==="completed"?"done":"error",session.title,body,session.id,session.workflow?.teamSlot?.runId||session.id);
+      const latestUser=session.messages.findLastIndex(m=>m.role==="user");
+      const currentAnswer=session.messages.slice(latestUser+1).findLast(m=>m.role==="assistant")?.text||"";
+      const secretAnswer=this.secretAnswerSessions.delete(session.id);
+      const turnKey=event.turnId||session.messages.at(-1)?.id;
+      this.notification(event.status==="completed"?"done":"error",session.title,completionSummary(secretAnswer?"":currentAnswer,event.status),session.id,session.workflow?.teamSlot?.runId||session.id,turnKey?`done:${session.id}:${turnKey}:${event.status}`:undefined);
       for(const delivery of this.record.deliveries.filter(d=>d.targetId===session.id&&d.reportId&&d.status==="sent"&&!d.completedAt)){
         const report=this.record.reports.find(r=>r.id===delivery.reportId);if(!report||report.status!=="writing")continue;
         delivery.completedAt=this.stamp();
@@ -502,7 +508,8 @@ class WorkflowRuntime {
     }else{
       const session=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===event.sessionId);
       const secret=event.type==="input"&&event.questions?.some(q=>q.isSecret);
-      this.notification("approval",session?.title||"사용자 결정 필요",secret?"비밀 질문은 데스크톱 승인함에서 확인하세요.":event.text||"작업에 필요한 결정을 확인해 주세요.",event.sessionId,"승인");await this.save();
+      if(secret)this.secretAnswerSessions.add(event.sessionId);
+      this.notification("approval",session?.title||"사용자 결정 필요",secret?"비밀 질문은 데스크톱 승인함에서 확인하세요.":event.type==="input"?"응답 요청이 도착했어요. 대화에서 질문을 확인해 주세요.":event.text||"작업에 필요한 결정을 확인해 주세요.",event.sessionId,"승인",event.requestId?`request:${event.sessionId}:${event.requestId}`:undefined);await this.save();
     }
   }
   async tick(){

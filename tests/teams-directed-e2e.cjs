@@ -35,7 +35,7 @@ async function main() {
     page = await app.firstWindow();
     await page.setViewportSize({width:1440,height:1000});
     page.setDefaultTimeout(18000);
-    await page.locator(".pf-card").filter({ hasText: "프로젝트" }).click();
+    await page.locator(".pf-project-entry").filter({ hasText: "프로젝트" }).click();
     await page
       .getByRole("navigation", { name: "프로젝트 상세 탭" })
       .getByRole("button", { name: "팀", exact: true })

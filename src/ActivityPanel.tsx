@@ -1,4 +1,5 @@
 import SystemTools from "./SystemTools";
+import {isImeKey} from './ime';
 import { useEffect, useState } from "react";
 import { ListChecks, MessageSquare, RefreshCw, Square } from "lucide-react";
 import type { SystemActivity } from "../shared/activity";
@@ -19,7 +20,7 @@ export function useWorkspaceShortcuts({ board, newChat, history, settings }: Sho
   useEffect(() => {
     const mac = /Mac/.test(navigator.platform);
     function handle(event: KeyboardEvent) {
-      if (event.defaultPrevented || event.isComposing || event.repeat || event.altKey || event.shiftKey) return;
+      if (event.defaultPrevented || isImeKey(event) || event.repeat || event.altKey || event.shiftKey) return;
       if (mac ? !event.metaKey || event.ctrlKey : !event.ctrlKey || event.metaKey) return;
       if (document.querySelector('dialog[open], [role="dialog"]:not([hidden])')) return;
       const actions: Record<string, () => void> = {Digit1: board, KeyN: newChat, Digit2: history, Comma: settings};

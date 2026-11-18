@@ -1,46 +1,107 @@
-.app-shell .workspace-side{position:relative;display:block;width:76px;flex:0 0 76px;padding:0;overflow:visible;border:0;background:transparent;z-index:60;word-break:keep-all}
-.sidebar-surface{position:absolute;inset:12px auto 12px 10px;width:56px;padding:12px 7px 8px;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:var(--sidebar);border:1px solid var(--line);border-radius:18px;transition:width 240ms var(--motion-ease-in),box-shadow 240ms ease-in;box-shadow:0 4px 18px #15213b05}
-.workspace-side[data-expanded=true] .sidebar-surface{width:244px;box-shadow:12px 8px 36px #13233e20;transition-timing-function:var(--motion-ease-out)}
+/* 레일 안의 아이콘 좌표를 유지하고, 펼칠 때는 설명이 있는 폭만 드러낸다. */
+.app-shell .workspace-side {
+  --side-rail:56px; --side-open:236px;
+  --sidebar-surface:linear-gradient(170deg,var(--sidebar-start,#deebfa) 0%,var(--sidebar-end,#edf4fc) 100%);
+  position:relative; display:block; width:var(--side-rail); flex:0 0 var(--side-rail);
+  padding:0; overflow:visible; border:0; background:transparent; z-index:60;
+  font-family:var(--font-ui,NanumSquareRound,sans-serif); word-break:keep-all;
+}
+:root[data-theme=dark] .app-shell .workspace-side {
+  --sidebar-surface:linear-gradient(170deg,var(--sidebar),var(--bg));
+}
+.app-shell .workspace-side[data-pinned=true]{width:var(--side-open);flex-basis:var(--side-open)}
+.sidebar-surface {
+  position:absolute; inset:0 auto 0 0; width:var(--side-rail); min-height:0;
+  overflow:hidden; border:1px solid transparent; border-radius:12px; background:var(--sidebar-surface);
+  transition:width 180ms ease-out,box-shadow 180ms ease-out;
+}
+.workspace-side[data-expanded=true] .sidebar-surface{width:var(--side-open)}
+.workspace-side[data-expanded=true]:not([data-pinned=true]) .sidebar-surface{
+  border-color:var(--line-soft);box-shadow:0 8px 24px #13233e18;
+}
+.sidebar-content{box-sizing:border-box;display:flex;flex-direction:column;width:calc(var(--side-open) - 2px);height:100%;padding:8px 8px 10px}
 .side-brand-row,.side-brand,.side-project-head,.side-account,.workspace-side .side-row{display:flex;align-items:center}
-.side-brand-row{height:44px;flex:none;gap:4px;margin-bottom:12px}.side-brand{gap:12px;min-width:38px;flex:1;padding:0 0 0 4px;font-size:19px;font-weight:800;white-space:nowrap;letter-spacing:-.02em}.side-brand img{flex:none;border-radius:10px}.side-collapse,.side-project-head button{height:30px;width:30px;min-width:30px;display:grid;place-items:center;flex:none;color:var(--muted);border-radius:9px;padding:0;border:0}.side-collapse:hover,.side-project-head button:hover,.workspace-side .side-row:hover{color:var(--text);background:var(--panel-alt)}
-.workspace-side nav{display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior:contain}
-.workspace-side .side-row{position:relative;display:flex;flex:none;width:100%;height:40px;min-height:40px;gap:12px;padding:0 9px;margin:0;font-size:13px;line-height:22px;font-weight:600;color:var(--muted);border:1px solid transparent;border-radius:10px;text-align:left;white-space:nowrap}.workspace-side .side-row svg{flex:none;width:20px;height:20px}.workspace-side .side-row>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.workspace-side .side-row[aria-current=page]{color:var(--text);background:var(--selected);border-color:var(--line);font-weight:800}.workspace-side .side-row[aria-current=page]::before{content:'';position:absolute;inset:9px auto 9px 0;width:3px;border-radius:6px;background:var(--accent)}
-.side-projects{display:flex;flex-direction:column;flex:1 1 0;min-height:80px;margin-top:12px}.side-project-head{height:32px;min-height:32px;gap:6px;padding-left:4px;margin-bottom:4px}.workspace-side h2{height:20px;min-height:20px;margin:0;padding:0 9px;font-size:10px;font-weight:700;line-height:20px;color:var(--dim);white-space:nowrap}.side-project-head h2{flex:1;padding:0}.side-project-head button{order:-1}.side-project-list{flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior:contain}.side-project-list>p{padding:8px 10px;margin:0;font-size:12px;line-height:20px;color:var(--muted)}.side-state{margin-left:auto;padding:1px 5px;font-size:10px;line-height:18px;border-radius:6px;flex:none;background:var(--panel-alt);color:var(--muted)}.side-state[data-state=running]{background:#d8e9e3;color:#365b50}.side-state[data-state=decision]{background:#f5e6ce;color:#80551d}.side-state[data-state=waiting]{background:#e4eaf3;color:#526986}
-.side-group{display:flex;flex-direction:column;flex:none;gap:0;margin-top:10px;padding-top:6px;border-top:1px solid var(--line-soft)}.side-group h2{margin-bottom:2px}.workspace-side .side-group .side-row{height:32px;min-height:32px;font-size:12px;gap:12px}.workspace-side .side-group .side-row svg{width:19px;height:19px}.side-foot{flex:none;min-height:0}.side-account{height:28px;min-height:28px;padding:2px 10px;gap:10px;color:var(--dim);font-size:10px;line-height:18px;white-space:nowrap;overflow:hidden}.side-copyright-icon{display:inline-grid;place-items:center;flex:none;font-size:15px;width:18px}.side-account>span:last-child{overflow:hidden;text-overflow:ellipsis}
-.side-usage{border-top:1px solid var(--line-soft);margin-top:8px;padding-top:5px;position:relative}.side-usage-refresh{display:flex;align-items:center;gap:10px;width:100%;height:32px;min-height:32px;padding:0 10px;border:0;border-radius:8px;color:var(--muted);text-align:left;font-size:10px;line-height:16px}.side-usage-refresh>svg{flex:none}.side-usage-refresh>span{flex:1;white-space:nowrap}.side-usage-refresh>strong{font-size:11px;color:var(--accent)}.side-usage-details{height:34px;padding:0 10px;overflow:hidden}.side-usage-details>div{display:flex;align-items:center;gap:6px;height:17px;font-size:9px;color:var(--dim)}.side-usage-details progress{flex:1;min-width:10px;height:4px;accent-color:var(--accent);border:0;border-radius:5px}.side-usage-details strong{font-size:9px;min-width:26px;text-align:right}.side-usage-details small{display:block;font-size:9px;line-height:16px;color:var(--dim);word-break:keep-all}
-.workspace-side[data-expanded=false] :is(.side-row>span,.side-brand>span,.side-account>span:last-child,.side-collapse,.side-state,.side-project-head>h2){opacity:0;visibility:hidden;pointer-events:none}.workspace-side[data-expanded=false] .side-project-list{visibility:hidden;pointer-events:none}.workspace-side[data-expanded=false] .side-group h2{visibility:hidden}.workspace-side[data-expanded=false] .side-brand{flex:none}.workspace-side[data-expanded=false] .side-usage-refresh{padding:0;flex-direction:column;gap:0;height:35px;justify-content:center}.workspace-side[data-expanded=false] .side-usage-refresh>span{display:none}.workspace-side[data-expanded=false] .side-usage-refresh>strong{font-size:9px;line-height:13px}.workspace-side[data-expanded=false] .side-usage-details{height:31px;padding:0 6px}.workspace-side[data-expanded=false] .side-usage-details :is(span,strong,small){display:none}.workspace-side[data-expanded=false] .side-usage-details>div{height:12px}.workspace-side[data-expanded=false] .side-account{padding-left:10px}.workspace-side[data-expanded=true] :is(.side-row>span,.side-brand>span,.side-account>span:last-child,.side-collapse,.side-state){animation:side-label-in 220ms ease-out both}.workspace-side[data-pinned=true]{width:264px;flex-basis:264px}
-@keyframes side-label-in{from{opacity:0;transform:translateX(-4px)}to{opacity:1;transform:translateX(0)}}
-@media(max-width:760px){.app-shell .workspace-side{position:fixed;inset:0 auto 0 0;width:264px;transform:translateX(-104%);transition:transform 260ms ease-in;z-index:1200}.app-shell .workspace-side.is-open{transform:translateX(0);transition-timing-function:ease-out}.workspace-side .sidebar-surface{width:244px}.workspace-side .side-collapse{display:none}}
-@media(max-height:700px){.sidebar-surface{inset-block:8px;padding-top:8px}.side-brand-row{margin-bottom:6px;height:36px}.workspace-side nav{overflow:auto}.side-projects{min-height:90px;flex:1 0 90px;margin-top:6px}.side-group{margin-top:6px;padding-top:4px}.side-group h2{height:16px;min-height:16px;line-height:16px}.workspace-side .side-group .side-row{height:28px;min-height:28px}.side-usage-details{height:26px}.side-account{height:24px;min-height:24px}}
-@media(prefers-reduced-motion:reduce){.sidebar-surface,.app-shell .workspace-side{transition:none!important}.workspace-side *{animation:none!important}}
-/* 탐색 레일과 도구 행의 실제 치수를 맞추고 프로젝트 영역을 우선 배정합니다. */
-.app-shell .workspace-side{width:72px;flex-basis:72px}.workspace-side .sidebar-surface{width:52px;padding-inline:6px}.workspace-side[data-expanded=true] .sidebar-surface{width:240px}.workspace-side .side-brand{padding-left:3px}.workspace-side .side-row{padding-inline:8px}.workspace-side .side-group .side-row{height:30px;min-height:30px}.workspace-side[data-pinned=true]{width:260px;flex-basis:260px}.side-usage-refresh{height:28px;min-height:28px}.side-usage-details{height:24px}.side-account{height:24px;min-height:24px}.workspace-side[data-expanded=false] .side-usage-details{height:21px}.workspace-side[data-expanded=false] .side-usage-refresh{height:31px}.workspace-side[data-expanded=false] .side-account{padding-left:10px}.workspace-side .side-project-head{padding-left:4px}
-@media(max-width:760px){.app-shell .workspace-side{width:260px;flex-basis:260px}.workspace-side .sidebar-surface{width:240px}}
-@media(max-height:700px){.workspace-side .side-group .side-row{height:28px;min-height:28px}}
-.workspace-side .side-account{height:20px;min-height:20px;font-size:10px;gap:7px}
-.workspace-side[data-expanded=false] .side-account{visibility:hidden;opacity:0;pointer-events:none}
-.workspace-side[data-expanded=true] .side-account{visibility:visible;opacity:1}
-.workspace-side .side-account>.side-copyright-icon{font-size:12px;line-height:16px;height:16px}
-/* 보관과 도구를 하단에 작게 모으고 확보한 높이는 프로젝트 목록에 배정합니다. */
-.workspace-side .side-group{margin-top:7px;padding-top:5px}
-.workspace-side .side-group h2{height:14px;min-height:14px;line-height:14px;font-size:9px;margin-bottom:1px}
-.workspace-side .side-group .side-row{height:26px;min-height:26px;border-radius:7px;font-size:11px}
-.workspace-side .side-group .side-row svg{width:17px;height:17px}
-.workspace-side .side-projects{margin-top:7px}
-.workspace-side .side-brand-row{margin-bottom:5px}
-@media(pointer:coarse){.workspace-side .side-group .side-row{height:32px;min-height:32px}}
-@media(max-height:700px) and (pointer:fine){.workspace-side .side-group .side-row{height:24px;min-height:24px}.workspace-side .side-group{margin-top:5px;padding-top:4px}.workspace-side .side-group h2{height:12px;min-height:12px;line-height:12px}.workspace-side .side-brand-row{margin-bottom:4px}}
-.app-shell .workspace-side :is(.side-group h2,.side-account){color:var(--text)}
-/* 하단 도구가 패널 가장자리에 붙지 않도록 마지막 여백을 확보합니다. */
-.app-shell .workspace-side .sidebar-surface{padding-bottom:18px}
-@media(max-height:700px){.app-shell .workspace-side .sidebar-surface{padding-bottom:14px}}
-
-/* 메뉴를 펼치는 중에도 바로 위 도구 버튼의 클릭 위치를 유지합니다. */
-.workspace-side .side-usage{display:grid;grid-template-areas:"usage" "details";grid-template-rows:32px 32px;align-items:center}
-.workspace-side[data-expanded=true] .side-usage{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"usage credits" "details details"}
-.workspace-side .side-usage-refresh{grid-area:usage;gap:5px;min-width:0}
-.workspace-side .side-usage-details{grid-area:details;min-width:0}
-.workspace-side[data-expanded=true] .side-usage-details{height:32px}
-.workspace-side[data-expanded=true] .side-usage-details>div{height:16px}
-.side-credit-row{grid-area:credits;display:grid;grid-template-columns:auto 1fr;align-items:center;column-gap:4px;max-width:107px;margin-inline:5px 10px;color:var(--muted);font-size:10px;line-height:14px;word-break:keep-all}
-.side-credit-row strong{grid-column:1 / -1;color:var(--accent);font-size:11px;font-variant-numeric:tabular-nums;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.side-brand-row{height:32px;min-height:32px;flex:none;gap:4px;margin:0 0 12px}
+.workspace-side .side-brand{justify-content:flex-start;gap:10px;min-width:38px;flex:1;padding:0 3px;color:var(--text);font-size:18px;font-weight:800;line-height:26px;border:0;background:none;white-space:nowrap;letter-spacing:-.02em}
+.side-brand img{width:32px;height:32px;flex:none;border-radius:9px}
+.side-collapse,.side-project-head button{display:grid;place-items:center;flex:none;width:28px;min-width:28px;height:26px;min-height:26px;padding:0;border:0;border-radius:6px;color:var(--muted)}
+.side-collapse:hover,.side-project-head button:hover,.workspace-side .side-row:hover{color:var(--text);background:var(--selected)}
+.workspace-side nav{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior:contain}
+.app-shell .workspace-side .sidebar-surface .side-row{
+  position:relative;display:flex;align-items:center;justify-content:flex-start;flex:none;gap:10px;
+  width:100%;height:30px;min-height:30px;padding:0 9px;margin:0;border:1px solid transparent;
+  border-radius:7px;color:var(--muted);font-size:13px;line-height:20px;font-weight:400;
+  text-align:left;white-space:nowrap;box-shadow:none;
+}
+.workspace-side .side-row svg{flex:none;width:18px;height:18px}
+.workspace-side .side-row>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.app-shell .workspace-side .side-row[aria-current=page]{color:var(--accent-ink);background:var(--selected);border-color:transparent;font-weight:700}
+.workspace-side .side-row[aria-current=page]::before{display:none}
+.app-shell .workspace-side[data-expanded=false] .side-row[aria-current=page]{isolation:isolate;background:transparent}
+.workspace-side[data-expanded=false] .side-row[aria-current=page]::before{content:'';display:block;position:absolute;inset:0 auto 0 0;width:38px;border-radius:7px;background:var(--selected);z-index:-1}
+.app-shell .workspace-side .sidebar-surface .side-dashboard:is(:hover,:active,[aria-current=page]){background:transparent;border-color:transparent;box-shadow:none;color:var(--accent-ink)}
+.app-shell .workspace-side .side-dashboard[aria-current=page]::before{display:none}
+.side-projects{display:flex;flex-direction:column;flex:none;min-height:0;margin-top:4px}
+.side-project-head{height:26px;min-height:26px;flex:none;gap:10px;padding:0 5px 0 10px;margin-bottom:2px}
+.side-project-section-icon{width:18px;height:18px;flex:none;color:var(--muted)}
+.app-shell .workspace-side h2{margin:0;font-size:11px;line-height:18px;font-weight:700;color:var(--muted);white-space:nowrap}
+.side-project-head h2{flex:1}
+.side-project-list{display:flex;flex-direction:column;gap:0;flex:none;min-height:0}
+.side-project-list>p{padding:6px 10px;margin:0;color:var(--muted);font-size:12px;line-height:20px}
+.app-shell .workspace-side .sidebar-surface .side-project{height:40px;min-height:40px;padding:0 9px;gap:10px}
+.workspace-side .side-row>.side-project-icon{position:relative;display:grid;place-items:center;flex:none;width:18px;height:18px;overflow:visible}
+.side-project-markers{position:absolute;left:-2px;top:-3px;display:flex;gap:1px;width:max-content;pointer-events:none}
+.side-project-markers i{display:block;width:5px;height:5px;flex:none;border-radius:1px}
+.side-project-markers [data-state=running]{background:#4b8cbb}
+.side-project-markers [data-state=waiting]{background:#8c96ac}
+.side-project-markers [data-state=decision]{background:#bd8245}
+.workspace-side .side-row>.side-project-label{display:flex;align-items:center;gap:6px}
+.side-project-label strong{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:13px;line-height:20px;font-weight:700;white-space:nowrap}
+.side-project-count{flex:none;padding:0;border:0;color:var(--muted);background:none;font-size:11px;line-height:18px;font-weight:400;font-variant-numeric:tabular-nums;white-space:nowrap}
+.side-lower-nav {flex:none; margin-block-start:auto; padding-block-start:5px}
+/* 그룹 이름은 접근성 정보로 유지하고, 별도의 빈 제목 행은 만들지 않는다. */
+.side-group{position:relative;display:flex;flex-direction:column;flex:none;gap:2px;margin-top:4px;padding:3px 0 0;border-top:1px solid var(--line-soft)}
+.side-group h2{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+.app-shell .workspace-side .sidebar-surface .side-group .side-row{height:28px;min-height:28px;font-size:12px}
+.side-foot{display:grid;grid-template-columns:minmax(0,1fr);flex:none;min-height:0;margin-top:4px}
+.side-usage{grid-row:1;position:relative;min-height:52px;margin-block:5px;border-top:1px solid var(--line-soft);padding:2px 0 0}
+.app-shell .workspace-side .sidebar-surface .side-usage-refresh{display:grid;grid-template-columns:38px auto minmax(12px,1fr) auto auto;align-items:center;column-gap:5px;width:100%;height:26px;min-height:26px;padding:0 5px 0 0;border:0;color:var(--muted);text-align:left;font-size:11px;line-height:18px}
+.side-usage:has(.side-usage-reset){min-height:62px}
+.side-usage-reset{display:block;margin:4px 4px 24px 43px;color:var(--muted);font-size:11px;line-height:16px}
+.workspace-side[data-expanded=false] .side-usage-reset{visibility:hidden}
+.side-usage-suffix{color:var(--accent-ink)}
+.side-usage-refresh>svg{width:16px;height:16px;justify-self:center}
+.side-usage-refresh>strong{font-size:12px;color:var(--accent-ink);font-variant-numeric:tabular-nums}
+.side-usage-refresh>small{grid-column:span 3;justify-self:end;font-size:11px}
+.side-usage-refresh progress{appearance:none;width:100%;height:4px;border:0;border-radius:4px}
+.side-usage-refresh progress::-webkit-progress-bar{background:var(--line-soft);border-radius:4px}
+.side-usage-refresh progress::-webkit-progress-value{background:var(--accent-ink);border-radius:4px}
+.side-credit-row{position:absolute;left:43px;right:5px;bottom:4px;display:flex;align-items:center;gap:5px;min-width:0;color:var(--muted);font-size:11px;line-height:16px}
+.side-credit-row strong{min-width:0;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent-ink);font-variant-numeric:tabular-nums}
+.side-account-actions{grid-row:2;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;gap:0;padding:0;border-top:1px solid var(--line-soft)}
+.app-shell .workspace-side .sidebar-surface .side-account-actions>.side-row{justify-content:flex-start;width:100%;min-width:0;height:32px;min-height:32px;padding:0 0 0 12px;gap:3px;border:0;font-size:11px;line-height:18px}
+.app-shell .workspace-side .side-account-actions .side-row svg{width:14px;height:14px}
+.side-account-actions .side-row>span{position:static;clip-path:none;width:auto;height:auto;flex:none;overflow:visible;white-space:nowrap}
+.side-account{grid-row:3;height:14px;min-height:14px;justify-content:center;gap:5px;color:var(--muted);font-size:10px;line-height:14px;white-space:nowrap}
+.side-copyright-icon{font-size:11px}
+.side-copyright-year{display:none}
+.workspace-side[data-expanded=false] :is(.side-collapse,.side-row>span:not(.side-project-icon),.side-brand>span,.side-project-head h2,.side-project-add,.side-account,.side-account-actions>.side-row:not(.settings-button),.side-usage-refresh>span,.side-usage-refresh>small){visibility:hidden;pointer-events:none}
+.workspace-side[data-expanded=false] .side-project-list>p{visibility:hidden}
+.workspace-side[data-expanded=false] .side-usage-refresh>strong{position:absolute;top:25px;left:0;width:38px;font-size:10px;line-height:12px;text-align:center}
+.workspace-side[data-expanded=false] .side-usage-refresh progress{position:absolute;top:39px;left:7px;width:24px;height:3px}
+.workspace-side :is(button,[tabindex]):focus-visible{outline:2px solid var(--accent-ink);outline-offset:-2px}
+@media(max-height:820px) and (pointer:fine){
+  .app-shell .workspace-side .sidebar-surface .side-group .side-row{height:26px;min-height:26px}
+  .sidebar-content{padding-block:4px 6px}
+}
+@media(max-width:760px){
+  .app-shell .workspace-side{position:fixed;inset:0 auto 0 0;width:252px;transform:translateX(-104%);transition:transform 180ms ease-out;z-index:190}
+  .app-shell .workspace-side.is-open{transform:translateX(0)}
+  .workspace-side .sidebar-surface{inset:8px auto 8px 8px;width:var(--side-open);border-color:var(--line-soft)}
+  .workspace-side .side-collapse{display:none}
+}
+@media(pointer:coarse){
+  .app-shell .workspace-side .sidebar-surface .side-row,.app-shell .workspace-side .sidebar-surface .side-group .side-row{height:44px;min-height:44px}
+  .side-project-head{height:40px;min-height:40px}.side-project-head button{height:40px;min-height:40px}
+}
+@media(prefers-reduced-motion:reduce){.sidebar-surface,.app-shell .workspace-side{transition:none}}

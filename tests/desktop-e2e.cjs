@@ -62,8 +62,9 @@ async function run() {
     await page.locator("[data-work-kind=task]").waitFor();
     await trustRegisteredFixtureFolder(profile, project);
     await page.locator(".settings-button").click();
+    await page.locator('[data-settings-target=account]').click();
     await page.locator(".settings-section").filter({has:page.getByRole("heading",{name:"Codex 연결",exact:true})}).getByRole("button",{name:"연결 확인",exact:true}).click();
-    await page.getByRole("dialog",{name:"설정"}).getByText("ChatGPT / pro", { exact: true }).waitFor();
+    await page.getByRole("dialog",{name:"설정"}).getByText("ChatGPT(Pro)", { exact: true }).waitFor();
     await page.getByLabel("설정 닫기").click();
     for (const kind of ["research", "briefing", "weekly", "document", "pause", "task"]) {
       await page.locator(`[data-work-kind=${kind}]`).click();

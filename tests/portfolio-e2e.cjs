@@ -263,8 +263,8 @@ async function main() {
       .first()
       .click();
     await page.getByLabel("프로젝트 검색").fill("지역 편집팀");
-    assert.equal(await page.locator(".pf-card").filter({ hasText: name }).locator(".pf-category").innerText(), "개인");
-    await page.locator(".pf-card").filter({ hasText: name }).click();
+    assert.equal(await page.locator(".pf-project-entry").filter({ hasText: name }).locator(".pf-category").innerText(), "개인");
+    await page.locator(".pf-project-entry").filter({ hasText: name }).click();
     await tab("프로젝트 설정").click();
     await page.getByText("프로젝트 상세", { exact: true }).click();
     await button("프로젝트 완료").click();

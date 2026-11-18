@@ -40,7 +40,7 @@ async function run() {
   }
   try {
     await launch();
-    await page.locator(".pf-card").filter({ hasText: project.name }).click();
+    await page.locator(".pf-project-entry").filter({ hasText: project.name }).click();
     await page
       .getByRole("navigation", { name: "프로젝트 상세 탭" })
       .getByRole("button", { name: "규칙", exact: true })

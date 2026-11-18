@@ -65,6 +65,7 @@ function validate(data) {
       (r.base && (typeof r.base !== 'string' || r.base.length > 200 || /[\x00-\x20~^:?*\[\\]/.test(r.base))) || (r.hidden !== undefined && typeof r.hidden !== 'boolean')))) throw invalid();
   if (data.chatCwd !== undefined && !relative(data.chatCwd)) throw invalid();
   if (data.services !== undefined && (!Array.isArray(data.services) || data.services.length>32 || new Set(data.services.map(s=>s.id)).size!==data.services.length || data.services.some(s=>!s||!UUID.test(s.id)||!field(s.name,100)||!relative(s.cwd)||!field(s.command,2000)))) throw invalid();
+  if (data.category !== undefined) field(data.category, 80);
   if (data.kickoff !== undefined) kickoffFields(data.kickoff);
   if(data.shortcuts!==undefined)require('./project-shortcuts.cjs').validateShortcuts(data.shortcuts);
   return data;
@@ -103,7 +104,7 @@ async function latest(folder, projectId) {
 function apply(data, change) {
   switch (change?.action) {
     case 'import': {
-      const allowed=['kickoff','periodGoals','owner','goal','dueDate','archivedAt','checklist','repositories','chatCwd','schedule','services','shortcuts'];
+      const allowed=['category','kickoff','periodGoals','owner','goal','dueDate','archivedAt','checklist','repositories','chatCwd','schedule','services','shortcuts'];
       if(!change.data || typeof change.data!=='object')throw invalid();
       for(const key of allowed) if(Object.hasOwn(change.data,key))data[key]=structuredClone(change.data[key]);
       if(data.shortcuts)data.shortcuts=require('./project-shortcuts.cjs').migratedShortcuts(data.shortcuts);
@@ -112,6 +113,7 @@ function apply(data, change) {
     case 'kickoff': {
       const values = kickoffFields(change.input);
       data.kickoff = values;
+      delete data.category;
       data.owner = values.owner;
       data.goal = values.goal;
       data.dueDate = values.dueDate;
@@ -163,8 +165,13 @@ function apply(data, change) {
       if(!repo || typeof change.hidden !== 'boolean') throw invalid();
       repo.hidden = change.hidden; break;
     }
+    case 'category':
+      if (data.kickoff) data.kickoff.category = field(change.category, 80);
+      else data.category = field(change.category, 80);
+      break;
     case 'phase':
-      data.kickoff ||= kickoffFields({name:change.name || '프로젝트'});
+      data.kickoff ||= kickoffFields({name:change.name || '프로젝트', category:data.category});
+      delete data.category;
       if(!['킥오프','진행','유지보수','중단','완료'].includes(change.phase)) throw invalid();
       data.kickoff.phase = change.phase;
       if(change.phase === '완료') data.archivedAt ||= new Date().toISOString(); else data.archivedAt=null;

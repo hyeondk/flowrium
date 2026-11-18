@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Download, RefreshCw } from "lucide-react";
 import type { UpdateState } from "../shared/types";
+import {releaseNotes} from '../shared/release-notes';
 
 export function useDesktopUpdate() {
   const [state, setState] = useState<UpdateState>();
@@ -25,7 +26,8 @@ export function UpdatePanel({ state, settings = false, fail }: {
   const available = state.status === "available";
   const visible = available || (state.status === "error" && (!!state.latestVersion || state.launchFailed)) || ["downloading", "installing"].includes(state.status);
   if (!settings && !visible) return null;
-  return <section className={settings ? "settings-section update-settings" : "update-banner"} aria-label="프로그램 업데이트">
+  const changes=releaseNotes[state.currentVersion];
+  return <><section className={settings ? "settings-section update-settings" : "update-banner"} aria-label="프로그램 업데이트">
     <div className="update-settings-copy" aria-live="polite">
       <strong>{available ? `Flowrium ${state.latestVersion} 업데이트` : settings ? "프로그램 업데이트" : state.status === "error" ? "업데이트 확인 필요" : "업데이트 진행 중"}</strong>
       <p>{state.message || `현재 버전 ${state.currentVersion}`}</p>
@@ -35,5 +37,9 @@ export function UpdatePanel({ state, settings = false, fail }: {
       : (settings || state.status === "error") && <button className="button subtle" disabled={busy || state.status === "unsupported"} onClick={() => api.checkUpdate().catch(fail)}><RefreshCw size={14} />새 버전 확인</button>}
     {state.status === "error" && <button className="button subtle" onClick={()=>api.openExternal("downloads").catch(fail)}>
       <Download size={14}/>수동 설치 파일 받기</button>}
-    </div></section>;
+    </div></section>{settings&&changes&&<section className="settings-section update-history" aria-label="최신 변경점">
+      <h3>최신 변경점 <small>{state.currentVersion}</small></h3>
+      <ul>{changes.map(change=><li key={change}>{change}</li>)}</ul>
+      <button type="button" className="text-link" onClick={()=>api.openExternal('downloads').catch(fail)}>맥에서 수동으로 설치하는 방법</button>
+    </section>}</>;
 }

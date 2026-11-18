@@ -1,3 +1,4 @@
+import {isImeKey} from './ime';
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentPropsWithRef, type CSSProperties, type RefObject, type ReactNode } from 'react';
 import {ThumbsUp} from 'lucide-react';
 import {createPortal} from 'react-dom';
@@ -97,6 +98,7 @@ export function MotionOverlay({ open, onClose, children, label, className = '', 
     const targets = () => [...(root?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]') || [])].filter(node => node.getClientRects().length > 0);
     (initialFocus && root?.querySelector<HTMLElement>(initialFocus) || targets()[0] || root)?.focus();
     const key = (event: KeyboardEvent) => {
+      if(isImeKey(event))return;
       if (event.key === 'Escape' && callback.current) { event.preventDefault(); callback.current(); }
       if (event.key !== 'Tab') return;
       const rows = targets();

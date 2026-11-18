@@ -8,7 +8,7 @@ const { _electron } = require('playwright');
 const { Store } = require('../electron/store.cjs');
 const { registerPortfolio } = require('../electron/portfolio.cjs');
 const { registerProjectDetails } = require('../electron/project-details.cjs');
-const { openConversation } = require('../tests/shell-test-helpers.cjs');
+const { openConversation, settledLayout } = require('../tests/shell-test-helpers.cjs');
 
 async function capture() {
   const { monthlySales, amount, salesAnswer } = await import('../docs/sales-example.mjs');
@@ -53,22 +53,33 @@ async function capture() {
     app = await _electron.launch({ args: [root], env, timeout: 45000 });
     const page = await app.firstWindow();
     await page.setViewportSize({ width: 1440, height: 900 });
+    page.setDefaultTimeout(30000);
     await page.locator('.side-usage[data-connected=true]').waitFor();
-    await page.locator('.pf-card').filter({ hasText: project.name }).click();
+    await page.locator('.workspace-side').hover();
+    await page.locator('.side-project').filter({ hasText: project.name }).click();
     await openConversation(page, session.title);
     await page.getByRole('region',{name:'이번 주 목표'}).getByText('월별 자료 확인',{exact:true}).waitFor();
     for (const text of ['월별 주문 합계 확인','증감 원인 정리']) await page.getByRole('region',{name:'프로젝트 할 일'}).getByText(text,{exact:true}).waitFor();
     const answer = page.locator('.message.assistant');
     await answer.getByText(salesAnswer, { exact: true }).waitFor();
     assert.deepEqual(await answer.locator('tbody tr td:last-child').allTextContents(), monthlySales.map(amount));
-    await page.evaluate(async () => {
-      await document.fonts.ready;
-      await Promise.all(document.getAnimations().filter(a => a.effect.getTiming().iterations !== Infinity).map(a => a.finished.catch(() => {})));
-    });
+    await page.evaluate(() => document.fonts.ready);
+    await settledLayout(page.locator('.conversation-dock'));
     const publicText = await page.locator('body').innerText();
     for (const token of [temp, os.homedir(), 'backend-fake-codex', '모의 계정', '편집 허용']) assert(!publicText.includes(token),'공개 이미지에 실행 경로나 계정이 보입니다.');
     await page.screenshot({ path: path.join(root, 'docs/workspace-sales.png'), animations: 'disabled', scale: 'css' });
-    await answer.screenshot({ path: path.join(root, 'docs/workspace-sales-chat.png'), animations: 'disabled', scale: 'css' });
+    // Electron의 페이지 배율을 반영해 답변 영역을 잘라야 왼쪽 글자가 잘리지 않는다.
+    const answerBox = await answer.boundingBox();
+    assert(answerBox && answerBox.width > 0 && answerBox.height > 0);
+    const chatImage = await app.evaluate(async ({BrowserWindow}, box) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      const zoom = window.webContents.getZoomFactor();
+      const bounds = {x:Math.floor(box.x*zoom),y:Math.floor(box.y*zoom),width:Math.ceil(box.width*zoom),height:Math.ceil(box.height*zoom)};
+      const image = await window.webContents.capturePage(bounds);
+      return {data:image.toPNG().toString('base64'),width:image.getSize().width,height:image.getSize().height};
+    }, answerBox);
+    assert(chatImage.width > 250 && chatImage.height > 180, '답변 전체를 읽을 수 있는 캡처 크기');
+    await fs.writeFile(path.join(root, 'docs/workspace-sales-chat.png'), Buffer.from(chatImage.data, 'base64'));
     console.log('격리된 실제 앱에서 월별 입력 6개 / 50% 답변 / 프로젝트 업무와 대화 / 모바일용 답변 확대 사진 촬영');
   } finally {
     if (app) await app.close();

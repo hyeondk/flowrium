@@ -3,7 +3,7 @@ import {ArrowRight, Check, LoaderCircle, Sparkles} from 'lucide-react';
 import type {Session} from '../shared/types';
 import {awaitsContinuation} from '../shared/execution-state';
 import ResizableComposerInput from './ResizableComposerInput';
-import {originalAnswerFollowups} from './answer-followup';
+import {originalAnswerFollowups,latestFollowupAnswer} from './answer-followup';
 import './chat-continuation.css';
 
 type Props = {
@@ -31,9 +31,9 @@ export default function ChatContinuation({
   session, running, authenticated, busy, active, draft, placeholder, textareaRef,
   onChange, onSend, onChoose, onContinue,
 }: Props) {
-  const last = session?.messages.at(-1);
+  const last = latestFollowupAnswer(session);
   const eligible = Boolean(session && last?.role === 'assistant' && last.text.trim() && !session.compacting
-    && !running && session.workflow?.status !== 'done' && session.completedContinuationId !== last.id
+    && !running
     && !session.queuedMessages?.some(row => row.status === 'queued' || row.status === 'sending'));
   const sessionId = session?.id;
   const messageId = eligible ? last?.id : undefined;
@@ -42,6 +42,7 @@ export default function ChatContinuation({
   const [action, setAction] = useState<'continue'|'complete'|null>(null);
   const [error, setError] = useState('');
   const [accepted, setAccepted] = useState('');
+  const composing = useRef(false);
   const revision = useRef(0);
   const continuingFlight = useRef(false);
   useEffect(() => {
@@ -53,7 +54,9 @@ export default function ChatContinuation({
     ? originalAnswerFollowups(session)[0] : undefined, [eligible, active, draft, busy, key, accepted, session]);
   const preview = candidate?.prompt;
   function accept() {
-    if (candidate) { setAccepted(key); onChoose(candidate.prompt); }
+    if (candidate && !composing.current && !draft && !textareaRef.current?.value && !busy) {
+      setAccepted(key); onChoose(candidate.prompt);
+    }
   }
   async function resolveWaiting(choice: 'continue'|'complete') {
     if (!messageId || !sessionId || busy || (choice==='continue' && !authenticated) || continuingFlight.current) return;
@@ -72,8 +75,10 @@ export default function ChatContinuation({
     <ResizableComposerInput textareaRef={textareaRef} aria-label="Codex에 보낼 작업 요청" value={draft}
       placeholder={preview || placeholder} data-inline-suggestion={Boolean(preview)}
       onTextChange={onChange}
+      onCompositionStart={()=>{composing.current=true;}}
+      onCompositionEnd={()=>{composing.current=false;}}
       onKeyDown={e => {
-        if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+        if (composing.current || e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
         if (e.key === 'Tab' && preview && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
           e.preventDefault(); accept();
         } else if (e.key === 'Enter' && !e.shiftKey) {

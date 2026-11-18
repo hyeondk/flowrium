@@ -124,7 +124,7 @@ async function prepareMac(file, stage, version, target, signal) {
     const assessment = await execute('/usr/sbin/spctl', ['--assess', '--type', 'execute', '--verbose=4', bundle]);
     if (!/^source=Notarized Developer ID$/m.test(assessment.stderr)) throw new Error('공증 확인 실패');
   } catch {
-    throw new Error('macOS에서 새 앱의 Developer ID 서명과 Apple 공증을 확인하지 못했습니다. 기존 앱을 계속 사용할 수 있습니다.');
+    throw new Error('macOS에서 새 앱의 Developer ID 서명과 Apple 공증을 확인하지 못했습니다. 다운로드 페이지에서 수동 설치 안내를 확인해 주세요.');
   }
   const team = async (app) => (await execute('/usr/bin/codesign', ['-dv', '--verbose=4', app]))
     .stderr.match(/^TeamIdentifier=([A-Z0-9]{10})$/m)?.[1];
