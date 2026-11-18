@@ -1,4 +1,4 @@
-const {settledRail}=require('./shell-test-helpers.cjs');
+const {settledRail,settledLayout}=require('./shell-test-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -60,7 +60,7 @@ async function run() {
       const side = document.querySelector('.workspace-side'), nav = side.querySelector('nav');
       const project = side.querySelector('.side-projects'), list = side.querySelector('.side-project-list');
       const box = e => { const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height }; };
-      return { width: innerWidth, height: innerHeight, pixelRatio: devicePixelRatio, expanded: side.dataset.expanded, pinned: side.dataset.pinned, documentOverflow: document.documentElement.scrollWidth - innerWidth, nav: { ...box(nav), scrollTop: nav.scrollTop, scrollHeight: nav.scrollHeight, clientHeight: nav.clientHeight }, project: box(project), list: { ...box(list), scrollTop: list.scrollTop, scrollHeight: list.scrollHeight, clientHeight: list.clientHeight }, groups: [...side.querySelectorAll('.side-group')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e) })), rows: [...side.querySelectorAll('nav>.side-row,.side-group>.side-row')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e), iconLeft: e.querySelector('svg').getBoundingClientRect().left, iconWidth: e.querySelector('svg').getBoundingClientRect().width })), account: box(side.querySelector('.side-account')), surface: box(side.querySelector('.sidebar-surface')), contentPaddingBottom:parseFloat(getComputedStyle(side.querySelector('.sidebar-content')).paddingBottom),surfaceBorderBottom:parseFloat(getComputedStyle(side.querySelector('.sidebar-surface')).borderBottomWidth),logo: box(side.querySelector('.side-brand img')), brandRow: box(side.querySelector('.side-brand-row')) };
+      return { panel:box(side),panelTransform:getComputedStyle(side).transform,panelMoving:side.getAnimations().some(animation=>animation.pending||animation.playState==='running'),width: innerWidth, height: innerHeight, pixelRatio: devicePixelRatio, expanded: side.dataset.expanded, pinned: side.dataset.pinned, documentOverflow: document.documentElement.scrollWidth - innerWidth, nav: { ...box(nav), scrollTop: nav.scrollTop, scrollHeight: nav.scrollHeight, clientHeight: nav.clientHeight }, project: box(project), list: { ...box(list), scrollTop: list.scrollTop, scrollHeight: list.scrollHeight, clientHeight: list.clientHeight }, groups: [...side.querySelectorAll('.side-group')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e) })), rows: [...side.querySelectorAll('nav>.side-row,.side-group>.side-row')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e), iconLeft: e.querySelector('svg').getBoundingClientRect().left, iconWidth: e.querySelector('svg').getBoundingClientRect().width })), account: box(side.querySelector('.side-account')), surface: box(side.querySelector('.sidebar-surface')), contentPaddingBottom:parseFloat(getComputedStyle(side.querySelector('.sidebar-content')).paddingBottom),surfaceBorderBottom:parseFloat(getComputedStyle(side.querySelector('.sidebar-surface')).borderBottomWidth),logo: box(side.querySelector('.side-brand img')), brandRow: box(side.querySelector('.side-brand-row')) };
     });
     const first = await measure();
     if (baseline) {
@@ -178,9 +178,10 @@ async function run() {
       await page.getByRole('button', { name: '메뉴 열기', exact: true }).click();
       await page.locator('.workspace-side.is-open').waitFor();
       await waitForPanel(true);
+      await settledLayout(page.locator('.workspace-side'));
       const m = await measure();
       checkLayout(m);
-      assert.ok(m.surface.left >= 0 && m.surface.right <= m.width + 1, '모바일 메뉴 가로 경계');
+      assert.ok(m.surface.left >= 0 && m.surface.right <= m.width + 1, '모바일 메뉴 가로 경계 '+JSON.stringify({viewport:m.width,surface:m.surface,panel:m.panel,transform:m.panelTransform,moving:m.panelMoving,pixelRatio:m.pixelRatio}));
       await page.locator('.workspace-side nav').evaluate(e => { e.scrollTop = e.scrollHeight; });
       const end = await measure();
       assert.ok(end.rows.at(-1).bottom <= end.nav.bottom + 1, '모바일 마지막 메뉴 접근');
