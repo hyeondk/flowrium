@@ -97,7 +97,7 @@ async function run() {
     await page.screenshot({ path: path.join(process.env.FLOWRIUM_FEATURE_SCREENSHOTS, name + '.png') });
   }
   try {
-    app = await _electron.launch({ args: [root], env, timeout: 45000 });
+    app = await _electron.launch({ args: [root,...(process.env.FLOWRIUM_FEATURE_DEVICE_SCALE==='1'?['--force-device-scale-factor=1']:[])], env, timeout: 45000 });
     page = await app.firstWindow();
     page.setDefaultTimeout(15000);
     page.on('pageerror', error => errors.push(error.message));

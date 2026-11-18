@@ -773,8 +773,10 @@
 }
 .project-toolbar-leading,.project-toolbar-actions,.project-view-switch {display:flex; align-items:center; gap:8px; min-width:0}
 .project-toolbar-leading {gap:14px; color:var(--muted); font-size:13px; line-height:20px}
+.project-toolbar-actions {flex:none; margin-inline-start:auto}
+.project-view-switch,.project-menu {flex:none}
 .project-toolbar-icon {
-  display:inline-grid; place-items:center; flex:none; width:28px; height:28px;
+  display:inline-grid; place-items:center; flex:none; width:28px; height:28px; min-height:28px;
   padding:0; border:0; border-radius:6px; background:transparent; color:var(--muted);
 }
 .project-document-toolbar .mobile-menu {display:none}
@@ -864,7 +866,7 @@
 .project-document-footer {display:flex; justify-content:space-between; align-items:center; flex:none; flex-wrap:wrap; gap:6px 12px; min-height:29px; padding:6px 24px; border-top:1px solid var(--line-soft); background:var(--card-subtle); color:var(--muted); font-size:11px; line-height:17px}
 .project-document-footer>span:first-child {display:flex; align-items:center; gap:5px}
 @container portfolio (max-width:580px) {
-  .project-document-toolbar {padding-inline:16px}
+  .project-document-toolbar {height:auto; flex-wrap:wrap; padding:6px 16px; row-gap:4px}
   .app-shell .pf-overview .project-document-content {padding:18px 18px; gap:14px}
   .project-document-heading {gap:12px}
   .app-shell .pf-overview .project-document-content h1 {font-size:23px; line-height:31px}

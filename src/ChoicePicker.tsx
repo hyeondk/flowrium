@@ -28,6 +28,7 @@ export default function ChoicePicker({label,value,options,onChange,disabled,edit
   const input = useRef<HTMLInputElement>(null);
   const popup = useRef<HTMLDivElement>(null);
   const outsidePointer = useRef(false);
+  const restoreFocus = useRef(false);
   const optionRows = useRef<(HTMLButtonElement | null)[]>([]);
   const [open,setOpen] = useState(false);
   const [cursor,setCursor] = useState(0);
@@ -49,9 +50,9 @@ export default function ChoicePicker({label,value,options,onChange,disabled,edit
   function choose(index: number) {
     const item = rows[index];
     if (!item || disabled) return;
+    restoreFocus.current = true;
     onChange(item.value);
     setOpen(false);
-    (editable ? input.current : trigger.current)?.focus();
   }
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (isImeKey(event.nativeEvent)) return;
@@ -134,6 +135,12 @@ export default function ChoicePicker({label,value,options,onChange,disabled,edit
     window.visualViewport?.addEventListener('resize',update);window.visualViewport?.addEventListener('scroll',update);
     return()=>{cancelAnimationFrame(frame);observer.disconnect();document.removeEventListener('scroll',onScroll,true);window.removeEventListener('resize',update);window.visualViewport?.removeEventListener('resize',update);window.visualViewport?.removeEventListener('scroll',update);if(supportsPopover&&list.matches(':popover-open'))list.hidePopover();};
   },[expanded,rows.length,placement,supportsPopover,menuMinWidth]);
+  useLayoutEffect(()=>{
+    if (expanded || !restoreFocus.current) return;
+    restoreFocus.current = false;
+    // 기본 팝오버가 닫히면서 초점을 돌려놓은 뒤 선택 입력에 초점을 맞춥니다.
+    (editable ? input.current : trigger.current)?.focus({preventScroll:true});
+  },[expanded,editable]);
   useEffect(()=>{
     if (!expanded) return;
     const row=optionRows.current[cursor];

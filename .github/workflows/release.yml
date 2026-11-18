@@ -366,7 +366,9 @@ jobs:
       - name: 기능별 화면 / 여백 / 작은 화면 / 가로 넘침
         id: verify_24
         continue-on-error: true
-        run: node tests/feature-surfaces-e2e.cjs
+        run: |
+          node tests/feature-surfaces-e2e.cjs
+          node tests/project-toolbar-e2e.cjs
       - name: 메시지 본문 / 서식 / 코드 / 파일과 링크
         id: verify_25
         continue-on-error: true

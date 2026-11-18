@@ -506,9 +506,10 @@ async function run(){
     assert(Math.abs(zoomBoxes.xDifference)<1&&Math.abs(zoomBoxes.widthDifference)<1&&zoomBoxes.gap>=3.5&&zoomBoxes.gap<=8.5);
     results.lock.push(zoomBoxes);
     await zoomedList.getByRole('option',{name:'60분 후'}).click();
-    assert(await combo.evaluate(input=>input===document.activeElement));
-    await combo.click();await combo.press('Tab');assert(!await zoomedList.count());
-    await combo.click();await dialog.getByRole('heading',{name:'화면 잠금',exact:true}).click();assert.equal(await zoomedList.count(),0);
+    await zoomedList.waitFor({state:'detached'});
+    await expect(combo).toBeFocused();
+    await combo.click();await combo.press('Tab');await zoomedList.waitFor({state:'detached'});
+    await combo.click();await dialog.getByRole('heading',{name:'화면 잠금',exact:true}).click();await zoomedList.waitFor({state:'detached'});
     await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].webContents.setZoomFactor(.87));
     await cdp.send('Emulation.clearDeviceMetricsOverride');await cdp.detach();
     await page.setViewportSize({width:1440,height:940});

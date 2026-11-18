@@ -60,7 +60,7 @@ async function run() {
       const side = document.querySelector('.workspace-side'), nav = side.querySelector('nav');
       const project = side.querySelector('.side-projects'), list = side.querySelector('.side-project-list');
       const box = e => { const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height }; };
-      return { width: innerWidth, height: innerHeight, expanded: side.dataset.expanded, pinned: side.dataset.pinned, documentOverflow: document.documentElement.scrollWidth - innerWidth, nav: { ...box(nav), scrollTop: nav.scrollTop, scrollHeight: nav.scrollHeight, clientHeight: nav.clientHeight }, project: box(project), list: { ...box(list), scrollTop: list.scrollTop, scrollHeight: list.scrollHeight, clientHeight: list.clientHeight }, groups: [...side.querySelectorAll('.side-group')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e) })), rows: [...side.querySelectorAll('nav>.side-row,.side-group>.side-row')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e), iconLeft: e.querySelector('svg').getBoundingClientRect().left, iconWidth: e.querySelector('svg').getBoundingClientRect().width })), account: box(side.querySelector('.side-account')), surface: box(side.querySelector('.sidebar-surface')), contentPaddingBottom:parseFloat(getComputedStyle(side.querySelector('.sidebar-content')).paddingBottom),surfaceBorderBottom:parseFloat(getComputedStyle(side.querySelector('.sidebar-surface')).borderBottomWidth),logo: box(side.querySelector('.side-brand img')), brandRow: box(side.querySelector('.side-brand-row')) };
+      return { width: innerWidth, height: innerHeight, pixelRatio: devicePixelRatio, expanded: side.dataset.expanded, pinned: side.dataset.pinned, documentOverflow: document.documentElement.scrollWidth - innerWidth, nav: { ...box(nav), scrollTop: nav.scrollTop, scrollHeight: nav.scrollHeight, clientHeight: nav.clientHeight }, project: box(project), list: { ...box(list), scrollTop: list.scrollTop, scrollHeight: list.scrollHeight, clientHeight: list.clientHeight }, groups: [...side.querySelectorAll('.side-group')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e) })), rows: [...side.querySelectorAll('nav>.side-row,.side-group>.side-row')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e), iconLeft: e.querySelector('svg').getBoundingClientRect().left, iconWidth: e.querySelector('svg').getBoundingClientRect().width })), account: box(side.querySelector('.side-account')), surface: box(side.querySelector('.sidebar-surface')), contentPaddingBottom:parseFloat(getComputedStyle(side.querySelector('.sidebar-content')).paddingBottom),surfaceBorderBottom:parseFloat(getComputedStyle(side.querySelector('.sidebar-surface')).borderBottomWidth),logo: box(side.querySelector('.side-brand img')), brandRow: box(side.querySelector('.side-brand-row')) };
     });
     const first = await measure();
     if (baseline) {
@@ -81,8 +81,10 @@ async function run() {
     const checkLogo = m => {
       const logoCenter = m.logo.left + m.logo.width / 2;
       const targetCenter = m.expanded === 'true' ? m.rows[0].iconLeft + m.rows[0].iconWidth / 2 : m.surface.left + m.surface.width / 2;
-      assert.ok(Math.abs(logoCenter - targetCenter) < 1, `${m.width}×${m.height} 로고 가로 중심 ${logoCenter} / 기준 ${targetCenter}`);
-      assert.ok(Math.abs(m.logo.top + m.logo.height / 2 - (m.brandRow.top + m.brandRow.height / 2)) < 1, `${m.width}×${m.height} 브랜드 행의 세로 중심`);
+      // 87% 배율에서는 CSS 1px보다 실제 화면 1픽셀이 큽니다. 테두리의 화면 픽셀 반올림을 같은 단위로 비교합니다.
+      const horizontalPixels = Math.abs(logoCenter - targetCenter) * m.pixelRatio;
+      assert.ok(horizontalPixels < 1.01, `${m.width}×${m.height} 로고 가로 중심 ${logoCenter} / 기준 ${targetCenter} / 실제 화면 오차 ${horizontalPixels}px`);
+      assert.ok(Math.abs(m.logo.top + m.logo.height / 2 - (m.brandRow.top + m.brandRow.height / 2)) * m.pixelRatio < 1.01, `${m.width}×${m.height} 브랜드 행의 세로 중심`);
     };
     const checkLayout = m => {
       checkLogo(m);
