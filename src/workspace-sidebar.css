@@ -51,10 +51,8 @@
 .side-project-list>p{padding:6px 10px;margin:0;color:var(--muted);font-size:12px;line-height:20px}
 .app-shell .workspace-side .sidebar-surface .side-project{height:38px;min-height:38px;padding:0 9px;gap:10px}
 .workspace-side .side-row>.side-project-icon{position:relative;display:grid;place-items:center;flex:none;width:18px;height:18px;overflow:visible}
-.app-shell .workspace-side .sidebar-surface .side-project:not([data-status-count="0"]){height:46px;min-height:46px;padding-top:20px}
-.side-project-markers{position:absolute;left:-10px;bottom:calc(100% + 4px);display:flex;gap:4px;width:max-content;pointer-events:none}
-.side-project-marker{display:flex;flex:none;width:38px;align-items:center;justify-content:center;gap:2px;min-height:16px;padding:2px 1px;border-radius:3px;background:color-mix(in srgb,var(--project-status-color) 16%,var(--panel));color:var(--text);font-size:10px;font-weight:700;line-height:12px;white-space:nowrap}
-.workspace-side[data-expanded=false] .side-project-marker:not([data-primary=true]){display:none}
+.side-project-markers{position:absolute;left:-11px;bottom:calc(100% - 6px);display:flex;width:38px;pointer-events:none}
+.side-project-marker{display:flex;flex:none;width:100%;align-items:center;justify-content:center;gap:2px;height:14px;min-height:14px;padding:1px;border-radius:3px;background:color-mix(in srgb,var(--project-status-color) 16%,var(--panel));color:var(--text);font-size:8.5px;font-weight:700;line-height:12px;white-space:nowrap}
 .side-project-marker i{display:block;width:4px;height:4px;flex:none;border-radius:1px;background:var(--project-status-color)}
 .side-project-marker[data-state=running]{--project-status-color:#4b8cbb}
 .side-project-marker[data-state=waiting]{--project-status-color:#8c96ac}

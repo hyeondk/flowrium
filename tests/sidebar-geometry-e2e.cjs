@@ -50,27 +50,36 @@ async function run() {
     const markerGeometry=()=>markerRow.evaluate(row=>{
       const icon=row.querySelector('.side-project-icon>svg').getBoundingClientRect(),title=row.querySelector('strong').getBoundingClientRect();
       const count=row.querySelector('.side-project-count'),markers=row.querySelector('.side-project-markers');
+      const scale=row.getBoundingClientRect().width/parseFloat(getComputedStyle(row).width);
       return {icon:[icon.x,icon.y,icon.width,icon.height],title:[title.x,title.y,title.height],height:parseFloat(getComputedStyle(row).height),
         count:count.textContent,background:getComputedStyle(count).backgroundColor,description:row.getAttribute('aria-description'),markerLabel:markers?.getAttribute('aria-label'),
-        markers:[...row.querySelectorAll('.side-project-marker')].map(marker=>{const dot=marker.querySelector('i'),r=dot.getBoundingClientRect();return {state:marker.dataset.state,label:marker.textContent,width:parseFloat(getComputedStyle(dot).width),height:parseFloat(getComputedStyle(dot).height),x:r.x,y:r.y,right:r.right}})};
+        markers:[...row.querySelectorAll('.side-project-marker')].map(marker=>{const dot=marker.querySelector('i'),r=dot.getBoundingClientRect(),box=marker.getBoundingClientRect(),label=marker.querySelector('span').getBoundingClientRect();return {state:marker.dataset.state,label:marker.textContent,visible:getComputedStyle(marker).display!=='none',width:parseFloat(getComputedStyle(dot).width),height:parseFloat(getComputedStyle(dot).height),boxWidth:box.width/scale,contentLeft:(r.left-box.left)/scale,contentRight:(box.right-label.right)/scale,x:r.x,y:r.y,right:r.right}})};
     });
     const beforeMarkers=await markerGeometry();
     assert.deepEqual(beforeMarkers.markers.map(item=>[item.state,item.label]),[['waiting','대기']],'실제 발생한 상태만 폴더 위에 표시합니다.');
-    assert(Math.abs(beforeMarkers.height-46)<.1,'한 상태가 있는 프로젝트는 46px로 표시합니다.');
+    assert(Math.abs(beforeMarkers.height-38)<.1,'상태 유무와 관계없이 프로젝트는 38px로 표시합니다.');
     await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'대기검증',mode:'plan'}),runningSession.id);
+    await markerRow.locator('.side-project-marker[data-state=running]').waitFor();
+    const runningMarkers=await markerGeometry();
     await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'승인검증',mode:'build'}),decisionSession.id);
-    await page.waitForFunction(()=>document.querySelectorAll('.side-project-markers i').length===3);
+    await page.waitForFunction(()=>document.querySelector('.side-project-markers')?.getAttribute('aria-label')==='작업중 1건 / 대기 1건 / 결정 1건');
     const afterMarkers=await markerGeometry();
-    assert.deepEqual(afterMarkers.markers.map(item=>item.state),['running','waiting','decision']);
+    const bannerWidths=[beforeMarkers,runningMarkers,afterMarkers].map(measurement=>measurement.markers[0]);
+    assert.deepEqual(bannerWidths.map(marker=>marker.state),['waiting','running','decision']);
+    assert(bannerWidths.every(marker=>Math.abs(marker.boxWidth-38)<.1),'세 상태 배너의 실제 너비를 모두 38px로 유지합니다.');
+    assert(Math.max(...bannerWidths.map(marker=>marker.boxWidth))-Math.min(...bannerWidths.map(marker=>marker.boxWidth))<.1,'상태 이름 길이가 달라도 배너 너비는 같습니다.');
+    assert(bannerWidths.every(marker=>marker.contentLeft>=.9&&marker.contentRight>=.9&&Math.abs(marker.contentLeft-marker.contentRight)<.1),'점과 글자를 포함한 전체 콘텐츠의 좌우 안쪽 여백을 대칭으로 유지합니다. '+JSON.stringify(bannerWidths));
+    console.log(JSON.stringify({bannerWidths:bannerWidths.map(({state,boxWidth,contentLeft,contentRight})=>({state,boxWidth,contentLeft,contentRight}))}));
+    assert.deepEqual(afterMarkers.markers.map(item=>item.state),['decision'],'대표 배너만 렌더링하고 상세 상태는 접근성 설명에 보존합니다.');
     assert.equal(afterMarkers.count,'3','오른쪽 숫자는 작업 상태가 아닌 전체 대화 수입니다.');
     assert.equal(afterMarkers.background,'rgba(0, 0, 0, 0)','대화 수에 채움 배경을 넣지 않습니다.');
     for(const label of ['작업중 1건','대기 1건','결정 1건']){
       assert(afterMarkers.markerLabel.includes(label));
       assert(afterMarkers.description.includes(label));
     }
-    assert(afterMarkers.markers.every(marker=>Math.abs(marker.width-4)<.1&&Math.abs(marker.height-4)<.1&&marker.y<afterMarkers.icon[1]&&Math.abs(marker.y-afterMarkers.markers[0].y)<.1),'세 상태 색상 점은 폴더 위 같은 높이의 한 줄에 놓입니다.');
-    assert(Math.abs(afterMarkers.icon[0]-beforeMarkers.icon[0])<1&&Math.abs(afterMarkers.title[0]-beforeMarkers.title[0])<1,'상태가 늘어나도 폴더와 제목의 가로 열은 유지합니다.');
-    assert(Math.abs(afterMarkers.height-46)<.1,'복합 상태도 한 줄 배너로 46px 높이를 유지합니다.');
+    assert.deepEqual(afterMarkers.markers.filter(marker=>marker.visible).map(marker=>marker.state),['decision'],'복합 상태에서는 결정 / 작업중 / 대기 우선순위의 대표 배너 하나만 보입니다.');
+    assert([...afterMarkers.icon,...afterMarkers.title].every((value,index)=>Math.abs(value-[...beforeMarkers.icon,...beforeMarkers.title][index])<.1),'상태가 늘어나도 폴더와 제목의 가로·세로 좌표가 바뀌지 않습니다.');
+    assert(Math.abs(afterMarkers.height-38)<.1,'복합 상태도 38px 행과 기존 아이콘 좌표를 유지합니다.');
     assert(Math.abs(afterMarkers.icon[1]+afterMarkers.icon[3]/2-afterMarkers.title[1]-afterMarkers.title[2]/2)<1,'폴더와 프로젝트 이름의 중심을 맞춥니다.');
     console.log(JSON.stringify({multipleStates:afterMarkers.markers.map(item=>[item.state,item.label]),conversationCount:afterMarkers.count,markerSize:4,singleHeight:beforeMarkers.height,multipleHeight:afterMarkers.height}));
     const sample = () => side.evaluate(node => {
@@ -101,8 +110,8 @@ async function run() {
       });
       const surface=node.querySelector('.sidebar-surface').getBoundingClientRect();
       const statusProjects=[...node.querySelectorAll('.side-project:has(.side-project-markers)')].map(row=>{
-        const box=row.getBoundingClientRect(),icon=row.querySelector('.side-project-icon>svg').getBoundingClientRect(),markers=row.querySelector('.side-project-markers').getBoundingClientRect();
-        return {states:[...row.querySelectorAll('.side-project-marker')].filter(marker=>getComputedStyle(marker).display!=='none').map(marker=>{const dot=marker.querySelector('i').getBoundingClientRect(),label=marker.querySelector('span').getBoundingClientRect(),rect=marker.getBoundingClientRect();return {state:marker.dataset.state,label:marker.textContent,color:getComputedStyle(marker.querySelector('i')).backgroundColor,fontSize:parseFloat(getComputedStyle(marker).fontSize),radius:parseFloat(getComputedStyle(marker).borderRadius),innerTop:(label.top-rect.top)/scale,innerBottom:(rect.bottom-label.bottom)/scale,left:rect.left/scale,right:rect.right/scale,top:rect.top/scale,bottom:rect.bottom/scale,dotGap:(label.left-dot.right)/scale,visible:getComputedStyle(marker).visibility==='visible'&&label.left>=surface.left&&label.right<=surface.right};}),topGap:(markers.top-box.top)/scale,iconGap:(icon.top-markers.bottom)/scale};
+        const box=row.getBoundingClientRect(),svg=row.querySelector('.side-project-icon>svg'),icon=svg.getBoundingClientRect(),outline=svg.querySelector('path'),markers=row.querySelector('.side-project-markers').getBoundingClientRect(),outlineTop=outline.getBoundingClientRect().top-parseFloat(getComputedStyle(outline).strokeWidth)*icon.width/24/2;
+        return {states:[...row.querySelectorAll('.side-project-marker')].filter(marker=>getComputedStyle(marker).display!=='none').map(marker=>{const dot=marker.querySelector('i').getBoundingClientRect(),label=marker.querySelector('span').getBoundingClientRect(),rect=marker.getBoundingClientRect();return {state:marker.dataset.state,label:marker.textContent,color:getComputedStyle(marker.querySelector('i')).backgroundColor,fontSize:parseFloat(getComputedStyle(marker).fontSize),radius:parseFloat(getComputedStyle(marker).borderRadius),innerTop:(label.top-rect.top)/scale,innerBottom:(rect.bottom-label.bottom)/scale,left:rect.left/scale,right:rect.right/scale,top:rect.top/scale,bottom:rect.bottom/scale,dotGap:(label.left-dot.right)/scale,visible:getComputedStyle(marker).visibility==='visible'&&label.left>=surface.left&&label.right<=surface.right};}),topGap:(markers.top-box.top)/scale,iconOverlap:(markers.bottom-outlineTop)/scale,titleGap:(row.querySelector('.side-project-label').getBoundingClientRect().left-markers.right)/scale};
       });
       return {
         positions:[...icons].map(e=>{const r=e.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2];}),
@@ -159,11 +168,11 @@ async function run() {
         assert.equal(state.bottomSummaryCount,0,'좌측 하단에 전체 상태 세 행을 반복 표시하지 않습니다.');
         assert.equal(state.statusProjects.length,1,'상태가 없는 프로젝트에는 빈 상태 공간을 만들지 않습니다.');
         for(const project of state.statusProjects){
-          assert.deepEqual(project.states.map(row=>[row.state,row.label]),state===closed?[['decision','결정']]:[['running','작업중'],['waiting','대기'],['decision','결정']]);
-          assert(project.topGap>=2.9&&project.iconGap>=3.9,'상태 이름과 행 위쪽 / 폴더 사이에 간격을 유지합니다. '+JSON.stringify(project));
-          assert(project.states.every(row=>row.visible&&row.fontSize>=10&&row.dotGap>=1.9&&row.radius===3&&row.innerTop>=1.9&&row.innerBottom>=1.9),'접혀 있어도 색상 점과 상태 이름을 읽을 수 있습니다.');
-          assert.equal(new Set(project.states.map(row=>row.color)).size,state===closed?1:3,'표시된 상태의 기존 색을 유지합니다.');
-          assert(project.states.slice(1).every((row,index)=>Math.abs(row.top-project.states[index].top)<.1&&row.left-project.states[index].right>=3.9),'복수 상태는 세로로 쌓지 않고 폴더 위의 한 줄에서 4px 간격을 둡니다.');
+          assert.deepEqual(project.states.map(row=>[row.state,row.label]),[['decision','결정']]);
+          assert(project.topGap>=1.8&&project.iconOverlap>=2.9&&project.iconOverlap<=5.1&&project.titleGap>=.9,'배너는 행 안에서 실제 폴더 윗 테두리에 3~5px 겹치며 제목과 양수 간격을 둡니다. '+JSON.stringify(project));
+          assert(project.states.every(row=>row.visible&&row.fontSize===8.5&&row.dotGap>=1.9&&row.radius===3&&row.innerTop>=.9&&row.innerBottom>=.9),'접혀 있어도 색상 점과 8.5px 상태 이름을 읽을 수 있습니다.');
+          assert.equal(new Set(project.states.map(row=>row.color)).size,1,'대표 상태의 기존 색을 유지합니다.');
+          assert.equal(project.states.length,1,'접힘과 펼침 모두 대표 배너 하나만 표시합니다.');
         }
       }
       console.log(JSON.stringify({height,projectStatuses:closed.statusProjects,titleSizes:open.titleSizes,functionWeights:open.functionWeights}));
@@ -183,10 +192,10 @@ async function run() {
       assert(Math.abs(closed.width-56)<0.1);
       assert(Math.abs(open.surfaceWidth-236)<0.1);
       assert.equal(open.projects.length,8);
-      assert(open.projects.every(p=>Math.abs(p.height-(p.states?46:38))<0.1),'상태 없는 프로젝트는 38px / 상태가 있는 프로젝트만 필요한 높이를 사용합니다.');
+      assert(open.projects.every(p=>Math.abs(p.height-38)<0.1),'상태 유무와 개수에 관계없이 프로젝트 행을 38px로 유지합니다.');
       assert(open.projects.slice(1).every((project,index)=>project.top-open.projects[index].bottom>=1.9),'인접한 프로젝트 선택 면 사이에 실제 2px 간격을 유지합니다.');
       assert(Math.abs(open.projectListHeight-(open.projects.reduce((sum,p)=>sum+p.height,0)+2*open.projects.length))<.2,'실제 행과 2px 간격 / 상하 1px 이외의 예약 공간은 없습니다.');
-      assert(open.largestNavGap<=44.1,'복합 상태 행 외의 프로젝트를 불필요하게 벌리지 않습니다.');
+      assert(Math.abs(open.largestNavGap-40)<.1,'모든 프로젝트 아이콘의 중심 간격을 40px로 유지합니다.');
       assert(open.lastToolBottom>=open.navBottom-2,'도구 그룹은 기존처럼 탐색 영역 아래쪽에 있습니다.');
       assert(open.navBottom<=open.footerTop,'탐색 스크롤은 하단 사용량과 설정을 가리지 않습니다.');
       if(height>=800){
