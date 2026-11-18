@@ -801,6 +801,10 @@
   background:transparent; color:var(--text); font:inherit; font-size:13px; line-height:21px; text-align:start;
 }
 .project-detail-navigation>button:is(:hover,[aria-current=page]) {color:var(--accent); background:var(--accent-bg)}
+@container portfolio (max-width:410px) {
+  .project-toolbar-actions {position:relative}
+  .project-menu {position:static}
+}
 .project-document-scroll {flex:1; min-height:0; overflow:auto; scrollbar-gutter:stable}
 .app-shell .pf-overview .project-document-content {
   display:flex; flex-direction:column; gap:13px; width:100%; max-width:none; min-height:0;

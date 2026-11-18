@@ -48,16 +48,15 @@ async function run() {
     const markerRow=side.getByRole('button',{name:markerProject.name,exact:true});
     await markerRow.locator('[data-state=waiting]').waitFor();
     const markerGeometry=()=>markerRow.evaluate(row=>{
-      const icon=row.querySelector('.side-project-icon>svg').getBoundingClientRect();
-      const title=row.querySelector('strong').getBoundingClientRect();
-      const count=row.querySelector('.side-project-count'),counterStyle=getComputedStyle(count);
-      const markers=row.querySelector('.side-project-markers');
-      return {icon:[icon.x,icon.y,icon.width,icon.height],title:[title.x,title.y],
-        count:count.textContent,background:counterStyle.backgroundColor,description:row.getAttribute('aria-description'),
-        markerLabel:markers?.getAttribute('aria-label'),
-        markers:[...row.querySelectorAll('.side-project-markers i')].map(marker=>{const r=marker.getBoundingClientRect();return {state:marker.dataset.state,width:parseFloat(getComputedStyle(marker).width),height:parseFloat(getComputedStyle(marker).height),x:r.x,y:r.y,right:r.right}})};
+      const icon=row.querySelector('.side-project-icon>svg').getBoundingClientRect(),title=row.querySelector('strong').getBoundingClientRect();
+      const count=row.querySelector('.side-project-count'),markers=row.querySelector('.side-project-markers');
+      return {icon:[icon.x,icon.y,icon.width,icon.height],title:[title.x,title.y,title.height],height:parseFloat(getComputedStyle(row).height),
+        count:count.textContent,background:getComputedStyle(count).backgroundColor,description:row.getAttribute('aria-description'),markerLabel:markers?.getAttribute('aria-label'),
+        markers:[...row.querySelectorAll('.side-project-marker')].map(marker=>{const dot=marker.querySelector('i'),r=dot.getBoundingClientRect();return {state:marker.dataset.state,label:marker.textContent,width:parseFloat(getComputedStyle(dot).width),height:parseFloat(getComputedStyle(dot).height),x:r.x,y:r.y,right:r.right}})};
     });
     const beforeMarkers=await markerGeometry();
+    assert.deepEqual(beforeMarkers.markers.map(item=>[item.state,item.label]),[['waiting','대기']],'실제 발생한 상태만 폴더 위에 표시합니다.');
+    assert(Math.abs(beforeMarkers.height-46)<.1,'한 상태가 있는 프로젝트는 46px로 표시합니다.');
     await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'대기검증',mode:'plan'}),runningSession.id);
     await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'승인검증',mode:'build'}),decisionSession.id);
     await page.waitForFunction(()=>document.querySelectorAll('.side-project-markers i').length===3);
@@ -69,14 +68,16 @@ async function run() {
       assert(afterMarkers.markerLabel.includes(label));
       assert(afterMarkers.description.includes(label));
     }
-    assert(afterMarkers.markers.every(marker=>Math.abs(marker.width-5)<.1&&Math.abs(marker.height-5)<.1&&marker.y<afterMarkers.icon[1]&&marker.right<=afterMarkers.icon[0]+afterMarkers.icon[2]+1),'세 상태 상자는 폴더 왼쪽 위에 작게 놓입니다.');
-    assert([...afterMarkers.icon,...afterMarkers.title].every((value,index)=>Math.abs(value-[...beforeMarkers.icon,...beforeMarkers.title][index])<1),'복수 상태가 나타나도 폴더와 제목 기준선은 움직이지 않습니다.');
-    console.log(JSON.stringify({multipleStates:afterMarkers.markers.map(item=>item.state),conversationCount:afterMarkers.count,markerSize:5,markerGeometryStable:true}));
+    assert(afterMarkers.markers.every(marker=>Math.abs(marker.width-4)<.1&&Math.abs(marker.height-4)<.1&&marker.y<afterMarkers.icon[1]&&Math.abs(marker.y-afterMarkers.markers[0].y)<.1),'세 상태 색상 점은 폴더 위 같은 높이의 한 줄에 놓입니다.');
+    assert(Math.abs(afterMarkers.icon[0]-beforeMarkers.icon[0])<1&&Math.abs(afterMarkers.title[0]-beforeMarkers.title[0])<1,'상태가 늘어나도 폴더와 제목의 가로 열은 유지합니다.');
+    assert(Math.abs(afterMarkers.height-46)<.1,'복합 상태도 한 줄 배너로 46px 높이를 유지합니다.');
+    assert(Math.abs(afterMarkers.icon[1]+afterMarkers.icon[3]/2-afterMarkers.title[1]-afterMarkers.title[2]/2)<1,'폴더와 프로젝트 이름의 중심을 맞춥니다.');
+    console.log(JSON.stringify({multipleStates:afterMarkers.markers.map(item=>[item.state,item.label]),conversationCount:afterMarkers.count,markerSize:4,singleHeight:beforeMarkers.height,multipleHeight:afterMarkers.height}));
     const sample = () => side.evaluate(node => {
       const icons = node.querySelectorAll('.side-brand img, nav>.side-row>svg, .side-project-section-icon, .side-project-head button svg, .side-project-icon>svg, .side-group .side-row>svg, .side-usage-refresh>svg, .settings-button>svg');
       const nav=node.querySelector('nav'),navBox=nav.getBoundingClientRect();
       const projects=[...node.querySelectorAll('.side-project')].map(e=>{
-        const r=e.getBoundingClientRect();return {height:parseFloat(getComputedStyle(e).height),top:r.top,bottom:r.bottom};
+        const r=e.getBoundingClientRect();return {height:parseFloat(getComputedStyle(e).height),states:Number(e.dataset.statusCount),top:r.top,bottom:r.bottom};
       });
       const projectCenters=[...node.querySelectorAll('.side-project')].map(e=>{
         const r=e.getBoundingClientRect();return r.top+r.height/2;
@@ -98,10 +99,10 @@ async function run() {
         const rect=button.getBoundingClientRect(),label=button.querySelector('span'),labelRect=label.getBoundingClientRect(),icon=button.querySelector('svg').getBoundingClientRect();
         return {name:button.getAttribute('aria-label'),width:rect.width/scale,labelLeft:labelRect.left/scale,labelVisible:getComputedStyle(label).visibility==='visible',iconX:(icon.x+icon.width/2)/scale,labelGap:(labelRect.left-icon.right)/scale};
       });
-      const surface=node.querySelector('.sidebar-surface').getBoundingClientRect(),statusBox=node.querySelector('.side-execution').getBoundingClientRect();
-      const statusRows=[...node.querySelectorAll('.side-execution button')].map(button=>{
-        const box=button.getBoundingClientRect(),dot=button.querySelector('i'),label=button.querySelector('span'),count=button.querySelector('strong'),a=dot.getBoundingClientRect(),b=label.getBoundingClientRect(),c=count.getBoundingClientRect();
-        return {state:button.dataset.state,label:label.textContent,count:count.textContent,height:box.height/scale,top:box.top/scale,bottom:box.bottom/scale,color:getComputedStyle(dot).backgroundColor,visible:[dot,label,count].every(el=>getComputedStyle(el).visibility==='visible'&&el.getBoundingClientRect().right<=surface.right+.1),dotGap:(b.left-a.right)/scale,countGap:(node.dataset.expanded==='true'?c.left-b.right:c.top-b.bottom)/scale,edgeGap:Math.min(b.top-box.top,c.top-box.top,box.bottom-b.bottom,box.bottom-c.bottom)/scale};
+      const surface=node.querySelector('.sidebar-surface').getBoundingClientRect();
+      const statusProjects=[...node.querySelectorAll('.side-project:has(.side-project-markers)')].map(row=>{
+        const box=row.getBoundingClientRect(),icon=row.querySelector('.side-project-icon>svg').getBoundingClientRect(),markers=row.querySelector('.side-project-markers').getBoundingClientRect();
+        return {states:[...row.querySelectorAll('.side-project-marker')].filter(marker=>getComputedStyle(marker).display!=='none').map(marker=>{const dot=marker.querySelector('i').getBoundingClientRect(),label=marker.querySelector('span').getBoundingClientRect(),rect=marker.getBoundingClientRect();return {state:marker.dataset.state,label:marker.textContent,color:getComputedStyle(marker.querySelector('i')).backgroundColor,fontSize:parseFloat(getComputedStyle(marker).fontSize),radius:parseFloat(getComputedStyle(marker).borderRadius),innerTop:(label.top-rect.top)/scale,innerBottom:(rect.bottom-label.bottom)/scale,left:rect.left/scale,right:rect.right/scale,top:rect.top/scale,bottom:rect.bottom/scale,dotGap:(label.left-dot.right)/scale,visible:getComputedStyle(marker).visibility==='visible'&&label.left>=surface.left&&label.right<=surface.right};}),topGap:(markers.top-box.top)/scale,iconGap:(icon.top-markers.bottom)/scale};
       });
       return {
         positions:[...icons].map(e=>{const r=e.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2];}),
@@ -124,7 +125,7 @@ async function run() {
         groupIconAligned:Math.abs((sectionIcon.x+sectionIcon.width/2)-(firstFolder.x+firstFolder.width/2))/scale,
         groupTitleAligned:Math.abs(node.querySelector('.side-project-head h2').getBoundingClientRect().left-node.querySelector('.side-project-label strong').getBoundingClientRect().left)/scale,
         footerButtons,footerIconAligned:Math.abs(footerButtons[0].iconX-(firstFolder.x+firstFolder.width/2)/scale),
-        statusRows,statusHeight:statusBox.height/scale,statusNavGap:(statusBox.top-navBox.bottom)/scale,statusFootGap:(footerBox.top-statusBox.bottom)/scale,
+        statusProjects,bottomSummaryCount:node.querySelectorAll('.side-execution,.execution-summary').length,
         functionWeights:[...node.querySelectorAll('.side-row:not(.side-project)>span,.side-project-head h2')].map(el=>Number(getComputedStyle(el).fontWeight)),
         titleSizes:[node.querySelector('.side-dashboard>span'),node.querySelector('.side-project-head h2')].map(el=>parseFloat(getComputedStyle(el).fontSize)),
       };
@@ -154,15 +155,18 @@ async function run() {
       assert(open.brandGap>=11&&open.brandGap<=13,'브랜드 아래에 약12px 간격을 둡니다.');
       assert(open.groupIconAligned<1&&open.groupTitleAligned<1,'프로젝트 묶음 아이콘과 제목은 실제 프로젝트의 아이콘·제목 열에 정렬합니다.');
       assert(Math.abs(open.titleSizes[0]-open.titleSizes[1])<.1&&open.functionWeights.every(weight=>weight>=700),'프로젝트 제목 크기를 대시보드와 맞추고 기능 이름을 굵게 표시합니다.');
-      assert(Math.abs(open.statusHeight-closed.statusHeight)<.1,'상태 요약 때문에 접힘과 펼침의 세로 배치가 움직이지 않습니다.');
-      console.log(JSON.stringify({height,statusHeight:open.statusHeight,statusButtonGaps:open.statusRows.slice(1).map((row,index)=>row.top-open.statusRows[index].bottom),closedStateGaps:closed.statusRows.map(row=>({dot:row.dotGap,count:row.countGap,edge:row.edgeGap})),titleSizes:open.titleSizes,functionWeights:open.functionWeights}));
       for(const state of [closed,open]){
-        assert.deepEqual(state.statusRows.map(row=>[row.state,row.label,row.count]),[['running','작업중','1'],['waiting','대기','1'],['decision','결정','1']]);
-        assert(state.statusRows.every(row=>row.visible&&row.height>=27.9&&row.dotGap>=1.9&&row.countGap>=1.9&&row.edgeGap>=.9),'마우스 없이 상태 점 / 이름 / 건수를 읽고 각 요소와 행 경계가 맞닿지 않습니다. '+JSON.stringify(state.statusRows));
-        assert.equal(new Set(state.statusRows.map(row=>row.color)).size,3,'세 실행 상태의 기존 점 색상을 구분합니다.');
-        assert(state.statusRows.slice(1).every((row,index)=>row.top-state.statusRows[index].bottom>=1.9),'상태 버튼 사이에도 최소 2px 간격을 둡니다.');
-        assert(state.statusNavGap>=3.9&&state.statusFootGap>=3.9,'상태 요약과 탐색 / 사용량 사이에 양수 간격을 유지합니다.');
+        assert.equal(state.bottomSummaryCount,0,'좌측 하단에 전체 상태 세 행을 반복 표시하지 않습니다.');
+        assert.equal(state.statusProjects.length,1,'상태가 없는 프로젝트에는 빈 상태 공간을 만들지 않습니다.');
+        for(const project of state.statusProjects){
+          assert.deepEqual(project.states.map(row=>[row.state,row.label]),state===closed?[['decision','결정']]:[['running','작업중'],['waiting','대기'],['decision','결정']]);
+          assert(project.topGap>=2.9&&project.iconGap>=3.9,'상태 이름과 행 위쪽 / 폴더 사이에 간격을 유지합니다. '+JSON.stringify(project));
+          assert(project.states.every(row=>row.visible&&row.fontSize>=10&&row.dotGap>=1.9&&row.radius===3&&row.innerTop>=1.9&&row.innerBottom>=1.9),'접혀 있어도 색상 점과 상태 이름을 읽을 수 있습니다.');
+          assert.equal(new Set(project.states.map(row=>row.color)).size,state===closed?1:3,'표시된 상태의 기존 색을 유지합니다.');
+          assert(project.states.slice(1).every((row,index)=>Math.abs(row.top-project.states[index].top)<.1&&row.left-project.states[index].right>=3.9),'복수 상태는 세로로 쌓지 않고 폴더 위의 한 줄에서 4px 간격을 둡니다.');
+        }
       }
+      console.log(JSON.stringify({height,projectStatuses:closed.statusProjects,titleSizes:open.titleSizes,functionWeights:open.functionWeights}));
       assert.deepEqual(open.footerButtons.map(button=>button.name),['설정','잠금','로그아웃']);
       assert(open.footerButtons.every(button=>button.labelVisible)&&closed.footerButtons.every(button=>!button.labelVisible),'펼침에서 하단 라벨을 보이고 접힘에서는 글자를 강제 표시하지 않습니다.');
       assert(Math.max(...open.footerButtons.map(button=>button.width))-Math.min(...open.footerButtons.map(button=>button.width))<.1,'하단 세 버튼의 열 너비를 같게 맞춥니다.');
@@ -179,10 +183,10 @@ async function run() {
       assert(Math.abs(closed.width-56)<0.1);
       assert(Math.abs(open.surfaceWidth-236)<0.1);
       assert.equal(open.projects.length,8);
-      assert(open.projects.every(p=>Math.abs(p.height-38)<0.1),'프로젝트 선택 면을 38px로 두고 기존 40px 중심 간격을 유지합니다.');
+      assert(open.projects.every(p=>Math.abs(p.height-(p.states?46:38))<0.1),'상태 없는 프로젝트는 38px / 상태가 있는 프로젝트만 필요한 높이를 사용합니다.');
       assert(open.projects.slice(1).every((project,index)=>project.top-open.projects[index].bottom>=1.9),'인접한 프로젝트 선택 면 사이에 실제 2px 간격을 유지합니다.');
-      assert(Math.abs(open.projectListHeight-320)<0.2,'8개 프로젝트의 38px 행 / 2px 간격 / 상하 1px를 합친 320px 높이를 유지합니다. 87% 화면 배율의 누적 서브픽셀 반올림을 허용합니다. '+JSON.stringify({actual:open.projectListHeight,expected:320}));
-      assert(open.largestNavGap<=42.1,'프로젝트 행 중심 간격은 42px 이하여야 합니다.');
+      assert(Math.abs(open.projectListHeight-(open.projects.reduce((sum,p)=>sum+p.height,0)+2*open.projects.length))<.2,'실제 행과 2px 간격 / 상하 1px 이외의 예약 공간은 없습니다.');
+      assert(open.largestNavGap<=44.1,'복합 상태 행 외의 프로젝트를 불필요하게 벌리지 않습니다.');
       assert(open.lastToolBottom>=open.navBottom-2,'도구 그룹은 기존처럼 탐색 영역 아래쪽에 있습니다.');
       assert(open.navBottom<=open.footerTop,'탐색 스크롤은 하단 사용량과 설정을 가리지 않습니다.');
       if(height>=800){
@@ -193,15 +197,17 @@ async function run() {
       assert.deepEqual(closed.percentages,['63%']);
       assert(!closed.credits && open.credits);
     }
+    const approvalNotices=page.locator('.flow-question-notice').getByRole('button',{name:'알림 닫기',exact:true});
+    while(await approvalNotices.count())await approvalNotices.first().click();
     for(const [state,title] of [['running','진행 상태 검증'],['waiting','추가 입력 대기'],['decision','결정 상태 검증']]){
-      await side.locator('.side-execution [data-state='+state+']').click();
+      await page.locator('.statusbar .execution-summary [data-state='+state+']').click();
       await page.waitForFunction(value=>document.querySelector('.dock-status-tabs [data-state='+value+']')?.getAttribute('aria-pressed')==='true',state);
       await page.locator('.dock-session-list').waitFor();
       const names=await page.locator('.dock-session strong').allTextContents();
       const expectedTitle=state==='waiting'?title:await page.evaluate(async id=>(await window.flowrium.bootstrap()).sessions.find(session=>session.id===id)?.title,state==='running'?runningSession.id:decisionSession.id);
-      assert.deepEqual(names,[expectedTitle],'좌측 상태를 선택하면 기존 필터에서 해당 대화만 보입니다.');
+      assert.deepEqual(names,[expectedTitle],'기존 전체 상태 필터에서 해당 대화만 보입니다.');
     }
-    console.log(JSON.stringify({sidebarStatusVisible:true,sidebarFilters:true,statusLabels:['작업중','대기','결정']}));
+    console.log(JSON.stringify({projectStatusLabelsVisible:true,bottomSidebarSummary:false,existingFilters:true,statusLabels:['작업중','대기','결정']}));
     await page.setViewportSize({width:1440,height:800});
     await side.locator('nav').evaluate(el=>{el.scrollTop=el.scrollHeight});
     const bottomReachable=await side.evaluate(node=>{
@@ -267,6 +273,7 @@ async function run() {
       return {image:style.backgroundImage,color:style.backgroundColor,stops,
         darkStops:['--sidebar','--bg'].map(token=>rgba(rootStyle.getPropertyValue(token).trim())),
         workspaceImage:getComputedStyle(document.querySelector('.app-shell')).backgroundImage,
+        markerColors:[...el.querySelectorAll('.side-project-marker')].map(marker=>{const computed=getComputedStyle(marker);return {text:rgba(computed.color),background:rgba(computed.backgroundColor)}}),
         colors:Object.fromEntries(['--panel','--panel-alt','--text','--muted','--accent-ink','--accent-soft','--accent-fill','--on-primary'].map(token=>[token,rgba(rootStyle.getPropertyValue(token).trim())]))};
     });
     const settledBackground=async()=>{
@@ -309,12 +316,14 @@ async function run() {
       for(const state of [collapsed,hovered,pinned])assert.deepEqual(state.stops,expected,'각 강조색의 그라데이션을 접힘·호버·고정에서 동일하게 유지합니다.');
       if(theme==='dark')assert(collapsed.stops.every(([r,g,b,a])=>Math.max(r,g,b)<160&&a===255),'어두운 모드의 좌측 패널이 흰색이나 투명한 배경으로 바뀌지 않습니다.');
       const colors=collapsed.colors;
+      const markerRatios=collapsed.markerColors.map(colors=>contrast(colors.text,colors.background));
+      assert(markerRatios.length>0&&markerRatios.every(ratio=>ratio>=4.5),'모든 테마에서 작은 상태 박스의 글자 대비를 4.5 이상 유지합니다. '+JSON.stringify(markerRatios));
       const ratios={body:contrast(colors['--text'],colors['--panel']),muted:Math.min(...collapsed.stops.map(stop=>contrast(colors['--muted'],stop))),selected:contrast(colors['--accent-ink'],colors['--accent-soft']),primary:contrast(colors['--on-primary'],colors['--accent-fill'])};
       assert(Object.values(ratios).every(ratio=>ratio>=4.5),'본문 / 보조 문구 / 선택 상태 / 강조 버튼의 대비를 4.5 이상 유지합니다. '+JSON.stringify({theme,accentColor,ratios}));
       workspaceBackgrounds[theme].push(collapsed.workspaceImage);
       const shortcut=await page.locator('.main-shell>.topbar .header-search kbd').evaluate(el=>({text:el.textContent,size:parseFloat(getComputedStyle(el).fontSize),weight:Number(getComputedStyle(el).fontWeight),visible:getComputedStyle(el).display!=='none'}));
       assert(shortcut.visible&&shortcut.size>=12.9&&shortcut.weight>=700&&/^(⌘|Ctrl) K$/.test(shortcut.text),'상단 검색 단축키를 플랫폼에 맞게 13px 굵기로 보여줍니다. '+JSON.stringify(shortcut));
-      console.log(JSON.stringify({theme,accentColor,sameBackground:true,colors:collapsed.stops,contrast:ratios,shortcut}));
+      console.log(JSON.stringify({theme,accentColor,sameBackground:true,colors:collapsed.stops,contrast:ratios,markerContrast:markerRatios,shortcut}));
       if(process.env.FLOWRIUM_SIDEBAR_CAPTURE)await side.locator('.sidebar-surface').screenshot({path:path.join(stage,`sidebar-${theme}-${accentColor}.png`)});
     }
     for(const theme of ['light','dark'])assert.equal(new Set(workspaceBackgrounds[theme]).size,3,'앱 바깥 배경도 파랑 / 초록 / 보라 선택에 함께 반응합니다.');

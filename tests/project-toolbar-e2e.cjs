@@ -31,6 +31,11 @@ async function main(){
      assert(sample.buttons.every(b=>b.receives),'모든 버튼 중심이 실제 포인터 입력을 받음 '+JSON.stringify(sample));
      assert(sample.document<=sample.viewport+1,'도구막대 가로 넘침 없음');
      assert(sample.buttons.every(b=>b.x>=sample.toolbar.x-.5&&b.right<=sample.toolbar.right+.5),'도구 버튼이 도구막대 안에 유지');
+     await page.getByRole('button',{name:'프로젝트 메뉴',exact:true}).click();
+     const menu=page.getByRole('navigation',{name:'프로젝트 상세 탭',exact:true}),menuBox=await settledLayout(menu);
+     sample.menu=menuBox;
+     assert(menuBox.x>=sample.toolbar.x-.5&&menuBox.x+menuBox.width<=sample.toolbar.right+.5,'메뉴 목록이 화면 안에 유지 '+JSON.stringify(sample));
+     await page.keyboard.press('Escape');await menu.waitFor({state:'hidden'});
     }
    }
   }

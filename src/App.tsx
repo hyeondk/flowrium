@@ -1474,7 +1474,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       <WorkspaceSidebar categories={categories} current={reportDialog||view} mobileOpen={sidebarOpen} projects={panelProjects} onProjectMove={navigation.move}
         selected={["overview","home","workspace","terminal"].includes(view)?projectId:undefined}
         onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} counts={projectCounts} accountUsage={accountUsage}
-        executionCounts={activeCounts} onExecution={state=>{setSidebarOpen(false);showExecution(state);}}
         onGo={value=>{if(value==='weekly'||value==='pause')setReportDialog(value);else setView(value);setSidebarOpen(false);}} onProject={selectProject}
         onTrash={()=>{setTrashOpen(true);setSidebarOpen(false);}} onSettings={()=>{setSettingsOpen(true);setSidebarOpen(false);}}
         onLock={()=>{setSidebarOpen(false);if(!security.state.hasPin){setSettingsOpen(true);notify("설정에서 잠금 번호를 정하세요.");return;}void security.lock().catch(fail);}}
