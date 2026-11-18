@@ -1146,7 +1146,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         <span>{session.context.used.toLocaleString("ko-KR")} 토큰</span><small>{session.context.percent}%</small>
                       </span>}
                       {(session.codexLink || session.desktopThread || session.context || session.workflow || !!session.queuedMessages?.length) &&
-                        <details className="session-details" key={session.id}>
+                        <details className="session-details" key={`connection:${session.id}`}>
                           <summary aria-label="대화 연결 및 작업 도구" title="대화 연결 및 작업 도구"><Settings2 size={16}/></summary>
                           <div className="session-details-body">
                             <CodexLinkBar session={session} running={running}/>
@@ -1155,7 +1155,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                             {session.workflow && <WorkSessionControls session={session} onSessionChange={rememberSession} running={running}/>}
                           </div>
                         </details>}
-                      <ConversationTools onHandoff={handoff} onNew={newSession} onExport={async()=>{try{if(await api?.exportSession(session.id))notify("작업 대화를 내보냈습니다.");}catch(error){fail(error);}}} onDelete={()=>setDeletionTarget({kind:"session",id:session.id,name:session.title})} key={session.id} session={session} models={models} running={running} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} defaults={data.settings.chatDefaults} defaultModel={data.settings.model} onDefaults={chatDefaults=>setData(old=>({...old,settings:{...old.settings,chatDefaults}}))} onRewind={draft=>setDrafts(prev=>({...prev,[draftKey]:{text:draft.text,mode,attachments:draft.attachments}}))} />
+                      <ConversationTools onHandoff={handoff} onNew={newSession} onExport={async()=>{try{if(await api?.exportSession(session.id))notify("작업 대화를 내보냈습니다.");}catch(error){fail(error);}}} onDelete={()=>setDeletionTarget({kind:"session",id:session.id,name:session.title})} key={`tools:${session.id}`} session={session} models={models} running={running} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} defaults={data.settings.chatDefaults} defaultModel={data.settings.model} onDefaults={chatDefaults=>setData(old=>({...old,settings:{...old.settings,chatDefaults}}))} onRewind={draft=>setDrafts(prev=>({...prev,[draftKey]:{text:draft.text,mode,attachments:draft.attachments}}))} />
                     </div>
                   </div>
                   {session.compacting && <p className="chat-context" role="status">문맥 압축 중</p>}
@@ -1474,6 +1474,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       <WorkspaceSidebar categories={categories} current={reportDialog||view} mobileOpen={sidebarOpen} projects={panelProjects} onProjectMove={navigation.move}
         selected={["overview","home","workspace","terminal"].includes(view)?projectId:undefined}
         onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} counts={projectCounts} accountUsage={accountUsage}
+        executionCounts={activeCounts} onExecution={state=>{setSidebarOpen(false);showExecution(state);}}
         onGo={value=>{if(value==='weekly'||value==='pause')setReportDialog(value);else setView(value);setSidebarOpen(false);}} onProject={selectProject}
         onTrash={()=>{setTrashOpen(true);setSidebarOpen(false);}} onSettings={()=>{setSettingsOpen(true);setSidebarOpen(false);}}
         onLock={()=>{setSidebarOpen(false);if(!security.state.hasPin){setSettingsOpen(true);notify("설정에서 잠금 번호를 정하세요.");return;}void security.lock().catch(fail);}}

@@ -132,7 +132,7 @@
 .app-shell .conversation-dock .dock-browser .dock-search input {
   height:100%;min-height:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;outline:0;font-size:12px;line-height:20px;
 }
-.conversation-dock .dock-session-list{gap:0}
+.conversation-dock .dock-session-list{gap:3px}
 .conversation-dock .dock-session{padding:11px 4px;border:0;border-bottom:1px solid var(--line-soft);border-radius:0;box-shadow:none}
 .conversation-dock .dock-session:hover,.conversation-dock .dock-session[data-selected=true]{background:var(--card-subtle)}
 .conversation-dock .dock-session strong{font-size:13px;line-height:20px;white-space:normal;word-break:keep-all}
@@ -146,12 +146,12 @@
   position:relative;z-index:4;min-height:42px;padding:3px var(--chat-gutter) 5px;gap:6px;align-items:center;background:var(--panel);
   border-bottom:1px solid var(--line-soft);
 }
-.conversation-dock .session-heading>div:first-child{flex:1;min-width:0}
+.conversation-dock .session-heading>div:first-child{display:grid;gap:5px;flex:1;min-width:0}
 .conversation-dock[data-chat-active=true] .session-heading .eyebrow{display:flex;align-items:center;gap:5px;margin:0;font-size:11px;line-height:16px;color:var(--muted)}
 .conversation-dock .session-heading .eyebrow svg{width:13px;height:13px;flex:none}
 .conversation-dock[data-chat-active=true] .session-heading h2{font-size:15px;line-height:19px;font-weight:700;letter-spacing:-.2px;white-space:normal;word-break:keep-all;margin:0}
 .conversation-dock .session-actions{flex:none;align-items:center;gap:4px}
-.chat-token-summary{display:grid;gap:0;justify-items:end;min-width:0;max-width:130px;padding-inline-end:3px;color:var(--muted);font-size:11px;line-height:15px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.chat-token-summary{display:grid;gap:3px;justify-items:end;min-width:0;max-width:130px;padding-inline-end:3px;color:var(--muted);font-size:11px;line-height:15px;white-space:nowrap;font-variant-numeric:tabular-nums}
 .chat-token-summary>small{font-size:10px;line-height:13px;color:var(--muted)}
 .session-details>summary {
   display:grid; place-items:center; width:30px; height:30px; color:var(--muted);

@@ -1,3 +1,4 @@
+const {openProjectTab}=require('./shell-test-helpers.cjs');
 const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -41,10 +42,7 @@ async function run() {
   try {
     await launch();
     await page.locator(".pf-project-entry").filter({ hasText: project.name }).click();
-    await page
-      .getByRole("navigation", { name: "프로젝트 상세 탭" })
-      .getByRole("button", { name: "규칙", exact: true })
-      .click();
+    await openProjectTab(page,'규칙');
     await btn("메모 추가").click();
     await page.getByLabel("메모 제목").fill("업무 응답 방식");
     await page.getByLabel("지시와 메모").fill("수량마다 단위를 표시해 주세요.");

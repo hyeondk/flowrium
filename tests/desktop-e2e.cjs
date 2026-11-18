@@ -43,9 +43,16 @@ async function run() {
     const closeDockOverlay=async()=>{const scrim=page.locator('.dock-mobile-scrim');if(await scrim.isVisible()){const dock=page.locator('.conversation-dock');if(await dock.getAttribute('data-phase')!=='exit')await dock.getByRole('button',{name:'대화함 접기',exact:true}).click();await scrim.waitFor({state:'hidden'});}};
     const goDashboard = async () => { await closeDockOverlay(); await sidebar().hover(); await sidebar().getByRole("button",{name:"대시보드",exact:true}).click(); };
     const goHome = async () => { await goDashboard(); await btn("업무 보드").click(); };
-    const projectTabs = () => page.getByRole("navigation",{name:"프로젝트 상세 탭"});
+    const openProjectTab = async name => {
+      const tabs=page.getByRole("navigation",{name:"프로젝트 상세 탭"});
+      if(!await tabs.isVisible())await btn('프로젝트 메뉴').click();
+      await tabs.getByRole('button',{name,exact:true}).click();
+    };
     const goProject = async () => { await closeDockOverlay(); await sidebar().hover(); await sidebar().locator(".side-project").first().click(); };
-    await settledRail(sidebar(),{expanded:false,pinned:false},'기본 탐색 메뉴 접힘');
+    await sidebar().waitFor();
+    if(await sidebar().getAttribute('data-pinned')==='true')await sidebar().getByRole('button',{name:'메뉴 자동 접기',exact:true}).click();
+    await page.mouse.move(600,100);
+    await settledRail(sidebar(),{expanded:false,pinned:false},'자동 접기 선택 후 탐색 메뉴 접힘');
     await sidebar().hover();
     await settledRail(sidebar(),{expanded:true,pinned:false},'탐색 메뉴 펼침');
     await page.mouse.move(600,100);
@@ -77,7 +84,9 @@ async function run() {
       assert.equal(await page.locator('.app-shell').getAttribute('data-chat-focus'),'false','대화는 우측에 고정되고 본 화면 유지');
       assert(await form.isVisible(),'대화를 열어도 가운데 업무 설정 화면 유지');
       assert.equal(await form.locator('input').first().inputValue(),'화면 검증 '+kind,'가운데 업무 설정 입력도 보존');
+      assert.equal(await page.locator('.dock-chat:not([data-phase=exit]) .session-heading .session-details').count(),1,'작업 응답이 갱신되어도 대화 작업 도구가 중복 생성되지 않음');
       if (kind === "research") {
+        await page.getByLabel('대화 연결 및 작업 도구',{exact:true}).click();
         await btn("리서치 / 진행 중").click();
         await page.getByLabel("새 체크리스트 항목").fill("근거 확인");
         await btn("추가").click();
@@ -113,7 +122,8 @@ async function run() {
     await btn("대화 연결 설정 저장").click();
     await conversationDialog.waitFor({state:"hidden"});
     await app.evaluate(({shell})=>{shell.openExternal=async value=>{globalThis.flowriumTestExternal=value;};});
-    await page.locator(".dock-chatgpt-button").click();
+    await btn("대화 관리").click();
+    await conversationDialog.getByRole("button",{name:"ChatGPT로 이어가기",exact:true}).click();
     assert.equal(await app.evaluate(()=>globalThis.flowriumTestExternal),chatAddress);
     await btn("대화 관리").click();
     await btn("여기까지 새 대화로 분기").click();
@@ -145,7 +155,7 @@ async function run() {
     const research = restored.find(s=>s.title==="화면 검증 research");
     assert.equal(research.workflow.checklist[0].done, true);
     assert(research.messages.some(m=>m.role==="assistant"));
-    await goProject();await projectTabs().getByRole("button",{name:"프로젝트 설정",exact:true}).click();
+    await goProject();await openProjectTab('프로젝트 설정');
     await page.locator(".project-details summary").click();
     await page.getByLabel("프로젝트 담당자").fill("검증 담당");
     await page.getByLabel("프로젝트 목표").fill("공개 앱 검증");
@@ -161,7 +171,7 @@ async function run() {
     await page.getByText("전체 CPU 사용률", {exact:true}).waitFor();
     await page.keyboard.press(process.platform === "darwin" ? "Meta+1" : "Control+1");
     await page.locator("[data-work-kind=research]").waitFor();
-    await goProject();await projectTabs().getByRole("button",{name:"팀",exact:true}).click();
+    await goProject();await openProjectTab('팀');
     await btn("팀 만들기").click();
     await page.getByLabel("팀 이름").fill("시험 팀");
     await btn("팀 저장").click();

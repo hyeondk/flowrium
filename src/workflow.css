@@ -24,6 +24,7 @@
 /* 결정 / 알림 / 전달 / 비서도 같은 행과 면으로 구성합니다. */
 .workflow-hub.workflow-hub { gap:20px; padding:20px; border:1px solid var(--line-soft); border-radius:12px; background:var(--panel); font-size:13px; line-height:22px; overflow-wrap:normal; }
 .workflow-hub > header { gap:16px; align-items:flex-start; }.workflow-hub > header h2 { font-size:18px; line-height:28px; }
+.workflow-hub > header > .ui-title-stagger { display:grid; gap:6px; }
 .workflow-hub > header button { margin-left:auto; flex:none; }
 .workflow-hub > nav { gap:4px; padding:4px; border:1px solid var(--line-soft); border-radius:10px; background:var(--card-subtle); flex-wrap:nowrap; overflow:auto; }
 .workflow-hub > nav button { min-height:36px; padding:6px 12px; border:0; border-radius:7px; background:transparent; color:var(--muted); font-size:13px; line-height:22px; white-space:nowrap; flex:none; }

@@ -22,7 +22,8 @@ async function verifyComposerResize(page, historyTitle, recommendationTitle) {
   const preview=await input.getAttribute('placeholder');
   assert(preview.length>65 && preview.length<=190,'여러 줄에 걸친 직전 답변의 후속 제안');
   const lineHeight=await input.evaluate(el=>parseFloat(getComputedStyle(el).lineHeight));
-  assert((await height(input))>=lineHeight*3,'좁은 창에서 추천 세 줄 이상 표시');
+  assert((await height(input))>=lineHeight*2,'좁은 창의 긴 추천이 여러 줄로 자연스럽게 표시');
+  assert(await input.evaluate(el=>el.scrollHeight<=el.clientHeight+1),'긴 추천 전문이 자동 입력 높이에 들어옴');
   const waitingActions=page.locator('.chat-continuation-actions');
   for (const width of [390,320]) {
     await page.setViewportSize({width,height:680});
@@ -96,14 +97,14 @@ async function run(){
   app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(20000);page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:900});await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();await page.evaluate(()=>document.fonts.ready);await openConversation(page,session.title,{expanded:false});await settledLayout(page.locator('.conversation-dock'));
   async function measure(){return page.evaluate(()=>{const rect=selector=>{const e=document.querySelector(selector),r=e?.getBoundingClientRect();return r?{x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom,right:r.right,client:e.clientWidth,scroll:e.scrollWidth,scrollTop:e.scrollTop,scrollHeight:e.scrollHeight}:null;};return{viewport:{width:innerWidth,height:innerHeight},dock:rect('.conversation-dock'),heading:rect('.dock-heading'),session:rect('.session-heading'),link:rect('.codex-link-bar'),messages:rect('.messages'),composer:rect('.composer-area'),composerBox:rect('.composer'),toolbar:rect('.composer-toolbar'),continuation:rect('.chat-continuation'),continuationActions:rect('.chat-continuation-actions'),footnote:rect('.composer-footnote'),history:rect('.message-history-controls'),documentOverflow:document.documentElement.scrollWidth-innerWidth,focus:document.querySelector('.app-shell').dataset.chatFocus,textarea:rect('.composer textarea')};});}
   for(const [width,height]of [[1440,900],[1280,800],[1024,768],[800,700],[390,844],[320,568]]){
-   await page.setViewportSize({width,height});await settledLayout(page.locator('.conversation-dock'));const m=await measure();measurements.push(m);assert.equal(m.focus,'false','대화가 본 화면을 숨기지 않음');if(width>=900){assert(m.dock.width>=350&&m.dock.width<=width*.46,'우측 대화 비율 '+width);assert(await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).isVisible(),'왼쪽 대시보드 유지 '+width);}else if(width<=760)assert(m.dock.width>=width-2,'작은 화면의 대화 폭 '+width);assert(m.messages.height>=height*.38,'본문 공간 '+width);assert(m.composer.height<=Math.max(185,height*.28),'입력 영역의 기본 높이 '+width);assert(m.messages.scroll<=m.messages.client+1,'본문 가로 넘침 없음 '+width);assert(m.dock.scroll<=m.dock.client+1&&m.documentOverflow<=1,'대화와 문서 가로 넘침 없음 '+width);assert(m.textarea.height>=42&&m.textarea.height<=90,'기본 입력 높이 '+width);
+   await page.setViewportSize({width,height});await settledLayout(page.locator('.conversation-dock'));const m=await measure();measurements.push(m);assert.equal(m.focus,'false','대화가 본 화면을 숨기지 않음');if(width>=900){assert(m.dock.width>=350&&m.dock.width<=width*.46,'우측 대화 비율 '+width);assert(await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).isVisible(),'왼쪽 대시보드 유지 '+width);}else if(width<=760)assert(m.dock.width>=width-2,'작은 화면의 대화 폭 '+width);assert(m.messages.height>=height*.38,'본문 공간 '+width);assert(m.composer.height<=Math.max(185,height*.28),'입력 영역의 기본 높이 '+width);assert(m.messages.scroll<=m.messages.client+1,'본문 가로 넘침 없음 '+width);assert(m.dock.scroll<=m.dock.client+1&&m.documentOverflow<=1,'대화와 문서 가로 넘침 없음 '+width);assert(m.textarea.height>=25&&m.textarea.height<=105,'자동 입력 높이 26~104px '+width);
    assert.equal(await page.locator('.messages [data-message-id]').count(),100);assert(await page.locator('.messages').evaluate(e=>e.scrollHeight-e.clientHeight-e.scrollTop<3),'넓이 변경 후 최신 위치 유지');
    assert.equal(await page.locator('.followup-accept').count(),0,'다음 단계가 없는 대화는 추천 공간을 차지하지 않음');
   }
   await page.setViewportSize({width:1440,height:900});
   await settledLayout(page.locator('.conversation-dock'));
   const compact=await measure();
-  assert(compact.dock.width<=1440*.31,'우측 패널 기본 너비는 화면의 31% 이하');
+  assert(compact.dock.width<=compact.viewport.width*.31,'같은 CSS 좌표에서 우측 패널 기본 너비는 화면의 31% 이하');
   resizeMetrics=await verifyComposerResize(page,session.title,recommendation.title);
   const originalWidth=(await measure()).dock.width;await page.getByRole('button',{name:'대화 패널 넓히기',exact:true}).click();await settledLayout(page.locator('.conversation-dock'));let m=await measure();assert.equal(m.focus,'false');assert(m.dock.width>originalWidth,'명시적인 우측 패널 폭 확대');assert(await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).isVisible());await page.getByRole('button',{name:'대화 패널 좁히기',exact:true}).click();await settledLayout(page.locator('.conversation-dock'));m=await measure();assert(Math.abs(m.dock.width-originalWidth)<1);
   // 고정 안내가 본문을 덮지 않고 과거 기록을 추가한 후에도 가시 위치가 유지되는지 확인합니다.

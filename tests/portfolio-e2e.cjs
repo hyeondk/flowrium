@@ -1,4 +1,4 @@
-const {settledRail}=require('./shell-test-helpers.cjs');
+const {settledRail,openProjectTab}=require('./shell-test-helpers.cjs');
 const {trustRegisteredFixtureFolder} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -22,7 +22,7 @@ async function main() {
     codexPath: path.join(__dirname, "backend-fake-codex.cjs"),
     theme: "light",
   });
-  const env = { ...process.env, FLOWRIUM_USER_DATA: profile };
+  const env = { ...process.env, FLOWRIUM_USER_DATA: profile, CODEX_HOME:path.join(temporary,'codex') };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.ELECTRON_RENDERER_URL;
   let app, page;
@@ -41,10 +41,7 @@ async function main() {
       }, true);
     });
     const button = (name) => page.getByRole("button", { name, exact: true });
-    const tab = (name) =>
-      page
-        .getByRole("navigation", { name: "프로젝트 상세 탭" })
-        .getByRole("button", { name, exact: true });
+    const tab = name => openProjectTab(page,name);
     await page
       .getByRole("heading", { name: "프로젝트 대시보드", exact: true })
       .waitFor();
@@ -60,27 +57,27 @@ async function main() {
         "대시보드",
         "프로젝트 추가",
         "산출물",
-        "완료",
+        "완료한 업무",
         "휴지통",
         "업무 연결 / 비서",
         "주간업무보고",
         "업무 마감",
         "터미널",
-        "뮤직",
       ],
     );
     await page.locator('.side-usage[data-connected=true]').waitFor();
     const rail=page.locator('.workspace-side');
+    if(await rail.getAttribute('data-pinned')==='true')await button('메뉴 자동 접기').click();
     await page.mouse.move(400,100);await settledRail(rail,{expanded:false,pinned:false},'기본 메뉴 접힘');
     assert.equal(await rail.getAttribute('data-expanded'),'false');
     const before=await page.locator('.main-shell').boundingBox();
-    await rail.hover();await settledRail(rail,{expanded:true,pinned:false,width:248},'포인터로 메뉴 펼치기');
+    await rail.hover();await settledRail(rail,{expanded:true,pinned:false,width:236},'포인터로 메뉴 펼치기');
     assert.equal(await rail.getAttribute('data-expanded'),'true');
-    assert.equal((await page.locator('.sidebar-surface').boundingBox()).width,248);
+    assert.ok(Math.abs((await page.locator('.sidebar-surface').boundingBox()).width-236)<.1);
     assert.deepEqual(await page.locator('.main-shell').boundingBox(),before,'메뉴를 올려도 본문 배치 유지');
     await button('메뉴 고정').click();await page.mouse.move(400,100);
-    await settledRail(rail,{expanded:true,pinned:true,width:248},'메뉴 고정 유지');assert.equal(await rail.getAttribute('data-expanded'),'true');
-    await button('메뉴 자동 접기').click();await page.mouse.move(500,100);await settledRail(rail,{expanded:false,pinned:false,width:50},'고정 해제 후 메뉴 접힘');
+    await settledRail(rail,{expanded:true,pinned:true,width:236},'메뉴 고정 유지');assert.equal(await rail.getAttribute('data-expanded'),'true');
+    await button('메뉴 자동 접기').click();await page.mouse.move(500,100);await settledRail(rail,{expanded:false,pinned:false,width:56},'고정 해제 후 메뉴 접힘');
     assert.equal(await rail.getAttribute('data-expanded'),'false');
     await rail.hover();await nav.getByRole("button",{name:"프로젝트 추가"}).click();
     await page.getByLabel("프로젝트 이름", { exact: true }).fill(name);
@@ -157,13 +154,16 @@ async function main() {
     assert.equal(bounds.length, 2);
     assert.ok(bounds.every(panel => panel.titleBottom <= panel.top + 1));
     if (Math.abs(bounds[0].top - bounds[1].top) < 1) assert.ok(Math.abs(bounds[0].bottom - bounds[1].bottom) < 1);
-    assert.equal(
+    await button('프로젝트 메뉴').click();
+    assert.deepEqual(
       await page
         .getByRole("navigation", { name: "프로젝트 상세 탭" })
         .getByRole("button")
-        .count(),
-      9,
+        .allTextContents(),
+      ['업무 현황','팀','GitHub','문서','프로젝트 설정'],
     );
+    await button('프로젝트 메뉴').click();
+    assert.ok(await page.getByRole('group',{name:'프로젝트 보기'}).getByRole('button',{name:'업무',exact:true}).isVisible());
     assert.equal(
       (await fs.stat(path.join(parent, name, "docs", "회의록"))).isDirectory(),
       true,
@@ -171,7 +171,7 @@ async function main() {
     await page
       .getByLabel("기간 목표", { exact: true })
       .fill("이번 주 인터뷰 자료 정리");
-    await button("목표 추가").click();
+    await page.getByRole('region',{name:'기간 목표와 반복 일정',exact:true}).getByRole('button',{name:'목표 추가',exact:true}).click();
     await page
       .getByRole("checkbox", { name: /이번 주 인터뷰 자료 정리/ })
       .click();
@@ -195,7 +195,7 @@ async function main() {
       ["디자인 시안", "시안 설명 작성", "작업 홈 시안"],
       ["회의록", "회의록 작성", "착수 회의"],
     ]) {
-      await tab(label).click();
+      await tab(label);
       await button(create).click();
       await page.getByLabel("문서 이름", { exact: true }).fill(title);
       await page
@@ -215,15 +215,15 @@ async function main() {
         .waitFor();
     }
 
-    await tab("팀").click();
+    await tab("팀");
     await page
       .getByRole("heading", { name: "프로젝트 팀", exact: true })
       .waitFor();
-    await tab("GitHub").click();
+    await tab("GitHub");
     await page
       .getByRole("heading", { name: "형상관리", exact: true })
       .waitFor();
-    await tab("문서").click();
+    await tab("문서");
     await page.getByLabel("산출물 검색").fill("착수 회의");
     await page
       .locator(".wb-line-item")
@@ -231,7 +231,7 @@ async function main() {
       .click();
     await page.locator("pre").filter({ hasText: "합의한 내용" }).waitFor();
 
-    await tab("업무 현황").click();
+    await tab("업무 현황");
     await page.locator("[data-work-kind=research]").click();
     const form = page.locator(".wb-form form");
     await form.locator("input").first().fill("주민 동선 조사");
@@ -241,12 +241,13 @@ async function main() {
     await trustRegisteredFixtureFolder(profile, path.join(parent,name));
     await button("업무 시작").click();
     await page.locator(".message.assistant").first().waitFor();
+    await page.getByLabel('대화 연결 및 작업 도구',{exact:true}).click();
     await button("리서치 / 진행 중").click();
     await button("업무 완료").click();
     await button("리서치 / 완료").waitFor();
     await page
       .locator(".sidebar")
-      .getByRole("button", { name: /^완료(?:\s|$)/ })
+      .getByRole("button", { name: '완료한 업무', exact:true })
       .first()
       .click();
     await page.getByLabel("완료 기록 검색").fill("주민 동선 조사");
@@ -265,13 +266,13 @@ async function main() {
     await page.getByLabel("프로젝트 검색").fill("지역 편집팀");
     assert.equal(await page.locator(".pf-project-entry").filter({ hasText: name }).locator(".pf-category").innerText(), "개인");
     await page.locator(".pf-project-entry").filter({ hasText: name }).click();
-    await tab("프로젝트 설정").click();
+    await tab("프로젝트 설정");
     await page.getByText("프로젝트 상세", { exact: true }).click();
     await button("프로젝트 완료").click();
     await button("프로젝트 재개").waitFor();
     await page
       .locator(".sidebar")
-      .getByRole("button", { name: /^완료(?:\s|$)/ })
+      .getByRole("button", { name: '완료한 업무', exact:true })
       .first()
       .click();
     await page.getByLabel("완료 기록 검색").fill(name);

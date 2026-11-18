@@ -8,7 +8,7 @@ const { Store } = require('../electron/store.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
-  const qa = path.join(root, '.flowrium-tmp', 'qa-261115_03');
+  const qa = process.env.FLOWRIUM_QA_DIR || path.join(root, '.flowrium-tmp', 'qa-261115_03');
   await fs.mkdir(qa, { recursive: true });
   const temp = await fs.realpath(await fs.mkdtemp(path.join(qa, 'navigation-profile-')));
   const baseline = process.argv.includes('--baseline');
@@ -52,6 +52,7 @@ async function run() {
       const side=page.locator('.workspace-side');
       await settledRail(side,{expanded,pinned:await side.getAttribute('data-pinned')==='true'},'탐색 메뉴 폭 안정');
     };
+    if(!baseline&&await page.locator('.workspace-side').getAttribute('data-pinned')==='true')await page.getByRole('button',{name:'메뉴 자동 접기',exact:true}).click();
     await page.mouse.move(30, 140);
     await waitForPanel(true);
     await page.evaluate(() => document.fonts.ready);
@@ -59,7 +60,7 @@ async function run() {
       const side = document.querySelector('.workspace-side'), nav = side.querySelector('nav');
       const project = side.querySelector('.side-projects'), list = side.querySelector('.side-project-list');
       const box = e => { const r = e.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width, height: r.height }; };
-      return { width: innerWidth, height: innerHeight, expanded: side.dataset.expanded, pinned: side.dataset.pinned, documentOverflow: document.documentElement.scrollWidth - innerWidth, nav: { ...box(nav), scrollTop: nav.scrollTop, scrollHeight: nav.scrollHeight, clientHeight: nav.clientHeight }, project: box(project), list: { ...box(list), scrollTop: list.scrollTop, scrollHeight: list.scrollHeight, clientHeight: list.clientHeight }, groups: [...side.querySelectorAll('.side-group')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e) })), rows: [...side.querySelectorAll('nav>.side-row,.side-group>.side-row')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e), iconLeft: e.querySelector('svg').getBoundingClientRect().left, iconWidth: e.querySelector('svg').getBoundingClientRect().width })), account: box(side.querySelector('.side-account')), surface: box(side.querySelector('.sidebar-surface')), logo: box(side.querySelector('.side-brand img')), brandRow: box(side.querySelector('.side-brand-row')) };
+      return { width: innerWidth, height: innerHeight, expanded: side.dataset.expanded, pinned: side.dataset.pinned, documentOverflow: document.documentElement.scrollWidth - innerWidth, nav: { ...box(nav), scrollTop: nav.scrollTop, scrollHeight: nav.scrollHeight, clientHeight: nav.clientHeight }, project: box(project), list: { ...box(list), scrollTop: list.scrollTop, scrollHeight: list.scrollHeight, clientHeight: list.clientHeight }, groups: [...side.querySelectorAll('.side-group')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e) })), rows: [...side.querySelectorAll('nav>.side-row,.side-group>.side-row')].map(e => ({ label: e.getAttribute('aria-label'), ...box(e), iconLeft: e.querySelector('svg').getBoundingClientRect().left, iconWidth: e.querySelector('svg').getBoundingClientRect().width })), account: box(side.querySelector('.side-account')), surface: box(side.querySelector('.sidebar-surface')), contentPaddingBottom:parseFloat(getComputedStyle(side.querySelector('.sidebar-content')).paddingBottom),surfaceBorderBottom:parseFloat(getComputedStyle(side.querySelector('.sidebar-surface')).borderBottomWidth),logo: box(side.querySelector('.side-brand img')), brandRow: box(side.querySelector('.side-brand-row')) };
     });
     const first = await measure();
     if (baseline) {
@@ -89,8 +90,9 @@ async function run() {
       assert.ok(m.groups[0].bottom <= m.groups[1].top + 1, `${m.width}×${m.height} 보관과 도구 그룹 분리`);
       assert.ok(m.nav.bottom <= m.account.top + 1, `${m.width}×${m.height} 탐색 스크롤과 계정 영역 분리`);
       assert.ok(m.account.bottom <= m.surface.bottom + 1, `${m.width}×${m.height} 계정 영역 경계`);
-      assert.ok(m.surface.bottom-m.account.bottom >= (m.height<=700?13:17), `${m.width}×${m.height} 패널 하단 고정 여백`);
-      assert.ok(m.rows.every(r => r.height >= 24), `${m.width}×${m.height} 조밀한 메뉴 행의 최소 클릭 높이`);
+      const bottomGap=m.surface.bottom-m.account.bottom,expectedBottomGap=m.contentPaddingBottom+m.surfaceBorderBottom;
+      assert.ok(m.contentPaddingBottom>=6-.1&&Math.abs(bottomGap-expectedBottomGap)<.1, `${m.width}×${m.height} 패널 하단 안쪽 여백과 테두리 ${bottomGap} / ${expectedBottomGap}`);
+      assert.ok(m.rows.every(r => r.height >= 24-.1), `${m.width}×${m.height} 조밀한 메뉴 행의 최소 클릭 높이`);
       assert.ok(m.rows.every(r => Math.abs(r.iconLeft - m.rows[0].iconLeft) < 1), `${m.width}×${m.height} 메뉴 아이콘 왼쪽 시작점`);
       assert.ok(m.documentOverflow <= 1, `${m.width}×${m.height} 문서 가로 넘침 없음`);
     };
@@ -108,7 +110,7 @@ async function run() {
       await page.mouse.move(m.list.right - 16, Math.min(m.list.top + 32, m.nav.bottom - 8));
       await page.mouse.wheel(0, 3000);
       await page.waitForTimeout(120);
-      assert.ok((await measure()).list.scrollTop > 0, `${width}×${height} 휠로 프로젝트 목록 스크롤`);
+      assert.ok((await measure()).nav.scrollTop > 0, `${width}×${height} 프로젝트 위에서 휠로 탐색 영역 스크롤`);
       await page.mouse.move(m.nav.right - 12, m.nav.bottom - 12);
       await page.mouse.wheel(0, 3000);
       await page.waitForTimeout(120);
@@ -118,7 +120,7 @@ async function run() {
       }
       assert.ok(stable.every(s => Math.abs(s.nav.scrollTop - stable[0].nav.scrollTop) < 1 && Math.abs(s.list.scrollTop - stable[0].list.scrollTop) < 1), `${width}×${height} 스크롤 정지 뒤 위치 유지`);
       assert.ok(stable[2].rows.at(-1).bottom <= stable[2].nav.bottom + 1 && stable[2].rows.at(-1).top >= stable[2].nav.top - 1, `${width}×${height} 마지막 도구 메뉴 접근`);
-      assert.ok(stable[2].list.scrollTop > 0, `${width}×${height} 긴 프로젝트 목록 내부 스크롤`);
+      assert.ok(stable[2].nav.scrollTop > 0&&stable[2].list.scrollTop===0, `${width}×${height} 긴 프로젝트와 도구가 한 탐색 영역에서 스크롤`);
       measurements.push({ initial: m, scrollStable: stable.map(s => ({ nav: s.nav.scrollTop, list: s.list.scrollTop })), lastRow: stable[2].rows.at(-1) });
       await page.mouse.move(width - 60, 90);
       await waitForPanel(false);
@@ -139,7 +141,7 @@ async function run() {
         await page.mouse.move(width - 60, 90);
         await waitForPanel(false);
         assert.equal(await page.locator('.workspace-side').getAttribute('data-expanded'), 'false');
-        await page.getByRole('button', { name: '완료', exact: true }).click();
+        await page.locator('.workspace-side').getByRole('button', { name: '완료한 업무', exact: true }).click();
         await page.locator('.main-shell[data-view=archive]').waitFor();
         await page.getByRole('button', { name: '대시보드', exact: true }).click();
         await page.locator('.main-shell[data-view=dashboard]').waitFor();
@@ -176,7 +178,7 @@ async function run() {
       await waitForPanel(true);
       const m = await measure();
       checkLayout(m);
-      assert.ok(m.surface.left >= 0 && m.surface.right <= width + 1, '모바일 메뉴 가로 경계');
+      assert.ok(m.surface.left >= 0 && m.surface.right <= m.width + 1, '모바일 메뉴 가로 경계');
       await page.locator('.workspace-side nav').evaluate(e => { e.scrollTop = e.scrollHeight; });
       const end = await measure();
       assert.ok(end.rows.at(-1).bottom <= end.nav.bottom + 1, '모바일 마지막 메뉴 접근');

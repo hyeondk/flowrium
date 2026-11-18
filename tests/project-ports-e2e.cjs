@@ -1,4 +1,4 @@
-const {settledLayout}=require('./shell-test-helpers.cjs');
+const {openProjectTab,settledLayout}=require('./shell-test-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -27,7 +27,7 @@ async function run() {
     }
     async function openPorts() {
       await page.locator('.pf-project-entry').filter({ hasText: project.name }).click();
-      await page.getByRole('navigation', { name: '프로젝트 상세 탭' }).getByRole('button', { name: '프로젝트 설정', exact: true }).click();
+      await openProjectTab(page,'프로젝트 설정');
       await page.getByRole('region', { name: '자동 포트표', exact: true }).waitFor();
       await page.getByRole('switch', { name: '프로젝트 포트 배정', exact: true }).waitFor();
     }

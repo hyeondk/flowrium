@@ -24,9 +24,17 @@ async function run() {
   delete env.ELECTRON_RENDERER_URL;
   let app, page;
   const samples = [], errors = [];
+  const tightGaps=[];
   const widths = [1440, 1024, 800, 390, 320];
   const button = name => page.getByRole('button', { name, exact: true });
-  const tab = name => page.getByRole('navigation', { name: '프로젝트 상세 탭' }).getByRole('button', { name, exact: true });
+  const tab = name => ({click:async()=>{
+    if(name==='홈'){await page.getByRole('group',{name:'프로젝트 보기',exact:true}).getByRole('button',{name:'업무',exact:true}).click();return;}
+    const resource=['규칙','디자인 시안','회의록','문서'].includes(name),resources=page.getByRole('navigation',{name:'자료 종류',exact:true});
+    if(resource&&await resources.isVisible()){await resources.getByRole('button',{name,exact:true}).click();return;}
+    const menu=button('프로젝트 메뉴');if(await menu.getAttribute('aria-expanded')!=='true')await menu.click();
+    await page.getByRole('navigation',{name:'프로젝트 상세 탭',exact:true}).getByRole('button',{name:resource?'문서':name,exact:true}).click();
+    if(resource&&name!=='문서')await resources.getByRole('button',{name,exact:true}).click();
+  }});
   async function navigate(name) {
     await page.locator('.workspace-side').hover();
     await page.waitForFunction(() => document.querySelector('.workspace-side')?.dataset.expanded === 'true');
@@ -45,21 +53,41 @@ async function run() {
   async function measure(label) {
     const sample = await page.evaluate(label => {
       const main = document.querySelector('.main-shell');
-      const cards = [...document.querySelectorAll('.pf-panel,.team-panel,.workflow-hub,.repo-page>fieldset,.repo-page>.repo-inspection,.repo-page>.repo-batch,.project-ports,.project-details,.di-card')]
-        .filter(node => node.getClientRects().length && getComputedStyle(node).display !== 'none')
+      const visible=node=>{
+        if(!node||!node.getClientRects().length)return false;
+        const rect=node.getBoundingClientRect(),closed=node.closest('details:not([open])');
+        return rect.width>0&&rect.height>0&&getComputedStyle(node).visibility!=='hidden'&&(!closed||closed.querySelector('summary')?.contains(node));
+      };
+      const cards = [...document.querySelectorAll('.pf-panel,.team-panel,.workflow-hub,.repo-page>fieldset,.repo-page>.repo-inspection,.repo-page>.repo-batch,.project-ports,.project-details,.di-chart-surface')]
+        .filter(visible)
         .map(node => {
           const css = getComputedStyle(node), box = node.getBoundingClientRect();
-          return { className: node.className, padding: parseFloat(css.paddingLeft), left: box.left, right: box.right, width: box.width, scroll: node.scrollWidth, client: node.clientWidth };
+          const flat=node.matches('.project-document-content[data-project-tab=settings]>.pf-panel,.project-document-content[data-project-tab=settings]>.project-ports,.kickoff-settings>.project-details'),parent=flat?node.closest('.project-document-content'):null;
+          return { className: node.className, padding: parseFloat(css.paddingLeft), flat,parentPadding:parent?parseFloat(getComputedStyle(parent).paddingLeft):null,parentInset:parent?box.left-parent.getBoundingClientRect().left:null, left: box.left, right: box.right, width: box.width, scroll: node.scrollWidth, client: node.clientWidth };
         });
-      return { label, width: innerWidth, document: document.documentElement.scrollWidth, mainScroll: main?.scrollWidth, mainClient: main?.clientWidth, cards };
+      const gaps=[];
+      for(const node of main.querySelectorAll('h1,h2,h3,summary,.pf-project-name,.pf-project-description,.pf-section-header,.team-head,.pp-heading,.di-card>header,.di-today>header,.workflow-hub>header,.project-document-heading')){
+        if(!visible(node)||node.closest('.segmented,.time-parts,.numeric-stepper,table'))continue;
+        let next=node.nextElementSibling;while(next&&!visible(next))next=next.nextElementSibling;
+        if(!next||next.matches('script,style,svg'))continue;
+        let target=next;
+        if(next.matches('section,div,form,fieldset,ul'))target=[...next.querySelectorAll('h1,h2,h3,p,label,button,input,summary,li')].filter(visible).sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top)[0]||next;
+        const a=node.getBoundingClientRect(),b=target.getBoundingClientRect();
+        const horizontal=b.left>=a.right-.5?b.left-a.right:a.left>=b.right-.5?a.left-b.right:null;
+        const vertical=b.top-a.bottom;
+        const gap=horizontal!==null?horizontal:vertical;
+        gaps.push({source:node.tagName+'.'+node.className,text:node.textContent.trim().slice(0,32),target:target.tagName+'.'+target.className,gap,axis:horizontal!==null?'가로':'세로'});
+      }
+      return { label, width: innerWidth, document: document.documentElement.scrollWidth, mainScroll: main?.scrollWidth, mainClient: main?.clientWidth, cards,gaps };
     }, label);
     assert.ok(sample.document <= sample.width + 1, '문서 가로 넘침 / ' + JSON.stringify(sample));
     assert.ok(sample.mainScroll <= sample.mainClient + 1, '본문 가로 넘침 / ' + JSON.stringify(sample));
     for (const card of sample.cards) {
-      assert.ok(card.padding >= 16, '면 내부 여백 / ' + JSON.stringify({ label, ...card }));
+      assert.ok(card.flat?card.parentPadding>=16&&card.parentInset>=card.parentPadding-1:card.padding>=16, '카드 또는 평면 문서의 내부 여백 / ' + JSON.stringify({ label, ...card }));
       assert.ok(card.scroll <= card.client + 1, '면 가로 넘침 / ' + JSON.stringify({ label, ...card }));
     }
     samples.push(sample);
+    tightGaps.push(...sample.gaps.filter(pair=>pair.gap<.5).map(pair=>({label,...pair})));
   }
   async function screenshot(name) {
     if (!process.env.FLOWRIUM_FEATURE_SCREENSHOTS) return;
@@ -75,9 +103,11 @@ async function run() {
     page.on('pageerror', error => errors.push(error.message));
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole('heading', { name: '프로젝트 대시보드', exact: true }).waitFor();
+    if(await page.locator('.workspace-side').getAttribute('data-pinned')==='true')await page.getByRole('button',{name:'메뉴 자동 접기',exact:true}).click();
     await page.waitForFunction(() => document.querySelector('.side-usage')?.dataset.connected === 'true');
     await page.evaluate(() => document.fonts.ready.then(() => true));
     await foldDock();
+    await page.locator('.di-analysis>summary').click();
     for (const width of widths) {
       await page.setViewportSize({ width, height: 1000 });
       await settledLayout(page.locator('.main-shell'));
@@ -161,7 +191,7 @@ async function run() {
     }
     await page.setViewportSize({ width: 1440, height: 1000 });
     await screenshot('assistant');
-    for (const name of ['산출물', '완료', '대시보드']) {
+    for (const name of ['산출물', '완료한 업무', '대시보드']) {
       await navigate(name);
       for (const width of [1440, 800, 390, 320]) {
         await page.setViewportSize({ width, height: 1000 });
@@ -178,9 +208,11 @@ async function run() {
       await measure('작업 현황 / ' + width);
     }
     assert.deepEqual(errors, []);
+    assert.deepEqual(tightGaps,[],'분리된 제목·설명·본문·행동 사이 양수 여백 / '+JSON.stringify(tightGaps));
     if (process.env.FLOWRIUM_FEATURE_RESULT) await fs.writeFile(process.env.FLOWRIUM_FEATURE_RESULT, JSON.stringify({ passed: true, samples, errors }, null, 2));
     console.log('기능 화면 / 대시보드 / 프로젝트 9개 탭 / AI 작성과 기억 저장 / 형상관리 펼침 / 결정과 알림·전달·비서 / 산출물·완료·작업현황 / 320~1440px 면 여백과 가로 넘침 검사 통과 / ' + samples.length + '회');
   } catch (error) {
+    if(process.env.FLOWRIUM_FEATURE_RESULT)await fs.writeFile(process.env.FLOWRIUM_FEATURE_RESULT,JSON.stringify({passed:false,samples,tightGaps,errors},null,2));
     if (page && !page.isClosed()) {
       await screenshot('failure').catch(() => {});
       console.error('기능 화면 실패 진단', await page.locator('body').innerText().catch(() => ''));

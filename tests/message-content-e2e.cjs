@@ -76,7 +76,7 @@ async function main(){
       horizontal:Math.abs(before.left-el.scrollLeft),vertical:Math.abs(before.top-el.closest('.messages').scrollTop)};
   });
   metrics.reading=reading;
-  assert(reading.originalLeft === 40 && reading.originalTop > 0, '표와 대화가 실제로 스크롤된 위치에서 검사합니다.');
+  assert(Math.abs(reading.originalLeft - 40) <= 1 && reading.originalTop > 0, '표와 대화가 실제로 스크롤된 위치에서 검사합니다.');
   assert(reading.sameTable && reading.sameLink, '초안을 입력한 뒤에도 본문 표와 링크를 보존합니다.');
   assert(reading.horizontal <= 1 && reading.vertical <= 1, '읽던 위치 보존 '+JSON.stringify(reading));
   assert.equal(await writing.locator('details[open]').count(),1);

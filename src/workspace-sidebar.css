@@ -35,6 +35,7 @@
 }
 .workspace-side .side-row svg{flex:none;width:18px;height:18px}
 .workspace-side .side-row>span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.app-shell .workspace-side .side-row:not(.side-project)>span{font-weight:700}
 .app-shell .workspace-side .side-row[aria-current=page]{color:var(--accent-ink);background:var(--selected);border-color:transparent;font-weight:700}
 .workspace-side .side-row[aria-current=page]::before{display:none}
 .app-shell .workspace-side[data-expanded=false] .side-row[aria-current=page]{isolation:isolate;background:transparent}
@@ -45,10 +46,10 @@
 .side-project-head{height:26px;min-height:26px;flex:none;gap:10px;padding:0 5px 0 10px;margin-bottom:2px}
 .side-project-section-icon{width:18px;height:18px;flex:none;color:var(--muted)}
 .app-shell .workspace-side h2{margin:0;font-size:11px;line-height:18px;font-weight:700;color:var(--muted);white-space:nowrap}
-.side-project-head h2{flex:1}
-.side-project-list{display:flex;flex-direction:column;gap:0;flex:none;min-height:0}
+.app-shell .workspace-side .side-project-head h2{flex:1;font-size:13px}
+.side-project-list{display:flex;flex-direction:column;gap:2px;flex:none;min-height:0;padding-block:1px}
 .side-project-list>p{padding:6px 10px;margin:0;color:var(--muted);font-size:12px;line-height:20px}
-.app-shell .workspace-side .sidebar-surface .side-project{height:40px;min-height:40px;padding:0 9px;gap:10px}
+.app-shell .workspace-side .sidebar-surface .side-project{height:38px;min-height:38px;padding:0 9px;gap:10px}
 .workspace-side .side-row>.side-project-icon{position:relative;display:grid;place-items:center;flex:none;width:18px;height:18px;overflow:visible}
 .side-project-markers{position:absolute;left:-2px;top:-3px;display:flex;gap:1px;width:max-content;pointer-events:none}
 .side-project-markers i{display:block;width:5px;height:5px;flex:none;border-radius:1px}
@@ -63,6 +64,14 @@
 .side-group{position:relative;display:flex;flex-direction:column;flex:none;gap:2px;margin-top:4px;padding:3px 0 0;border-top:1px solid var(--line-soft)}
 .side-group h2{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
 .app-shell .workspace-side .sidebar-surface .side-group .side-row{height:28px;min-height:28px;font-size:12px}
+.side-execution{flex:none;margin-top:4px;padding-block:3px;border-top:1px solid var(--line-soft)}
+.app-shell .workspace-side .side-execution .execution-summary{display:grid;grid-template-columns:minmax(0,1fr);gap:2px}
+.app-shell .workspace-side .side-execution .execution-summary>button{display:grid;grid-template-columns:5px minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;height:28px;min-height:28px;padding:0 10px;border:0;border-radius:6px;color:var(--muted);font-size:12px;line-height:18px;text-align:left}
+.app-shell .workspace-side .side-execution .execution-summary i{width:5px;height:5px}
+.app-shell .workspace-side .side-execution .execution-summary span{font-weight:700;white-space:nowrap}
+.app-shell .workspace-side .side-execution .execution-summary strong{font-size:12px;line-height:18px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text)}
+.app-shell .workspace-side[data-expanded=false] .side-execution .execution-summary>button{grid-template-columns:5px 30px;grid-template-rows:12px 12px;justify-content:center;column-gap:2px;row-gap:2px;width:38px;padding:1px 0;font-size:10px;line-height:12px}
+.app-shell .workspace-side[data-expanded=false] .side-execution .execution-summary strong{grid-column:1/-1;font-size:11px;line-height:12px;text-align:center}
 .side-foot{display:grid;grid-template-columns:minmax(0,1fr);flex:none;min-height:0;margin-top:4px}
 .side-usage{grid-row:1;position:relative;min-height:52px;margin-block:5px;border-top:1px solid var(--line-soft);padding:2px 0 0}
 .app-shell .workspace-side .sidebar-surface .side-usage-refresh{display:grid;grid-template-columns:38px auto minmax(12px,1fr) auto auto;align-items:center;column-gap:5px;width:100%;height:26px;min-height:26px;padding:0 5px 0 0;border:0;color:var(--muted);text-align:left;font-size:11px;line-height:18px}
@@ -90,7 +99,7 @@
 .workspace-side[data-expanded=false] .side-usage-refresh>strong{position:absolute;top:25px;left:0;width:38px;font-size:10px;line-height:12px;text-align:center}
 .workspace-side[data-expanded=false] .side-usage-refresh progress{position:absolute;top:39px;left:7px;width:24px;height:3px}
 .workspace-side :is(button,[tabindex]):focus-visible{outline:2px solid var(--accent-ink);outline-offset:-2px}
-@media(max-height:820px) and (pointer:fine){
+@media(max-height:960px) and (pointer:fine){
   .app-shell .workspace-side .sidebar-surface .side-group .side-row{height:26px;min-height:26px}
   .sidebar-content{padding-block:4px 6px}
 }

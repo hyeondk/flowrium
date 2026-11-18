@@ -98,6 +98,11 @@ async function run() {
         const rect=button.getBoundingClientRect(),label=button.querySelector('span'),labelRect=label.getBoundingClientRect(),icon=button.querySelector('svg').getBoundingClientRect();
         return {name:button.getAttribute('aria-label'),width:rect.width/scale,labelLeft:labelRect.left/scale,labelVisible:getComputedStyle(label).visibility==='visible',iconX:(icon.x+icon.width/2)/scale,labelGap:(labelRect.left-icon.right)/scale};
       });
+      const surface=node.querySelector('.sidebar-surface').getBoundingClientRect(),statusBox=node.querySelector('.side-execution').getBoundingClientRect();
+      const statusRows=[...node.querySelectorAll('.side-execution button')].map(button=>{
+        const box=button.getBoundingClientRect(),dot=button.querySelector('i'),label=button.querySelector('span'),count=button.querySelector('strong'),a=dot.getBoundingClientRect(),b=label.getBoundingClientRect(),c=count.getBoundingClientRect();
+        return {state:button.dataset.state,label:label.textContent,count:count.textContent,height:box.height/scale,top:box.top/scale,bottom:box.bottom/scale,color:getComputedStyle(dot).backgroundColor,visible:[dot,label,count].every(el=>getComputedStyle(el).visibility==='visible'&&el.getBoundingClientRect().right<=surface.right+.1),dotGap:(b.left-a.right)/scale,countGap:(node.dataset.expanded==='true'?c.left-b.right:c.top-b.bottom)/scale,edgeGap:Math.min(b.top-box.top,c.top-box.top,box.bottom-b.bottom,box.bottom-c.bottom)/scale};
+      });
       return {
         positions:[...icons].map(e=>{const r=e.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2];}),
         percentages:node.querySelector('.side-usage').innerText.match(/\d+%/g)||[],
@@ -119,6 +124,9 @@ async function run() {
         groupIconAligned:Math.abs((sectionIcon.x+sectionIcon.width/2)-(firstFolder.x+firstFolder.width/2))/scale,
         groupTitleAligned:Math.abs(node.querySelector('.side-project-head h2').getBoundingClientRect().left-node.querySelector('.side-project-label strong').getBoundingClientRect().left)/scale,
         footerButtons,footerIconAligned:Math.abs(footerButtons[0].iconX-(firstFolder.x+firstFolder.width/2)/scale),
+        statusRows,statusHeight:statusBox.height/scale,statusNavGap:(statusBox.top-navBox.bottom)/scale,statusFootGap:(footerBox.top-statusBox.bottom)/scale,
+        functionWeights:[...node.querySelectorAll('.side-row:not(.side-project)>span,.side-project-head h2')].map(el=>Number(getComputedStyle(el).fontWeight)),
+        titleSizes:[node.querySelector('.side-dashboard>span'),node.querySelector('.side-project-head h2')].map(el=>parseFloat(getComputedStyle(el).fontSize)),
       };
     });
     for (const height of [900,800,680]) {
@@ -128,6 +136,7 @@ async function run() {
       await page.waitForFunction(()=>document.querySelector('.workspace-side').dataset.expanded==='false');
       await side.locator('.sidebar-surface').evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished)));
       const closed = await sample();
+      if(height===800&&process.env.FLOWRIUM_SIDEBAR_CAPTURE)await side.locator('.sidebar-surface').screenshot({path:path.join(stage,'sidebar-collapsed.png')});
       await side.hover();
       await page.waitForFunction(()=>document.querySelector('.workspace-side').dataset.expanded==='true');
       await side.locator('.sidebar-surface').evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished)));
@@ -144,6 +153,16 @@ async function run() {
       assert(open.addProject.rightGap>=4&&open.addProject.rightGap<=6,'프로젝트 추가 버튼은 제목 행의 오른쪽 끝에 놓입니다.');
       assert(open.brandGap>=11&&open.brandGap<=13,'브랜드 아래에 약12px 간격을 둡니다.');
       assert(open.groupIconAligned<1&&open.groupTitleAligned<1,'프로젝트 묶음 아이콘과 제목은 실제 프로젝트의 아이콘·제목 열에 정렬합니다.');
+      assert(Math.abs(open.titleSizes[0]-open.titleSizes[1])<.1&&open.functionWeights.every(weight=>weight>=700),'프로젝트 제목 크기를 대시보드와 맞추고 기능 이름을 굵게 표시합니다.');
+      assert(Math.abs(open.statusHeight-closed.statusHeight)<.1,'상태 요약 때문에 접힘과 펼침의 세로 배치가 움직이지 않습니다.');
+      console.log(JSON.stringify({height,statusHeight:open.statusHeight,statusButtonGaps:open.statusRows.slice(1).map((row,index)=>row.top-open.statusRows[index].bottom),closedStateGaps:closed.statusRows.map(row=>({dot:row.dotGap,count:row.countGap,edge:row.edgeGap})),titleSizes:open.titleSizes,functionWeights:open.functionWeights}));
+      for(const state of [closed,open]){
+        assert.deepEqual(state.statusRows.map(row=>[row.state,row.label,row.count]),[['running','작업중','1'],['waiting','대기','1'],['decision','결정','1']]);
+        assert(state.statusRows.every(row=>row.visible&&row.height>=27.9&&row.dotGap>=1.9&&row.countGap>=1.9&&row.edgeGap>=.9),'마우스 없이 상태 점 / 이름 / 건수를 읽고 각 요소와 행 경계가 맞닿지 않습니다. '+JSON.stringify(state.statusRows));
+        assert.equal(new Set(state.statusRows.map(row=>row.color)).size,3,'세 실행 상태의 기존 점 색상을 구분합니다.');
+        assert(state.statusRows.slice(1).every((row,index)=>row.top-state.statusRows[index].bottom>=1.9),'상태 버튼 사이에도 최소 2px 간격을 둡니다.');
+        assert(state.statusNavGap>=3.9&&state.statusFootGap>=3.9,'상태 요약과 탐색 / 사용량 사이에 양수 간격을 유지합니다.');
+      }
       assert.deepEqual(open.footerButtons.map(button=>button.name),['설정','잠금','로그아웃']);
       assert(open.footerButtons.every(button=>button.labelVisible)&&closed.footerButtons.every(button=>!button.labelVisible),'펼침에서 하단 라벨을 보이고 접힘에서는 글자를 강제 표시하지 않습니다.');
       assert(Math.max(...open.footerButtons.map(button=>button.width))-Math.min(...open.footerButtons.map(button=>button.width))<.1,'하단 세 버튼의 열 너비를 같게 맞춥니다.');
@@ -160,16 +179,29 @@ async function run() {
       assert(Math.abs(closed.width-56)<0.1);
       assert(Math.abs(open.surfaceWidth-236)<0.1);
       assert.equal(open.projects.length,8);
-      assert(open.projects.every(p=>Math.abs(p.height-40)<0.1),'프로젝트는 제목 길이에 관계없이 실제 40px 한 줄 행이어야 합니다.');
+      assert(open.projects.every(p=>Math.abs(p.height-38)<0.1),'프로젝트 선택 면을 38px로 두고 기존 40px 중심 간격을 유지합니다.');
+      assert(open.projects.slice(1).every((project,index)=>project.top-open.projects[index].bottom>=1.9),'인접한 프로젝트 선택 면 사이에 실제 2px 간격을 유지합니다.');
       assert(Math.abs(open.projectListHeight-320)<0.1,'8개 프로젝트 외에 빈 예약 높이를 추가하지 않습니다.');
       assert(open.largestNavGap<=42.1,'프로젝트 행 중심 간격은 42px 이하여야 합니다.');
       assert(open.lastToolBottom>=open.navBottom-2,'도구 그룹은 기존처럼 탐색 영역 아래쪽에 있습니다.');
       assert(open.navBottom<=open.footerTop,'탐색 스크롤은 하단 사용량과 설정을 가리지 않습니다.');
-      if(height>=800)assert(open.projects.every(p=>p.bottom<=open.navBottom+1),'높이 800px 이상에서 8개 프로젝트가 모두 보여야 합니다.');
+      if(height>=800){
+        assert(open.projects.every(p=>p.bottom<=open.navBottom+1),'높이 800px 이상에서 8개 프로젝트가 모두 보여야 합니다.');
+        assert(open.lastToolBottom<=open.navBottom+1,'높이 800px 이상에서 마지막 도구까지 초기 화면에 보여야 합니다. '+JSON.stringify({lastToolBottom:open.lastToolBottom,navBottom:open.navBottom}));
+      }
       assert.deepEqual(open.percentages,['63%']);
       assert.deepEqual(closed.percentages,['63%']);
       assert(!closed.credits && open.credits);
     }
+    for(const [state,title] of [['running','진행 상태 검증'],['waiting','추가 입력 대기'],['decision','결정 상태 검증']]){
+      await side.locator('.side-execution [data-state='+state+']').click();
+      await page.waitForFunction(value=>document.querySelector('.dock-status-tabs [data-state='+value+']')?.getAttribute('aria-pressed')==='true',state);
+      await page.locator('.dock-session-list').waitFor();
+      const names=await page.locator('.dock-session strong').allTextContents();
+      const expectedTitle=state==='waiting'?title:await page.evaluate(async id=>(await window.flowrium.bootstrap()).sessions.find(session=>session.id===id)?.title,state==='running'?runningSession.id:decisionSession.id);
+      assert.deepEqual(names,[expectedTitle],'좌측 상태를 선택하면 기존 필터에서 해당 대화만 보입니다.');
+    }
+    console.log(JSON.stringify({sidebarStatusVisible:true,sidebarFilters:true,statusLabels:['작업중','대기','결정']}));
     await page.setViewportSize({width:1440,height:800});
     await side.locator('nav').evaluate(el=>{el.scrollTop=el.scrollHeight});
     const bottomReachable=await side.evaluate(node=>{

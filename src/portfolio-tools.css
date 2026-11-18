@@ -46,5 +46,7 @@
 .project-repositories .pr-actions > button.primary { min-height:40px; padding:8px 14px; border-radius:10px; background:var(--primary-gradient); color:var(--on-primary); border-color:transparent; font-size:13px; }
 .project-repositories :is(article,section) > button { display:flex; margin-left:auto; min-height:36px; padding:6px 10px; border-color:transparent; border-radius:8px; background:transparent; color:var(--muted); font-size:12px; line-height:22px; }
 .project-repositories > section { margin-top:24px; padding-top:20px; border-top:1px solid var(--line-soft); }
+.project-repositories > h2 + p { margin-top:8px; }
+.project-repositories > section > h3 { margin-bottom:8px; }
 
 .advanced-goals .ag-row > label > span > small { display:block; margin-top:4px; color:var(--muted); font-size:12px; line-height:20px; }

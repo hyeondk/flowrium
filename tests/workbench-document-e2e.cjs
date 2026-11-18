@@ -33,6 +33,7 @@ async function run() {
     await page.setViewportSize({width:1440,height:1000});
     page.setDefaultTimeout(16000);
     await page.getByRole("button", { name: /한글 출력 검증.*문서 작성/ }).click();
+    await page.getByLabel("대화 연결 및 작업 도구", { exact: true }).click();
     const format = page.getByLabel("산출물 형식");
     for (const value of ["md", "html", "pdf", "pptx"]) {
       await format.selectOption(value);

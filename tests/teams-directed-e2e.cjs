@@ -1,3 +1,4 @@
+const {openProjectTab}=require('./shell-test-helpers.cjs');
 const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -36,10 +37,7 @@ async function main() {
     await page.setViewportSize({width:1440,height:1000});
     page.setDefaultTimeout(18000);
     await page.locator(".pf-project-entry").filter({ hasText: "프로젝트" }).click();
-    await page
-      .getByRole("navigation", { name: "프로젝트 상세 탭" })
-      .getByRole("button", { name: "팀", exact: true })
-      .click();
+    await openProjectTab(page,'팀');
   }
   const btn = (name) => page.getByRole("button", { name, exact: true });
   const sessionCount = () =>

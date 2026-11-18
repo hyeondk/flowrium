@@ -22,6 +22,7 @@ async function main(){
    {id:randomUUID(),role:'user',text:'상반기 월별 매출을 비교하고 감소한 달의 원인을 정리해줘.',createdAt:at},
    {id:randomUUID(),role:'assistant',text:'상반기 매출을 월별로 비교했어요.\n\n**6월 매출은 3,600만 원**으로 1월보다 50% 늘었습니다. 3월에는 주문 수가 줄었고, 4월부터 다시 증가했습니다.\n\n1. 월별 매출 합계 6건을 대조했습니다.\n2. 감소 원인은 제품별 판매량과 반품률을 함께 확인하면 더 정확해집니다.',createdAt:at}
   ]});
+  await store.createSession(project.id,{title:'제품별 판매량 비교'});
   store.session(session.id).codexLink={version:1,mode:'linked',sourceThreadId:thread,ownerHash:hash,deviceHash:hash,snapshotHash:hash,archivePath:'.flowrium/codex-source/'+hash+'/'+hash+'.json',activeAtImport:false,sourceMessageIds:[],importedAt:at,sourceUpdatedAt:at};
   await store.save();await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light',model:'gpt-6.1-sol'});
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex'),FLOWRIUM_TEST_CHAT_MODELS:'1'};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
@@ -43,19 +44,23 @@ async function main(){
     const meta=['.message-avatar','.message-meta strong'].map(s=>box(row.querySelector(s))),bubble=box(row.querySelector('.message-bubble'));
     const assistantTime=box(row.querySelector('.message-time')),assistantCopy=box(row.querySelector('.copy-message'));
     const user=document.querySelector('.message.user'),ownBubble=box(user.querySelector('.message-bubble')),copy=box(user.querySelector('.copy-message')),userTime=box(user.querySelector('.message-time'));
-    const token=box(document.querySelector('.chat-token-summary')),settings=box(document.querySelector('.session-details>summary'));
+    const tokenSummary=document.querySelector('.chat-token-summary'),token=box(tokenSummary),settings=box(document.querySelector('.session-details>summary'));
+    const tokenLineGap=box(tokenSummary.querySelector('small')).top-box(tokenSummary.querySelector('span')).bottom;
+    const heading=box(document.querySelector('.session-heading h2')),scope=box(document.querySelector('.session-heading .eyebrow'));
     return {width:innerWidth,metaCenters:meta.map(center),userCopyOutside:copy.top>=ownBubble.bottom,userCopyRight:Math.abs(copy.right-ownBubble.right),
      userTimeOutside:userTime.right<=ownBubble.left-3&&Math.abs(userTime.bottom-ownBubble.bottom)<1,
      userHeaderCount:user.querySelectorAll('.message-meta').length,assistantTimeBelow:assistantTime.top>=bubble.bottom,assistantFooterOffset:Math.abs(center(assistantTime)-center(assistantCopy)),
      timestampsInsideBubbles:document.querySelectorAll('.message-bubble time').length,
      radius:parseFloat(getComputedStyle(row.querySelector('.message-bubble')).borderRadius),userRadius:parseFloat(getComputedStyle(user.querySelector('.message-bubble')).borderRadius),
-     tokenBeforeSettings:token.right<=settings.left+1,overflow:document.documentElement.scrollWidth-innerWidth,messageOverflow:row.scrollWidth-row.clientWidth,
+     tokenBeforeSettings:token.right<=settings.left+1,tokenLineGap,headingGap:heading.top-scope.bottom,overflow:document.documentElement.scrollWidth-innerWidth,messageOverflow:row.scrollWidth-row.clientWidth,
      bubbleWidth:bubble.width,scale:getComputedStyle(document.querySelector('.message-history-items')).zoom};
    });
    assert(Math.max(...metrics.metaCenters)-Math.min(...metrics.metaCenters)<=1,'아이콘·Codex의 세로 중심 일치');
    assert(metrics.userTimeOutside&&metrics.userHeaderCount===0&&metrics.assistantTimeBelow&&metrics.assistantFooterOffset<1&&metrics.timestampsInsideBubbles===0,'시간은 말풍선 밖 / 내 시간은 왼쪽 하단 / 응답 시간은 하단 도구와 나란히');
    assert(metrics.userCopyOutside&&metrics.userCopyRight<2,'사용자 복사 도구는 말풍선 바깥 우측 하단');
    assert(metrics.radius>=18&&metrics.userRadius>=18&&metrics.tokenBeforeSettings,'둥근 양측 말풍선 / 토큰은 설정 왼쪽');
+   assert(metrics.headingGap>=4.5,'대화 종류와 제목 사이 간격 '+JSON.stringify(metrics));
+   assert(metrics.tokenLineGap>=2.5,'문맥 사용량 두 줄 사이 간격 '+JSON.stringify(metrics));
    assert(metrics.overflow<=1&&metrics.messageOverflow<=1&&Number(metrics.scale)===.9,JSON.stringify(metrics));proof.sizes.push(metrics);
   }
   await page.setViewportSize({width:1440,height:900});await settledLayout(dock);
@@ -74,7 +79,12 @@ async function main(){
   await assistant.getByRole('button',{name:'좋아요',exact:true}).click();await assistant.getByRole('button',{name:'좋아요 취소',exact:true}).waitFor();
   await page.evaluate(()=>document.activeElement?.blur());await fs.mkdir(out,{recursive:true});await capture(app,path.join(out,'대화-07-말풍선.png'),await dock.boundingBox());
   await picker.click();await page.getByRole('listbox',{name:'이 채팅의 모델',exact:true}).waitFor();await page.waitForTimeout(220);await capture(app,path.join(out,'대화-07-모델선택.png'));await picker.press('Escape');
-  await dock.getByRole('button',{name:'대화 목록으로',exact:true}).click();const projectPicker=page.getByRole('combobox',{name:'대화함 프로젝트 선택',exact:true});await projectPicker.click();const list=page.getByRole('listbox',{name:'대화함 프로젝트 선택',exact:true});await list.getByText('데이터 분석',{exact:true}).waitFor();assert.equal(await list.locator('.project-category-label .lucide-tag').count(),1);await page.waitForTimeout(220);await capture(app,path.join(out,'대화-07-프로젝트분류.png'),await dock.boundingBox());
+  await dock.getByRole('button',{name:'대화 목록으로',exact:true}).click();
+  const rows=dock.locator('.dock-session-list .dock-session');
+  await rows.nth(1).waitFor();
+  proof.conversationRowGap=await rows.evaluateAll(([first,second])=>second.getBoundingClientRect().top-first.getBoundingClientRect().bottom);
+  assert(proof.conversationRowGap>=2.5,'대화 목록의 두 선택 영역 사이 간격');
+  const projectPicker=page.getByRole('combobox',{name:'대화함 프로젝트 선택',exact:true});await projectPicker.click();const list=page.getByRole('listbox',{name:'대화함 프로젝트 선택',exact:true});await list.getByText('데이터 분석',{exact:true}).waitFor();assert.equal(await list.locator('.project-category-label .lucide-tag').count(),1);await page.waitForTimeout(220);await capture(app,path.join(out,'대화-07-프로젝트분류.png'),await dock.boundingBox());
   assert.deepEqual(proof.errors,[]);proof.passed=true;await fs.writeFile(path.join(out,'대화-07-검증.json'),JSON.stringify(proof,null,2)+'\n');
   console.log('대화 개선 검사 통과 / 양측 말풍선·메타정보·복사 도구 / 분류·토큰·동기화 / 모델 위로 펼침 / 음성 안내 5초 / 4개 폭 / 원문 복사·좋아요 유지');
  }finally{if(app)await app.close().catch(()=>{});await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:150});}

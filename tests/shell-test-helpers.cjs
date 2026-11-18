@@ -24,7 +24,27 @@ async function newProjectConversation(page,projectId){
 }
 async function closeSettings(page){await page.getByRole('button',{name:'설정 닫기',exact:true}).click();await page.getByRole('dialog',{name:'설정',exact:true}).waitFor({state:'hidden'});}
 async function leaveConversation(page){await page.getByRole('button',{name:'대화 목록으로',exact:true}).click();await composer(page).waitFor({state:'hidden'});}
-module.exports={composer,dockHome,openConversation,newProjectConversation,closeSettings,leaveConversation,settledRail,settledLayout};
+module.exports={composer,dockHome,openConversation,newProjectConversation,closeSettings,leaveConversation,openProjectTab,settledRail,settledLayout};
+
+async function openProjectTab(page,name) {
+ if(name==='홈'){
+  await page.getByRole('group',{name:'프로젝트 보기',exact:true}).getByRole('button',{name:'업무',exact:true}).click();
+  await page.locator('.project-document-content[data-project-tab=home]').waitFor();
+  return;
+ }
+ const resource=['문서','규칙','디자인 시안','회의록'].includes(name);
+ const resources=page.getByRole('navigation',{name:'자료 종류',exact:true});
+ if(!resource||!await resources.isVisible()){
+  const menu=page.getByRole('navigation',{name:'프로젝트 상세 탭',exact:true});
+  if(!await menu.isVisible())await page.getByRole('button',{name:'프로젝트 메뉴',exact:true}).click();
+  await menu.getByRole('button',{name:resource?'문서':name,exact:true}).click();
+  await menu.waitFor({state:'hidden'});
+ }
+ if(resource){
+  await resources.getByRole('button',{name,exact:true}).click();
+  assert.equal(await resources.getByRole('button',{name,exact:true}).getAttribute('aria-current'),'page');
+ }
+}
 
 async function settledRail(rail,{expanded,pinned,width},label) {
  const result=await rail.evaluate(async(node,expected)=>{
