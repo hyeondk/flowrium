@@ -388,6 +388,15 @@ async function run(){
 
     await page.locator('.header-music').click();
     const volume=page.getByRole('slider',{name:'음량',exact:true});
+    await app.evaluate(({ipcMain})=>{
+      const channel='flowrium:saveMusic',save=ipcMain._invokeHandlers.get(channel);
+      if(!save)throw Error('음량 저장 동작을 찾을 수 없습니다.');
+      ipcMain.removeHandler(channel);
+      ipcMain.handle(channel,async(event,value)=>{
+        if(value.volume===100)await new Promise(resolve=>setTimeout(resolve,350));
+        return save(event,value);
+      });
+    });
     await volume.focus();await volume.press('End');await volume.press('ArrowLeft');
     await page.waitForFunction(async()=>(await window.flowrium.musicState()).volume===99);
     await page.getByRole('button',{name:'뮤직 닫기',exact:true}).click();

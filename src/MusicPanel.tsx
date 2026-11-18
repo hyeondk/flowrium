@@ -46,6 +46,7 @@ export default function MusicPanel({
   const [track, setTrack] = useState(idleTrack);
   const frame = useRef<HTMLIFrameElement>(null),
     lastSave = useRef(0),
+    pendingSave = useRef<Promise<unknown>>(Promise.resolve()),
     latest = useRef(state);
   latest.current = state;
   const entry = state.lists.find((v) => v.id === state.selected),
@@ -98,12 +99,17 @@ export default function MusicPanel({
         new URL(url).origin,
       );
   }
+  function persist(value: MusicState) {
+    const write = pendingSave.current.catch(() => {}).then(() => api?.saveMusic(value));
+    pendingSave.current = write;
+    return write;
+  }
   async function save(value: MusicState) {
     const previous = latest.current;
     latest.current = value;
     setState(value);
     try {
-      await api?.saveMusic(value);
+      await persist(value);
     } catch (e) {
       if (latest.current === value) {
         latest.current = previous;
@@ -158,13 +164,11 @@ export default function MusicPanel({
         setTrack(data);
         if (!locked && Date.now() - lastSave.current > 7000 && data.playing) {
           lastSave.current = Date.now();
-          void api
-            ?.saveMusic({
-              ...latest.current,
-              time: data.time,
-              index: data.index,
-            })
-            .catch(() => {});
+          void persist({
+            ...latest.current,
+            time: data.time,
+            index: data.index,
+          }).catch(() => {});
         }
       }
     }

@@ -5,6 +5,7 @@ const {randomUUID}=require('node:crypto');
 const { _electron } = require('playwright');
 const { Store } = require('../electron/store.cjs');
 const {trustFixtureProject,backendFixtureAccount}=require('./project-trust-fixture.cjs');
+const {settledRail}=require('./shell-test-helpers.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
