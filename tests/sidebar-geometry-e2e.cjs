@@ -228,9 +228,9 @@ async function run() {
     await side.hover();
     await page.waitForFunction(()=>document.querySelector('.workspace-side').dataset.expanded==='true');
     await side.getByRole('button',{name:'메뉴 고정',exact:true}).click();
+    await page.waitForFunction(()=>document.querySelector('.workspace-side').dataset.pinned==='true');
     await page.mouse.move(900,80);
-    assert.equal(await side.getAttribute('data-expanded'),'true');
-    assert.equal(await side.getAttribute('data-pinned'),'true');
+    await settledRail(side,{expanded:true,pinned:true},'포인터를 옮겨도 메뉴 고정 유지');
     assert.equal(await page.evaluate(()=>localStorage.getItem('flowrium.navigation.pinned')),'true');
     await side.getByRole('button',{name:'메뉴 자동 접기',exact:true}).click();
     await page.mouse.move(900,80);

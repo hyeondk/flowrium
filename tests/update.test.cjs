@@ -106,6 +106,18 @@ test('이전 설치 실패는 새 후보가 없어도 다음 실행의 일반 �
   assert.equal(updater.getState().latestVersion, undefined);
   assert.equal((await updater.check()).status, 'available');
 });
+
+test('시작 시 예약된 확인은 설치 오류를 지우지 않고 명시적인 새 버전 확인은 허용한다', async (t) => {
+  const { updater } = await fixture(t, { payload: Buffer.alloc(payload.length) });
+  await updater.start();
+  t.after(() => updater.stop());
+  assert.equal((await updater.check()).status, 'available');
+  const error = await updater.install();
+  assert.equal(error.status, 'error');
+  await new Promise(resolve => setTimeout(resolve, 6100));
+  assert.deepEqual(updater.getState(), error);
+  assert.equal((await updater.check()).status, 'available');
+});
 test('기동 티켓은 해당 설치 경로·버전·프로세스의 시작 및 화면 준비 순서를 구분한다', async (t) => {
   const { acknowledgeUpdateLaunch } = require('../electron/updater.cjs');
   const { randomUUID } = require('node:crypto');

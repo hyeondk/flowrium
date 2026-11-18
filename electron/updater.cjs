@@ -266,8 +266,13 @@ class DesktopUpdater extends EventEmitter {
       return;
     }
     if (this.timers.length) return;
-    const first = setTimeout(() => void this.check(), 6000);
-    const periodic = setInterval(() => void this.check(), 6 * 60 * 60 * 1000);
+    const first = setTimeout(() => {
+      if (this.state.status === 'idle') void this.check();
+    }, 6000);
+    const periodic = setInterval(() => {
+      if (this.state.status === 'error' && (this.candidate || this.state.launchFailed)) return;
+      void this.check();
+    }, 6 * 60 * 60 * 1000);
     this.timers.push(first, periodic);
     for (const timer of this.timers) timer.unref();
     try {
