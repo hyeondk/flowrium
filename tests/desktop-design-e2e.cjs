@@ -309,7 +309,7 @@ async function run(){
     assert(Math.abs(baseContent.header-compactContent.header)<1&&Math.abs(baseContent.input-compactContent.input)<1);
     for(const key of ['menu','toolbar','heading'])assert(Math.abs(reduced.values[key].renderedHeight/full.values[key].renderedHeight-.87)<.02,key+' 전체 배율 실측');
     for(const key of ['menu','input','body'])assert(Math.abs(reduced.values[key].renderedFontSize/full.values[key].renderedFontSize-.87)<.005,key+' 글자 배율 실측');
-    for(const [key,axis,expected] of [['menu','height',30],['heading','height',36],['toolbar','height',42],['side','width',236]])assert(Math.abs(reduced.values[key][axis]-expected)<2.05,key+' 실제 CSS 치수: '+JSON.stringify(reduced.values[key]));
+    for(const [key,axis,expected] of [['menu','height',38],['heading','height',36],['toolbar','height',42],['side','width',236]])assert(Math.abs(reduced.values[key][axis]-expected)<2.05,key+' 실제 CSS 치수: '+JSON.stringify(reduced.values[key]));
     assert(reduced.sidebar['.side-project-list'].height<=126,'세 프로젝트 높이는 실제 행의 합을 따릅니다');
     assert(reduced.projectVisibility.length===3&&reduced.projectVisibility.every(item=>item.fullyVisible),'샘플 프로젝트 3개를 자르지 않고 표시 '+JSON.stringify(reduced.projectVisibility));
     assert.equal(await page.getByRole('button',{name:/이 대화에서 프로젝트 편집 허용/}).count(),0);

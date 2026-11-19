@@ -16,6 +16,7 @@ async function openGrip(page,list,id,target) {
   const source=row(page,list,id),destination=row(page,list,target);
   await source.scrollIntoViewIfNeeded();
   await settledLayout(source);
+  await source.hover();
   const startBox=await source.boundingBox(),endBox=await destination.boundingBox();
   assert.ok(startBox&&endBox);
   const start=center(startBox),end=center(endBox);
@@ -73,6 +74,7 @@ async function test() {
       app=await _electron.launch({args:[root],env,timeout:40000});
       const page=await app.firstWindow();
       await page.setViewportSize({width:1420,height:960});
+      await app.evaluate(({app,BrowserWindow})=>{app.focus({steal:true});BrowserWindow.getAllWindows()[0].focus();});
       page.setDefaultTimeout(10000);
       return page;
     };

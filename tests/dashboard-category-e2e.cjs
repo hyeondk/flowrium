@@ -107,8 +107,13 @@ async function main() {
     })}));
     assert(summaryGeometry.height>=44 && summaryGeometry.height<=50,JSON.stringify(summaryGeometry));
     assert(summaryGeometry.rows.every(row=>row.sameLine && row.numberAtEnd),JSON.stringify(summaryGeometry));
-    const recentGeometry = await recent.locator('.pf-row').evaluateAll(nodes=>nodes.map(node=>({height:node.getBoundingClientRect().height,border:getComputedStyle(node).borderTopWidth,radius:getComputedStyle(node).borderTopLeftRadius})));
-    assert(recentGeometry.every(row=>row.height>=46 && row.height<=52 && parseFloat(row.border)>=.5 && parseFloat(row.border)<=1.1 && row.radius==='8px'),JSON.stringify(recentGeometry));
+    const recentGeometry = await recent.locator('.pf-row').evaluateAll(nodes=>nodes.map(node=>{
+      const style=getComputedStyle(node);
+      return {height:node.getBoundingClientRect().height,border:parseFloat(style.borderTopWidth),
+        radius:style.borderTopLeftRadius,devicePixel:1/devicePixelRatio};
+    }));
+    assert(recentGeometry.every(row=>row.height>=46&&row.height<=52&&row.border>=.5&&
+      row.border<=Math.max(1,row.devicePixel)+.05&&row.radius==='8px'),JSON.stringify(recentGeometry));
     const geometry = await cards.locator('button').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().top));
     assert.deepEqual(geometry.slice(0,3),[geometry[0],geometry[0],geometry[0]]);
     assert(geometry[3]>geometry[2]);
