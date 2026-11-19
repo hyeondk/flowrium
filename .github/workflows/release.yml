@@ -229,6 +229,7 @@ jobs:
         run: |
           node tests/portfolio-e2e.cjs
           node tests/project-navigation-e2e.cjs
+          node tests/dashboard-category-e2e.cjs
       - name: 첨부·실행 큐·네이티브 분기와 되감기
         id: verify_4
         continue-on-error: true

@@ -78,7 +78,7 @@ export default function ConversationDock(props:Props){
      {scope==='home'&&props.filter==='all'?<>
       <p className="dock-intro">대화의 범위를 고르고 이어서 시작하세요.</p>
       {(['integrated','general'] as const).map(value=><section className="dock-scope-card" key={value} data-scope={value}><button className="dock-scope-open" onClick={()=>group(value)}><span className="dock-scope-icon">{value==='integrated'?<Globe2 size={20}/>:<MessageCircle size={20}/>}</span><span><strong>{scopeLabels[value]}</strong><small>{value==='integrated'?'전체 프로젝트의 현황과 다음 업무':'프로젝트와 별개로 나누는 이야기'}</small></span><ChevronRight size={16}/></button><footer><span>{count(value)?count(value)+'개 대화':'아직 대화가 없습니다'}</span><button disabled={props.busy} className="dock-new-text" aria-label={'새 '+(value==='integrated'?'통합':'일반')+' 대화'} onClick={()=>props.onCreate(value)}><Plus size={14}/>새 대화</button></footer></section>)}
-      <details className="dock-project-picker"><summary>프로젝트 대화 <ChevronRight size={15}/></summary>
+      <details className="dock-project-picker project-order-list"><summary>프로젝트 대화 <ChevronRight size={15}/></summary>
       {projects.length?projects.map(p=><button {...grip.props(p.id)} title={p.name+' (길게 눌러 순서 변경)'} className="dock-project-row" onContextMenu={e=>props.onProjectMenu?.(e,p)} key={p.id} onClick={()=>{setSelectedProject(p.id);group('project');props.onProject(p)}}><span className="dock-project-copy"><span className="dock-project-name"><ProjectCategoryLabel category={props.categories?.[p.id]}/><strong>{p.name}</strong></span><small>{sessions.filter(s=>!s.scope&&s.projectId===p.id).length}개 대화</small></span><ChevronRight size={15}/></button>):<div className="dock-empty"><Folder size={24}/><p>프로젝트를 연결하면<br/>대화를 이곳에서 이어갑니다.</p></div>}
       </details>
      </>:<>

@@ -1556,7 +1556,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               <button className="button primary" disabled={deciding[event.requestId || ""]} onClick={()=>decide(event,"accept")}>이번 작업 승인</button></div></section>;
           })}</div></div>
         ) : (view==="dashboard"||view==="kickoff"||view==="archive"||view==="outputs"||view==="timeline") ? (
-          <ProjectPortfolio categoryRevision={categoryRevision} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} view={view} projects={data.projects} sessions={projectOnlySessions}
+          <ProjectPortfolio categoryRevision={categoryRevision} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} view={view} projects={navigation.projects} sessions={projectOnlySessions}
+            onProjectMove={navigation.move}
             onNavigate={setView} onProject={selectProject} onOpenSession={openWork} onChooseProject={chooseProject}
             onSessionChange={rememberSession} onArchived={(id,value)=>setArchived(prev=>({...prev,[id]:value}))}
             tools={<>

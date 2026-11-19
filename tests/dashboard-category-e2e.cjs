@@ -4,6 +4,72 @@ const os = require('node:os');
 const path = require('node:path');
 const { _electron } = require('playwright');
 const { Store } = require('../electron/store.cjs');
+const {settledLayout}=require('./shell-test-helpers.cjs');
+
+async function verifyCardReorder(page, cards) {
+  const selector = '.pf-project-entries [data-project-sort-id]';
+  const ids = await cards.locator('button').evaluateAll(rows=>rows.map(row=>row.dataset.projectSortId));
+  const [first,second,third,last]=ids;
+  const card=id=>cards.locator('[data-project-sort-id="'+id+'"]');
+  const currentOrder=expected=>page.waitForFunction(({selector,expected})=>
+    [...document.querySelectorAll(selector)].map(row=>row.dataset.projectSortId).join()===expected.join(),{selector,expected});
+  const center=async id=>{
+    const box=await card(id).boundingBox();
+    assert(box);
+    return {x:box.x+box.width/2,y:box.y+box.height/2};
+  };
+  const held=(id)=>card(id).and(page.locator('[data-project-drag="moving"]')).waitFor();
+  const settle=()=>settledLayout(cards);
+  await settle();
+  const origin=await center(last), target=await center(first);
+  assert(origin.y>target.y,'시작과 대상은 서로 다른 행');
+  await page.mouse.move(origin.x,origin.y);
+  await page.mouse.down();
+  await held(last);
+  await page.mouse.move(target.x,target.y,{steps:8});
+  await page.waitForFunction(({selector,last,first,target})=>{
+    const cards=[...document.querySelectorAll(selector)];
+    const box=id=>cards.find(e=>e.dataset.projectSortId===id).getBoundingClientRect();
+    const source=box(last), neighbor=box(first);
+    return Math.hypot(source.x+source.width/2-target.x,source.y+source.height/2-target.y)<14
+      && Math.hypot(neighbor.x+neighbor.width/2-target.x,neighbor.y+neighbor.height/2-target.y)>18;
+  },{selector,last,first,target});
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await currentOrder(ids);
+  await settle();
+  const canceled=await center(last);
+  assert(Math.hypot(canceled.x-origin.x,canceled.y-origin.y)<1,
+    '취소하면 원래 자리로 복귀 '+JSON.stringify({origin,canceled}));
+  await page.mouse.move(origin.x,origin.y);await page.mouse.down();await held(last);
+  await page.mouse.move(target.x+18,target.y+12,{steps:8});await page.mouse.up();
+  assert.equal(await card(last).getAttribute('data-project-drag'),'settling');
+  await currentOrder([last,first,second,third]);
+  await settle();
+  const placed=await center(last);
+  assert(Math.hypot(placed.x-target.x,placed.y-target.y)<1,'놓으면 대상의 자리에 맞춰짐');
+  assert.equal(await page.locator('.pf-portfolio-dashboard').count(),1,'드래그가 프로젝트 열기로 이어지지 않음');
+
+  const client=await page.context().newCDPSession(page);
+  try {
+    await client.send('Emulation.setTouchEmulationEnabled',{enabled:true,maxTouchPoints:1});
+    const from=await center(last),to=await center(third);
+    const touch=(type,point)=>client.send('Input.dispatchTouchEvent',{type,touchPoints:point?[point]:[]});
+    await touch('touchStart',from);await held(last);
+    await touch('touchMove',{x:(from.x+to.x)/2,y:(from.y+to.y)/2});
+    await touch('touchMove',to);await touch('touchEnd');
+    await currentOrder(ids);
+    await settle();
+  } finally {
+    await client.send('Emulation.setTouchEmulationEnabled',{enabled:false});
+    await client.detach();
+  }
+  await card(first).focus();await page.keyboard.press('Alt+ArrowRight');
+  await currentOrder([second,first,third,last]);await settle();
+  assert(await card(first).evaluate(node=>node===document.activeElement),'키보드로 이동해도 카드 초점을 유지');
+  await page.keyboard.press('Alt+ArrowLeft');await currentOrder(ids);await settle();
+  console.log('대시보드 카드 / 2차원 포인터 추종 / 이웃 카드 자리 확보 / Escape 복귀 / 마우스·터치 드롭과 키보드 재정렬 통과');
+}
 
 async function main() {
   const root = path.resolve(__dirname, '..');
@@ -46,6 +112,7 @@ async function main() {
     const geometry = await cards.locator('button').evaluateAll(nodes => nodes.map(n => n.getBoundingClientRect().top));
     assert.deepEqual(geometry.slice(0,3),[geometry[0],geometry[0],geometry[0]]);
     assert(geometry[3]>geometry[2]);
+    await verifyCardReorder(page,cards);
     const search = page.getByRole('textbox',{name:'프로젝트 검색',exact:true});
     assert(await search.evaluate(input=>{
       const style=getComputedStyle(input),context=document.createElement('canvas').getContext('2d');

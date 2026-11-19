@@ -93,6 +93,13 @@ async function run() {
         const r=e.getBoundingClientRect();return r.top+r.height/2;
       });
       const scale=node.getBoundingClientRect().width/parseFloat(getComputedStyle(node).width);
+      const primaryRows=[...node.querySelectorAll('.side-dashboard,.side-project-head,.side-project')].map(row=>{
+        const box=row.getBoundingClientRect(),label=row.querySelector('h2,.side-project-label strong,.side-dashboard>span').getBoundingClientRect();
+        const icon=row.querySelector('svg').getBoundingClientRect();
+        const mid=rect=>rect.top+rect.height/2;
+        return {height:box.height/scale,top:box.top/scale,bottom:box.bottom/scale,
+          textX:label.left/scale,iconX:icon.left/scale,textOffset:(mid(label)-mid(box))/scale,iconOffset:(mid(icon)-mid(box))/scale};
+      });
       const usageBox=node.querySelector('.side-usage').getBoundingClientRect();
       const footerBox=node.querySelector('.side-foot').getBoundingClientRect();
       const accountBox=node.querySelector('.side-account-actions').getBoundingClientRect();
@@ -117,7 +124,7 @@ async function run() {
       return {
         positions:[...icons].map(e=>{const r=e.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2];}),
         percentages:node.querySelector('.side-usage').innerText.match(/\d+%/g)||[],
-        credits:!!node.querySelector('.side-credit-row'), projects,
+        credits:!!node.querySelector('.side-credit-row'), projects, primaryRows,
         projectListHeight:parseFloat(getComputedStyle(node.querySelector('.side-project-list')).height),
         largestNavGap:Math.max(...projectCenters.slice(1).map((y,i)=>(y-projectCenters[i])/scale)),
         lastToolBottom:node.querySelector('.side-tools .side-row:last-child').getBoundingClientRect().bottom,
@@ -195,7 +202,14 @@ async function run() {
       assert.equal(open.projects.length,8);
       assert(open.projects.every(p=>Math.abs(p.height-38)<0.1),'상태 유무와 개수에 관계없이 프로젝트 행을 38px로 유지합니다.');
       assert(open.projects.slice(1).every((project,index)=>project.top-open.projects[index].bottom>=1.9),'인접한 프로젝트 선택 면 사이에 실제 2px 간격을 유지합니다.');
-      assert(Math.abs(open.projectListHeight-(open.projects.reduce((sum,p)=>sum+p.height,0)+2*open.projects.length))<.2,'실제 행과 2px 간격 / 상하 1px 이외의 예약 공간은 없습니다.');
+      assert(Math.abs(open.projectListHeight-(open.projects.reduce((sum,p)=>sum+p.height,0)+2*open.projects.length))<.2,'실제 행과 2px 간격 이외의 예약 공간은 없습니다.');
+      for(const {primaryRows} of [closed,open]){
+        assert(primaryRows.every(row=>Math.abs(row.height-38)<.1),'대시보드, 프로젝트 제목, 프로젝트 행 높이 38px');
+        assert(primaryRows.slice(1).every((row,i)=>Math.abs(row.top-primaryRows[i].bottom-2)<.1),'대시보드에서 마지막 프로젝트까지 행 사이 간격 2px');
+        assert(primaryRows.every(row=>Math.abs(row.textOffset)<.1&&Math.abs(row.iconOffset)<.1),'글자와 아이콘을 각 행의 높이 중앙에 맞춥니다.');
+        assert(primaryRows.every(row=>Math.abs(row.textX-primaryRows[0].textX)<.1&&Math.abs(row.iconX-primaryRows[0].iconX)<.1),
+          '대시보드, 프로젝트 제목과 행의 왼쪽 기준선을 맞춥니다. '+JSON.stringify(primaryRows.slice(0,3)));
+      }
       assert(Math.abs(open.largestNavGap-40)<.1,'모든 프로젝트 아이콘의 중심 간격을 40px로 유지합니다.');
       assert(open.lastToolBottom>=open.navBottom-2,'도구 그룹은 기존처럼 탐색 영역 아래쪽에 있습니다.');
       assert(open.navBottom<=open.footerTop,'탐색 스크롤은 하단 사용량과 설정을 가리지 않습니다.');

@@ -1,6 +1,7 @@
 /* 레일 안의 아이콘 좌표를 유지하고, 펼칠 때는 설명이 있는 폭만 드러낸다. */
 .app-shell .workspace-side {
   --side-rail:56px; --side-open:236px;
+  --side-project-row:38px; --side-project-gap:2px;
   --sidebar-surface:linear-gradient(170deg,var(--sidebar-start,#deebfa) 0%,var(--sidebar-end,#edf4fc) 100%);
   position:relative; display:block; width:var(--side-rail); flex:0 0 var(--side-rail);
   padding:0; overflow:visible; border:0; background:transparent; z-index:60;
@@ -42,14 +43,14 @@
 .workspace-side[data-expanded=false] .side-row[aria-current=page]::before{content:'';display:block;position:absolute;inset:0 auto 0 0;width:38px;border-radius:7px;background:var(--selected);z-index:-1}
 .app-shell .workspace-side .sidebar-surface .side-dashboard:is(:hover,:active,[aria-current=page]){background:transparent;border-color:transparent;box-shadow:none;color:var(--accent-ink)}
 .app-shell .workspace-side .side-dashboard[aria-current=page]::before{display:none}
-.side-projects{display:flex;flex-direction:column;flex:none;min-height:0;margin-top:4px}
-.side-project-head{height:26px;min-height:26px;flex:none;gap:10px;padding:0 5px 0 10px;margin-bottom:2px}
+.side-projects{display:flex;flex-direction:column;flex:none;min-height:0;margin-top:var(--side-project-gap)}
+.side-project-head{height:var(--side-project-row);min-height:var(--side-project-row);flex:none;gap:10px;padding:0 4px 0 9px;border:1px solid transparent}
 .side-project-section-icon{width:18px;height:18px;flex:none;color:var(--muted)}
 .app-shell .workspace-side h2{margin:0;font-size:11px;line-height:18px;font-weight:700;color:var(--muted);white-space:nowrap}
-.app-shell .workspace-side .side-project-head h2{flex:1;font-size:13px}
-.side-project-list{display:flex;flex-direction:column;gap:2px;flex:none;min-height:0;padding-block:1px}
+.app-shell .workspace-side .side-project-head h2{flex:1;font-size:13px;line-height:20px}
+.side-project-list{display:flex;flex-direction:column;gap:var(--side-project-gap);flex:none;min-height:0;padding-block:var(--side-project-gap) 0}
 .side-project-list>p{padding:6px 10px;margin:0;color:var(--muted);font-size:12px;line-height:20px}
-.app-shell .workspace-side .sidebar-surface .side-project{height:38px;min-height:38px;padding:0 9px;gap:10px}
+.app-shell .workspace-side .sidebar-surface :is(.side-dashboard,.side-project){height:var(--side-project-row);min-height:var(--side-project-row)}
 .workspace-side .side-row>.side-project-icon{position:relative;display:grid;place-items:center;flex:none;width:18px;height:18px;overflow:visible}
 .side-project-markers{position:absolute;left:-11px;bottom:calc(100% - 6px);display:flex;width:38px;pointer-events:none}
 .side-project-marker{display:flex;flex:none;width:100%;align-items:center;justify-content:center;gap:2px;height:14px;min-height:14px;padding:1px;border-radius:3px;background:color-mix(in srgb,var(--project-status-color) 16%,var(--panel));color:var(--text);font-size:8.5px;font-weight:700;line-height:12px;white-space:nowrap}
@@ -104,6 +105,7 @@
 }
 @media(pointer:coarse){
   .app-shell .workspace-side .sidebar-surface .side-row,.app-shell .workspace-side .sidebar-surface .side-group .side-row{height:44px;min-height:44px}
-  .side-project-head{height:40px;min-height:40px}.side-project-head button{height:40px;min-height:40px}
+  .app-shell .workspace-side{--side-project-row:44px}
+  .side-project-head button{height:40px;min-height:40px}
 }
 @media(prefers-reduced-motion:reduce){.sidebar-surface,.app-shell .workspace-side{transition:none}}

@@ -19,14 +19,14 @@ export default function WorkspaceSidebar({categories,current,mobileOpen,projects
  useEffect(()=>{const key=(e:KeyboardEvent)=>{if(e.key==='Tab')keyboard.current=true},pointer=()=>{keyboard.current=false;setKeyboardFocus(false)};document.addEventListener('keydown',key,true);document.addEventListener('pointerdown',pointer,true);return()=>{document.removeEventListener('keydown',key,true);document.removeEventListener('pointerdown',pointer,true)}},[]);
  const leaveTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
  useEffect(()=>()=>clearTimeout(leaveTimer.current),[]);
- const expanded=mobileOpen||pinned||hovered||keyboardFocus;
+ const expanded=mobileOpen||pinned||hovered||keyboardFocus||grip.engaged;
  const row=(key:SideDestination,label:string,icon:LucideIcon)=><MenuRow label={label} icon={icon} active={current===key} extraClass={key==='dashboard'?'side-dashboard':''} onClick={()=>onGo(key)}/>;
  return <aside aria-label="작업 공간 탐색" aria-hidden={narrow&&!mobileOpen?true:undefined} inert={narrow&&!mobileOpen} data-expanded={expanded} data-pinned={pinned} className={'sidebar workspace-side'+(mobileOpen?' is-open':'')} onPointerEnter={e=>{clearTimeout(leaveTimer.current);if(e.pointerType!=='touch')setHovered(true)}} onPointerLeave={()=>{clearTimeout(leaveTimer.current);leaveTimer.current=setTimeout(()=>setHovered(false),240)}} onFocusCapture={()=>{if(keyboard.current)setKeyboardFocus(true)}} onBlurCapture={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setKeyboardFocus(false)}}>
   <div className="sidebar-surface"><div className="sidebar-content">
    <div className="side-brand-row"><button className="side-brand" onClick={()=>onGo('dashboard')} aria-label="Flowrium 홈"><img src="./flowrium.png" width="32" height="32" alt=""/><span>Flowrium</span></button><button type="button" className="side-collapse" aria-label={pinned?'메뉴 자동 접기':'메뉴 고정'} title={pinned?'마우스를 벗어나면 접기':'메뉴 펼친 상태로 고정'} aria-pressed={pinned} onClick={()=>setPinned(!pinned)}>{pinned?<PinOff size={16}/>:<Pin size={16}/>}</button></div>
    <nav aria-label="주 메뉴">{row('dashboard','대시보드',LayoutDashboard)}
     <section className="side-projects" aria-label="프로젝트"><div className="side-project-head"><Folders className="side-project-section-icon" size={18} strokeWidth={1.7} aria-hidden="true"/><h2>프로젝트</h2><button type="button" className="side-project-add" title="프로젝트 추가" aria-label="프로젝트 추가" aria-hidden={!expanded} tabIndex={expanded?0:-1} aria-current={current==='kickoff'?'page':undefined} onClick={()=>onGo('kickoff')}><Plus size={18}/></button></div>
-     <div className="side-project-list">{projects.map(p=>{
+     <div className="side-project-list project-order-list">{projects.map(p=>{
       const n=counts[p.id],total=n?.total||0;
       const states=(['running','waiting','decision'] as const).filter(state=>(n?.[state]||0)>0);
       const primary=states.includes('decision')?'decision':states.includes('running')?'running':'waiting';

@@ -2,6 +2,7 @@ import {projectCategory} from "../shared/project-details";
 import LoadingProgress from './LoadingProgress';
 import { AnimatedCheckbox } from './ui-motion';
 import { useEffect, useMemo, useState } from "react";
+import {useProjectGrip, type MoveProject} from './ProjectOrder';
 import {
   Archive,
   ArrowRight,
@@ -286,6 +287,7 @@ interface Props {
   sessions: Session[];
   onNavigate(view: PortfolioView): void;
   onProject(project: Project, tab: ProjectTab): void;
+  onProjectMove: MoveProject;
   onOpenSession(session: Session): void;
   onChooseProject(): void;
   onCreated(project: Project): void;
@@ -465,6 +467,7 @@ export function ProjectPortfolio({
   sessions,
   onNavigate,
   onProject,
+  onProjectMove,
   onOpenSession,
   onChooseProject,
   onCreated,
@@ -481,7 +484,7 @@ export function ProjectPortfolio({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, Session>>({});
-  const keys = projects.map((p) => p.id + "@" + p.path + "@" + p.name).join("|");
+  const keys = projects.map((p) => p.id + "@" + p.path + "@" + p.name).sort().join("|");
   useEffect(() => {
     let live = true;
     if (api)
@@ -509,8 +512,11 @@ export function ProjectPortfolio({
   const records = sessions.map((s) => overrides[s.id] || s);
   const pending = records.filter((s) => s.workflow?.status !== "done");
   const complete = records.filter((s) => s.workflow?.status === "done");
-  const activeCards = cards.filter((c) => !c.details?.archivedAt),
-    archived = cards.filter((c) => c.details?.archivedAt);
+  const activeCards = projects.flatMap((p) => {
+    const card = byProject.get(p.id);
+    return card && !card.details?.archivedAt ? [card] : [];
+  });
+  const archived = cards.filter((c) => c.details?.archivedAt);
   const filtered = (list: PortfolioCard[]) =>
     list.filter((c) =>
       matches(
@@ -523,6 +529,8 @@ export function ProjectPortfolio({
         c.details?.kickoff?.members,
       ),
     );
+  const dashboardCards = view === "dashboard" ? filtered(activeCards) : [];
+  const grip = useProjectGrip(dashboardCards.map((c) => c.project), onProjectMove, "grid");
   const history = useMemo(() => {
     if (view !== "timeline") return [];
     return sessions
@@ -695,11 +703,12 @@ export function ProjectPortfolio({
                 />
               </label>
             </div>
-            <div className="pf-project-entries">
-              {filtered(activeCards).map((c) => {
+            <div className="pf-project-entries project-order-list">
+              {dashboardCards.map((c) => {
                 const own = records.filter((s) => s.projectId === c.project.id);
                 return (
                   <button
+                    {...grip.props(c.project.id)}
                     className="pf-project-entry"
                     onContextMenu={(event) => onProjectMenu(event, c.project)}
                     key={c.project.id}
@@ -719,6 +728,7 @@ export function ProjectPortfolio({
                 );
               })}
             </div>
+            <span className="project-order-readout" role="status">{grip.announcement}</span>
             {!activeCards.length && (
               <section className="pf-welcome">
                 <FolderPlus size={30} />
@@ -730,7 +740,7 @@ export function ProjectPortfolio({
 
               </section>
             )}
-            {!!activeCards.length && !filtered(activeCards).length && (
+            {!!activeCards.length && !dashboardCards.length && (
               <p className="pf-empty">조건에 맞는 프로젝트가 없습니다.</p>
             )}
             </section>
