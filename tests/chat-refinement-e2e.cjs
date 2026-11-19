@@ -41,13 +41,19 @@ async function main(){
    await page.setViewportSize({width,height:900});await settledLayout(dock);
    const metrics=await assistant.evaluate(row=>{
     const center=r=>(r.top+r.bottom)/2,box=e=>e.getBoundingClientRect();
-    const meta=['.message-avatar','.message-meta strong'].map(s=>box(row.querySelector(s))),bubble=box(row.querySelector('.message-bubble'));
+    const avatar=box(row.querySelector('.message-avatar')),icon=box(row.querySelector('.chatgpt-avatar'));
+    const author=row.querySelector('.message-meta strong'),label=box(author),font=getComputedStyle(author);
+    const canvas=document.createElement('canvas').getContext('2d');
+    canvas.font=font.font;
+    const ink=canvas.measureText(author.textContent);
+    const inkCenter=center(label)+(ink.fontBoundingBoxAscent-ink.fontBoundingBoxDescent-ink.actualBoundingBoxAscent+ink.actualBoundingBoxDescent)/2*label.height/parseFloat(font.lineHeight);
+    const bubble=box(row.querySelector('.message-bubble'));
     const assistantTime=box(row.querySelector('.message-time')),assistantCopy=box(row.querySelector('.copy-message'));
     const user=document.querySelector('.message.user'),ownBubble=box(user.querySelector('.message-bubble')),copy=box(user.querySelector('.copy-message')),userTime=box(user.querySelector('.message-time'));
     const tokenSummary=document.querySelector('.chat-token-summary'),token=box(tokenSummary),settings=box(document.querySelector('.session-details>summary'));
     const track=box(tokenSummary.querySelector('.chat-token-track')),fill=box(tokenSummary.querySelector('.chat-token-fill'));
     const heading=box(document.querySelector('.session-heading h2')),scope=box(document.querySelector('.session-heading .eyebrow'));
-    return {width:innerWidth,metaCenters:meta.map(center),userCopyOutside:copy.top>=ownBubble.bottom,userCopyRight:Math.abs(copy.right-ownBubble.right),
+    return {width:innerWidth,iconOffset:Math.abs(center(icon)-center(avatar)),authorOffset:Math.abs(inkCenter-center(icon)),userCopyOutside:copy.top>=ownBubble.bottom,userCopyRight:Math.abs(copy.right-ownBubble.right),
      userTimeOutside:userTime.right<=ownBubble.left-3&&Math.abs(userTime.bottom-ownBubble.bottom)<1,
      userHeaderCount:user.querySelectorAll('.message-meta').length,assistantTimeBelow:assistantTime.top>=bubble.bottom,assistantFooterOffset:Math.abs(center(assistantTime)-center(assistantCopy)),
      timestampsInsideBubbles:document.querySelectorAll('.message-bubble time').length,
@@ -55,7 +61,7 @@ async function main(){
      tokenBeforeSettings:token.right<=settings.left+1,tokenWidth:track.width,tokenRatio:fill.width/track.width,headingGap:heading.top-scope.bottom,overflow:document.documentElement.scrollWidth-innerWidth,messageOverflow:row.scrollWidth-row.clientWidth,
      bubbleWidth:bubble.width,scale:getComputedStyle(document.querySelector('.message-history-items')).zoom};
    });
-   assert(Math.max(...metrics.metaCenters)-Math.min(...metrics.metaCenters)<=1,'아이콘·Codex의 세로 중심 일치');
+   assert(metrics.iconOffset<.25&&metrics.authorOffset<1,'실제 아이콘과 Codex 글자의 세로 중심 '+JSON.stringify(metrics));
    assert(metrics.userTimeOutside&&metrics.userHeaderCount===0&&metrics.assistantTimeBelow&&metrics.assistantFooterOffset<1&&metrics.timestampsInsideBubbles===0,'시간은 말풍선 밖 / 내 시간은 왼쪽 하단 / 응답 시간은 하단 도구와 나란히');
    assert(metrics.userCopyOutside&&metrics.userCopyRight<2,'사용자 복사 도구는 말풍선 바깥 우측 하단');
    assert(metrics.radius>=18&&metrics.userRadius>=18&&metrics.tokenBeforeSettings,'둥근 양측 말풍선 / 토큰은 설정 왼쪽');
@@ -95,7 +101,14 @@ async function main(){
   await rows.filter({has:page.getByText('제품별 판매량 비교',{exact:true})}).click();
   const unavailable=dock.getByRole('img',{name:'컨텍스트 사용량을 아직 확인하지 못했습니다.',exact:true});
   await unavailable.waitFor();assert.equal(await unavailable.locator('.chat-token-fill').count(),0);
-  await unavailable.focus();await page.getByRole('tooltip').filter({hasText:'컨텍스트 사용량을 아직 확인하지 못했습니다.'}).waitFor();
+  await unavailable.focus();
+  await page.locator('.messages').dispatchEvent('scroll');
+  const unavailableTip=page.getByRole('tooltip').filter({hasText:'컨텍스트 사용량을 아직 확인하지 못했습니다.'});
+  await unavailableTip.waitFor();
+  await page.locator('.messages').dispatchEvent('scroll');
+  assert(await unavailableTip.isVisible(),'대화가 스크롤되어도 초점을 둔 컨텍스트 도움말을 유지합니다');
+  await unavailable.blur();
+  await unavailableTip.waitFor({state:'detached'});
   assert.deepEqual(proof.errors,[]);proof.passed=true;await fs.writeFile(path.join(out,'대화-07-검증.json'),JSON.stringify(proof,null,2)+'\n');
   console.log('대화 개선 검사 통과 / 양측 말풍선·메타정보·복사 도구 / 문맥 사용량 막대와 마우스·키보드 도움말 / 분류·동기화 / 모델 위로 펼침 / 음성 안내 5초 / 4개 폭 / 원문 복사·좋아요 유지');
  }finally{if(app)await app.close().catch(()=>{});await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:150});}
