@@ -23,7 +23,7 @@ function remap(value,ids,paths={},key=''){
  const out={};for(const [k,v]of Object.entries(value)){if(['__proto__','constructor','prototype'].includes(k))throw Error('이관 문서에 예약된 키가 있습니다.');out[k]=remap(v,ids,paths,k);}return out;
 }
 function inactiveQueueItem(item){
- const {nativeDelivery,nativeQueueId,nativeThreadId,nativeDeviceHash,nativeAfterTurnId,nativeQueueAvailable,waitingForWriter,...copy}=item;
+ const {nativeDelivery,nativeQueueId,nativeThreadId,nativeDeviceHash,nativeAfterTurnId,nativeQueueAvailable,waitingForWriter,branchSessionId,...copy}=item;
  if(copy.status!=='queued' && copy.status!=='sending')return copy;
  return {...copy,status:'cancelled',owner:'migration-archive',...(nativeDelivery&&{nativeCleared:true}),error:'이관한 대기 지시는 자동으로 전송하지 않습니다.'};
 }

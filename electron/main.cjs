@@ -265,6 +265,7 @@ async function launch() {
   register("listQueuedMessages", id => controller.listQueuedMessages(id));
   register("cancelQueuedMessage", (id, queued) => controller.cancelQueuedMessage(id, queued));
   register("sendQueuedToCodex", (id, queued) => controller.messageQueue.sendToCodex(id, queued));
+  register("startQueuedBranch", (id, queued) => controller.messageQueue.startBranch(id, queued));
   register("clearUnconfirmedCodexQueue", (id, queued) => controller.messageQueue.clearUnconfirmed(id, queued));
   register("resumeQueuedMessages", id => controller.resumeQueuedMessages(id));
   const { Drafts, registerDrafts } = require("./drafts.cjs");

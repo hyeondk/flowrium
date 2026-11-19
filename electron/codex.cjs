@@ -317,6 +317,10 @@ class CodexClient extends EventEmitter {
     const model=selected||this.threadModels.get(params.threadId),effort=require('./model-effort.cjs').supportedEffort(params.effort,model,catalog),next={...params};
     if(selected)next.model=selected;else delete next.model;
     if(effort===undefined)delete next.effort;else next.effort=effort;
+    if (params.serviceTierForTurn) {
+      const entry = model ? catalog?.find(row=>row?.model===model || row?.id===model) : catalog?.find(row=>row?.isDefault);
+      next.serviceTierForTurn = require('./model-speed.cjs').supportedTier(params.serviceTierForTurn, entry);
+    }
     return this.rawRequest('turn/start',next,timeout).then(result=>{if(selected&&params.threadId)this.threadModels.set(params.threadId,selected);return result});
   }
   rawRequest(method, params = {}, timeout = 30_000) {

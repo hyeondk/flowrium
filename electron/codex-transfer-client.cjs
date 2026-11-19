@@ -2,7 +2,7 @@ const {CodexClient}=require('./codex.cjs');
 const {publicMessage}=require('./errors.cjs');
 
 function linkedError(error){
- if(/already has an active writer|is closing; retry thread\/resume after the thread is closed/i.test(error?.rpcMessage||error?.message||''))return Object.assign(Error('원래 대화의 쓰기 권한을 기다리고 있습니다.'),{code:'THREAD_WRITER_BUSY'});
+ if(/already has an active writer|is closing; retry thread\/resume after the thread is closed/i.test(error?.rpcMessage||error?.message||''))return Object.assign(Error('Codex에서 원래 대화를 사용 중입니다.'),{code:'THREAD_WRITER_BUSY'});
  return error;
 }
 function createRunClient(controller,run){

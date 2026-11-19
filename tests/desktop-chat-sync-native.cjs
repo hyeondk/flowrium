@@ -111,7 +111,9 @@ async function main() {
     await desktop.request('turn/start',{threadId:id,input:[{type:'text',text:externalText}]});
     try{
       await remoteStarted.promise;
-      assert.equal((await incomingUser).type,'externalTurn');
+      const incoming=await incomingUser;
+      assert.equal(incoming.type,'externalTurn');
+      assert.equal(incoming.status,'running');
       assert.equal(runtime.liveView(live).messages.filter(m=>m.text===externalText).length,1);
       assert(!live.messages.some(m=>m.text===externalText));
     }finally{remoteRelease.resolve();}
@@ -388,6 +390,7 @@ async function main() {
       await controller.messageQueue.sendToCodex(queueSession.id,kept.queueId);
       const [toRemove]=await getQueue();
       assert.equal(toRemove.clientUserMessageId,toCancel.submissionId);
+      await assert.rejects(controller.messageQueue.startBranch(queueSession.id,kept.queueId),/아직 원본에 전달되지 않은/);
       assert.equal(toRemove.input[1].type,'image');
       assert.equal(toRemove.input[1].url,'data:image/png;base64,'+(await fs.readFile(path.join(__dirname,'../public/flowrium.png'))).toString('base64'));
       const unrelated=await desktop.request('thread/queue/add',{threadId:queueThread,input:[{type:'text',text:'원본 자체 대기'}],clientUserMessageId:require('node:crypto').randomUUID()});
@@ -465,6 +468,73 @@ async function main() {
     await monitor.scan(runtime);
     assert(queueSession.messages.some(m=>m.text===idleQueue.text));
     console.log('원본 별도 설정 선택 / 기본 로컬 대기 / 실행·유휴 소유자 자동 인수 / 잘못된 계정 차단 / 주변 요청 보존 취소 / 응답 유실·동시 제출·재시작 뒤 1회 실행과 답변 동기화');
+
+    const completedOriginalUsers=finished.messages.filter(message=>message.role==='user').map(message=>message.text);
+    const completedOriginalTurns=finished.raw.turns.map(turn=>turn.id);
+    const branchSourceText='분기와 동시에 원본에서 계속되는 작업';
+    const branchInput={...queueInput('원본을 기다리지 않고 분기에서 실행'),attachments:[picture.id]};
+    const sourceStarted=Promise.withResolvers(),sourceRelease=Promise.withResolvers();
+    hold={started:sourceStarted,release:sourceRelease};
+    const sourceDone=onceEvent(desktop,'notification',event=>event.method==='turn/completed'&&event.params.threadId===queueThread);
+    await desktop.request('turn/start',{threadId:queueThread,input:[{type:'text',text:branchSourceText}]});
+    try {
+      await sourceStarted.promise;
+      const justBeforeBranch=requests;
+      const deliveryStart=imageDeliveries.length;
+      imageRequestText=branchInput.text;
+      const pending=await controller.send(branchInput);
+      assert(pending.queued && pending.waitingForWriter);
+      assert.equal((await getQueue()).length,0);
+      const sendBranch=controller.send;
+      controller.send=async function(input,...options) {
+        if (input.submissionId===pending.queueId && input.sessionId!==queueSession.id)
+          throw Error('시험용 분기 전송 중단');
+        return sendBranch.call(this,input,...options);
+      };
+      try {
+        await assert.rejects(controller.messageQueue.startBranch(queueSession.id,pending.queueId),/시험용 분기 전송 중단/);
+      } finally {controller.send=sendBranch;}
+      const recoveryStore=new Store(path.join(root,'flowrium'));
+      await recoveryStore.load();
+      const persisted=recoveryStore.session(queueSession.id).queuedMessages.find(row=>row.id===pending.queueId);
+      assert(persisted.branchSessionId);
+      assert.equal(persisted.status,'queued');
+      assert(!recoveryStore.session(persisted.branchSessionId).messages.some(message=>message.text===branchInput.text));
+      await controller.messageQueue.flush(queueSession.id);
+      assert.equal((await getQueue()).length,0);
+      assert.equal(requests,justBeforeBranch);
+      const branchDone=onceEvent(controller,'event',event=>event.type==='done'&&event.sessionId!==queueSession.id);
+      const {session:branch}=await controller.messageQueue.startBranch(queueSession.id,pending.queueId);
+      assert.equal(branch.id,persisted.branchSessionId);
+      assert.notEqual(branch.id,queueSession.id);
+      assert.notEqual(branch.threadId,queueThread);
+      const completedBranch=await branchDone;
+      assert.equal(completedBranch.sessionId,branch.id);
+      assert.equal(completedBranch.status,'completed');
+      const repeated=await controller.messageQueue.startBranch(queueSession.id,pending.queueId)
+        .then(result=>result.session,error=>{assert.match(error.message,/아직 원본에 전달되지 않은/);});
+      if(repeated)assert.equal(repeated.id,branch.id);
+      assert.equal(requests,justBeforeBranch+1,'원본이 작업 중이어도 분기에서만 한 번 실행');
+      assert.deepEqual(imageDeliveries.slice(deliveryStart),[1]);
+      const branchTranscript=await D.snapshot(reader,branch.threadId,cwd);
+      assert.deepEqual(branchTranscript.messages.filter(message=>message.role==='user').map(message=>message.text),
+        [...completedOriginalUsers,branchInput.text]);
+      assert(!branchTranscript.messages.some(message=>message.text===branchSourceText));
+      const sourceReceipt=queueSession.queuedMessages.find(row=>row.id===pending.queueId);
+      assert.equal(sourceReceipt.branchSessionId,branch.id);
+      assert.equal(sourceReceipt.status,'cancelled');
+      assert(!controller.messageQueue.pending(queueSession.id));
+      assert.equal((await getQueue()).length,0);
+    } finally {sourceRelease.resolve();imageRequestText=undefined;}
+    assert.equal((await sourceDone).params.turn.status,'completed');
+    await controller.messageQueue.flush(queueSession.id);
+    const originalAfterBranch=await D.snapshot(reader,queueThread,cwd);
+    assert.deepEqual(originalAfterBranch.raw.turns.map(turn=>turn.id).slice(0,-1),completedOriginalTurns);
+    assert.deepEqual(originalAfterBranch.messages.filter(message=>message.role==='user').map(message=>message.text),
+      [...completedOriginalUsers,branchSourceText]);
+    assert.equal((await getQueue()).length,0);
+    console.log('원본 작업 진행 중 분기 / 전송 중단 뒤 동일 분기 복구 / 완료된 문맥부터 작업과 첨부를 한 번 전송 / 기존 턴과 원본 실행 보존 / 대기 요청 중복 없음');
+
     console.log('18MiB가 넘는 원본 / 기존 방식 응답 한도 초과 재현 / 원본 전체 보존과 같은 대화 답변 통과');
     console.log('서로 다른 앱 서버의 대화 제목 왕복 / 미열람 대화 제목 수신 / 프로젝트 이름 왕복과 순서 이동 / 관련 없는 카드 및 파일 경로 보존 / 재실행 복원 통과');
     console.log('독립 Codex 앱 서버 두 개의 같은 대화 3회 왕복 / 원래 본문과 순서 보존 / 버튼 없는 수신 / 상대 프로세스를 종료하지 않고 재개 통과');

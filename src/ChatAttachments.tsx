@@ -64,17 +64,20 @@ export function AttachmentComposer({projectId,items,onChange,disabled,report,chi
   </div></>}
  </div>;
 }
-export function ChatQueuePanel({session,onCancel,onResume,onSendToCodex,onClear}:{session:import('../shared/types').Session;onCancel:(id:string)=>void;onResume:()=>void;onSendToCodex:(id:string)=>Promise<void>;onClear:(id:string)=>Promise<void>}) {
- const [selected,setSelected]=useState<{id:string;action:'send'|'clear'}>(),sending=useRef(false);
+export function ChatQueuePanel({session,onCancel,onResume,onSendToCodex,onClear,onBranch}:{session:import('../shared/types').Session;onCancel:(id:string)=>void;onResume:()=>void;onSendToCodex:(id:string)=>Promise<void>;onClear:(id:string)=>Promise<void>;onBranch:(id:string)=>Promise<void>}) {
+ const [selected,setSelected]=useState<{id:string;action:'send'|'clear'|'branch'}>(),sending=useRef(false);
  const rows=session.queuedMessages||[],pending=rows.filter(q=>['queued','sending'].includes(q.status));
  const clearing=selected?.action==='clear';
- const confirmation=rows.find(q=>q.id===selected?.id&&(clearing?queuedInputView(q).canClear:q.id===pending[0]?.id&&queuedInputView(q).canSendToCodex));
- const question=clearing?clearQueueQuestion:nativeQueueQuestion;
+ const branching=selected?.action==='branch';
+ const canBranch=(q:typeof rows[number])=>q.status==='queued'&&q.waitingForWriter&&!q.error&&!q.nativeDelivery;
+ const confirmation=rows.find(q=>q.id===selected?.id&&(clearing?queuedInputView(q).canClear:branching?canBranch(q):q.id===pending[0]?.id&&queuedInputView(q).canSendToCodex));
+ const branchLabel='지금 분기해 실행';
+ const question=clearing?clearQueueQuestion:branching?'새 분기에서 지금 실행할까요?':nativeQueueQuestion;
  async function confirm() {
    if(!confirmation||sending.current)return;
    sending.current=true;
    setSelected(undefined);
-   try {await (clearing?onClear(confirmation.id):onSendToCodex(confirmation.id));} finally {sending.current=false;}
+   try {await (clearing?onClear(confirmation.id):branching?onBranch(confirmation.id):onSendToCodex(confirmation.id));} finally {sending.current=false;}
  }
  if(!rows.length)return null;
  return <><details className="chat-queue-panel" open={pending.length>0}><summary>추가 지시 (대기 {pending.length}개)</summary>
@@ -85,7 +88,8 @@ export function ChatQueuePanel({session,onCancel,onResume,onSendToCodex,onClear}
     return <div key={q.id}><strong>{view.status}</strong><p>{q.text}</p>
       {q.attachments.length>0&&<small>첨부 {q.attachments.length}개</small>}
       {view.hint&&<small>{view.hint}</small>}{q.error&&<p role="alert">{q.error}</p>}
-      {(view.canCancel||view.canResume||canSend||view.canClear)&&<div className="queue-actions">
+      {(view.canCancel||view.canResume||canSend||view.canClear||canBranch(q))&&<div className="queue-actions">
+        {canBranch(q)&&<button className="button primary" aria-haspopup="dialog" onClick={()=>setSelected({id:q.id,action:'branch'})}>{branchLabel}</button>}
         {view.canCancel&&<button onClick={()=>onCancel(q.id)}>대기 취소</button>}
         {view.canResume&&<button onClick={onResume}>지금 전달 재개</button>}
         {canSend&&<button className="button primary" aria-haspopup="dialog" onClick={()=>setSelected({id:q.id,action:'send'})}>{nativeQueueAction}</button>}
@@ -93,8 +97,8 @@ export function ChatQueuePanel({session,onCancel,onResume,onSendToCodex,onClear}
       </div>}</div>;
   })}</details>
   <MotionOverlay open={Boolean(confirmation)} onClose={()=>setSelected(undefined)} label={question} className="queue-confirm">
-    <h2>{question}</h2><p>{clearing?clearQueueExplanation:nativeQueueExplanation}</p>
+    <h2>{question}</h2><p>{clearing?clearQueueExplanation:branching?'마지막 완료 지점에서 별도 대화를 만들어 이 요청을 실행합니다. 원래 Codex 작업은 계속 진행됩니다. 두 작업은 같은 프로젝트 폴더를 사용합니다.':nativeQueueExplanation}</p>
     <div className="queue-actions"><button className="button subtle" onClick={()=>setSelected(undefined)}>취소</button>
-    <button className="button primary" onClick={()=>void confirm()}>{clearing?clearQueueAction:nativeQueueAction}</button></div>
+    <button className="button primary" onClick={()=>void confirm()}>{clearing?clearQueueAction:branching?branchLabel:nativeQueueAction}</button></div>
   </MotionOverlay></>;
 }

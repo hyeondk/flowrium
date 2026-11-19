@@ -48,8 +48,14 @@ function registerConversationTools(register,controller) {
     const next = {...previous};
     if (model) next.model = model;
     else delete next.model;
+    for (const key of ['effort','speed']) {
+      if (!Object.hasOwn(input,key)) continue;
+      if (input[key] === '') delete next[key];
+      else next[key] = input[key];
+    }
+    const validated = require('./chat-preferences.cjs').preferences(next);
     editing.add(id);
-    session.preferences = next;
+    session.preferences = validated;
     try {
       await store.save();
       return structuredClone(session);

@@ -14,6 +14,10 @@ function preferences(input) {
   if (effort && !["none","minimal","low","medium","high","xhigh","max","ultra"].includes(effort)) throw new Error("대화 추론 강도를 확인해 주세요.");
   const url = chatAddress(input.chatGptUrl);
   const result={ ...(model && {model}), ...(effort && {effort}), ...(url && {chatGptUrl:url}) };
+  if (input.speed !== undefined && input.speed !== '') {
+    require('./model-speed.cjs').serviceTier(input.speed);
+    result.speed = input.speed;
+  }
   const enums={answerLength:["short","normal","detailed"],sandbox:["read-only","workspace-write","danger-full-access"],approval:["on-request","never"]};
   for(const [key,values] of Object.entries(enums))if(input[key]!==undefined){if(!values.includes(input[key]))throw Error("대화 동작 설정을 확인해 주세요.");result[key]=input[key];}
   for(const key of ["testing","askNext","autoCompact","networkAccess"])if(input[key]!==undefined){if(typeof input[key]!=="boolean")throw Error("대화 설정의 켜짐 여부를 확인해 주세요.");result[key]=input[key];}

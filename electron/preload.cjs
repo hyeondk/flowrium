@@ -41,6 +41,7 @@ contextBridge.exposeInMainWorld(
     listQueuedMessages: id => invoke("listQueuedMessages", id),
     cancelQueuedMessage: (id, queued) => invoke("cancelQueuedMessage", id, queued),
     sendQueuedToCodex: (id, queued) => invoke("sendQueuedToCodex", id, queued),
+    startQueuedBranch: (id, queued) => invoke("startQueuedBranch", id, queued),
     clearUnconfirmedCodexQueue: (id, queued) => invoke("clearUnconfirmedCodexQueue", id, queued),
     resumeQueuedMessages: id => invoke("resumeQueuedMessages", id),
     portfolioAction: input => invoke("portfolioAction", input),

@@ -209,26 +209,38 @@ test('기기 식별자가 누락된 연결 대화를 검증된 원본으로 복�
   assert.equal(session.threadId,undefined);
 });
 
-test('다른 앱에서 기록한 작업 중 요청과 중간 답변을 같은 행에 반영하고 완료 뒤 순서와 개수를 보존한다',async t=>{
+test('다른 앱의 진행 설명과 도구 상태를 공개 범위에서 표시하고 완료 뒤 원문 및 순서를 보존한다',async t=>{
  const f=await fixture(t),plan=await f.preview();
  await f.runtime.apply({planId:plan.id});
  const s=f.store.state.sessions[0],thread=f.client.threads.get(s.threadId);
- const active={id:'진행중인원본',startedAt:1700000250,status:'inProgress',items:[
+ const active={id:'진행중인원본',startedAt:Math.floor(Date.now()/1000)-300,status:'interrupted',items:[
   {id:'원래요청',type:'userMessage',content:[{type:'text',text:'원래 앱의 추가 요청'}]},
-  {id:'원래답변',type:'agentMessage',text:'첫 부분'}
+  {id:'원래답변',type:'agentMessage',text:'첫 부분'},
+  {id:'진행설명',type:'agentMessage',phase:'commentary',text:'자료를 확인하고 있어요.'},
+  {id:'명령',type:'commandExecution',status:'inProgress',command:'원래 명령',aggregatedOutput:'원래 출력'},
+  {id:'도구',type:'mcpToolCall',status:'completed',arguments:{test:'원래 입력'}},
+  {id:'파일',type:'fileChange',status:'completed',changes:[{path:'원래 경로'}]},
+  {id:'비공개추론',type:'reasoning',content:['비공개 모델 추론']}
  ]};
  f.client.turns.get(s.threadId).push(active);
- thread.status={type:'active'};
+ thread.status={type:'notLoaded'};
  const events=[];
  f.controller.emitEvent=event=>{if(event.type==='externalTurn')events.push(event);};
  const check=()=>f.runtime.action({action:'sync',sessionId:s.id});
  const current=()=>f.runtime.liveView(s).messages.filter(m=>m.turnId===active.id&&m.role!=='system').map(m=>m.text);
  const repository=f.store.repositories.get(s.projectId),savedRevision=repository.heads.get(s.id);
  const before=s.messages.map(m=>m.id);
+ await check();
+ assert.equal(events.at(-1).status,'pending');
+ assert.equal(f.runtime.liveTurn(s).running,false);
+ active.startedAt=Math.floor(Date.now()/1000);
  await Promise.all([check(),check()]);
  assert.deepEqual(current(),['원래 앱의 추가 요청','첫 부분']);
  assert.equal(events.at(-1).status,'running');
  assert.equal(f.runtime.liveTurn(s).running,true);
+ const progress=events.at(-1).turnMessages.filter(message=>message.role==='system');
+ assert.deepEqual(progress.map(message=>message.text),['자료를 확인하고 있어요.','실행 도구 / 명령\n진행 중','도구 실행 기록\n완료','파일 변경 기록\n완료']);
+ assert.equal(progress[0].progressCommentary,true);
  const observed=f.runtime.liveView(s).messages.filter(m=>m.turnId===active.id).map(m=>m.id);
  assert.deepEqual(s.messages.map(m=>m.id),before);
  active.items[1].text='첫 부분과 다음 부분';
@@ -236,11 +248,8 @@ test('다른 앱에서 기록한 작업 중 요청과 중간 답변을 같은 �
  await f.store.save();
  assert.equal(repository.heads.get(s.id),savedRevision);
  assert.deepEqual(s.messages.map(m=>m.id),before);
- thread.status={type:'notLoaded'};active.status='interrupted';
- await check();
- assert.equal(events.at(-1).status,'pending');
- assert.equal(f.runtime.liveTurn(s).running,false);
- active.status='completed';active.completedAt=1700000255;thread.updatedAt=1700000255;thread.status={type:'idle'};
+ active.status='completed';active.completedAt=active.startedAt+5;thread.updatedAt=active.completedAt;thread.status={type:'idle'};
+ active.items[3].status='completed';
  active.items[1].text='첫 부분과 다음 부분, 최종 답변';
  await check();await check();
  assert.deepEqual(s.messages.map(m=>m.id),[...before,...observed]);
@@ -248,5 +257,7 @@ test('다른 앱에서 기록한 작업 중 요청과 중간 답변을 같은 �
  assert.equal(f.runtime.liveTurn(s),undefined);
  assert.equal(events.at(-1).status,'idle');
  assert.deepEqual(current(),['원래 앱의 추가 요청','첫 부분과 다음 부분, 최종 답변']);
+ assert(s.messages.some(message=>message.text.includes('원래 출력')));
+ assert(!s.messages.some(message=>message.text.includes('비공개 모델 추론')));
  assert(!f.client.calls.some(c=>['thread/resume','turn/start'].includes(c.method)));
 });

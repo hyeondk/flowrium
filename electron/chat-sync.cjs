@@ -37,6 +37,7 @@ function guardSession(runtime, session, id, context) {
 }
 
 const unfinished = status => status === 'inProgress' || status === 'in_progress';
+const recentProgress = 2 * 60_000;
 
 async function probe(runtime, session, context, cwd) {
   const thread = await D.readThread(runtime.client, session.threadId, cwd);
@@ -54,7 +55,7 @@ async function probe(runtime, session, context, cwd) {
   // A separate official server reconstructs a live writer's unfinished turn as
   // interrupted with no completion time. It can still acquire a real final
   // status later. Never persist these intermediate frames as final history.
-  const provisional=thread.status?.type==='notLoaded' && newest?.status==='interrupted' && newest.completedAt==null;
+  const provisional=thread.status?.type==='notLoaded' && newest?.status==='interrupted' && newest.completedAt==null && newest.error==null;
   return { thread, newest, provisional, active: D.active(thread) || unfinished(newest?.status), stamp: JSON.stringify([thread.updatedAt, thread.name, newest?.id, newest?.status, newest?.completedAt]) };
 }
 
@@ -137,23 +138,32 @@ async function mirrorActiveTurn(runtime,session,latest,cwd,context){
   if(!turn?.id || !(unfinished(turn.status)||latest.provisional) || deferred(runtime,session))return;
   const id=session.threadId;
   const part=await D.snapshot(runtime.client,id,cwd,false,{
-    thread:latest.thread,turns:[turn],textOnly:true,recover:()=>runtime.recover(context)
+    thread:latest.thread,turns:[turn],liveProgress:true,recover:()=>runtime.recover(context)
   });
   guardSession(runtime,session,id,context);
   if(deferred(runtime,session))return;
-  const incoming=part.messages.filter(m=>m.role==='user'||m.role==='assistant');
-  if(!incoming.length&&!latest.active)return;
   runtime.liveTurns??=new WeakMap();
   const previous=liveTurn(runtime,session);
-  const saved=previous?.turnId===turn.id?previous.rows:session.messages.filter(m=>m.turnId===turn.id);
-  const merged=mergeNative(saved,incoming);
+  const sameTurn=previous?.turnId===turn.id;
+  const saved=sameTurn?previous.rows:session.messages.filter(m=>m.turnId===turn.id);
+  const merged=mergeNative(saved,part.messages);
   const existing=new Map(saved.map(m=>[m.id,m]));
   for(let i=0;i<merged.length;i++){
     const before=existing.get(merged[i].id);
     if(before&&before.text.length>merged[i].text.length&&before.text.startsWith(merged[i].text))merged[i]=before;
   }
-  if(previous?.turnId===turn.id&&previous.running===latest.active&&JSON.stringify(merged)===JSON.stringify(saved))return;
-  const preview={...context,threadId:id,turnId:turn.id,rows:merged,running:latest.active,version:(previous?.version||0)+1};
+  const changed=JSON.stringify(merged)!==JSON.stringify(saved);
+  const now=Date.now();
+  // The detached reader reports interruption before the original writer has
+  // published its completion. Keep working while the source has recent activity.
+  const recorded=part.messages.reduce((time,row)=>Math.max(time,Date.parse(row.createdAt)||0),Date.parse(D.at(turn.startedAt,''))||0);
+  const lastProgressAt=Math.max(sameTurn?previous.lastProgressAt:0,latest.active||(sameTurn&&changed)?now:Math.min(now,recorded));
+  const running=latest.active||latest.provisional&&now-lastProgressAt<recentProgress;
+  if(sameTurn&&previous.running===running&&!changed){
+    previous.lastProgressAt=lastProgressAt;
+    return;
+  }
+  const preview={...context,threadId:id,turnId:turn.id,rows:merged,running,lastProgressAt,version:(previous?.version||0)+1};
   runtime.liveTurns.set(session,preview);
   runtime.controller.emitEvent({type:'externalTurn',sessionId:session.id,turnId:turn.id,turnMessages:merged,status:preview.running?'running':'pending'});
 }

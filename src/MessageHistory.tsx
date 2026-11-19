@@ -6,9 +6,9 @@ import {historyRows,TurnProgress} from './TurnProgress';
 import './message-history.css';
 const PAGE=100;
 type Anchor={id?:string;y:number;top:number;height:number};
-type Props={messages:Message[];running:boolean;scrollRef:RefObject<HTMLDivElement|null>;stickToBottom:MutableRefObject<boolean>;renderMessage(message:Message,hasLaterRequest:boolean,failedRequest?:Message):ReactNode};
+type Props={messages:Message[];running:boolean;checking?:boolean;scrollRef:RefObject<HTMLDivElement|null>;stickToBottom:MutableRefObject<boolean>;renderMessage(message:Message,hasLaterRequest:boolean,failedRequest?:Message):ReactNode};
 /** 표시 범위만 줄이며 원래 Session과 모델의 실행 문맥은 변경하지 않습니다. */
-export default function MessageHistory({messages,running,scrollRef,stickToBottom,renderMessage}:Props){
+export default function MessageHistory({messages,running,checking,scrollRef,stickToBottom,renderMessage}:Props){
  const [start,setStart]=useState(()=>Math.max(0,messages.length-PAGE));
  const content=useRef<HTMLDivElement>(null),controls=useRef<HTMLDivElement>(null),pending=useRef<Anchor|'bottom'|undefined>(undefined);
  const first=Math.min(start,Math.max(0,messages.length-PAGE));
@@ -71,6 +71,10 @@ export default function MessageHistory({messages,running,scrollRef,stickToBottom
   <div className="message-history-items" ref={content} onClickCapture={event=>{
    const target=event.target instanceof Element?event.target:undefined;
    if(target?.closest('.turn-progress-trigger') || target?.closest('[data-message-details]')&&target.closest('summary,[data-message-detail-control]'))stickToBottom.current=false;
-  }}>{rows.map(row=>'message' in row?renderMessage(row.message,row.message.role==='system'&&Date.parse(row.message.createdAt)<lastRequestAt,failedRequests.get(row.message.id)):<TurnProgress active={running && Boolean(currentTurn && currentTurn===row.progress.turnId)} key={'work:'+row.progress.key} progress={row.progress}/>)}</div>
+  }}>{rows.map(row=>{
+    if('message' in row)return renderMessage(row.message,row.message.role==='system'&&Date.parse(row.message.createdAt)<lastRequestAt,failedRequests.get(row.message.id));
+    const current=Boolean(currentTurn && currentTurn===row.progress.turnId);
+    return <TurnProgress active={running&&current} checking={Boolean(checking)&&current} key={'work:'+row.progress.key} progress={row.progress}/>;
+  })}</div>
  </>;
 }

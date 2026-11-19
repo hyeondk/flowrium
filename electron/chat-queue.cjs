@@ -14,6 +14,9 @@ function validateQueue(items=[]) {
       (q.model!=null&&(typeof q.model!=='string'||q.model.length>300))||
       (q.effort!==undefined&&!['none','minimal','low','medium','high','xhigh','max','ultra'].includes(q.effort))) throw Error('저장된 대기 지시 형식이 올바르지 않습니다.');
     if(q.requestSourceId!==undefined&&!UUID.test(q.requestSourceId))throw Error('대기 요청의 원문 식별자를 확인해 주세요.');
+    if(q.branchSessionId!==undefined&&(!UUID.test(q.branchSessionId)||q.nativeDelivery||!q.waitingForWriter))
+      throw Error('대기 요청이 이동한 분기 대화를 확인해 주세요.');
+    require('./model-speed.cjs').serviceTier(q.speed);
     if(q.nativeDelivery!==undefined && (!['submitting','queued','uncertain'].includes(q.nativeDelivery) || q.status!=='queued' || !UUID.test(q.nativeThreadId)) ||
        q.nativeQueueAvailable!==undefined && typeof q.nativeQueueAvailable!=='boolean' ||
        q.nativeCleared!==undefined && (q.nativeCleared!==true || q.status!=='cancelled') ||
@@ -45,7 +48,7 @@ class ChatQueue {
     const files=await resolveAttachments(this.store,s.projectId,input.attachments||[]);
     const history=s.queuedMessages||[];
     if(history.filter(q=>q.status==='queued'||q.status==='sending').length>=50)throw Error('이 대화의 대기 지시는 50개까지 보관할 수 있습니다.');
-    const q={id:input.submissionId || randomUUID(),text:input.text,...(input.requestSourceId&&{requestSourceId:input.requestSourceId}),mode:input.mode,model:input.model,...(input.effort?{effort:input.effort}:{}),attachments:checkedAttachments(files),createdAt:new Date().toISOString(),status:'queued',...(input.waitingForWriter&&{waitingForWriter:true}),owner};
+    const q={id:input.submissionId || randomUUID(),text:input.text,...(input.requestSourceId&&{requestSourceId:input.requestSourceId}),mode:input.mode,model:input.model,...(input.effort?{effort:input.effort}:{}),...(input.speed?{speed:input.speed}:{}),attachments:checkedAttachments(files),createdAt:new Date().toISOString(),status:'queued',...(input.waitingForWriter&&{waitingForWriter:true}),owner};
     if((this.controller.options.queueOwner?.()??'local')!==revision||this.controller.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다. 추가 지시를 다시 확인해 주세요.');
     if(q.waitingForWriter && native.eligible(s,q))q.nativeQueueAvailable=true;
     const before=s.queuedMessages;
@@ -81,16 +84,53 @@ class ChatQueue {
     if(entry.status==='sent')return {accepted:true,queued:false,queueId};
     const first=session.queuedMessages.find(q=>q.status==='queued'||q.status==='sending');
     if(first!==entry)throw Error('앞선 대기 지시를 먼저 처리해 주세요.');
-    if(entry.status!=='queued' || !entry.nativeDelivery && (!entry.waitingForWriter || entry.error ||
+    if(entry.status!=='queued' || entry.branchSessionId || !entry.nativeDelivery && (!entry.waitingForWriter || entry.error ||
        session.messages.some(m=>m.id===queueId) || this.controller.runs.has(id)))throw Error('원본에 전달할 수 있는 대기 지시를 선택해 주세요.');
     if (!session.scope) await this.store.requireProjectTrust(session.projectId);
     try {await native.submit(this,session,entry);}
     finally {if(entry.nativeDelivery)this.schedule(id);}
     return {accepted:true,queued:entry.status==='queued',queueId,...(entry.nativeDelivery&&{nativeDelivery:entry.nativeDelivery})};
   });}
+  startBranch(id, queueId) { return this.withNativeAction(id, async () => {
+    const c = this.controller, session = this.store.session(id);
+    const entry = session.queuedMessages?.find(row => row.id === queueId);
+    const revision = c.options.queueOwner?.() ?? 'local';
+    const owner = await this.owner(revision);
+    const check = () => {
+      if (!entry || entry.status !== 'queued' || !entry.waitingForWriter || entry.nativeDelivery || entry.error ||
+          entry.owner !== owner || session.messages.some(row => row.id === entry.id) || this.store.peekSession(id) !== session ||
+          c.shuttingDown || c.options.canRun?.() === false || revision !== (c.options.queueOwner?.() ?? 'local'))
+        throw Error('아직 원본에 전달되지 않은 대기 요청을 선택해 주세요.');
+    };
+    check();
+    await this.store.requireProjectTrust(session.projectId);
+    if (!entry.branchSessionId) {
+      const created = await require('./queued-branch.cjs').forkQueuedRequest(c, session, entry, check);
+      check();
+      entry.branchSessionId = created.id;
+      try { await this.store.save(); }
+      catch (error) { delete entry.branchSessionId; throw error; }
+      this.emit(session);
+    }
+    const branch = this.store.session(entry.branchSessionId);
+    if (branch.id === id || branch.projectId !== session.projectId || branch.codexLink)
+      throw Error('이 요청을 위해 만든 분기 대화를 확인해 주세요.');
+    check();
+    if (!branch.messages.some(row => row.role === 'user' && row.id === entry.id)) {
+      await c.send({sessionId: branch.id, submissionId: entry.id, text: entry.text, mode: entry.mode,
+        requestSourceId: entry.requestSourceId, model: entry.model, effort: entry.effort, speed: entry.speed,
+        attachments: entry.attachments.map(file => file.id)}, {useCapturedSelection: true});
+    }
+    entry.status = 'cancelled';
+    try { await this.store.save(); }
+    catch (error) { entry.status = 'queued'; throw error; }
+    this.emit(session);
+    return {session: structuredClone(this.store.session(branch.id))};
+  }); }
   cancel(id,queueId){return this.withNativeAction(id,async()=>{
     const s=this.store.session(id),q=(s.queuedMessages||[]).find(q=>q.id===queueId);
     if(!q||q.status!=='queued')throw Error('이미 전달했거나 취소한 지시입니다.');
+    if(q.branchSessionId)throw Error('요청이 이동한 분기 대화에서 진행 상태를 확인해 주세요.');
     if(q.nativeDelivery){await native.cancel(this,s,q);return;}
     q.status='cancelled';
     try{await this.store.save();}catch(e){q.status='queued';throw e;}
@@ -99,7 +139,7 @@ class ChatQueue {
   async resume(id){
     await this.serial(async()=>{
       const s=this.store.session(id);
-      const owner=await this.owner();for(const q of s.queuedMessages||[])if(!q.nativeDelivery&&(q.status==='queued'||q.status==='sending')){q.status='queued';q.owner=owner;delete q.error;}
+      const owner=await this.owner();for(const q of s.queuedMessages||[])if(!q.nativeDelivery&&!q.branchSessionId&&(q.status==='queued'||q.status==='sending')){q.status='queued';q.owner=owner;delete q.error;}
       await this.store.save();this.emit(s);
     });
     await this.flush(id);
@@ -118,7 +158,7 @@ class ChatQueue {
     if(this.busy.has(id)||c.runs.has(id)||c.editingSessions.has(id)||c.shuttingDown||!c.status.authenticated||c.options.canRun?.()===false)return;
     const s=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===id);if(!s||s.compacting)return;
     const q=(s.queuedMessages||[]).find(q=>q.status==='queued'||q.status==='sending');
-    if(!q||q.error)return;
+    if(!q||q.error||q.branchSessionId)return;
     this.busy.add(id);
     try{
       if(q.owner!==await this.owner()||q.status==='cancelled'||c.options.canRun?.()===false||c.shuttingDown)return;
@@ -133,7 +173,7 @@ class ChatQueue {
       if(receipt && !receipt.turnId)throw Error('앱이 종료되기 전 요청의 수신 여부가 확인되지 않았습니다. 원래 대화를 확인하고, 다시 보내려면 이 대기 지시를 취소한 뒤 새 요청으로 보내 주세요.');
       if(!receipt){
         if(!s.scope && !await this.store.isProjectTrusted(s.projectId))return;
-        await c.send({sessionId:id,text:q.text,requestSourceId:q.requestSourceId,mode:q.mode,model:q.model,effort:q.effort,attachments:q.attachments.map(a=>a.id)},
+        await c.send({sessionId:id,text:q.text,requestSourceId:q.requestSourceId,mode:q.mode,model:q.model,effort:q.effort,speed:q.speed,attachments:q.attachments.map(a=>a.id)},
           {fromQueue:true,queueItem:q,waitingForWriter:q.waitingForWriter});
       }
       q.status='sent';delete q.waitingForWriter;q.sentAt=new Date().toISOString();

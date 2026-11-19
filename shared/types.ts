@@ -23,6 +23,7 @@ import type { WorkbenchAPI, Workflow } from "./workbench";
 export interface ChatPreferences {
   model?: string;
   effort?: Effort;
+  speed?: Speed;
   chatGptUrl?: string;
   answerLength?: "short" | "normal" | "detailed";
   testing?: boolean;
@@ -35,7 +36,7 @@ export interface ChatPreferences {
 }
 export type ConversationEdit =
   | { action: "preferences"; preferences: ChatPreferences }
-  | { action: "model"; model: string }
+  | { action: "model"; model: string; effort?: Effort | ""; speed?: Speed | "" }
   | { action: "rename"; title: string }
   | { action: "branch"; messageId?: string }
   | { action: "rewind"; messageId: string }
@@ -57,6 +58,7 @@ export interface UpdateState {
   message: string;
 }
 export type Effort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+export type Speed = "standard" | "fast" | "ultrafast";
 export type Mode = "plan" | "build" | "review";
 export type ConversationScope = "general" | "integrated";
 export interface Project {
@@ -68,7 +70,7 @@ export interface Project {
   createdAt: string;
 }
 export interface ChatAttachment {id:string;name:string;type:string;size:number;sha256:string}
-export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;waitingForWriter?:boolean;error?:string;nativeQueueAvailable?:boolean;nativeDelivery?:'submitting'|'queued'|'uncertain';nativeCleared?:boolean}
+export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;speed?:Speed;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;waitingForWriter?:boolean;branchSessionId?:string;error?:string;nativeQueueAvailable?:boolean;nativeDelivery?:'submitting'|'queued'|'uncertain';nativeCleared?:boolean}
 export interface Message {
   workStartedAt?: string;
   workCompletedAt?: string;
@@ -127,6 +129,7 @@ export interface Settings {
   codexPath?: string;
   model?: string;
   effort: Effort;
+  speed?: Speed;
   theme: "dark" | "light";
   accentColor?: "blue" | "green" | "purple";
 }
@@ -141,6 +144,7 @@ export interface ConnectionStatus {
 export interface Model {
   supportedReasoningEfforts?: {reasoningEffort:Effort;description?:string}[];
   defaultReasoningEffort?:Effort;
+  supportedSpeeds?: Speed[];
   isDefault?:boolean;
   id: string;
   displayName: string;
@@ -215,6 +219,7 @@ export interface FlowriumAPI
   readChatAttachment(projectId:string,id:string):Promise<{attachment:ChatAttachment;dataUrl?:string}>;
   listQueuedMessages(sessionId:string):Promise<QueuedMessage[]>;
   cancelQueuedMessage(sessionId:string,id:string):Promise<void>;
+  startQueuedBranch(sessionId:string,id:string):Promise<{session:Session}>;
   sendQueuedToCodex(sessionId:string,id:string):Promise<{accepted:boolean;queued:boolean;queueId:string;nativeDelivery?:QueuedMessage['nativeDelivery']}>;
   clearUnconfirmedCodexQueue(sessionId:string,id:string):Promise<unknown>;
   resumeQueuedMessages(sessionId:string):Promise<void>;
@@ -248,6 +253,7 @@ export interface FlowriumAPI
     mode: Mode;
     model?: string;
     effort?: Effort;
+    speed?: Speed;
   }): Promise<{ accepted: boolean; steered?: boolean; queued?: boolean; waitingForWriter?:boolean; queueId?:string }>;
   interrupt(sessionId: string): Promise<void>;
   answerInput(input: { requestId: string; answers: InputAnswers }): Promise<void>;

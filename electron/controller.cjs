@@ -195,6 +195,7 @@ class Controller extends EventEmitter {
         id: model.model || model.id,
         displayName: model.displayName || model.id,
         description: model.description || undefined,
+        supportedSpeeds: require('./model-speed.cjs').supportedSpeeds(model),
         supportedReasoningEfforts:Array.isArray(model.supportedReasoningEfforts)?model.supportedReasoningEfforts.filter(row=>row&&['none','minimal','low','medium','high','xhigh','max','ultra'].includes(row.reasoningEffort)).map(row=>({reasoningEffort:row.reasoningEffort,description:row.description})):undefined,
         defaultReasoningEffort:model.defaultReasoningEffort,
         isDefault:model.isDefault===true,
@@ -283,6 +284,7 @@ class Controller extends EventEmitter {
       throw new Error("작업 방식을 선택해 주세요.");
     if (input.effort && !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(input.effort))
       throw new Error("추론 강도를 확인해 주세요.");
+    require('./model-speed.cjs').serviceTier(input.speed);
     if (input.model) text(input.model, "모델", 300);
     const session = this.store.session(input.sessionId);
     if (!session.scope) {
@@ -308,11 +310,12 @@ class Controller extends EventEmitter {
     const settings = this.store.state.settings;
     const own = session.preferences || {};
     // Capture the selection before any asynchronous work, including time in the queue.
-    const queuedSelection = internal.fromQueue && input.model !== undefined;
+    const queuedSelection = internal.useCapturedSelection || (internal.fromQueue && input.model !== undefined);
     input = {
       ...input,
       model: queuedSelection ? input.model : own.model || settings.chatDefaults?.model || input.model || settings.model || null,
       effort: queuedSelection ? input.effort : own.effort || settings.chatDefaults?.effort || input.effort || settings.effort,
+      speed: (queuedSelection ? input.speed : own.speed ?? settings.chatDefaults?.speed ?? input.speed ?? settings.speed) ?? 'standard',
     };
     const checkContinuation=()=>{
       const expected=internal.expectedContinuation;if(!expected)return;
@@ -592,6 +595,7 @@ class Controller extends EventEmitter {
           : { type: "readOnly" },
       model,
       effort: input.effort,
+      serviceTierForTurn: require('./model-speed.cjs').serviceTier(input.speed),
     });
     if (!turn.turn?.id) throw new Error("Codex 작업을 시작하지 못했습니다.");
     run.turnId = turn.turn.id;

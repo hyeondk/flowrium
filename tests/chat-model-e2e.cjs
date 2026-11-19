@@ -46,6 +46,64 @@ async function main() {
     }, {id, before, expected:`실제 전송 / ${model} / ${effort}`});
     await button('작업 보내기').waitFor();
   }
+  async function verifyPerformanceSettings(id) {
+    await page.locator('.settings-button').click();
+    const settings=page.getByRole('dialog',{name:'설정',exact:true});
+    await settings.getByRole('button',{name:'계정과 모델',exact:true}).click();
+    const defaultSpeed=settings.getByRole('combobox',{name:'기본 실행 속도',exact:true});
+    await defaultSpeed.selectOption('fast');
+    await page.waitForFunction(async()=>(await window.flowrium.bootstrap()).settings.speed==='fast');
+    await settings.getByRole('button',{name:'설정 닫기',exact:true}).click();
+    await settings.waitFor({state:'detached'});
+    const open=button('Reasoning and speed');
+    await open.click();
+    const controls=page.getByRole('group',{name:'Model controls',exact:true});
+    await controls.waitFor();
+    await page.waitForFunction(()=>{
+      const popup=document.querySelector('.chat-performance-popup'), trigger=document.querySelector('.chat-performance-trigger');
+      if(!popup?.matches(':popover-open')||!trigger)return false;
+      const bounds=popup.getBoundingClientRect(),anchor=trigger.getBoundingClientRect();
+      return bounds.width>220&&bounds.left>=0&&bounds.right<=innerWidth&&bounds.bottom<=anchor.top;
+    });
+    const slider=controls.getByRole('slider',{name:'Reasoning effort',exact:true});
+    assert.equal(await slider.getAttribute('max'),'5');
+    assert.equal(await slider.getAttribute('aria-valuetext'),'High');
+    await slider.press('End');
+    await page.waitForFunction(async id=>(await window.flowrium.bootstrap()).sessions.find(item=>item.id===id)?.preferences?.effort==='ultra',id);
+    await page.waitForFunction(()=>document.querySelector('.chat-effort-slider').getAttribute('aria-disabled')==='false');
+    const sliderBox=await slider.boundingBox();
+    await slider.click({position:{x:sliderBox.width/2,y:sliderBox.height/2}});
+    await page.waitForFunction(async id=>{
+      const effort=(await window.flowrium.bootstrap()).sessions.find(item=>item.id===id)?.preferences?.effort;
+      return effort==='high'||effort==='xhigh';
+    },id);
+    await controls.getByRole('button',{name:'Speed',exact:true}).click();
+    const speed=controls.getByRole('group',{name:'Execution speed',exact:true});
+    assert.equal(await speed.getByRole('button',{name:'Fast',exact:true}).getAttribute('aria-pressed'),'true');
+    await speed.getByRole('button',{name:'Ultrafast',exact:true}).click();
+    await page.waitForFunction(async id=>(await window.flowrium.bootstrap()).sessions.find(item=>item.id===id)?.preferences?.speed==='ultrafast',id);
+    const state=await snapshot();
+    assert.equal(state.settings.speed,'fast');
+    assert.equal(state.sessions.find(item=>item.id!==id)?.preferences?.speed,undefined);
+    await slider.press('Escape');
+    await controls.waitFor({state:'hidden'});
+    await composer(page).fill('속도 전송 확인');
+    await button('작업 보내기').click();
+    await page.waitForFunction(async id=>(await window.flowrium.bootstrap()).sessions.find(item=>item.id===id)?.messages.some(message=>message.text==='실제 실행 속도 / ultrafast'),id);
+    await button('작업 보내기').waitFor();
+    await open.click();
+    await controls.getByRole('button',{name:'Speed',exact:true}).click();
+    await speed.getByRole('button',{name:'Ultrafast',exact:true,pressed:true}).waitFor();
+    const reset=controls.getByRole('button',{name:'Restore defaults',exact:true});
+    await reset.click();
+    await page.waitForFunction(async id=>{
+      const settings=(await window.flowrium.bootstrap()).sessions.find(item=>item.id===id)?.preferences;
+      return settings && !settings.effort && !settings.speed;
+    },id);
+    await speed.getByRole('button',{name:'Fast',exact:true,pressed:true}).waitFor();
+    await slider.press('Escape');
+    await controls.waitFor({state:'hidden'});
+  }
   try {
     const store = new Store(profile);
     await store.load();
@@ -60,6 +118,7 @@ async function main() {
     await openConversation(page, a.title);
     await waitForChoice('');
     assert.match(await page.locator('.chat-model-picker').getAttribute('title'), /기본 설정 따르기.*GPT-6.1 Sol/);
+    await verifyPerformanceSettings(a.id);
     await fs.writeFile(env.FLOWRIUM_TEST_CATALOG_FILE,'합성 모델 출시');
     await picker().focus();
     await page.getByText('새 모델을 사용할 수 있습니다. 추가된 시험 모델',{exact:true}).waitFor();
@@ -81,6 +140,12 @@ async function main() {
     assert.deepEqual(delivered.map(m=>m.role),['user','assistant']);
     assert.equal(delivered[0].text,'현재 단계에 반영해 주세요');
     await choose('gpt-6.1-terra');
+    await button('Reasoning and speed').click();
+    const terraSpeed=page.getByRole('group',{name:'Model controls',exact:true});
+    await terraSpeed.getByRole('button',{name:'Speed',exact:true}).click();
+    assert.equal(await terraSpeed.getByRole('button',{name:'Ultrafast',exact:true}).count(),0);
+    await button('Reasoning and speed').press('Escape');
+    await terraSpeed.waitFor({state:'hidden'});
     await verifyTurn(a.id,'gpt-6.1-terra','low');
     let state = await snapshot();
     assert.equal(state.settings.model, 'gpt-6.1-sol');
@@ -121,7 +186,7 @@ async function main() {
     state = await snapshot();
     assert.equal(state.sessions.find(s=>s.id===a.id).preferences.model, undefined);
     assert.equal(state.sessions.find(s=>s.id===b.id).preferences?.model, undefined);
-    console.log('대화별 모델 화면 검사 통과 / 두 대화 독립·전역 상속 / 재시작 / 전송과 대기열 모델·추론 강도 / 계정 기본값 복귀');
+    console.log('대화별 모델 화면 검사 통과 / 속도 기본값과 대화별 선택 / 여섯 단계 추론 슬라이더 / 두 대화 독립·전역 상속 / 재시작 / 전송과 대기열 모델·추론 강도 / 계정 기본값 복귀');
   } finally {
     if (app) await app.close();
     await fs.rm(temp, {recursive:true,force:true,maxRetries:6,retryDelay:100});

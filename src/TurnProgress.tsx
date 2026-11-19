@@ -36,7 +36,8 @@ export function historyRows(messages:Message[], first:number):Row[] {
     const key=message.turnId?(owners.get(message.turnId)||message.turnId):request;
     // 완료 실패, 중단 등의 독립 안내는 대화에서 바로 확인할 수 있도록 유지한다.
     if(message.role==='system'&&!/^(작업을 완료하지 못했습니다|사용자의 요청으로 작업이 중지|답변은 보존했지만)/.test(message.text)) {
-      add(key,{message});
+      const group=add(key,{message});
+      group.turnId ||= message.turnId;
     } else {
       rows.push({message});
       if (message.role === 'user' && message.workStartedAt) {
@@ -59,9 +60,9 @@ function logLabel(text:string) {
   if(text.startsWith('도구 실행 기록'))return '도구 실행';
   return '작업 기록';
 }
-export function TurnProgress({progress,active}:{progress:Progress;active:boolean}) {
+export function TurnProgress({progress,active,checking}:{progress:Progress;active:boolean;checking:boolean}) {
   const [manual,setManual]=useState<boolean>();
-  const live=active && Boolean(progress.startedAt && !progress.endedAt);
+  const live=active && !progress.endedAt;
   const open=manual ?? live;
   const duration=workDuration(progress.startedAt,progress.endedAt);
   const stamp=(record:Record)=>'step' in record ? record.step.createdAt : record.message.createdAt;
@@ -69,13 +70,15 @@ export function TurnProgress({progress,active}:{progress:Progress;active:boolean
   const recent=[...ordered].reverse();
   const latestStep=recent.find(record=>'step' in record && record.step.state==='running');
   const latestComment=recent.find(record=>'message' in record && record.message.progressCommentary);
+  const latestLog=recent.find(record=>'message' in record && !record.message.progressCommentary);
   const liveLabel=latestStep && 'step' in latestStep ? latestStep.step.label
     : latestComment && 'message' in latestComment ? latestComment.message.text.split(/\r?\n/,1)[0].slice(0,84)
+    : latestLog && 'message' in latestLog ? logLabel(latestLog.message.text)
     : '요청을 처리하고 있어요';
-  const label=live ? liveLabel : duration || '작업 내역 보기';
+  const label=live ? liveLabel : checking && !progress.endedAt ? 'Codex 작업 상태 확인 중' : duration || '작업 내역 보기';
   return <div className="turn-progress" data-message-id={'work:'+progress.key}>
     <button className="turn-progress-trigger" type="button" aria-expanded={open} onClick={()=>setManual(!open)}>
-      <Activity size={13} aria-hidden="true"/><span>{label}</span><small>{ordered.length}건</small>
+      <Activity size={13} aria-hidden="true"/><span>{label}</span>{ordered.length>0&&<small>{ordered.length}건</small>}
       {live&&<span className="turn-progress-live">실행 중</span>}<ChevronDown size={13} aria-hidden="true"/>
     </button>
     {open && <ol aria-label="작업 과정" className="turn-progress-list">{ordered.map(record=>{
@@ -87,6 +90,6 @@ export function TurnProgress({progress,active}:{progress:Progress;active:boolean
         </div>
         {'message' in record&&<MessageContent role={record.message.progressCommentary?'assistant':'system'} text={record.message.text}/>}
       </li>;
-    })}{!ordered.length&&<li>기록된 세부 단계가 없습니다.</li>}</ol>}
+    })}{!ordered.length&&<li>{live?'진행 내용이 확인되면 표시됩니다.':'기록된 세부 단계가 없습니다.'}</li>}</ol>}
   </div>;
 }

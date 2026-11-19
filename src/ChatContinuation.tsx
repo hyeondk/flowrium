@@ -98,16 +98,14 @@ export default function ChatContinuation({
         : canShowRecommendation && active && key !== accepted &&
           <button type="button" className="followup-request" onClick={() => setChecked(key)} disabled={busy}
             aria-label="다음 작업 추천받기"><Sparkles size={13}/>다음 작업 추천</button>}
+      {waiting && <div className="chat-continuation-actions">
+        <button type="button" className="followup-proceed" disabled={busy || action!==null || !authenticated}
+          onClick={() => void resolveWaiting('continue')}>{action==='continue' ? <LoaderCircle size={13} className="spin"/> : <ArrowRight size={13}/>}진행하기</button>
+        <button type="button" className="followup-complete" title="이 답변의 후속 대기를 완료로 표시"
+          disabled={busy || action!==null} onClick={() => void resolveWaiting('complete')}>
+          {action==='complete' ? <LoaderCircle size={13} className="spin"/> : <Check size={13}/>}완료</button>
+      </div>}
       {!candidate && canShowRecommendation && key === checked && <p role="status">현재 대화에서 이어갈 구체적인 작업을 찾지 못했습니다.</p>}
-      <div className="chat-continuation-actions">
-        {waiting && <>
-          <button type="button" className="followup-proceed" disabled={busy || action!==null || !authenticated}
-            onClick={() => void resolveWaiting('continue')}>{action==='continue' ? <LoaderCircle size={13} className="spin"/> : <ArrowRight size={13}/>}진행하기</button>
-          <button type="button" className="followup-complete" title="이 답변의 후속 대기를 완료로 표시"
-            disabled={busy || action!==null} onClick={() => void resolveWaiting('complete')}>
-            {action==='complete' ? <LoaderCircle size={13} className="spin"/> : <Check size={13}/>}완료</button>
-        </>}
-      </div>
       {error && <p role="alert">{error}</p>}
     </section>}
   </>;

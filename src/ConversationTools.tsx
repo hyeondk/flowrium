@@ -49,7 +49,7 @@ export function ConversationTools({session,models,running,onOpen,onChange,notify
    <label className="preference-check"><AnimatedSwitch checked={!!prefs.networkAccess} onChange={e=>set('networkAccess',e.target.checked)}/>명령의 네트워크 사용 허용</label>
 </>}
   </fieldset>
-  <button className="button subtle" onClick={()=>apply({action:'preferences',preferences:{...(!inherit?behavior():{}),model:model||undefined,effort:(effort||undefined) as Effort|undefined,chatGptUrl:address.trim()||undefined}})}>대화 연결 설정 저장</button>
+  <button className="button subtle" onClick={()=>apply({action:'preferences',preferences:{...(!inherit?behavior():{}),model:model||undefined,effort:(effort||undefined) as Effort|undefined,speed:session.preferences?.speed,chatGptUrl:address.trim()||undefined}})}>대화 연결 설정 저장</button>
   <button className="button subtle" disabled={linked} onClick={async()=>{try{const value=await window.flowrium!.saveSettings({chatDefaults:behavior()});onDefaults?.(value.chatDefaults||{});notify('새 대화와 기본 설정을 따르는 대화에 적용했습니다.');}catch(e){fail(e);}}}>이 동작을 앱 기본값으로 저장</button>
   {session.scope&&<p>이 대화의 프로젝트 파일 접근과 명령 실행은 제한됩니다.</p>}
   {linked&&<p className="field-hint">이 대화는 원래 앱과 연결되어 있습니다. 원본의 분기와 되감기, 압축은 원래 앱에서 수행하거나, 독립 사본에서 사용하세요.</p>}

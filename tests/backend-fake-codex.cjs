@@ -117,8 +117,8 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
           ...(process.env.FLOWRIUM_TEST_CATALOG_FILE && require('node:fs').existsSync(process.env.FLOWRIUM_TEST_CATALOG_FILE)
             ? [{id:'catalog-preview',model:'catalog-preview',displayName:'추가된 시험 모델',defaultReasoningEffort:'high',supportedReasoningEfforts:[{reasoningEffort:'high'}]}] : []),
           ...(process.env.FLOWRIUM_TEST_CHAT_MODELS === '1' ? [
-            {id:'gpt-6.1-terra', model:'gpt-6.1-terra', supportedReasoningEfforts:[{reasoningEffort:'low'}], defaultReasoningEffort:'low'},
-            {id:'gpt-6.1-sol', model:'gpt-6.1-sol', supportedReasoningEfforts:[{reasoningEffort:'high'}], defaultReasoningEffort:'high'},
+            {id:'gpt-6.1-terra', model:'gpt-6.1-terra', supportedReasoningEfforts:[{reasoningEffort:'low'}], defaultReasoningEffort:'low',serviceTiers:[{id:'priority'}]},
+            {id:'gpt-6.1-sol', model:'gpt-6.1-sol', supportedReasoningEfforts:['low','medium','high','xhigh','max','ultra'].map(reasoningEffort=>({reasoningEffort})), defaultReasoningEffort:'high',serviceTiers:[{id:'priority'},{id:'ultrafast'}]},
           ] : []),
         ].map(model=>model.supportedReasoningEfforts?model:{...model,isDefault:true,defaultReasoningEffort:"medium",supportedReasoningEfforts:[{reasoningEffort:"low"},{reasoningEffort:"medium"},{reasoningEffort:"high"},{reasoningEffort:"xhigh"}]}),
       },
@@ -181,6 +181,10 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
         notify('item/completed',{threadId,turnId,item:{...item,status:'completed',exitCode:0}});
         complete(threadId,turnId,'작업 단계를 확인했습니다.');
       },40);
+      return;
+    }
+    if (process.env.FLOWRIUM_TEST_CHAT_MODELS === '1' && prompt.includes('속도 전송 확인')) {
+      setTimeout(()=>complete(threadId,turnId,'실제 실행 속도 / '+(params.serviceTierForTurn || 'inherited')),30);
       return;
     }
     if (process.env.FLOWRIUM_TEST_CHAT_MODELS === '1' && prompt.includes('전송 모델 확인')) {

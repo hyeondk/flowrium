@@ -40,6 +40,11 @@ function delegatedInput(item) {
  const match=/^<codex_delegation>\s*<source_thread_id>([\da-f-]+)<\/source_thread_id>\s*<input>([\s\S]*)<\/input>\s*<\/codex_delegation>$/.exec(item.output);
  if (match && require('./project-store.cjs').UUID.test(match[1])) return match[2];
 }
+const progressStates={inProgress:'진행 중',completed:'완료',failed:'확인 필요',declined:'거절',interrupted:'중단'};
+function publicProgress(item){
+ const label=item.type==='commandExecution'?'실행 도구 / 명령':item.type==='fileChange'?'파일 변경 기록':/ToolCall$/.test(item.type||'')?'도구 실행 기록':undefined;
+ if(label)return Object.hasOwn(progressStates,item.status)?`${label}\n${progressStates[item.status]}`:label;
+}
 async function snapshot(client,threadId,cwd,forcedActive=false,options={}){
  const thread=options.thread?validateThread(options.thread,threadId,cwd):await readThread(client,threadId,cwd);
  let turns=options.turns;
@@ -58,13 +63,16 @@ async function snapshot(client,threadId,cwd,forcedActive=false,options={}){
    else if(forwarded){role='user';body=forwarded;}
    else if(['agentMessage','plan'].includes(item.type)){role=item.phase==='commentary'?'system':'assistant';body=typeof item.text==='string'?item.text:'';}
    else if(item.type==='exitedReviewMode'){role='assistant';body=typeof item.review==='string'?item.review:'';}
+   else if(options.liveProgress){role='system';body=publicProgress(item);}
    else if(item.type==='commandExecution'){role='system';body=['실행 도구 / 명령',item.command,item.aggregatedOutput].filter(v=>typeof v==='string'&&v).join('\n\n');}
    else if(item.type==='fileChange'){role='system';body='파일 변경 기록\n'+JSON.stringify(item.changes||item,null,2);}
    else if(/ToolCall$/.test(item.type||'')){role='system';body='도구 실행 기록\n'+JSON.stringify(item,null,2);}
    else continue;
    if(!body&&images.length)body='첨부 자료 '+images.length+'개';
    if(!body)continue;
-   const stamp=at(role==='user'?(entry.startedAtMs??turn.startedAt):(entry.completedAtMs??turn.completedAt??turn.startedAt),at(thread.createdAt));
+   const started=entry.startedAtMs??item.startedAtMs??turn.startedAt;
+   const finished=entry.completedAtMs??item.completedAtMs??turn.completedAt;
+   const stamp=at(role==='user'?started:finished??started,at(thread.createdAt));
    // 프로젝트 기록의 메시지 크기 제한 안에서 여러 조각으로 보존하며 본문을 자르지 않습니다.
    const timing = {};
    if (role === 'user' && turn.startedAt != null) {

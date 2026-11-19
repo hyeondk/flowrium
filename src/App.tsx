@@ -57,7 +57,7 @@ import { ActivityPanel, useWorkspaceShortcuts } from "./ActivityPanel";
 import TeamPanel from "./TeamPanel";
 import RepositoryPanel from "./RepositoryPanel";
 import { ConversationTools } from "./ConversationTools";
-import ChatModelPicker from './ChatModelPicker';
+import ChatModelPicker,{AccountSpeedPreference,type ChatModelSelection} from './ChatModelPicker';
 import Workbench, { WorkSessionControls } from "./Workbench";
 import { UpdatePanel, useDesktopUpdate } from "./UpdatePanel";
 import { workKinds } from "../shared/workbench";
@@ -730,16 +730,17 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   function rememberSession(value: Session) {
     setData(prev => ({ ...prev, sessions: upsert(prev.sessions, value) }));
   }
-  async function selectChatModel(model: string) {
+  async function selectChatModel(change: ChatModelSelection) {
     if (!api || modelSaveKey.current || !conversationProject) return;
     const key = draftKey;
+    const selection={action:'model' as const,...change,model:change.model??session?.preferences?.model??''};
     modelSaveKey.current = key;
     setSavingModel(key);
     try {
       if (session) {
-        rememberSession(await api.editConversation(session.id, {action:'model', model}));
+        rememberSession(await api.editConversation(session.id,selection));
       } else {
-        const created = await api.createSession(conversationProject.id, model);
+        const created = await api.createSession(conversationProject.id,selection.model);
         rememberSession(created);
         if (currentDraftKey.current === key) {
           const destination = `session:${created.id}`;
@@ -747,6 +748,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           setDrafts(prev => ({...prev, [destination]:prev[key] || {text:'', mode}, [key]:{text:'', mode}}));
           setSessionId(created.id);
         }
+        if(change.effort!==undefined||change.speed!==undefined) rememberSession(await api.editConversation(created.id,selection));
       }
     } catch (error) {
       fail(error);
@@ -951,7 +953,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       submissionReceipts.current.delete(restoreKey);
       if(sent.steered)notify("현재 작업에 추가 지시를 전달했습니다.");
       else if(sent.queued){
-        notify(sent.waitingForWriter?"요청을 보관했습니다. 채팅의 추가 지시에서 전달 상태를 확인할 수 있습니다.":"추가 지시를 보관했습니다. 현재 작업이 끝나면 차례로 전달합니다.");
+        notify(sent.waitingForWriter?"Codex에서 원래 대화를 사용 중입니다. 추가 지시에서 ‘지금 분기해 실행’을 선택할 수 있습니다.":"추가 지시를 보관했습니다. 현재 작업이 끝나면 차례로 전달합니다.");
       }
     } catch (error) {
       if (!draftCleared) { fail(error); return; }
@@ -1149,6 +1151,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const project = conversationProject;
     const queued = session?.queuedMessages?.some(row=>row.status==="queued" || row.status==="sending");
     const queue = session && <ChatQueuePanel session={session} onCancel={id=>{void api!.cancelQueuedMessage(session.id,id).catch(fail);}} onResume={async()=>{try{if(await confirmChatFolders(session.projectId,session))await api!.resumeQueuedMessages(session.id);}catch(error){fail(error);}}}
+      onBranch={async id=>{try{if(!await confirmChatFolders(session.projectId,session))return;const result=await api!.startQueuedBranch(session.id,id);openWork(result.session);notify('새 분기에서 작업을 시작했습니다.');}catch(error){fail(error);}}}
       onSendToCodex={async id=>{try{if(!await confirmChatFolders(session.projectId,session))return;const result=await api!.sendQueuedToCodex(session.id,id);if(result.accepted)notify(nativeQueueNotice(result));}catch(error){fail(error);}}}
       onClear={async id=>{try{await api!.clearUnconfirmedCodexQueue(session.id,id);}catch(error){fail(error);}}}/>;
     return (
@@ -1201,7 +1204,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       }
                     }}
                   >
-                    <MessageHistory key={session.id} running={workActive} messages={session.messages} scrollRef={messages} stickToBottom={stickToBottom} renderMessage={(message,hasLaterRequest,failedRequest) => (
+                    <MessageHistory key={session.id} running={workActive} checking={Boolean(activity?.unsettled)} messages={session.messages} scrollRef={messages} stickToBottom={stickToBottom} renderMessage={(message,hasLaterRequest,failedRequest) => (
                       <article
                         className={`message ${message.role}`}
                         data-message-id={message.id}
@@ -1398,10 +1401,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       <VoiceComposer key={voiceContinuity.current.generation} suspend={settingsOpen||attentionOpen||!dockOpen||!chatActive} disabled={running||security.state.locked} onText={text=>setDrafts(prev=>{
                         const draft=prev[draftKey];return {...prev,[draftKey]:{mode:draft?.mode||mode,text:[draft?.text,text].filter(Boolean).join("\n"),attachments:draft?.attachments}};
                       })} onSubmit={text=>void send([input,text].filter(Boolean).join("\n"))}/>
-                      <ChatModelPicker onOpen={()=>void modelCatalog.refresh(true)} models={models} model={session?.preferences?.model}
-                        defaultModel={data.settings.model}
+                      <ChatModelPicker onOpen={()=>void modelCatalog.refresh(true)} models={models} preferences={session?.preferences} conversationKey={draftKey}
+                        defaultModel={data.settings.chatDefaults?.model||data.settings.model}
+                        defaultEffort={data.settings.chatDefaults?.effort??data.settings.effort} defaultSpeed={data.settings.chatDefaults?.speed??data.settings.speed}
                         disabled={!conversationProject || savingModel !== null || submitting}
-                        onChange={model => void selectChatModel(model)}/>
+                        onChange={change => void selectChatModel(change)}/>
                     </div>
                     <div className="chat-run-controls">
                     {running&&<><button className="button subtle" aria-label="추가 지시 대기열에 넣기" onClick={()=>void send(undefined,true)} disabled={(!/\S/.test(input)&&!attachments.length)||submitting}>다음 차례</button>
@@ -2086,6 +2090,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     연결을 확인하면 계정에서 사용 가능한 모델을 불러옵니다.
                   </p>
                 )}
+                <AccountSpeedPreference speed={data.settings.speed} model={models.find(row=>data.settings.model?row.id===data.settings.model:row.isDefault)}
+                  onChange={speed=>void saveSettings({speed})}/>
                 <label className="field-label">
                   생각의 깊이
                   <select

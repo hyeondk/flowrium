@@ -28,11 +28,15 @@ function settings(input, current = DEFAULT_SETTINGS) {
     throw new Error("설정 형식이 올바르지 않습니다.");
   const next = { ...current };
   for (const key of Object.keys(input)) {
-    if (!["codexPath", "model", "effort", "theme", "accentColor", "chatDefaults"].includes(key))
+    if (!["codexPath", "model", "effort", "speed", "theme", "accentColor", "chatDefaults"].includes(key))
       throw new Error("지원하지 않는 설정입니다.");
     const value = input[key];
     if (key === "effort" && !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(value))
       throw new Error("추론 강도를 확인해 주세요.");
+    if (key === "speed") {
+      if (value === "" || value == null) { delete next.speed; continue; }
+      require('./model-speed.cjs').serviceTier(value);
+    }
     if (key === "accentColor" && !["blue", "green", "purple"].includes(value))
       throw new Error("강조색을 확인해 주세요.");
     if (key === "theme" && !["dark", "light"].includes(value))

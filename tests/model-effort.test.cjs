@@ -1,6 +1,23 @@
 const test=require('node:test'),assert=require('node:assert/strict'),{CodexClient}=require('../electron/codex.cjs'),{supportedEffort}=require('../electron/model-effort.cjs');
 const catalog=[{model:'model-none',supportedReasoningEfforts:[{reasoningEffort:'none'}],defaultReasoningEffort:'none'},{model:'model-deep',isDefault:true,supportedReasoningEfforts:[{reasoningEffort:'low'},{reasoningEffort:'high'}],defaultReasoningEffort:'low'},{model:'model-empty',supportedReasoningEfforts:[]},{model:'model-missing'}];
 test('서버 model과 id가 다르면 어느 식별자로 요청해도 같은 지원 정보를 찾는다',()=>{const rows=[null,{model:'runtime-name',id:'catalog-id',supportedReasoningEfforts:[{reasoningEffort:'none'}],defaultReasoningEffort:'none'}];assert.equal(supportedEffort('high','runtime-name',rows),'none');assert.equal(supportedEffort('high','catalog-id',rows),'none');});
+test('Codex가 광고한 속도만 새 턴에 전달하고 대화 전체의 속도에는 손대지 않는다', async () => {
+ const {serviceTier,supportedSpeeds}=require('../electron/model-speed.cjs');
+ const {c,wire}=client();
+ await c.prepareAnalysisCatalog({modelCatalog:{owner:'local',at:Date.now(),data:[
+  {model:'new',serviceTiers:[{id:'priority'},{id:'ultrafast'}]},
+  {model:'legacy',additionalSpeedTiers:['fast']},
+  {model:'standard',serviceTiers:[]},
+ ]}});
+ assert.deepEqual(supportedSpeeds({serviceTiers:[],additionalSpeedTiers:['fast']}),['standard','fast']);
+ assert.throws(()=>serviceTier('ultra'),/실행 속도/);
+ for (const [model,speed] of [['new','ultrafast'],['legacy','fast'],['standard','fast'],['new','standard'],['new',undefined]]) {
+  const tier=serviceTier(speed);
+  await c.request('turn/start',{model,threadId:'speed',...(tier&&{serviceTierForTurn:tier})});
+ }
+ assert.deepEqual(wire.map(row=>row.params.serviceTierForTurn),['ultrafast','priority','default','default',undefined]);
+ assert(wire.every(row=>row.method==='turn/start'&&!Object.hasOwn(row.params,'serviceTier')));
+});
 function client(options={}){const c=new CodexClient(options),wire=[];c._write=request=>{wire.push(request);setImmediate(()=>{const result=request.method==='model/list'?{data:catalog}:request.method.startsWith('thread/')?{thread:{id:request.params.threadId||'thread'},model:request.params.model||'model-deep'}:{turn:{id:'turn',status:'inProgress'}};c._message({id:request.id,result});});};return{c,wire};}
 test('서비스의 다음 모델 페이지까지 반영하고 반복 커서가 오면 마지막 정상 목록을 보존한다',async()=>{
  const {c}=client(),params=[];

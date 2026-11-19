@@ -22,12 +22,14 @@ export function nativeQueueNotice(result) {
 export function queuedInputView(item) {
   const pending = item.status === 'queued';
   const remote = pending && item.nativeDelivery;
+  if (item.branchSessionId) return {status:pending?'분기 실행 확인 중':'분기 대화로 이동함',
+    hint:pending?'같은 분기에서 다시 확인할 수 있습니다.':'',canSendToCodex:false,canCancel:false,canResume:false,canClear:false};
   const labels = {submitting:'Codex 접수 중', queued:'Codex에서 실행 대기', uncertain:'Codex 접수 확인 중'};
-  const status = item.status==='cancelled' && item.nativeCleared ? '이 기기에서 대기 해제' : remote ? labels[remote] : pending && item.waitingForWriter ? '원래 대화의 쓰기 권한 대기' :
+  const status = item.status==='cancelled' && item.nativeCleared ? '이 기기에서 대기 해제' : remote ? labels[remote] : pending && item.waitingForWriter ? 'Codex에서 원래 대화 사용 중' :
     {queued:'대기 중', sending:'전달 중', sent:'전달함', cancelled:'취소함'}[item.status];
   const hint = remote === 'queued' ? '원래 Codex 대화가 이 요청을 접수했습니다.' :
     remote === 'uncertain' ? '중복 실행을 방지하기 위해 원래 대화의 수신 기록을 확인하고 있습니다.' :
-    pending && !remote && item.waitingForWriter ? 'Flowrium 설정으로 실행하려면 원래 대화의 쓰기 권한이 돌아올 때까지 기다려 주세요.' : '';
+    pending && !remote && item.waitingForWriter ? '원래 대화가 Flowrium으로 돌아오면 이 요청을 이어서 실행합니다.' : '';
   return {status, hint, canSendToCodex:pending && !remote && !item.error && item.waitingForWriter === true && item.nativeQueueAvailable === true,
     canCancel:pending && (!remote || remote === 'queued'), canResume:pending && !remote, canClear:remote === 'uncertain'};
 }
