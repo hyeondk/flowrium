@@ -1480,8 +1480,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       </button>
       <button type="button" className="icon-button assistant-entry" aria-label="개인 비서" title="개인 비서" onClick={()=>void openPersonalAssistant()}><MessageSquare size={17}/></button>
       <button type="button" className="icon-button header-music" aria-label="음악 열기" title="뮤직" onClick={()=>setMusicOpen(true)}><Music2 size={17}/></button>
-      <button type="button" className="icon-button header-decisions" aria-label={`알림 ${unreadCount}건`} title="알림과 검토 요청" onClick={openDecisions}>
-        <Bell size={17}/>{unreadCount>0&&<span aria-hidden="true">{unreadCount}</span>}
+      <button type="button" className="icon-button header-decisions" aria-label={`알림 ${unreadCount}건`} title={unreadCount?`알림과 검토 요청 (${unreadCount}건)`:"알림과 검토 요청"} onClick={openDecisions}>
+        <Bell size={17}/>{unreadCount>0&&<span className="notification-count" aria-hidden="true">{unreadCount>99?'99+':unreadCount}</span>}
       </button>
     </div>
   );

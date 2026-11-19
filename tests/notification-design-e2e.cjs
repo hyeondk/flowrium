@@ -20,6 +20,25 @@ async function run(){
   const questionNotice=page.locator('.flow-question-notice[data-tone=question]');await questionNotice.waitFor();
   assert.equal(await questionNotice.getByRole('status').innerText(),'어시스턴트가 질문이 있으니 결정 부탁드립니다.');
   assert.equal(await questionNotice.count(),1);assert(!/비밀|검증 문구|명령/.test(await questionNotice.innerText()));
+  const bell=page.getByRole('button',{name:/^알림 [1-9]\d*건$/}),count=bell.locator('.notification-count');
+  await count.waitFor();
+  const badgeCases=await count.evaluate(node=>{
+   const original=node.textContent;
+   return ['1','12','99+'].map((label,index,values)=>{
+    node.textContent=label;
+    const style=getComputedStyle(node),badge=node.getBoundingClientRect();
+    const svg=node.parentElement.querySelector('svg').getBoundingClientRect();
+    const result={height:badge.height,width:badge.width,radius:parseFloat(style.borderRadius),
+     fontSize:parseFloat(style.fontSize),pointerEvents:style.pointerEvents,topOffset:svg.top-badge.top,
+     clearBelowBadge:svg.bottom-badge.bottom};
+    if(index===values.length-1)node.textContent=original;
+    return result;
+   });
+  });
+  assert(badgeCases.every(box=>Math.abs(box.height-14)<.1&&box.radius>=box.height/2&&box.fontSize<9&&
+    box.pointerEvents==='none'&&box.topOffset>6&&box.clearBelowBadge>10),JSON.stringify(badgeCases));
+  assert(Math.abs(badgeCases[0].width-badgeCases[0].height)<.1,'한 자리 알림 숫자는 원형');
+  assert(badgeCases.slice(1).every(box=>box.width>=box.height&&box.width<27),'여러 자리 알림 숫자는 낮고 둥근 모양');
   const questionBox=await questionNotice.boundingBox();assert(Math.abs(questionBox.width-360)<1);assert(questionBox.height>=175.5,JSON.stringify(questionBox));
   await page.screenshot({path:path.join(output,'안내-질문.png'),animations:'disabled'});
   const captureNotice=async(locator,name)=>{const box=await locator.boundingBox(),width=await page.evaluate(()=>innerWidth),scale=page.viewportSize().width/width;await page.screenshot({path:path.join(output,name),clip:{x:box.x*scale,y:box.y*scale,width:box.width*scale,height:box.height*scale},animations:'disabled'});};
@@ -51,7 +70,7 @@ async function run(){
   await approvalNotice.getByRole('button',{name:'대화에서 확인하기',exact:true}).click();
   const approval=page.locator('.conversation-dock').getByRole('region',{name:'실행 승인 요청'});await approval.waitFor();
   await approval.getByRole('button',{name:'거절',exact:true}).click();await approval.waitFor({state:'detached'});
-  await fs.writeFile(path.join(output,'알림-질문-검증.json'),JSON.stringify({passed:true,questionBox,completeBox,small,questionInsideConversation:true,noAutoSelection:true,threeSummaryLines:true,secretNotStored:true,approvalNoticeAndExplicitDecline:true},null,2)+'\n');
+  await fs.writeFile(path.join(output,'알림-질문-검증.json'),JSON.stringify({passed:true,badgeCases,questionBox,completeBox,small,questionInsideConversation:true,noAutoSelection:true,threeSummaryLines:true,secretNotStored:true,approvalNoticeAndExplicitDecline:true},null,2)+'\n');
   console.log('알림 / 360px 공통 너비 / 176px 기본 높이 / 같은 대화 질문 이동 / 자동 선택 없음 / 명시 제출 / 3줄 실제 요약 / 비밀 답변 비보관 / 390px 화면 경계 검사 통과');
  }finally{try{if(app)await closeInstalledApp(app,'알림과 질문 전용 검사 앱 종료')}finally{await fs.rm(temporary,{recursive:true,force:true,maxRetries:6,retryDelay:150})}}
 }

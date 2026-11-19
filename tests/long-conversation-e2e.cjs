@@ -1,7 +1,7 @@
 const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {randomUUID}=require('node:crypto'),{_electron}=require('playwright'),{Store}=require('../electron/store.cjs');
-const {openConversation}=require('./shell-test-helpers.cjs');
+const {openConversation,settledLayout}=require('./shell-test-helpers.cjs');
 async function main(){
  const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-long-chat-'))),profile=path.join(temp,'profile'),baseline=process.argv.includes('--baseline');let app,page;const errors=[],metrics={mode:baseline?'before':'after',total:22000,anchors:[]};
  try{
@@ -24,9 +24,68 @@ async function main(){
    metrics.anchors.push({before,immediate,frames,settled});assert.equal(await page.locator('.messages [data-message-id]').count(),200+i*100);
   }
   await latest.click();await page.waitForTimeout(100);assert.equal(await page.locator('.messages [data-message-id]').count(),100,'최근으로 이동 시 최근 100개로 축소');assert(await body.evaluate(e=>e.scrollHeight-e.clientHeight-e.scrollTop<2),'최근으로 이동 시 하단');
-  // 하단을 따라가는 실행 및 사용자가 위를 읽는 동안의 실행을 모두 확인합니다.
-  const input=page.getByLabel('Codex에 보낼 작업 요청');await input.fill('긴 대화 새 응답 확인');await page.getByRole('button',{name:'작업 보내기',exact:true}).click();await page.getByRole('button',{name:'작업 보내기',exact:true}).waitFor();await page.waitForTimeout(150);assert(await body.evaluate(e=>e.scrollHeight-e.clientHeight-e.scrollTop<2),'새 응답은 기존 하단 따라가기 유지');
-  await body.evaluate(e=>{e.scrollTop=130;});await page.waitForTimeout(80);const reading=await measure();await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'읽는 중 새 응답 확인',mode:'plan'}),session.id);await page.waitForFunction(async id=>(await window.flowrium.bootstrap()).sessions.find(s=>s.id===id).messages.filter(m=>m.role==='user').length>=11002,session.id);await page.waitForTimeout(300);const whileReading=await measure();assert.equal(whileReading.id,reading.id,'위쪽을 읽을 때 새 응답으로 화면 이동 없음');assert(Math.abs(whileReading.y-reading.y)<1.5,'위쪽을 읽을 때 화면 좌표 유지');
+  // 실제 실행 완료 이벤트와 멈춘 프레임을 확인한 뒤 사용자가 읽는 위치를 바꿉니다.
+  async function watchTurns() {
+   await page.evaluate(id=>{
+    window.longChatFinished=[];
+    const stop=window.flowrium.onEvent(event=>{
+     if(event.sessionId!==id||event.type!=='done')return;
+     window.longChatFinished.push(event.status);
+     if(window.longChatFinished.length===2)stop();
+    });
+   },session.id);
+  }
+  await watchTurns();
+  const input=page.getByLabel('Codex에 보낼 작업 요청');
+  await input.fill('긴 대화 새 응답 확인');
+  await page.getByRole('button',{name:'작업 보내기',exact:true}).click();
+  await page.waitForFunction(()=>window.longChatFinished.length===1,undefined,{timeout:20000});
+  await settledLayout(body);
+  assert(await body.evaluate(e=>e.scrollHeight-e.clientHeight-e.scrollTop<2),'새 응답은 기존 하단 따라가기 유지');
+  const bodyBox=await body.boundingBox();
+  assert(bodyBox);
+  await page.mouse.move(bodyBox.x+bodyBox.width/2,bodyBox.y+bodyBox.height/2);
+  await page.mouse.wheel(0,-(await body.evaluate(e=>e.scrollHeight)));
+  await page.waitForFunction(()=>document.querySelector('.messages').scrollTop<2,undefined,{timeout:10000});
+  await page.mouse.wheel(0,130);
+  await page.waitForFunction(()=>{
+   const top=document.querySelector('.messages').scrollTop;
+   return top>60&&top<240;
+  },undefined,{timeout:10000});
+  await settledLayout(body);
+  const reading=await measure();
+  assert(reading.id);
+  await body.evaluate((el,id)=>{
+   const observation={sampling:true,frames:[]};
+   window.longChatReading=observation;
+   const start=performance.now();
+   function sample() {
+    const anchor=el.querySelector('[data-message-id="'+id+'"]'), y=anchor?.getBoundingClientRect().top;
+    const frame={time:Math.round(performance.now()-start),id:anchor?.dataset.messageId,y,
+     top:el.scrollTop,height:el.scrollHeight,client:el.clientHeight,viewportY:el.getBoundingClientRect().top,
+     composer:el.closest('.workspace-main').querySelector('.composer-area').clientHeight};
+    const {time,...geometry}=frame;
+    const previous=observation.frames.at(-1);
+    if(!previous||Object.keys(geometry).some(key=>previous[key]!==geometry[key]))observation.frames.push(frame);
+    if(observation.sampling)requestAnimationFrame(sample);
+   }
+   sample();
+  },reading.id);
+  await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'읽는 중 새 응답 확인',mode:'plan'}),session.id);
+  await page.waitForFunction(()=>window.longChatFinished.length===2,undefined,{timeout:20000});
+  await settledLayout(body);
+  const whileReading=await measure();
+  const frames=await page.evaluate(()=>{
+   const observation=window.longChatReading;
+   observation.sampling=false;
+   return observation.frames;
+  });
+  metrics.whileReading={before:reading,frames,settled:whileReading};
+  assert.deepEqual(await page.evaluate(()=>window.longChatFinished),['completed','completed']);
+  for(const sample of [...frames,whileReading]){
+   assert.equal(sample.id,reading.id,'위쪽을 읽을 때 새 응답으로 화면 이동 없음 '+JSON.stringify(sample));
+   assert(Math.abs(sample.y-reading.y)<1.5,'위쪽을 읽을 때 화면 좌표 유지 '+JSON.stringify(metrics.whileReading));
+  }
   saved=await page.evaluate(id=>window.flowrium.bootstrap().then(s=>s.sessions.find(x=>x.id===id)),session.id);assert.equal(saved.messages.length,22004);assert.equal(saved.messages[0].text,messages[0].text);assert.equal(saved.threadId,'synthetic-long-thread');
   const destination=path.join(temp,'all-messages.md');await app.evaluate(({dialog},file)=>{dialog.showSaveDialog=async()=>({canceled:false,filePath:file});},destination);await page.getByRole('button',{name:'대화 관리',exact:true}).click();await page.getByRole('button',{name:'대화 내보내기',exact:true}).click();await page.waitForTimeout(200);const exported=await fs.readFile(destination,'utf8');assert(exported.includes('합성 기록 1\n'));assert(exported.includes('합성 기록 22000\n'));assert(exported.includes('읽는 중 새 응답 확인'),'전체 데이터 내보내기');
   await openConversation(page,'짧은 대화 전환 검증');assert.equal(await page.locator('.messages [data-message-id]').count(),2);await openConversation(page,session.title);assert.equal(await page.locator('.messages article[data-message-id]').count(),100,'대화 전환 시 최근 메시지 100개 표시');assert.equal(await page.locator('.messages .turn-progress').count(),2,'두 요청의 작업 내역은 별도 요약 행으로 표시');await page.waitForTimeout(280);metrics.finalLayout=await body.evaluate(e=>({top:e.scrollTop,height:e.scrollHeight,client:e.clientHeight}));assert(metrics.finalLayout.height-metrics.finalLayout.client-metrics.finalLayout.top<2,'대화 전환 시 최신 위치');

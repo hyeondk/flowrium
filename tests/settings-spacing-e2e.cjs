@@ -4,6 +4,8 @@ const os = require('node:os');
 const path = require('node:path');
 const {_electron} = require('playwright');
 const {Store} = require('../electron/store.cjs');
+const {releaseVersion} = require('../electron/version.cjs');
+const {releaseNotes} = require('../shared/release-notes.ts');
 
 const baseline=process.argv.includes('--baseline');
 const groups=['general','categories','security','remote','voice','account','appearance'];
@@ -58,8 +60,13 @@ async function run(){
   }
   if(baseline){console.log(JSON.stringify({mode:'재현',rows}));return;}
   for(const width of [1440,390]){const heights=rows.filter(row=>row.width===width).map(row=>row.dialogHeight);assert(Math.max(...heights)-Math.min(...heights)<1,`설정 탭마다 같은 창 높이 ${JSON.stringify({width,heights})}`);}
-  await select('general');assert.equal(await dialog.getByRole('region',{name:'최신 변경점',exact:true}).locator('li').count(),8);
-  assert((await dialog.getByRole('region',{name:'최신 변경점',exact:true}).locator('li').allTextContents()).every(text=>text.endsWith('했어요.')));
+  await select('general');
+  const version=releaseVersion(require('../package.json'));
+  const history=dialog.getByRole('region',{name:'최신 변경점',exact:true});
+  const expected=releaseNotes[version];
+  assert(expected?.length,'현재 버전의 변경점이 필요합니다.');
+  assert.equal(await history.getByRole('heading').locator('small').textContent(),version);
+  assert.deepEqual(await history.locator('li').allTextContents(),expected,'현재 버전의 변경점을 순서대로 그대로 표시합니다.');
   await select('categories');const draft=dialog.getByRole('combobox',{name:'카테고리 이름',exact:true});await draft.fill('보존 확인');
   await select('appearance');await select('categories');assert.equal(await draft.inputValue(),'보존 확인');
   await dialog.locator('[data-settings-target=categories]').click();await page.waitForTimeout(220);assert.equal(await dialog.locator('[data-settings-group=categories]').isVisible(),false);
