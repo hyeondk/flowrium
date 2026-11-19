@@ -11,8 +11,15 @@ export default function RemotePanel() {
   useEffect(() => { setQrVisible(false); }, [state.url]);
   const [push,setPush]=useState<WebPushState>();
   const [deviceKinds,setDeviceKinds]=useState<Record<string,PushKind[]>>({});
+  const [showTitles,setShowTitles]=useState<Record<string,boolean>>({});
   const pushLabels:Record<PushKind,string>={decision:"결정과 승인",done:"작업 완료",error:"오류",report:"보고서",reminder:"예약 알림",message:"업무 메시지"};
-  async function refreshPush(){const next=await api?.webPushState();setPush(next);setDeviceKinds(Object.fromEntries((next?.devices||[]).map(d=>[d.id,d.kinds])));}
+  async function refreshPush(){
+    const next=await api?.webPushState();
+    setPush(next);
+    const devices=next?.devices||[];
+    setDeviceKinds(Object.fromEntries(devices.map(d=>[d.id,d.kinds])));
+    setShowTitles(Object.fromEntries(devices.map(d=>[d.id,d.showConversationTitle===true])));
+  }
   async function pushAction(action:()=>Promise<unknown>){setBusy(true);try{await action();await refreshPush()}catch(e){setMessage(e instanceof Error?e.message:String(e))}finally{setBusy(false)}}
   const api = window.flowrium;
   async function perform(action: () => Promise<RemoteAccess>) {
@@ -105,8 +112,9 @@ export default function RemotePanel() {
         {push?.devices.map(device=><div key={device.id} className="settings-card">
           <strong>{device.label}</strong>
           <div className="device-preferences">{(Object.keys(pushLabels) as PushKind[]).map(kind=><label key={kind}><AnimatedSwitch style={{width:"auto"}} checked={(deviceKinds[device.id]||[]).includes(kind)} onChange={event=>setDeviceKinds(old=>({...old,[device.id]:event.target.checked?[...(old[device.id]||[]),kind]:(old[device.id]||[]).filter(k=>k!==kind)}))}/>{pushLabels[kind]}</label>)}</div>
+          <div className="device-preferences"><label><AnimatedSwitch style={{width:"auto"}} checked={showTitles[device.id]===true} onChange={event=>setShowTitles(old=>({...old,[device.id]:event.target.checked}))}/>휴대폰 알림에 대화 이름 표시</label></div>
           <div className="settings-buttons">
-            <button className="button secondary" disabled={busy} onClick={()=>void pushAction(()=>api!.webPushAction({action:"preferences",id:device.id,kinds:deviceKinds[device.id]||[]}))}>알림 종류 저장</button>
+            <button className="button secondary" disabled={busy} onClick={()=>void pushAction(()=>api!.webPushAction({action:"preferences",id:device.id,kinds:deviceKinds[device.id]||[],showConversationTitle:showTitles[device.id]===true}))}>알림 설정 저장</button>
             <button className="button secondary" disabled={busy} onClick={()=>void pushAction(async()=>{const result=await api!.webPushAction({action:"test",id:device.id});setMessage(result.sent?"알림 서버에 시험 알림을 보냈습니다.":"시험 알림 발송을 확인하지 못했습니다.");})}>기기에 시험 알림</button>
             <button className="button subtle" disabled={busy} onClick={()=>void pushAction(()=>api!.webPushAction({action:"unsubscribe",id:device.id}))}>기기 알림 해제</button>
           </div>

@@ -22,11 +22,14 @@ async function main(){const root=path.resolve(__dirname,'..'),qa=path.join(root,
  await input.fill('다른 대화의 결정 중에도 보존할 초안');
  const questionNotice=page.locator('.flow-question-notice[data-tone="question"]');
  await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'입력질문검증',mode:'plan'}),questions.id);
- await questionNotice.waitFor();assert(!/검증 문구|비밀|명령/.test(await questionNotice.innerText()));
+ await questionNotice.getByText('어시스턴트가 질문이 있으니 결정 부탁드립니다.',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'결정 상태 1개',exact:true}).waitFor();
+ assert(!/검증 문구|비밀|명령/.test(await questionNotice.innerText()));
  await questionNotice.getByRole('button',{name:'대화에서 답하기',exact:true}).click();
  await page.locator('.conversation-dock .session-heading').getByRole('heading',{name:await page.evaluate(id=>window.flowrium.bootstrap().then(data=>data.sessions.find(row=>row.id===id).title),questions.id),exact:true}).waitFor();
  const form=page.locator('.conversation-question').getByRole('form',{name:'Codex 질문'});
  await form.waitFor();await form.getByRole('radio',{name:/요약/}).check();await form.getByRole('radio',{name:'직접 입력',exact:true}).check();await form.getByLabel('직접 답변').fill('대화 자료');await form.getByLabel('비밀 답변').fill('저장하지 않을 합성 확인값');await form.getByRole('button',{name:'답변 보내기',exact:true}).click();await form.waitFor({state:'detached'});
+ await page.getByRole('button',{name:'결정 상태 0개',exact:true}).waitFor();
  await openConversation(page,waiting.title);assert.equal(await input.inputValue(),'다른 대화의 결정 중에도 보존할 초안');
  await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'승인검증',mode:'build'}),questions.id);await questionNotice.waitFor();await questionNotice.getByRole('button',{name:'대화에서 확인하기',exact:true}).click();
  await page.locator('.conversation-dock .session-heading').getByRole('heading',{name:await page.evaluate(id=>window.flowrium.bootstrap().then(data=>data.sessions.find(row=>row.id===id).title),questions.id),exact:true}).waitFor();

@@ -39,6 +39,11 @@ class Client extends EventEmitter{
  async start(){}
  async request(method,params){this.calls.push({method,params});if(method==='account/read')return{account:{type:'chatgpt'}};if(method==='config/read')return{config:{mcp_servers:{example:{command:'secret-command'}},plugins:{example:{enabled:true}},apps:{example:{enabled:true}}}};if(method.startsWith('thread/'))return{thread:{id:'thread-'+(++this.number)},activePermissionProfile:{id:params.permissions}};if(method==='turn/start')return{turn:{id:'turn-'+this.number}};return{};}
  answerTool(requestId,result){this.lastToolAnswer={requestId,result};}
+ resolveInput(requestId){
+  const request=this.inputs.get(requestId);
+  if(request){this.inputs.delete(requestId);this.emit('inputResolved',{requestId,threadId:request.params.threadId});}
+ }
+ answerInput(requestId,answers){this.answered=answers;this.resolveInput(requestId);}
  close(){this.ready=false;}
 }
 test('일반 / 통합 대화의 계정별 영속 저장과 실행 범위 격리',async()=>{
@@ -70,6 +75,21 @@ test('일반 / 통합 대화의 계정별 영속 저장과 실행 범위 격리'
   assert.doesNotMatch(JSON.stringify(turn),/미완료 작업/);
   assert(!JSON.stringify(start).includes('미완료 작업'));assert(!JSON.stringify(turn.input).includes('미완료 작업'));
   await assert.rejects(callScopeTool(controller,run,{tool:'flowrium_hub_snapshot',arguments:{query:''}}),/일반 대화/);
+  const questionEvents=[];
+  const capture=event=>questionEvents.push(event);
+  controller.on('event',capture);
+  const questions=[{id:'answer',question:'어떤 형식으로 정리할까요?',options:[]}];
+  const request={requestId:'scope-question',params:{threadId:run.threadId,turnId:run.turnId,questions,isBlocking:true}};
+  scoped[0].inputs.set(request.requestId,request);
+  scoped[0].emit('input',request);
+  const pending=questionEvents.find(event=>event.type==='input');
+  assert.equal(pending.sessionId,g.id);
+  assert.equal(pending.text,'어시스턴트가 질문이 있으니 결정 부탁드립니다.');
+  const answers={answer:{answers:['글머리표로 정리해 주세요.']}};
+  controller.answerInput({requestId:request.requestId,answers});
+  assert.deepEqual(scoped[0].answered,answers);
+  assert(questionEvents.some(event=>event.type==='inputResolved'&&event.requestId===request.requestId));
+  controller.off('event',capture);
   await controller.finish(run,'completed');
   const loaded=new Store(path.join(temp,'app'));await loaded.load();loaded.conversations.getOwner=()=>owner;await loaded.syncConversationOwner();assert.equal(loaded.session(g.id).threadId,g.threadId);assert.equal(loaded.session(g.id).messages[0].text,'일반 질문');
   const hub=store.session(integrated.id),hubRun={sessionId:hub.id,ownerRevision:owner};

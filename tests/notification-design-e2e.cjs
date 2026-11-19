@@ -6,7 +6,7 @@ const {closeInstalledApp}=require('./update-installed-ui.cjs');
 async function run(){
  const root=path.resolve(__dirname,'..'),base=path.join(root,'.flowrium-tmp/qa-261115_03');
  await fs.mkdir(base,{recursive:true});const temporary=await fs.mkdtemp(path.join(base,'notification-design-'));
- const output=path.join(root,'artifacts/actual-design-20261118');await fs.mkdir(output,{recursive:true});
+ const output=process.env.FLOWRIUM_NOTICE_SCREENS||path.join(temporary,'screens');await fs.mkdir(output,{recursive:true});
  let app;
  try{
   const profile=path.join(temporary,'profile'),folder=path.join(temporary,'온라인 스토어 매출 분석');await fs.mkdir(folder);
@@ -18,6 +18,7 @@ async function run(){
   await page.setViewportSize({width:1440,height:900});await page.locator('.side-usage[data-connected=true]').waitFor();
   await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'입력질문검증',mode:'plan'}),session.id);
   const questionNotice=page.locator('.flow-question-notice[data-tone=question]');await questionNotice.waitFor();
+  assert.equal(await questionNotice.getByRole('status').innerText(),'어시스턴트가 질문이 있으니 결정 부탁드립니다.');
   assert.equal(await questionNotice.count(),1);assert(!/비밀|검증 문구|명령/.test(await questionNotice.innerText()));
   const questionBox=await questionNotice.boundingBox();assert(Math.abs(questionBox.width-360)<1);assert(questionBox.height>=175.5,JSON.stringify(questionBox));
   await page.screenshot({path:path.join(output,'안내-질문.png'),animations:'disabled'});
@@ -34,6 +35,8 @@ async function run(){
   await form.getByRole('button',{name:'답변 보내기',exact:true}).click();await form.waitFor({state:'detached'});
   await page.locator('.message.assistant').filter({hasText:'질문 응답 형식 확인 / 요약 / 매출 비교 자료'}).waitFor();
   const completed=page.locator('.flow-question-notice[data-tone=success]');await completed.waitFor();
+  const conversationTitle=await page.evaluate(async id=>(await window.flowrium.bootstrap()).sessions.find(s=>s.id===id).title,session.id);
+  assert.equal(await completed.getByRole('status').innerText(),`‘${conversationTitle}’ 대화의 답변이 완료됐습니다.`);
   assert.equal(await completed.locator('.flow-notice-summary p').count(),3);
   const completeText=await completed.innerText();assert.match(completeText,/검증 내용은 대화에서 확인/);assert(!completeText.includes('임시 합성 확인값'));
   const completeBox=await completed.boundingBox();assert(Math.abs(completeBox.width-360)<1);assert(completeBox.height>=175.5,JSON.stringify(completeBox));

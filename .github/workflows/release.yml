@@ -296,6 +296,7 @@ jobs:
           node tests/mobile-install-e2e.cjs || result=1
           node tests/mobile-e2e.cjs || result=1
           node tests/mobile-extensions-e2e.cjs || result=1
+          node tests/mobile-chat-density-e2e.cjs || result=1
           exit "$result"
       - name: 터미널 설치 파일의 검증과 백업
         id: verify_16
@@ -420,7 +421,9 @@ jobs:
       - name: 결정 알림과 헤더 포인터 접근
         id: verify_38
         continue-on-error: true
-        run: node tests/decision-notice-layout-e2e.cjs
+        run: |
+          node tests/decision-notice-layout-e2e.cjs
+          node tests/notification-design-e2e.cjs
       - name: 앱 창 닫힘과 재실행
         id: verify_39
         continue-on-error: true

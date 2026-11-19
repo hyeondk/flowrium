@@ -47,19 +47,8 @@ class Controller extends EventEmitter {
         }),
       );
     });
-    this.client.on("input", ({ requestId, params }) => {
-      const run = this.findRun(params.threadId);
-      if (!run || (run.client&&run.client!==this.client) || run.cancelled || run.finalized || (run.turnId && run.turnId !== params.turnId) || (this.options.queueOwner&&run.ownerRevision!==this.options.queueOwner())) {
-        this.client.resolveInput(requestId,true);
-        return;
-      }
-      this.noteRequest(run,'input:'+requestId,'사용자에게 질문을 보냈어요');
-      this.emitEvent({ type:"input", sessionId:run.sessionId, requestId, questions:params.questions, isBlocking:params.isBlocking,
-        text:"Codex가 사용자에게 질문했습니다." });
-    });
-    this.client.on("inputResolved", ({ requestId,threadId }) => {
-      this.emitEvent({type:"inputResolved",sessionId:this.findRun(threadId)?.sessionId,requestId});
-    });
+    this.client.on("input", request => this.forwardInput(request));
+    this.client.on("inputResolved", request => this.forwardInputResolved(request));
     this.client.on("approval", (request) => this.forwardApproval(request));
     this.client.on("tool", async ({requestId,params}) => {
       const run=this.findRun(params.threadId,params.turnId);
@@ -327,9 +316,9 @@ class Controller extends EventEmitter {
     };
     const checkContinuation=()=>{
       const expected=internal.expectedContinuation;if(!expected)return;
-      const last=session.messages.at(-1);
+      const last=require('./execution-state.js').continuationAnswer(session);
       if(session.completedContinuationId===expected.messageId)throw Error('이미 완료로 표시한 후속 작업입니다.');
-      if(!last||last.role!=='assistant'||last.id!==expected.messageId||last.text!==expected.text||ownerRevision!==expected.owner||ownerRevision!==(this.options.queueOwner?.()??'local')||this.runs.has(session.id)||this.editingSessions.has(session.id)||session.compacting||this.messageQueue.pending(session.id)||session.workflow?.status==='done')throw Error('대화나 계정 상태가 바뀌었습니다. 최신 답변을 확인하고 다시 선택해 주세요.');
+      if(!last||last.id!==expected.messageId||last.text!==expected.text||ownerRevision!==expected.owner||ownerRevision!==(this.options.queueOwner?.()??'local')||this.runs.has(session.id)||this.editingSessions.has(session.id)||this.codexTransfer?.liveTurn?.(session)||session.compacting||this.messageQueue.pending(session.id)||session.workflow?.status==='done')throw Error('대화나 계정 상태가 바뀌었습니다. 최신 답변을 확인하고 다시 선택해 주세요.');
     };
     checkContinuation();
     if (session.workflow?.status === "done") throw new Error("완료한 업무입니다. 다시 진행하려면 업무를 재개해 주세요.");
@@ -697,8 +686,10 @@ class Controller extends EventEmitter {
       for (const [key,request] of client.inputs || [])
         if (request.id === params.requestId || String(request.id) === String(params.requestId)) client.resolveInput(key);
       for (const [key, request] of client.approvals)
-        if (String(request.id) === String(params.requestId))
+        if (String(request.id) === String(params.requestId)) {
           client.approvals.delete(key);
+          this.emitEvent({type:'inputResolved',sessionId:this.findRun(request.params?.threadId)?.sessionId,requestId:key});
+        }
       return;
     }
     if(method === "thread/tokenUsage/updated") {
@@ -816,6 +807,21 @@ class Controller extends EventEmitter {
     if((run.client&&run.client!==client)||this.options.canRun?.()===false||(this.options.queueOwner&&run.ownerRevision!==this.options.queueOwner()))throw Error("이 질문은 이미 종료됐습니다.");
     client.answerInput(input.requestId,input.answers);
     this.noteRequest(run,'input:'+input.requestId,'사용자 답변을 받았어요','completed');
+  }
+  forwardInput({requestId,params},client=this.client) {
+    const run=this.findRun(params.threadId);
+    if(!run||(run.client&&run.client!==client)||run.cancelled||run.finalized||
+      (run.turnId&&run.turnId!==params.turnId)||this.options.canRun?.()===false||
+      (this.options.queueOwner&&run.ownerRevision!==this.options.queueOwner())){
+      client.resolveInput(requestId,true);
+      return;
+    }
+    this.noteRequest(run,'input:'+requestId,'사용자에게 질문을 보냈어요');
+    this.emitEvent({type:'input',sessionId:run.sessionId,requestId,questions:params.questions,isBlocking:params.isBlocking,
+      text:require('./execution-state.js').QUESTION_DECISION_NOTICE});
+  }
+  forwardInputResolved({requestId,threadId}) {
+    this.emitEvent({type:'inputResolved',sessionId:this.findRun(threadId)?.sessionId,requestId});
   }
   forwardApproval({ requestId, method, params },client=this.client) {
     const run = this.findRun(params.threadId);

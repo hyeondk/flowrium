@@ -21,7 +21,7 @@ import {useAccountUsage} from "./account-usage";
 import ConversationDock from "./ConversationDock";
 import ProjectCategoryLabel from "./ProjectCategoryLabel";
 import {ExecutionSummary} from "./ExecutionStatus";
-import {sessionExecution,visibleProposals,type ExecutionState} from "../shared/execution-state";
+import {QUESTION_DECISION_NOTICE,sessionExecution,visibleProposals,type ExecutionActivity,type ExecutionState} from "../shared/execution-state";
 import type {WorkflowNotification,WorkflowProposal,WorkflowState} from "../shared/workflow";
 import {usePresence,MotionOverlay,ModalPortal,Toast,Snackbar,AnimatedCheckbox,LikeButton} from "./ui-motion";
 import PortfolioReports from "./PortfolioReports";
@@ -41,7 +41,7 @@ import {presentCitations} from "../electron/mobile/file-citations.js";
 import {attachmentDisplayText} from "../electron/mobile/attachment-text.js";
 import IconTooltips from "./IconTooltips";
 import DotsPanel from "./DotsPanel";
-import AttentionCenter,{FlowNotice} from "./AttentionCenter";
+import AttentionCenter,{answerNoticeTitle,FlowNotice} from "./AttentionCenter";
 import AccountSetupCard from "./AccountSetupCard";
 import type {TrashResult} from "../shared/trash";
 import ContextMenu from "./ContextMenu";
@@ -114,7 +114,6 @@ import type {
 } from "../shared/types";
 
 type View = "workflow" | PortfolioView | "weekly" | "pause" | "music" | "overview" | "terminal" | "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
-type Activity = { text: string; status: string; error?: string };
 type CodexHistoryItem = {
   id: string;
   title: string;
@@ -203,6 +202,12 @@ export default function App() {
     {lockPresence.present&&<div ref={lockLayer} className="security-lock-layer" data-phase={lockPresence.phase} inert={!security.state.locked} aria-hidden={!security.state.locked}><LockScreen security={security} releasing={!security.state.locked}/></div>}
   </div>;
 }
+function externalActivity(state:'running'|'pending'):ExecutionActivity {
+  return state==='running'
+    ? {source:'external',text:'',status:'Codex 앱에서 작업하고 있습니다.'}
+    : {unsettled:true,text:'',status:'Codex 앱의 작업 상태를 확인하고 있습니다.'};
+}
+
 function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>}) {
   const [logoutOpen,setLogoutOpen] = useState(false);
   const update = useDesktopUpdate();
@@ -270,7 +275,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [submitting, setSubmitting] = useState(false);
   const modelSaveKey = useRef<string | null>(null);
   const [savingModel, setSavingModel] = useState<string | null>(null);
-  const [activities, setActivities] = useState<Record<string, Activity>>({});
+  const [activities, setActivities] = useState<Record<string, ExecutionActivity>>({});
   const [approvals, setApprovals] = useState<FlowriumEvent[]>([]);
   const [deletionTarget,setDeletionTarget]=useState<DeleteTarget|null>(null),[trashOpen,setTrashOpen]=useState(false);
   const [itemMenu,setItemMenu]=useState<{x:number;y:number;target:DeleteTarget}|null>(null);
@@ -287,7 +292,18 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const decisionFlights=useRef(new Set<string>());
   const [stopping, setStopping] = useState<Record<string, boolean>>({});
   const [toast, setToast] = useState("");
-  const [questionNotice, setQuestionNotice] = useState<FlowriumEvent>();
+  const [dismissedRequests, setDismissedRequests] = useState<string[]>([]);
+  const visibleRequests = approvals.filter(event => event.requestId && !dismissedRequests.includes(event.requestId));
+  const questionNotice = visibleRequests.filter(event => event.type === 'input').at(-1) || visibleRequests.at(-1);
+  function dismissQuestion(event: FlowriumEvent) {
+    if (event.requestId) setDismissedRequests(previous => [...previous, event.requestId!]);
+  }
+  useEffect(() => {
+    setDismissedRequests(previous => {
+      const retained = previous.filter(id => approvals.some(event => event.requestId === id));
+      return retained.length === previous.length ? previous : retained;
+    });
+  }, [approvals]);
   const [completionNotice, setCompletionNotice] = useState<WorkflowNotification>();
   const noticeIds = useRef<Set<string> | undefined>(undefined);
   const [focusQuestion, setFocusQuestion] = useState<string>();
@@ -309,11 +325,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const session = data.sessions.find((s) => s.id === sessionId);
   const conversationProject=session?[...data.projects,...(data.conversationProjects||[])].find(p=>p.id===session.projectId):project;
   const projectOnlySessions=data.sessions.filter(s=>!s.scope);
-  const activeCounts={running:0,waiting:0,decision:approvals.length+visibleProposals(proposals).length};
+  const activeCounts={running:0,waiting:0,decision:0};
   const projectCounts:Record<string,{running:number;waiting:number;decision:number;total:number}>={};
   for(const item of data.sessions){
     const state=sessionExecution(item,activities[item.id],approvals,proposals);
-    if(state && state!=='decision') activeCounts[state]++;
+    if(state) activeCounts[state]++;
     if(item.scope) continue;
     const counts=projectCounts[item.projectId]??={running:0,waiting:0,decision:0,total:0};
     counts.total++;
@@ -323,7 +339,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     (s) => s.projectId === projectId,
   );
   const activity = sessionId ? activities[sessionId] : undefined;
-  const running = Boolean(activity);
+  const workActive = Boolean(activity?.source);
+  const running = activity?.source === 'local';
   const sessionApprovals = approvals.filter(
     (a) => !a.sessionId || a.sessionId === sessionId,
   );
@@ -362,7 +379,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const previous = noticeIds.current;
     noticeIds.current = new Set(attentionState.notifications.map(item=>item.id));
     if (!previous) return;
-    const newest = attentionState.notifications.find(item=>item.kind==="done" && !item.readAt && !previous.has(item.id));
+    const newest = attentionState.notifications.find(item=>(item.kind==="done"||item.kind==="error") && !item.readAt && !previous.has(item.id));
     if (newest) setCompletionNotice(newest);
   }, [attentionState]);
   useEffect(() => {
@@ -378,11 +395,20 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       return;
     }
     let alive = true;
+    const changedActivity = new Set<string>();
+    let restoringActivity = true;
     api
       .bootstrap()
       .then((value) => {
         if (!alive) return;
         setData(value);
+        if(value.externalActivity)setActivities(previous=>{
+          const next={...previous};
+          for(const [id,state] of Object.entries(value.externalActivity!)){
+            if(!changedActivity.has(id))next[id]=externalActivity(state);
+          }
+          return next;
+        });
         setProjectId(value.projects[0]?.id);
         setLoaded(true);
       })
@@ -391,7 +417,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           fail(error);
           setLoaded(true);
         }
-      });
+      }).finally(()=>{restoringActivity=false;});
     api
       .connect()
       .then((value) => {
@@ -403,11 +429,19 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const restoredProjects=new Set<string>();
     const handleEvent = (event:FlowriumEvent) => {
       if (!alive) return;
+      if(restoringActivity&&event.sessionId&&['status','externalTurn','done'].includes(event.type))changedActivity.add(event.sessionId);
       if(["done","approval","input","inputResolved","error"].includes(event.type))window.dispatchEvent(new Event("flowrium-attention-refresh"));
-      if(event.type==='externalTurn'&&event.turnId&&event.turnMessages){
+      if(event.type==='externalTurn'&&event.sessionId&&event.turnId&&event.turnMessages){
         setData(previous=>({...previous,sessions:previous.sessions.map(s=>s.id===event.sessionId?{
           ...s,messages:withLiveTurn(s.messages,event.turnId!,event.turnMessages!)
         }:s)}));
+        const id=event.sessionId;
+        setActivities(previous=>{
+          if(previous[id]?.source==='local')return previous;
+          if(event.status==='running'||event.status==='pending')return {...previous,[id]:externalActivity(event.status)};
+          if(previous[id]?.source!=='external'&&!previous[id]?.unsettled)return previous;
+          const next={...previous};delete next[id];return next;
+        });
       }
       if(event.type==='sessionList'){
         const removed=new Set(event.removedSessionIds||[]);
@@ -417,6 +451,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           (sessions,restored)=>upsert(sessions,restored),previous.sessions.filter(s=>!removed.has(s.id))
         )}));
         setSessionId(current=>current&&removed.has(current)?undefined:current);
+        if(removed.size){
+          setActivities(previous=>Object.fromEntries(Object.entries(previous).filter(([id])=>!removed.has(id))));
+          setApprovals(previous=>previous.filter(event=>!event.sessionId||!removed.has(event.sessionId)));
+        }
         if(event.projectsChanged){
           for(const id of event.restoredProjectIds||[])restoredProjects.add(id);
           const revision=++projectListRevision;
@@ -427,7 +465,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             restoredProjects.clear();
             const scopes=new Set(snapshot.conversationProjects?.map(p=>p.id));
             setData(previous=>{
-              const sessions=previous.sessions.filter(s=>projects.has(s.projectId)||scopes.has(s.projectId));
+            const sessions=previous.sessions.filter(s=>projects.has(s.projectId)||scopes.has(s.projectId));
               const known=new Set(sessions.map(s=>s.id));
               const missing=snapshot.sessions.filter(s=>!known.has(s.id)&&!removedBySync.has(s.id));
               return {...previous,projects:snapshot.projects,sessions:[...sessions,...missing]};
@@ -452,10 +490,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       }
       if (event.type === "delta" && event.sessionId)
         setActivities((prev) =>
-          prev[event.sessionId!]
+          prev[event.sessionId!]?.source === "local"
             ? {
                 ...prev,
                 [event.sessionId!]: {
+                  ...prev[event.sessionId!],
                   text: prev[event.sessionId!].text + (event.text || ""),
                   status: "답변을 작성하고 있습니다",
                 },
@@ -472,9 +511,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           })
         }:row)}));
       }
-      if (event.type === "status" && event.sessionId)
+      if (event.type === "status" && event.sessionId && (event.status === "running" || event.status === "stopping"))
         setActivities((prev) =>
-          ({ ...prev, [event.sessionId!]: { ...prev[event.sessionId!], text: prev[event.sessionId!]?.text || "", status: event.text || "작업 중입니다" } }),
+          ({ ...prev, [event.sessionId!]: { source:"local",text:prev[event.sessionId!]?.text || "",status:event.text || "작업 중입니다" } }),
         );
       if (event.type === "status" && !event.sessionId) {
         if (event.status === "disconnected") {
@@ -507,20 +546,19 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       }
       if (event.type === "inputResolved") {
         setApprovals(prev=>prev.filter(row=>row.requestId!==event.requestId));
-        setQuestionNotice(prev=>prev?.requestId===event.requestId?undefined:prev);
       }
-      if (event.type === "approval" || event.type === "input") {
+      if ((event.type === "approval" || event.type === "input") && event.requestId) {
         setApprovals((prev) => [
           ...prev.filter((a) => a.requestId !== event.requestId),
           event,
         ]);
-        setQuestionNotice(event);
       }
       if (event.type === "error") {
         if (event.sessionId)
           setActivities((prev) => ({
             ...prev,
             [event.sessionId!]: {
+              ...prev[event.sessionId!],
               text: prev[event.sessionId!]?.text || "",
               status: "작업 상태를 확인하고 있습니다",
               error: event.text || "작업 중 오류가 발생했습니다.",
@@ -899,10 +937,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           setSessionId(created.id);
         }
       }
-      if(!wasRunning)setActivities((prev) => ({
-        ...prev,
-        [activeId!]: { text: "", status: "Codex에 연결하고 있습니다" },
-      }));
       stickToBottom.current = true;
       const sent=await api.send({
         ...longSubmission(restoreKey,text),
@@ -917,20 +951,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       submissionReceipts.current.delete(restoreKey);
       if(sent.steered)notify("현재 작업에 추가 지시를 전달했습니다.");
       else if(sent.queued){
-        if(!wasRunning)setActivities(prev=>{
-          if(prev[activeId!]?.status!=="Codex에 연결하고 있습니다")return prev;
-          const next={...prev};delete next[activeId!];return next;
-        });
         notify(sent.waitingForWriter?"요청을 보관했습니다. 채팅의 추가 지시에서 전달 상태를 확인할 수 있습니다.":"추가 지시를 보관했습니다. 현재 작업이 끝나면 차례로 전달합니다.");
       }
     } catch (error) {
       if (!draftCleared) { fail(error); return; }
-      if (activeId&&!wasRunning)
-        setActivities((prev) => {
-          const next = { ...prev };
-          delete next[activeId!];
-          return next;
-        });
       setDrafts((prev) => ({
         ...prev,
         [restoreKey]: {
@@ -1009,7 +1033,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     }
   }
   async function continueWaitingSession(messageId:string){
-    if(!api||!session||submittingRef.current||running||modelSaveKey.current===draftKey)return;
+    if(!api||!session||submittingRef.current||workActive||modelSaveKey.current===draftKey)return;
     const originKey=draftKey,originalInput=input,originalAttachments=attachments;
     submittingRef.current=true;setSubmitting(true);
     try{
@@ -1119,7 +1143,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       setAttentionOpen(false);
       setView("inbox");
     }
-    setQuestionNotice(undefined);
+    dismissQuestion(event);
   }
   function renderChat(){
     const project = conversationProject;
@@ -1149,13 +1173,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         <details className="session-details" key={`connection:${session.id}`}>
                           <summary aria-label="대화 연결 및 작업 도구" title="대화 연결 및 작업 도구"><Settings2 size={16}/></summary>
                           <div className="session-details-body">
-                            <CodexLinkBar session={session} running={running}/>
+                            <CodexLinkBar session={session} running={workActive}/>
                             {session.context && <div className="chat-context">문맥 {session.context.percent}% ({session.context.used.toLocaleString("ko-KR")} / {session.context.max.toLocaleString("ko-KR")} 토큰) <progress max={100} value={session.context.percent}/></div>}
                             {!queued && queue}
-                            {session.workflow && <WorkSessionControls session={session} onSessionChange={rememberSession} running={running}/>}
+                            {session.workflow && <WorkSessionControls session={session} onSessionChange={rememberSession} running={workActive}/>}
                           </div>
                         </details>}
-                      <ConversationTools onHandoff={handoff} onNew={newSession} onExport={async()=>{try{if(await api?.exportSession(session.id))notify("작업 대화를 내보냈습니다.");}catch(error){fail(error);}}} onDelete={()=>setDeletionTarget({kind:"session",id:session.id,name:session.title})} key={`tools:${session.id}`} session={session} models={models} running={running} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} defaults={data.settings.chatDefaults} defaultModel={data.settings.model} onDefaults={chatDefaults=>setData(old=>({...old,settings:{...old.settings,chatDefaults}}))} onRewind={draft=>setDrafts(prev=>({...prev,[draftKey]:{text:draft.text,mode,attachments:draft.attachments}}))} />
+                      <ConversationTools onHandoff={handoff} onNew={newSession} onExport={async()=>{try{if(await api?.exportSession(session.id))notify("작업 대화를 내보냈습니다.");}catch(error){fail(error);}}} onDelete={()=>setDeletionTarget({kind:"session",id:session.id,name:session.title})} key={`tools:${session.id}`} session={session} models={models} running={workActive} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} defaults={data.settings.chatDefaults} defaultModel={data.settings.model} onDefaults={chatDefaults=>setData(old=>({...old,settings:{...old.settings,chatDefaults}}))} onRewind={draft=>setDrafts(prev=>({...prev,[draftKey]:{text:draft.text,mode,attachments:draft.attachments}}))} />
                     </div>
                   </div>
                   {session.compacting && <p className="chat-context" role="status">문맥 압축 중</p>}
@@ -1177,7 +1201,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       }
                     }}
                   >
-                    <MessageHistory key={session.id} running={running} messages={session.messages} scrollRef={messages} stickToBottom={stickToBottom} renderMessage={(message,hasLaterRequest,failedRequest) => (
+                    <MessageHistory key={session.id} running={workActive} messages={session.messages} scrollRef={messages} stickToBottom={stickToBottom} renderMessage={(message,hasLaterRequest,failedRequest) => (
                       <article
                         className={`message ${message.role}`}
                         data-message-id={message.id}
@@ -1253,7 +1277,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         </div>
                       </article>
                     )}/>
-                    {running && (
+                    {workActive && (
                       <article className="message assistant">
                         <div className="message-body">
                           <div className="message-meta">
@@ -1354,7 +1378,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       </button>
                     )}
                   </div>
-                  <ChatContinuation key={draftKey} session={session} running={running || sessionApprovals.length > 0 || Boolean(session && visibleProposals(proposals).some(p=>p.sourceId===session.id || p.targetId===session.id))}
+                  <ChatContinuation key={draftKey} session={session} running={workActive || Boolean(activity?.unsettled) || sessionApprovals.length > 0 || Boolean(session && visibleProposals(proposals).some(p=>p.sourceId===session.id || p.targetId===session.id))}
                     authenticated={connection.authenticated} busy={submitting || savingModel === draftKey} draft={input} textareaRef={composer}
                     active={chatActive && dockOpen && !settingsOpen && !attentionOpen}
                     placeholder={project ? "어떤 작업을 함께 해볼까요?" : "만들고 싶은 것, 풀고 싶은 문제를 적어 주세요."}
@@ -1730,10 +1754,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       </div></MotionOverlay>
       <div className="flow-notice-stack">
       <Toast message={toast} onClose={()=>setToast('')}/>
-      {questionNotice ? <FlowNotice tone="question" title={questionNotice.type==="input"?"응답 요청이 도착했어요":"승인 요청이 도착했어요"}
+      {questionNotice ? <FlowNotice tone="question" title={questionNotice.type==="input"?QUESTION_DECISION_NOTICE:"승인 요청이 도착했어요"}
         lines={[data.sessions.find(item=>item.id===questionNotice.sessionId)?.title || "답변을 기다리는 질문이 있습니다."]}
-        action={questionNotice.type==="input"?"대화에서 답하기":"대화에서 확인하기"} onOpen={()=>openQuestion(questionNotice)} onClose={()=>setQuestionNotice(undefined)}/>
-        : completionNotice && <FlowNotice tone="success" title="작업이 완료됐어요"
+        action={questionNotice.type==="input"?"대화에서 답하기":"대화에서 확인하기"} onOpen={()=>openQuestion(questionNotice)} onClose={()=>dismissQuestion(questionNotice)}/>
+        : completionNotice && <FlowNotice tone={completionNotice.kind==="done"?"success":"error"}
+          title={answerNoticeTitle(completionNotice,data.sessions.find(item=>item.id===completionNotice.sessionId)?.title)}
           lines={completionNotice.body.split("\n")} action="대화 열기" onClose={()=>setCompletionNotice(undefined)}
           onOpen={()=>{
             const owner=data.sessions.find(item=>item.id===completionNotice.sessionId);

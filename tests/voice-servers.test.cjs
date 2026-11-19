@@ -24,6 +24,31 @@ test('서버 실행 설정은 명령과 인자를 분리하고 루프백·범위
  const state2=await f.api.voiceServersState();await f.api.configureVoiceServer({id:'recognition',revision:state2.revision,config:{command:'',args:[],cwd:'',endpoint:'http://127.0.0.1:9890',healthPath:'',startupTimeoutMs:20000}});
  await assert.rejects(f.api.voiceServerAction({id:'recognition',action:'start',token:plan.token}),/미리보기/);
 });
+test('음성 서버 설정 파일이 잠깐 점유되면 기존 설정을 보존하며 같은 임시 파일로 다시 교체한다', async t=>{
+ const f=await fixture(t),config=await f.save();
+ const revision=(await f.api.voiceServersState()).revision;
+ const rename=fs.rename;
+ const stagedPaths=[];
+ fs.rename=async(from,to)=>{
+  if(!to.startsWith(f.directory+path.sep))return rename(from,to);
+  stagedPaths.push(from);
+  if(stagedPaths.length===1){
+   assert.equal(JSON.parse(await fs.readFile(to,'utf8')).revision,revision);
+   throw Object.assign(Error('합성 교체 권한 경합'),{code:'EPERM'});
+  }
+  return rename(from,to);
+ };
+ let saved;
+ try {
+  config.args.push('--delay','100');
+  saved=await f.api.configureVoiceServer({id:'recognition',revision,config});
+ } finally { fs.rename=rename; }
+ assert.equal(saved.revision,revision+1);
+ assert.deepEqual(saved.servers[0].config.args,config.args);
+ assert.equal(stagedPaths.length,2);
+ assert.equal(stagedPaths[0],stagedPaths[1]);
+ assert.deepEqual((await fs.readdir(f.directory)).filter(name=>name.endsWith('.tmp')),[]);
+});
 test('실제 서버 시작·준비·비밀 로그 보호·재시작·중지와 설정 재열기를 검증한다',async t=>{
  const f=await fixture(t),secret='private-server-secret-721';await f.save('server',{}, {FLOWRIUM_TEST_SECRET:secret});let state=await f.api.voiceServersState();assert.deepEqual(state.servers[0].config.environmentNames,['FLOWRIUM_TEST_SECRET']);assert(!JSON.stringify(state).includes(secret));
  const files=await fs.readdir(f.directory),disk=await fs.readFile(path.join(f.directory,files.find(n=>n.startsWith('voice-servers-'))),'utf8');assert(!disk.includes(secret));

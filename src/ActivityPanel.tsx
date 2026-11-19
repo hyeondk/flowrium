@@ -6,7 +6,7 @@ import type { SystemActivity } from "../shared/activity";
 import type { FlowriumEvent, Project, Session } from "../shared/types";
 import "./activity.css";
 import {ExecutionBadge} from './ExecutionStatus';
-import {sessionExecution,executionLabels,type ExecutionState} from '../shared/execution-state';
+import {sessionExecution,executionLabels,type ExecutionActivity,type ExecutionState} from '../shared/execution-state';
 import type {WorkflowProposal} from '../shared/workflow';
 
 interface ShortcutActions {
@@ -38,7 +38,7 @@ export function useWorkspaceShortcuts({ board, newChat, history, settings }: Sho
 interface Props {
   projects: Project[];
   sessions: Session[];
-  activities: Record<string, {status: string}>;
+  activities: Record<string, ExecutionActivity>;
   approvals: FlowriumEvent[];
   proposals?:WorkflowProposal[];
   onOpen(session: Session): void;
@@ -89,7 +89,6 @@ export function ActivityPanel({ projects, sessions, activities, approvals, propo
     finally { setStopping(previous => previous.filter(value => value !== id)); }
   }
 
-  const running = sessions.filter(session => activities[session.id]);
   const visible = source === "all" ? sessions : sessions.filter(s=>sessionExecution(s,activities[s.id],approvals,proposals)===source);
   const shortcut = /Mac/.test(navigator.platform) ? "⌘" : "Ctrl";
   return <main className="flow-activity">
@@ -124,7 +123,7 @@ export function ActivityPanel({ projects, sessions, activities, approvals, propo
           <h3>{session.title}</h3>{request && <p className="activity-request">{request.slice(0,300)}</p>}
         </div><div className="activity-buttons">
           <button className="button subtle" onClick={()=>onOpen(session)}><MessageSquare size={14}/>대화 열기</button>
-          {active && <button className="button subtle" disabled={stopping.includes(session.id)} onClick={()=>void stop(session.id)}><Square size={13}/>중단</button>}
+          {active?.source==='local' && <button className="button subtle" disabled={stopping.includes(session.id)} onClick={()=>void stop(session.id)}><Square size={13}/>중단</button>}
         </div></li>;
       })}</ul>
     </section>

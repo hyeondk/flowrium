@@ -4,7 +4,7 @@ import {useEffect,useId,useRef,useState,type ReactNode,type MouseEvent,type Keyb
 import {ArrowLeft,Bell,ChevronRight,Folder,Globe2,Maximize2,MoreHorizontal,SquarePen,MessageCircle,MessagesSquare,PanelRight,PanelRightClose,Plus,Search,ShieldCheck,X} from 'lucide-react';
 import type {FlowriumEvent,Project,Session} from '../shared/types';
 import type {WorkflowProposal} from '../shared/workflow';
-import {executionLabels,sessionExecution,type ExecutionState} from '../shared/execution-state';
+import {executionLabels,sessionExecution,type ExecutionActivity,type ExecutionState} from '../shared/execution-state';
 import {MotionPresence} from './ui-motion';
 import {ExecutionBadge,type ExecutionCounts} from './ExecutionStatus';
 import './dock-layout-modes.css';
@@ -13,7 +13,7 @@ import ProjectCategoryLabel from './ProjectCategoryLabel';
 import {messagePreview} from './message-content';
 import {useDockResize} from './DockResizeHandle';
 type Scope='home'|'integrated'|'general'|'project'|'all'|'assistant';
-type Props={revealQuestion?:boolean;projectNavigation?:{id:string;nonce:number};open:boolean;chatActive:boolean;expanded:boolean;onExpand():void;onClose():void;onLeaveChat():void;projects:Project[];categories?:Record<string,string>;onProjectMove:MoveProject;sessions:Session[];projectId?:string;sessionId?:string;activities:Record<string,unknown>;requests:FlowriumEvent[];proposals:WorkflowProposal[];counts:ExecutionCounts;filter:ExecutionState|'all';onFilter(state:ExecutionState|'all'):void;onOpen(s:Session):void;onProject(p:Project):void;onCreate(scope:'project'|'integrated'|'general',projectId?:string):void;onCreateProject():void;onDecisions():void;attentionCount?:number;dotsEligible:boolean;onAssistant():void;assistantContent?:ReactNode;assistantNavigation?:number;onSessionMenu?(event:MouseEvent,session:Session):void;onProjectMenu?(event:MouseEvent,project:Project):void;busy?:boolean;children:ReactNode};
+type Props={revealQuestion?:boolean;projectNavigation?:{id:string;nonce:number};open:boolean;chatActive:boolean;expanded:boolean;onExpand():void;onClose():void;onLeaveChat():void;projects:Project[];categories?:Record<string,string>;onProjectMove:MoveProject;sessions:Session[];projectId?:string;sessionId?:string;activities:Record<string,ExecutionActivity>;requests:FlowriumEvent[];proposals:WorkflowProposal[];counts:ExecutionCounts;filter:ExecutionState|'all';onFilter(state:ExecutionState|'all'):void;onOpen(s:Session):void;onProject(p:Project):void;onCreate(scope:'project'|'integrated'|'general',projectId?:string):void;onCreateProject():void;onDecisions():void;attentionCount?:number;dotsEligible:boolean;onAssistant():void;assistantContent?:ReactNode;assistantNavigation?:number;onSessionMenu?(event:MouseEvent,session:Session):void;onProjectMenu?(event:MouseEvent,project:Project):void;busy?:boolean;children:ReactNode};
 type PanelLayout='docked'|'overlay';
 const layoutKey='flowrium.dock.presentation.v1';
 function storedLayout(){try{const value=JSON.parse(localStorage.getItem(layoutKey)||'null');if(value&&['docked','overlay'].includes(value.layout)&&typeof value.minimized==='boolean')return {layout:value.layout as PanelLayout,minimized:value.minimized};}catch{}return {layout:'docked' as PanelLayout,minimized:false};}

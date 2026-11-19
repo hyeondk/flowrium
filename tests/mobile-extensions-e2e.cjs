@@ -137,7 +137,21 @@ async function main(){
   await btn('설정').click();
   assert.equal(await answerLength.inputValue(),'short','잠금 뒤에는 저장한 값만 복원');
   await page.getByLabel('이 기기에서 연결 유지',{exact:true}).check();await page.evaluate(()=>sessionStorage.removeItem('flowrium.mobile.key'));await page.reload();await openProject();await btn('설정').click();await btn('기본 설정 저장').waitFor();assert.equal(await page.getByLabel('이 기기에서 연결 유지',{exact:true}).isChecked(),true);await page.getByLabel('이 기기에서 연결 유지',{exact:true}).uncheck();assert.equal(await page.evaluate(()=>localStorage.getItem('flowrium.mobile.rememberedKey')),null);
-  await page.waitForFunction(()=>navigator.serviceWorker.controller!==null);await page.getByLabel('알림 기기 이름',{exact:true}).fill('화면 검증 기기');await btn('이 기기에서 알림 켜기').click();await btn('이 기기에 시험 알림 보내기').waitFor();await page.getByLabel('작업 완료',{exact:true}).uncheck();await btn('알림 종류 저장').click();assert(!(await push.status()).devices[0].kinds.includes('done'));await btn('이 기기에 시험 알림 보내기').click();assert.equal(delivered.length,1);assert.equal(delivered[0].test,true);
+  await page.waitForFunction(()=>navigator.serviceWorker.controller!==null);
+  await page.getByLabel('알림 기기 이름',{exact:true}).fill('화면 검증 기기');
+  await btn('이 기기에서 알림 켜기').click();
+  await btn('이 기기에 시험 알림 보내기').waitFor();
+  await page.getByLabel('작업 완료',{exact:true}).uncheck();
+  const titlePreview=page.getByLabel('이 기기 알림에 대화 이름 표시',{exact:true});
+  assert.equal(await titlePreview.isChecked(),false);
+  await titlePreview.check();
+  await btn('알림 설정 저장').click();
+  const savedPush=(await push.status()).devices[0];
+  assert(!savedPush.kinds.includes('done'));
+  assert.equal(savedPush.showConversationTitle,true);
+  await btn('이 기기에 시험 알림 보내기').click();
+  assert.equal(delivered.length,1);
+  assert.equal(delivered[0].test,true);
   await btn('비서').click();await btn('대화 연결').click();await page.getByLabel('대상 대화',{exact:true}).selectOption(chat.id);await page.getByLabel('연결 방식',{exact:true}).selectOption('request');await page.getByLabel('요청 제목',{exact:true}).fill('현장 내용 확인');await page.getByLabel('보낼 내용',{exact:true}).fill('최종 근거를 확인하세요.');await btn('업무 연결 보내기').click();await btn('결정').click();await page.getByRole('heading',{name:'현장 내용 확인',exact:true}).waitFor();await btn('거절').click();
   const workflowState=await workflow.state();assert.equal(workflowState.proposals[0].status,'rejected');assert(delivered.some(d=>d.kind==='decision'));
   // Both batch decisions require a second, explicit action. Review and cancel

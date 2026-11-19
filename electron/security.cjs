@@ -3,6 +3,8 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { promisify } = require("node:util");
 const { EventEmitter } = require("node:events");
+const { QUESTION_DECISION_NOTICE } = require("./execution-state.js");
+const { notificationConversationTitle } = require("./notification-summary.cjs");
 const scrypt = promisify(crypto.scrypt);
 const DEFAULTS = Object.freeze({
   idleMinutes: 0,
@@ -379,6 +381,7 @@ function registerSecurity(
 ) {
   const approvals = new Map();
   let accountRevision = security.accountRevision;
+  let screenLocked = false;
   function onSecurityState(state) {
     if (state.locked || state.accountRevision !== accountRevision) controller.cancelStructuredAnalyses?.();
     if (state.accountRevision !== accountRevision) {
@@ -464,14 +467,26 @@ function registerSecurity(
       pref.notifyDone;
     if ((approval || done) && Notification.isSupported()) {
       try {
-        const n = new Notification({
-          title: "Flowrium",
-          body: event.type === "input" ? "답변을 기다리는 질문이 있습니다." : approval
-            ? "승인을 기다리는 작업이 있습니다."
-            : event.status === "completed"
-              ? "작업을 완료했습니다."
-              : "작업 결과를 확인해 주세요.",
-        });
+        let name = "";
+        if (!screenLocked && !security.locked && !security.loggingOut && event.sessionId) {
+          try { name = notificationConversationTitle(controller.store.session(event.sessionId).title); }
+          catch { /* 삭제한 대화와 이전 계정의 이름은 알림에 사용하지 않는다. */ }
+        }
+        let title, body;
+        if (event.type === "input") {
+          title = name ? name + " / 결정 요청" : "결정 요청";
+          body = QUESTION_DECISION_NOTICE;
+        } else if (approval) {
+          title = "권한 승인 요청";
+          body = name ? `‘${name}’ 대화에서 권한 승인을 기다리고 있습니다.` : "대화에서 권한 승인을 기다리고 있습니다.";
+        } else if (event.status === "completed") {
+          title = "답변 완료";
+          body = name ? `‘${name}’ 대화의 답변이 완료됐습니다.` : "대화의 답변이 완료됐습니다.";
+        } else {
+          title = "작업 실패";
+          body = name ? `‘${name}’ 대화의 작업을 완료하지 못했습니다.` : "대화의 작업을 완료하지 못했습니다.";
+        }
+        const n = new Notification({ title, body });
         n.on("click", focus);
         n.show();
       } catch {
@@ -542,6 +557,11 @@ function registerSecurity(
   function onSuspend() {
     if (security.data.preferences.lockOnSuspend) security.lock("suspend");
   }
+  function onScreenLock() {
+    screenLocked = true;
+    onSuspend();
+  }
+  function onScreenUnlock() { screenLocked = false; }
   function checkIdle() {
     const minutes = security.data.preferences.idleMinutes;
     if (
@@ -555,7 +575,8 @@ function registerSecurity(
   const idleTimer = setInterval(checkIdle, 10000);
   idleTimer.unref();
   powerMonitor.on("suspend", onSuspend);
-  powerMonitor.on("lock-screen", onSuspend);
+  powerMonitor.on("lock-screen", onScreenLock);
+  powerMonitor.on("unlock-screen", onScreenUnlock);
   security.on("state", onSecurityState);
   controller.on("event", observe);
   return {
@@ -563,7 +584,8 @@ function registerSecurity(
     stop() {
       clearInterval(idleTimer);
       powerMonitor.off("suspend", onSuspend);
-      powerMonitor.off("lock-screen", onSuspend);
+      powerMonitor.off("lock-screen", onScreenLock);
+      powerMonitor.off("unlock-screen", onScreenUnlock);
       security.off("state", onSecurityState);
       controller.off("event", observe);
       if (blocker !== undefined) powerSaveBlocker.stop(blocker);

@@ -5,8 +5,8 @@ const dns = require('node:dns');
 const net = require('node:net');
 const crypto = require('node:crypto');
 const webpush = require('web-push');
+const {notificationConversationTitle}=require('./notification-summary.cjs');
 const KINDS = Object.freeze(['decision','done','error','report','reminder','message']);
-const labels = {decision:'확인할 결정이 있습니다.',done:'작업이 완료됐습니다.',error:'확인이 필요한 작업이 있습니다.',report:'새 보고서가 준비됐습니다.',reminder:'예약한 알림 시간입니다.',message:'새 업무 메시지가 있습니다.'};
 const blocked = new net.BlockList();
 for (const [address,prefix] of [['0.0.0.0',8],['10.0.0.0',8],['100.64.0.0',10],['127.0.0.0',8],['169.254.0.0',16],['172.16.0.0',12],['192.0.0.0',24],['192.0.2.0',24],['192.168.0.0',16],['198.18.0.0',15],['198.51.100.0',24],['203.0.113.0',24],['224.0.0.0',4],['240.0.0.0',4]]) blocked.addSubnet(address,prefix,'ipv4');
 const global6 = new net.BlockList();global6.addSubnet('2000::',3,'ipv6');
@@ -87,7 +87,7 @@ class PushRuntime {
     if(!this.current().enabled)return {available:false,enabled:false,kinds:KINDS,devices:[],message:'휴대폰 연결을 켠 뒤 알림 저장소를 확인합니다.'};
     if(!this.available())return {available:false,enabled:false,kinds:KINDS,devices:[],message:'운영체제의 안전한 키 저장소가 필요합니다.'};
     await this.load();const c=this.current();
-    return {available:true,enabled:c.enabled,kinds:KINDS,devices:this.devices(c).map(({id,label,kinds,createdAt,lastSentAt,lastError})=>({id,label,kinds,createdAt,lastSentAt,lastError}))};
+    return {available:true,enabled:c.enabled,kinds:KINDS,devices:this.devices(c).map(({id,label,kinds,showConversationTitle,createdAt,lastSentAt,lastError})=>({id,label,kinds,showConversationTitle:showConversationTitle===true,createdAt,lastSentAt,lastError}))};
   })}
   async action(input){
     const c=this.current();this.check(c);
@@ -112,7 +112,14 @@ class PushRuntime {
       if(!['unsubscribe','preferences','test'].includes(action))throw Error('지원하지 않는 알림 작업입니다.');
       const d=this.devices(c).find(d=>d.id===input.id);if(!d)throw Error('현재 연결에 등록한 기기를 찾을 수 없습니다.');
       if(action==='unsubscribe'){this.data.devices=this.data.devices.filter(x=>x!==d);await this.save();return {removed:true}}
-      if(action==='preferences'){d.kinds=this.validateKinds(input.kinds);await this.save();return {saved:true}}
+      if(action==='preferences'){
+        const kinds=this.validateKinds(input.kinds);
+        if(input.showConversationTitle!==undefined&&typeof input.showConversationTitle!=='boolean')throw Error('대화 이름 표시 설정을 확인해 주세요.');
+        const devices=this.data.devices;
+        this.data.devices=devices.map(device=>device===d?{...d,kinds,showConversationTitle:input.showConversationTitle??d.showConversationTitle}:device);
+        try{await this.save();}catch(error){this.data.devices=devices;throw error;}
+        return {saved:true};
+      }
       const result=await this.send(d,{title:'Flowrium',body:'이 기기에서 알림을 받을 수 있습니다.',tag:'flowrium-test-'+crypto.randomUUID(),path:'/',test:true},c);
       return {sent:result};
     });
@@ -140,8 +147,15 @@ class PushRuntime {
         this.check(c);await this.load();this.check(c);const kind=eventKind(event.kind),id=digest(c.scopeId+'|'+c.owner+'|'+event.id);
         if(this.data.sent.includes(id))return {sent:0,failed:0};
         this.data.sent=[...this.data.sent,id].slice(-500);await this.save();this.check(c);
+        const notice=event.kind==='decision'&&event.group==='질문'?'question':event.kind==='approval'?'approval':kind;
+        const conversationTitle=event.sessionId&&['question','approval','done','error'].includes(notice)?notificationConversationTitle(event.title):'';
         let sent=0,failed=0;
-        for(const d of this.devices(c).filter(d=>d.kinds.includes(kind))){this.check(c);if(await this.send(d,{title:'Flowrium',body:labels[kind],tag:'flowrium-'+id.slice(0,24),path:'/',kind},c))sent++;else failed++}
+        for(const d of this.devices(c).filter(d=>d.kinds.includes(kind))){
+          this.check(c);
+          const payload={tag:'flowrium-'+id.slice(0,24),kind,notice};
+          if(d.showConversationTitle===true&&conversationTitle)payload.conversationTitle=conversationTitle;
+          if(await this.send(d,payload,c))sent++;else failed++;
+        }
         return {sent,failed};
       }catch{return {sent:0,failed:0}}
     });

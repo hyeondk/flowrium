@@ -89,7 +89,8 @@ async function scopeClient(controller,session){
   const client=controller.options.scopeClientFactory?.(overrides)||new CodexClient({...controller.client.options,configOverrides:overrides});entry.client=client;
   client.on('notification',message=>controller.notification(message,client).catch(e=>{const run=controller.findRun(message.params?.threadId,message.params?.turnId);if(run)void controller.finish(run,'failed',e.message);}));
   client.on('approval',request=>client.decide(request.requestId,'decline'));
-  client.on('input',request=>client.resolveInput(request.requestId,true));
+  client.on('input',request=>controller.forwardInput(request,client));
+  client.on('inputResolved',request=>controller.forwardInputResolved(request));
   client.on('tool',async({requestId,params})=>{
    const run=controller.findRun(params.threadId,params.turnId);
    try{if(!run||run.client!==client||run.cancelled||run.finalized||(run.turnId&&run.turnId!==params.turnId))throw Error('종료한 대화의 도구 요청입니다.');const result=await callScopeTool(controller,run,params);client.answerTool(requestId,{contentItems:[{type:'inputText',text:JSON.stringify(result)}],success:true});}

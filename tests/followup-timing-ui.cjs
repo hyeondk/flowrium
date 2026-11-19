@@ -41,15 +41,23 @@ async function verifyFollowupTiming() {
     await page.setViewportSize({width:1440,height:900});
     await page.locator('.side-usage[data-connected=true]').waitFor();
     const accept = page.locator('.followup-accept[data-source="conversation"]');
+    const request = page.getByRole('button',{name:'다음 작업 추천받기',exact:true});
     const input = composer(page);
     await openConversation(page,long.title);
     await accept.waitFor({timeout:10000});
+    assert.equal(await accept.locator('small').innerText(),'다음 작업 추천');
+    await input.fill('직접 작성한 초안');
     await accept.click();
-    assert.equal(await input.inputValue(),expected);
+    assert.equal(await input.inputValue(),'직접 작성한 초안\n\n'+expected);
     for(const session of [declined,finished,fresh]){
       await openConversation(page,session.title);
       assert.equal(await accept.count(),0);
       assert.equal(await input.inputValue(),'');
+      assert.equal(await request.count(),session.id===finished.id?1:0);
+      if(session.id===finished.id){
+        await request.click();
+        await page.getByRole('status').getByText('현재 대화에서 이어갈 구체적인 작업을 찾지 못했습니다.').waitFor();
+      }
     }
     assert.equal(await fs.readFile(trace,'utf8'),'','대화를 열고 초안을 선택해도 모델 호출 없음');
     await page.evaluate(() => {

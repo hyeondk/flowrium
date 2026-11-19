@@ -142,7 +142,7 @@ async function mirrorActiveTurn(runtime,session,latest,cwd,context){
   guardSession(runtime,session,id,context);
   if(deferred(runtime,session))return;
   const incoming=part.messages.filter(m=>m.role==='user'||m.role==='assistant');
-  if(!incoming.length)return;
+  if(!incoming.length&&!latest.active)return;
   runtime.liveTurns??=new WeakMap();
   const previous=liveTurn(runtime,session);
   const saved=previous?.turnId===turn.id?previous.rows:session.messages.filter(m=>m.turnId===turn.id);
@@ -152,10 +152,10 @@ async function mirrorActiveTurn(runtime,session,latest,cwd,context){
     const before=existing.get(merged[i].id);
     if(before&&before.text.length>merged[i].text.length&&before.text.startsWith(merged[i].text))merged[i]=before;
   }
-  if(JSON.stringify(merged)===JSON.stringify(saved))return;
-  const preview={...context,threadId:id,turnId:turn.id,rows:merged,version:(previous?.version||0)+1};
+  if(previous?.turnId===turn.id&&previous.running===latest.active&&JSON.stringify(merged)===JSON.stringify(saved))return;
+  const preview={...context,threadId:id,turnId:turn.id,rows:merged,running:latest.active,version:(previous?.version||0)+1};
   runtime.liveTurns.set(session,preview);
-  runtime.controller.emitEvent({type:'externalTurn',sessionId:session.id,turnId:turn.id,turnMessages:merged});
+  runtime.controller.emitEvent({type:'externalTurn',sessionId:session.id,turnId:turn.id,turnMessages:merged,status:preview.running?'running':'pending'});
 }
 
 function liveTurn(runtime,session){
@@ -173,7 +173,7 @@ function finishPreview(runtime,session){
   if(!preview)return;
   runtime.liveTurns.delete(session);
   const rows=session.messages.filter(m=>m.turnId===preview.turnId);
-  runtime.controller.emitEvent({type:'externalTurn',sessionId:session.id,turnId:preview.turnId,turnMessages:rows});
+  runtime.controller.emitEvent({type:'externalTurn',sessionId:session.id,turnId:preview.turnId,turnMessages:rows,status:'idle'});
 
 }
 

@@ -1,9 +1,9 @@
 import {useEffect, useMemo, useRef, useState, type RefObject} from 'react';
 import {ArrowRight, Check, LoaderCircle, Sparkles} from 'lucide-react';
 import type {Session} from '../shared/types';
-import {awaitsContinuation} from '../shared/execution-state';
+import {awaitsContinuation,continuationAnswer} from '../shared/execution-state';
 import ResizableComposerInput from './ResizableComposerInput';
-import {originalAnswerFollowups,latestFollowupAnswer} from './answer-followup';
+import {canOfferFollowup, originalAnswerFollowups, latestFollowupAnswer} from './answer-followup';
 import './chat-continuation.css';
 
 type Props = {
@@ -36,12 +36,13 @@ export default function ChatContinuation({
     && !running
     && !session.queuedMessages?.some(row => row.status === 'queued' || row.status === 'sending'));
   const sessionId = session?.id;
-  const messageId = eligible ? last?.id : undefined;
-  const key = messageId && sessionId ? sessionId + ':' + messageId : '';
   const waiting = eligible && Boolean(session && awaitsContinuation(session));
+  const messageId = waiting && session ? continuationAnswer(session)?.id : last?.id;
+  const key = messageId && sessionId ? sessionId + ':' + messageId : '';
   const [action, setAction] = useState<'continue'|'complete'|null>(null);
   const [error, setError] = useState('');
   const [accepted, setAccepted] = useState('');
+  const [checked, setChecked] = useState('');
   const composing = useRef(false);
   const revision = useRef(0);
   const continuingFlight = useRef(false);
@@ -50,11 +51,13 @@ export default function ChatContinuation({
     continuingFlight.current = false;
     setAction(null); setError('');
   }, [key]);
-  const candidate = useMemo(() => eligible && active && !draft && !busy && key !== accepted
-    ? originalAnswerFollowups(session)[0] : undefined, [eligible, active, draft, busy, key, accepted, session]);
-  const preview = candidate?.prompt;
+  const canShowRecommendation = useMemo(() => eligible && canOfferFollowup(session), [eligible, session]);
+  const suggestion = useMemo(() => canShowRecommendation && active ? originalAnswerFollowups(session)[0] : undefined,
+    [canShowRecommendation, active, session]);
+  const candidate = suggestion && (!draft || key !== accepted) ? suggestion : undefined;
+  const preview = candidate && !draft && !busy ? candidate.prompt : undefined;
   function accept() {
-    if (candidate && !composing.current && !draft && !textareaRef.current?.value && !busy) {
+    if (candidate && !composing.current && !busy && (draft || !textareaRef.current?.value)) {
       setAccepted(key); onChoose(candidate.prompt);
     }
   }
@@ -86,10 +89,17 @@ export default function ChatContinuation({
         }
       }}
     />
-    {(candidate || waiting || error) && <section className="chat-continuation" aria-label="다음 작업">
+    {(candidate || (canShowRecommendation && active && key !== accepted) || waiting || error) && <section className="chat-continuation" aria-label="다음 작업">
+      {candidate
+        ? <button type="button" className="followup-accept" data-source="conversation" onClick={accept} disabled={busy}
+            title={candidate.prompt} aria-label={candidate.title + ' 입력창에 추가'}>
+            <Sparkles size={13}/><small>다음 작업 추천</small><span>{candidate.title}</span>{preview && <kbd>Tab</kbd>}
+          </button>
+        : canShowRecommendation && active && key !== accepted &&
+          <button type="button" className="followup-request" onClick={() => setChecked(key)} disabled={busy}
+            aria-label="다음 작업 추천받기"><Sparkles size={13}/>다음 작업 추천</button>}
+      {!candidate && canShowRecommendation && key === checked && <p role="status">현재 대화에서 이어갈 구체적인 작업을 찾지 못했습니다.</p>}
       <div className="chat-continuation-actions">
-        {candidate && <button type="button" className="followup-accept" data-source="conversation" onClick={accept}
-          aria-label={candidate.title + ' 입력창에 추가'}><Sparkles size={13}/><span>{candidate.title}</span><kbd>Tab</kbd></button>}
         {waiting && <>
           <button type="button" className="followup-proceed" disabled={busy || action!==null || !authenticated}
             onClick={() => void resolveWaiting('continue')}>{action==='continue' ? <LoaderCircle size={13} className="spin"/> : <ArrowRight size={13}/>}진행하기</button>

@@ -1,17 +1,17 @@
 .decision-response-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .composer .chat-continuation{min-width:0;padding:0 2px;word-break:keep-all}
 .composer .chat-continuation-actions{display:flex;align-items:center;gap:4px;min-width:0}
-.composer .chat-continuation-actions button{min-width:0;min-height:28px;display:inline-flex;align-items:center;gap:5px;padding:2px 6px;background:transparent;color:var(--muted);border:0;border-radius:6px;font:inherit;font-size:11px;line-height:18px;text-align:left}
-.composer .chat-continuation-actions button:enabled:hover{background:var(--panel-alt);color:var(--text)}
-.composer .chat-continuation-actions svg{flex:none}
-.composer .chat-continuation-actions .followup-accept{overflow:hidden;color:var(--accent-bright)}
-.composer .followup-accept span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.composer .chat-continuation button{min-width:0;min-height:28px;display:inline-flex;align-items:center;gap:6px;padding:2px 6px;background:transparent;color:var(--muted);border:0;border-radius:6px;font:inherit;font-size:11px;line-height:18px;text-align:left}
+.composer .chat-continuation button:enabled:hover{background:var(--panel-alt);color:var(--text)}
+.composer .chat-continuation svg{flex:none}
+.composer .chat-continuation .followup-accept{color:var(--accent-bright)}
+.composer .chat-continuation .followup-request{color:var(--accent)}
+.composer .followup-accept span{min-width:0;word-break:keep-all;overflow-wrap:anywhere;line-height:16px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .composer .followup-accept kbd{flex:none;font:inherit;line-height:15px;padding:0 3px;border:1px solid var(--line);border-radius:4px}
-.composer .chat-continuation-actions :is(.followup-dismiss,.followup-cycle,.followup-proceed,.followup-complete){flex:none}
+.composer .chat-continuation-actions :is(.followup-proceed,.followup-complete){flex:none}
 .composer .chat-continuation-actions .followup-proceed{margin-inline-start:auto;color:var(--accent-bright)}
 .composer .chat-continuation p{margin:2px 6px 4px;color:var(--muted);font-size:11px;line-height:1.5}
 .composer textarea[data-inline-suggestion=true]::placeholder{color:var(--muted);opacity:.82}
 .decision-arrival{position:fixed;z-index:1050;top:max(84px,calc(env(safe-area-inset-top) + 72px));left:50%;transform:translateX(-50%);width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line-soft);border-radius:14px;box-shadow:0 10px 30px #0002;background:var(--panel);color:var(--text);word-break:keep-all;font-size:13px;pointer-events:none}
 .decision-arrival button{flex:none;pointer-events:auto}.decision-arrival>svg{flex:none}.decision-arrival span{min-width:0}.decision-arrival-close{display:grid;place-items:center;width:24px;height:28px;padding:0;border:0;background:transparent;color:var(--muted);border-radius:6px}.attention-decision-cards{display:grid;gap:12px;padding:0 0 12px;min-height:0;overflow:auto;flex:1 1 auto}.attention-popup:has(.attention-decision-cards) .attention-list{max-height:160px;flex:0 1 auto}.decision-request{min-width:0;word-break:keep-all}.decision-request pre{max-height:240px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.decision-request details{margin-bottom:12px}
-.composer .followup-accept small{flex:none;font-size:10px;color:var(--muted)}
-.followup-preview-dialog>small{color:var(--muted)}
+.composer .followup-accept small{flex:none;font-size:10px;font-weight:700;color:var(--accent)}

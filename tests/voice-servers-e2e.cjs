@@ -28,7 +28,17 @@ async function free(){const server=net.createServer();await new Promise(resolve=
   await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).click();await phase('stopped');assert.equal(await portOpen(endpoint),false);
   external=net.createServer();await new Promise(resolve=>external.listen(port,'127.0.0.1',resolve));await button('연결 확인').click();await phase('external');await card().locator('.voice-server-phase[data-phase=external]').waitFor();assert.equal(await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).isDisabled(),true);assert.equal(external.listening,true);await new Promise(resolve=>external.close(resolve));external=null;await button('연결 확인').click();await phase('stopped');await card().locator('.voice-server-phase[data-phase=stopped]').waitFor();
   await card().getByLabel('음성 인식 서버 실행 인자',{exact:true}).fill([fixture,'--port',String(port),'--mode','failure'].join('\n'));await button('서버 설정 저장').click();await button('서버 설정 저장').waitFor({state:'visible'});await until(state=>state.servers[0].config.args.includes('failure'));await prepare();await popup.getByRole('button',{name:'서버 시작',exact:true}).click();await phase('failed');await card().locator('.voice-server-logs > summary').filter({hasText:/^실행 로그 \(\d+개\)$/}).click();await card().getByLabel('음성 인식 서버 실행 로그',{exact:true}).filter({hasText:'시작 실패'}).waitFor();
-  await button('종료 다시 확인').click();await phase('stopped');await card().getByLabel('음성 인식 서버 실행 인자',{exact:true}).fill([fixture,'--port',String(port)].join('\n'));await button('서버 설정 저장').click();await until(state=>state.servers[0].config.args.length===3);
+  await button('종료 다시 확인').click();
+  await phase('stopped');
+  assert.equal(await portOpen(endpoint),false);
+  const stopped=(await page.evaluate(()=>window.flowrium.voiceServersState())).revision;
+  const nextArgs=[fixture,'--port',String(port)];
+  await card().getByLabel('음성 인식 서버 실행 인자',{exact:true}).fill(nextArgs.join('\n'));
+  await button('서버 설정 저장').click();
+  await card().getByText('서버 설정을 저장했습니다. 실행 스위치를 켜면 실행 내용을 확인합니다.',{exact:true}).waitFor();
+  const saved=await page.evaluate(()=>window.flowrium.voiceServersState());
+  assert.equal(saved.revision,stopped+1);
+  assert.deepEqual(saved.servers[0].config.args,nextArgs);
   for(const width of [390,768,1440]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);const fields=card().getByLabel('음성 인식 서버 시작 대기 시간',{exact:true});const before=await fields.inputValue();await fields.hover();await page.mouse.wheel(0,500);assert.equal(await fields.inputValue(),before);}
   await page.setViewportSize({width:1440,height:1000});await app.close();app=null;await launch();assert.equal(await card().getByLabel('음성 인식 서버 주소',{exact:true}).inputValue(),endpoint);assert.equal(await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).isChecked(),false);assert.equal(await portOpen(endpoint),false);
   await prepare();await confirm();await app.close();app=null;for(let attempt=0;attempt<30&&await portOpen(endpoint);attempt++)await wait(100);assert.equal(await portOpen(endpoint),false);assert.deepEqual(errors,[]);

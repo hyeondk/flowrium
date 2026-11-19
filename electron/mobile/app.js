@@ -1,7 +1,7 @@
 import {maxChatInput,nativeQueueAction,nativeQueueQuestion,nativeQueueExplanation,nativeQueueNotice,queuedInputView,clearQueueAction,clearQueueQuestion,clearQueueExplanation} from './chat-input.js';
 import {uploadText,discardUpload} from './request-upload.js';
 import {attachDraftEditor} from './draft-editor-events.js';
-import {originalAnswerFollowups} from './answer-followup.js';
+import {canOfferFollowup,latestFollowupAnswer,originalAnswerFollowups} from './answer-followup.js';
 import {presentCitations} from './file-citations.js';
 import {projectMode} from './project-mode.js';
 import {creditBalance} from './usage-credits.js';
@@ -12,6 +12,7 @@ import {installDatePicker} from './date-picker.js';
 import {settingsGuides, reconnectForm} from './install.js';
 import {mobileUpdateSection, resetUpdate, resumeUpdateSettings} from './mobile-update.js';
 import {confirmationButton, reconcileConfirmation} from './confirmation.js';
+import {QUESTION_DECISION_NOTICE} from './decision-notice.js';
 import {modelDisplayName,effortDisplayName,reasoningEffortOptions} from './model-display.js';
 const content = document.querySelector("#content");
 const loadingTemplate = content.querySelector('.mobile-skeleton').cloneNode(true);
@@ -138,7 +139,9 @@ function renderQuestionArrival(){
   card.dataset.requestId=entry.requestId;card.setAttribute('role','status');card.setAttribute('aria-live','polite');
   header.append(node('small','Flowrium / 응답 요청'));
   const dismiss=action('×',()=>{arrivedQuestions.delete(entry.requestId);renderQuestionArrival();},'mobile-notification-close');dismiss.setAttribute('aria-label','응답 요청 알림 닫기');header.append(dismiss);
-  card.append(header,node('strong','응답 요청이 도착했어요','mobile-notification-title'),node('p','작업을 이어가기 위해 확인이 필요해요.\n대화에서 질문을 확인하고 답해 주세요.','mobile-notification-summary'));
+  card.append(header,node('strong',QUESTION_DECISION_NOTICE,'mobile-notification-title'));
+  const conversation=session(entry.sessionId);
+  if(conversation)card.append(node('p',conversation.title,'mobile-notification-summary'));
   card.append(action('대화에서 답하기',()=>{
     const current=availableQuestions().find(row=>row.requestId===entry.requestId);
     if(!current || busy || arrivalComposing)return;
@@ -1290,8 +1293,11 @@ function chat(root) {
   }));
   uploadStatus.hidden=!textUploads.has(s.id);
   uploadLabel.textContent=textUploads.get(s.id)?.label||'';form.append(uploadStatus);
-  if(historyPage && !running(s.id) && !pending.length && !busy) {
-    const suggested=originalAnswerFollowups({...s,messages:historyPage.messages})[0];
+  if(historyPage && s.executionState !== 'decision' && !running(s.id) && !pending.length && !busy) {
+    const history={...s,messages:historyPage.messages};
+    const canRecommend=(!Object.hasOwn(s,'recommendationMessageId')||s.recommendationMessageId===latestFollowupAnswer(history)?.id)
+      && canOfferFollowup(history);
+    const suggested=canRecommend?originalAnswerFollowups(history)[0]:undefined;
     if(suggested){
       const accept=()=>{
         if(text.value || composingField || busy)return;
@@ -1299,7 +1305,7 @@ function chat(root) {
         text.focus({preventScroll:true});text.setSelectionRange(text.value.length,text.value.length);
       };
       const button=action('',accept,'mobile-followup');
-      button.append(node('span',suggested.prompt),node('kbd','Tab'));
+      button.append(node('small','다음 작업 추천'),node('span',suggested.prompt),node('kbd','Tab'));
       button.hidden=!!text.value;
       const sync=()=>{button.hidden=!!text.value || !!composingField;};
       text.addEventListener('input',sync,listener);text.addEventListener('compositionstart',()=>button.hidden=true,listener);text.addEventListener('compositionend',()=>queueMicrotask(sync),listener);
@@ -1309,6 +1315,8 @@ function chat(root) {
         }
       },listener);
       form.append(button);
+    }else if(canRecommend){
+      form.append(action('다음 작업 추천',()=>showNotice('현재 대화에서 이어갈 구체적인 작업을 찾지 못했습니다.'),'mobile-followup-request'));
     }
   }
   form.append(options);
@@ -1317,16 +1325,17 @@ function chat(root) {
     state.dataset.state=s.executionState;
     heading.append(state);
   }
-  if(s.canCompleteWaiting){
-    const choices=node('div',undefined,'actions');
+  const continuationMessageId=s.continuationMessageId||s.lastMessageId;
+  if(s.canCompleteWaiting&&continuationMessageId){
+    const choices=node('div',undefined,'actions continuation-actions');
     const proceed=action('진행하기',()=>{if(!s.scope&&!mayStartProjectWork(s.projectId))return;return run(async()=>{
       const attachments=attachedDrafts.get(s.id)||[];
       const value=fullText();
-      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:s.lastMessageId,...await mobileChatInput(s,value),attachments:attachments.map(a=>a.id),mode});
+      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:continuationMessageId,...await mobileChatInput(s,value),attachments:attachments.map(a=>a.id),mode});
       clearSentDraft(s.id,value,attachments);
     });});
     const complete=action('완료',()=>run(async()=>{
-      await call('workflowAction',{action:'completeContinuation',sessionId:s.id,messageId:s.lastMessageId});showNotice('후속 대기를 완료했습니다.');
+      await call('workflowAction',{action:'completeContinuation',sessionId:s.id,messageId:continuationMessageId});showNotice('후속 대기를 완료했습니다.');
     }));
     proceed.disabled=busy||!data.connection?.authenticated;complete.disabled=busy;choices.append(proceed,complete);form.append(choices);
   }
@@ -1675,7 +1684,9 @@ function assistantPage(root){
     for(const n of workflowData.notifications.slice(0,40)){
       const line=node('article',undefined,'mobile-notification-card'),buttons=node('div',undefined,'mobile-notification-actions');
       line.dataset.notificationKind=n.kind;
-      line.append(node('small',n.kind==='done'?'작업 완료':n.kind==='error'?'확인 필요':'작업 알림'),node('strong',n.title,'mobile-notification-title'),node('p',notificationPreview(n.body),'mobile-notification-summary'));
+      const complete=n.kind==='done',error=n.kind==='error',title=session(n.sessionId)?.title||n.title;
+      const headline=complete?`‘${title}’ 대화의 답변이 완료됐습니다.`:error?`‘${title}’ 대화의 작업을 확인해 주세요.`:n.title;
+      line.append(node('small',complete?'답변 완료':error?'확인 필요':pushLabels[n.kind]||(n.kind==='approval'?'권한 승인 요청':'업무 알림')),node('strong',headline,'mobile-notification-title'),node('p',notificationPreview(n.body),'mobile-notification-summary'));
       if(!n.readAt)buttons.append(action('확인한 알림',()=>workflowDo({action:'read',ids:[n.id]})));
       if(n.sessionId&&session(n.sessionId))buttons.append(action('알림 대화 열기',()=>go('chat',n.sessionId),'mobile-notification-action'));
       line.append(buttons);events.append(line);
@@ -1800,7 +1811,9 @@ function pushSettings(root){
   }else{
     box.append(node('p',device.label));const chosen=new Set(device.kinds);
     for(const [kind,title]of Object.entries(pushLabels)){const check=node('input');check.type='checkbox';check.checked=chosen.has(kind);check.addEventListener('change',()=>check.checked?chosen.add(kind):chosen.delete(kind));box.append(settingsSwitch(title,check))}
-    box.append(action('알림 종류 저장',()=>run(async()=>{await call('webPushAction',{action:'preferences',id:device.id,kinds:[...chosen]});await loadExtras()})),action('이 기기에 시험 알림 보내기',()=>run(async()=>{const result=await call('webPushAction',{action:'test',id:device.id});showNotice(result.sent?'알림 서버에 발송했습니다.':'발송을 확인하지 못했습니다.',result.sent?'info':'error');await loadExtras()})),confirmationButton('이 기기 알림 해제','push/'+device.id,'이 기기 알림을 해제할까요?','이 기기로 보내는 작업 알림이 중지됩니다.',()=>run(async()=>{await call('webPushAction',{action:'unsubscribe',id:device.id});const registration=await navigator.serviceWorker.ready;await(await registration.pushManager.getSubscription())?.unsubscribe();sessionStorage.removeItem('flowrium.mobile.pushId');await loadExtras();showNotice('기기 알림을 해제했습니다.')})));
+    const showTitle=node('input');showTitle.type='checkbox';showTitle.checked=device.showConversationTitle===true;
+    box.append(settingsSwitch('이 기기 알림에 대화 이름 표시',showTitle));
+    box.append(action('알림 설정 저장',()=>run(async()=>{await call('webPushAction',{action:'preferences',id:device.id,kinds:[...chosen],showConversationTitle:showTitle.checked});await loadExtras()})),action('이 기기에 시험 알림 보내기',()=>run(async()=>{const result=await call('webPushAction',{action:'test',id:device.id});showNotice(result.sent?'시험 알림을 발송했습니다.':'시험 알림 발송을 확인하지 못했습니다.',result.sent?'info':'error');await loadExtras()})),confirmationButton('이 기기 알림 해제','push/'+device.id,'이 기기 알림을 해제할까요?','이 기기로 보내는 작업 알림이 중지됩니다.',()=>run(async()=>{await call('webPushAction',{action:'unsubscribe',id:device.id});const registration=await navigator.serviceWorker.ready;await(await registration.pushManager.getSubscription())?.unsubscribe();sessionStorage.removeItem('flowrium.mobile.pushId');await loadExtras();showNotice('기기 알림을 해제했습니다.')})));
     if(device.lastError)box.append(node('p',device.lastError,'hint'));
   }
   box.append(node('p','연결을 종료하거나 계정을 바꾸면 알림도 중지됩니다. 새 연결 주소에서는 기기를 다시 등록하세요.','hint'));root.append(box);

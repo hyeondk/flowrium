@@ -4,3 +4,10 @@ test('승인 응답 한 번만 전송하고 모든 화면에 요청 해제를 �
 test('이전 턴의 늦은 승인은 표시하지 않고 거절한다',()=>{const f=fixture();f.approval('previous-turn');assert(!f.events.some(e=>e.type==='approval'));assert.deepEqual(f.wire,[{id:41,result:{decision:'decline'}}]);});
 test('표시 후 계정·잠금·턴 변경은 실행 응답을 차단한다',()=>{for(const change of ['account','locked','turn']){const f=fixture();f.approval();const request=f.events.find(e=>e.type==='approval');if(change==='account')f.owner(2);if(change==='locked')f.allowed(false);if(change==='turn')f.run.turnId='next-turn';assert.throws(()=>f.controller.decideApproval(request.requestId,'accept'),/이미 종료/);assert.equal(f.wire.length,0);}});
 test('이전 계정의 늦은 사용자 질문은 알리지 않고 종료한다',()=>{const f=fixture();f.owner(2);f.client._message({id:42,method:'item/tool/requestUserInput',params:{threadId:'thread',turnId:'turn',itemId:'question',isBlocking:true,questions:[{id:'answer',header:'확인',question:'계속할까요?',options:[]}]}});assert(!f.events.some(e=>e.type==='input'));assert.equal(f.client.inputs.size,0);assert.equal(f.wire[0].error.code,-32800);});
+test('서버에서 종료한 승인도 결정에서 즉시 제거한다',async()=>{
+ const f=fixture();f.approval();const event=f.events.find(e=>e.type==='approval');
+ await f.controller.notification({method:'serverRequest/resolved',params:{requestId:41}});
+ assert.equal(f.client.approvals.size,0);
+ assert(f.events.some(e=>e.type==='inputResolved'&&e.requestId===event.requestId));
+ assert.equal(f.wire.length,0);
+});

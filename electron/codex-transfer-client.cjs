@@ -11,12 +11,8 @@ function createRunClient(controller,run){
  controller.linkedClients??=new Map();controller.linkedClients.set(run.sessionId,client);run.client=client;
  client.on('notification',message=>controller.notification(message,client).catch(error=>controller.emitEvent({type:'error',sessionId:run.sessionId,text:publicMessage(error)})));
  client.on('approval',request=>controller.forwardApproval(request,client));
- client.on('input',({requestId,params})=>{
-  if(controller.runs.get(run.sessionId)!==run||run.finalized||run.cancelled||run.threadId!==params.threadId||controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local')||(run.turnId&&run.turnId!==params.turnId)){client.resolveInput(requestId,true);return;}
-  controller.noteRequest(run,'input:'+requestId,'사용자에게 질문을 보냈어요');
-  controller.emitEvent({type:'input',sessionId:run.sessionId,requestId,questions:params.questions,isBlocking:params.isBlocking,text:'Codex가 사용자에게 질문했습니다.'});
- });
- client.on('inputResolved',({requestId})=>controller.emitEvent({type:'inputResolved',sessionId:run.sessionId,requestId}));
+ client.on('input',request=>controller.forwardInput(request,client));
+ client.on('inputResolved',request=>controller.forwardInputResolved(request));
  client.on('tool',async({requestId,params})=>{
   try{
    if(controller.runs.get(run.sessionId)!==run||run.finalized||run.cancelled||params.threadId!==run.threadId||(run.turnId&&params.turnId!==run.turnId)||controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('이 작업의 도구 요청은 종료됐습니다.');

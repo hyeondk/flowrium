@@ -4,7 +4,7 @@ const { randomUUID } = require("node:crypto");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { UUID, readJSON } = require("./project-store.cjs");
-const {visibleProposals}=require('./execution-state.js');
+const {visibleProposals,QUESTION_DECISION_NOTICE}=require('./execution-state.js');
 const {completionSummary}=require('./notification-summary.cjs');
 const run = promisify(execFile);
 const copy = value => structuredClone(value);
@@ -509,7 +509,11 @@ class WorkflowRuntime {
       const session=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===event.sessionId);
       const secret=event.type==="input"&&event.questions?.some(q=>q.isSecret);
       if(secret)this.secretAnswerSessions.add(event.sessionId);
-      this.notification("approval",session?.title||"사용자 결정 필요",secret?"비밀 질문은 데스크톱 승인함에서 확인하세요.":event.type==="input"?"응답 요청이 도착했어요. 대화에서 질문을 확인해 주세요.":event.text||"작업에 필요한 결정을 확인해 주세요.",event.sessionId,"승인",event.requestId?`request:${event.sessionId}:${event.requestId}`:undefined);await this.save();
+      const question=event.type==="input";
+      this.notification(question?"decision":"approval",session?.title||"사용자 결정 필요",
+        question?QUESTION_DECISION_NOTICE:event.text||"작업에 필요한 권한 승인을 확인해 주세요.",
+        event.sessionId,question?"질문":"승인",event.requestId?`request:${event.sessionId}:${event.requestId}`:undefined);
+      await this.save();
     }
   }
   async tick(){

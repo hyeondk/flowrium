@@ -441,13 +441,16 @@ async function launch() {
   });
   register("bootstrap", async () => {
     await store.syncConversationOwner?.();
-    const snapshot = { ...store.snapshot(), version: displayVersion(app.getVersion()), platform: process.platform };
+    const snapshot = { ...store.snapshot(), version: displayVersion(app.getVersion()), platform: process.platform, externalActivity:{} };
     await Promise.all(snapshot.projects.map(async project => {
       project.trustedForFileAccess = await store.isProjectTrusted(project.id);
     }));
     for(const session of snapshot.sessions){
       const record=store.peekSession(session.id),preview=record&&codexTransfer?.liveTurn(record);
-      if(preview)session.messages=require('./mobile/live-turn.js').withLiveTurn(session.messages,preview.turnId,preview.rows);
+      if(preview){
+        snapshot.externalActivity[session.id]=preview.running?'running':'pending';
+        session.messages=require('./mobile/live-turn.js').withLiveTurn(session.messages,preview.turnId,preview.rows);
+      }
     }
     await acknowledgeUpdateLaunch(app, "ready");
     lifecycleDiagnostic('bootstrap-ready');

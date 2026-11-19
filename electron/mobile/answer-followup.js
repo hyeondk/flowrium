@@ -1,7 +1,10 @@
 // Recommendations only use published conversation text, on this device.
 const decline = /(?:추천|제안|후속(?:\s*작업)?|다음\s*(?:단계|작업)|추가\s*질문)[^.!?\n]{0,24}(?:하지\s*마|지\s*말|없이|빼|생략|금지|필요\s*없|원하지\s*않)|(?:do not|don't|no)\s+(?:suggest|recommend|follow[ -]?up)/i;
-const sectionHeading = /^(?:다음\s*(?:작업|단계)|후속\s*작업|남은\s*(?:작업|사항)|next steps?)\s*(?:[:：]\s*(.*))?$/i;
-const actionNoun = /(?:정리|비교|검토|작성|검증|분류|분석|확인|점검|시험|수정|추가|변환|요약|제작|구현|적용|진행|실행|대조|측정|반영|조사|계산|선정|생성)$/;
+const stoppedText = /^(?:작업을 완료하지 못했습니다\.|사용자의 요청으로 작업이 중지됐습니다\.)/;
+const sectionHeading = /^(?:다음\s*(?:(?:권장|우선)\s*)?(?:작업|단계)|(?:권장\s*)?후속\s*작업|남은\s*(?:작업|사항|검증)|next steps?)\s*(?:[:：]\s*(.*))?$/i;
+const actionVerb = '정리|비교|검토|작성|검증|분류|분석|확인|점검|시험|검사|수정|추가|변환|요약|제작|구현|적용|진행|실행|대조|측정|반영|조사|계산|선정|생성|설계|수집|기록|준비';
+const actionNoun = new RegExp('(?:'+actionVerb+')$');
+const suggestedAction = new RegExp('^(.*?)('+actionVerb+')(?:(?:할|해\\s*볼)\\s*수\\s*(?:있습니다|있어요|있다)|해야\\s*(?:합니다|해요)|할\\s*필요가\\s*(?:있습니다|있어요)|하는\\s*(?:편이|것이|게)\\s*좋(?:습니다|아요|겠습니다))$');
 function suggestion(text, reason='직전 답변의 다음 작업') {
   if (text.length < 6 || text.length > 190 || /https?:|[`<>\[\]{}"“”]|(?:어떤|무엇|어떻게|어느|아니면|또는)\s/.test(text)) return;
   if (text.split(/\s+/).length < 2 || /^(?:(?:이대로|그대로|계속|이어서|다음\s*단계(?:를|로)?)\s*)*(?:이어서\s*)?(?:진행|계속|시작)해줘$/.test(text)) return;
@@ -22,7 +25,7 @@ function toRequest(sentence, inSection) {
   return suggestion(text);
 }
 // 본문에 공개된 문장만 사용한다. 작성물 / 인용 / 도구 JSON 안의 문장을 실행 제안으로 꺼내지 않는다.
-function publicLines(text) {
+export function publicLines(text) {
   const result=[];
   let fence = '', writing = false;
   for (const line of text.split(/\r?\n/)) {
@@ -45,9 +48,9 @@ function publicLines(text) {
 function declaredNext(sentence, inSection) {
   const lead=/^(?:다음(?:에는|으로|에|\s*(?:작업|단계)(?:로|에서는|에서|는)?)|이어서|추가로)\s*[,，:]?\s*/;
   const output=/\s(?:표|목록|체크리스트|보고서|비교표|한\s*(?:장|쪽))(?:로|으로)\s/;
-  if (!inSection && !lead.test(sentence) && !output.test(sentence)) return;
+  if (!inSection && !lead.test(sentence) && !output.test(sentence) && !/^(?:우선|먼저)\s/.test(sentence)) return;
   const body=sentence.replace(lead,'').replace(/[.!]$/,'');
-  const match=/^(.*?)(정리|비교|검토|작성|검증|분류|분석|확인|점검|시험|수정|추가|변환|요약|제작|구현|적용|진행|실행|대조|측정|반영|조사|계산|선정|생성)(?:할|해\s*볼)\s*수\s*(?:있습니다|있어요|있다)$/.exec(body);
+  const match=suggestedAction.exec(body);
   return match?suggestion(match[1]+match[2]+'해줘'):undefined;
 }
 function objectParticle(text) {
@@ -57,16 +60,19 @@ function objectParticle(text) {
 function unfinishedRequest(sentence) {
   if (/제외|보류|의도적으로|범위\s*밖|하지\s*않기로|승인|필요\s*없/.test(sentence)) return;
   const body=sentence.replace(/^(?:다만|단|아직)\s*[,，]?\s*/,'');
-  const match=/^(.{4,150}?)(?:은|는|을|를)\s*(?:(?:아직|이번(?:에|에는)|현재|직접)\s*)*(검증|확인|점검|시험|테스트|수행|진행|실행)(?:하지\s*(?:않았|못했)|하지는\s*않았|하지\s*못한)[^.!?]*[.!]?$/.exec(body);
+  const match=/^(.{4,150}?)(?:은|는|을|를)\s*(?:(?:아직|이번(?:에|에는)|현재|직접)\s*)*(검증|확인|점검|시험|검사|테스트|수행|진행|실행)(?:하지\s*(?:않았|못했)|하지는\s*않았|하지\s*못한)[^.!?]*[.!]?$/.exec(body);
   if (match) {
     const target=match[1].trim(),verb=match[2]==='수행'?'진행':match[2];
     return suggestion(target+objectParticle(target)+' '+verb+'해줘','직전 답변에 남은 확인 사항');
   }
-  const remaining=/^(.{4,140}?(?:검증|확인|점검|시험|테스트))(?:은|는|이|가)\s*(?:아직\s*)?(?:남아\s*있습니다|남았습니다|필요합니다)[.!]?$/.exec(body);
-  return remaining?suggestion(remaining[1]+'을 진행해줘','직전 답변에 남은 확인 사항'):undefined;
+  const remaining=/^(.{4,140}?(?:검증|확인|점검|시험|검사|테스트))(?:은|는|이|가)\s*(?:아직\s*)?(?:남아\s*있습니다|남았습니다|필요합니다)[.!]?$/.exec(body);
+  if (remaining) return suggestion(remaining[1]+objectParticle(remaining[1])+' 진행해줘','직전 답변에 남은 확인 사항');
+  const unverified=/^(.{4,140}?)(?:은|는|이|가)\s*(?:아직\s*)?미검증(?:입니다|됐습니다)?[.!]?$/.exec(body);
+  return unverified?suggestion(unverified[1]+objectParticle(unverified[1])+' 검증해줘','직전 답변에 남은 확인 사항'):undefined;
 }
-function answerCandidates(text) {
-  const explicit=[],unfinished=[],lines=publicLines(text||'');
+function answerCandidates(lines) {
+  const explicit=[],unfinished=[];
+  const add=(rows,candidate)=>{if(candidate)rows.push(candidate);};
   let next=false;
   for (const body of lines) {
     if (!body) {next=false;continue;}
@@ -74,30 +80,30 @@ function answerCandidates(text) {
     if (heading) {
       next = true;
       if (heading[1]) {
-        explicit.push(toRequest(heading[1],true)||declaredNext(heading[1],true));
-        unfinished.push(unfinishedRequest(heading[1]));
+        add(explicit,toRequest(heading[1],true)||declaredNext(heading[1],true));
+        add(unfinished,unfinishedRequest(heading[1]));
       }
       continue;
     }
     const task = /^(?:[-*+]\s+|\d+[.)]\s+)(?:\[ \]\s*)?/.exec(body);
     const sentence=task?body.slice(task[0].length):body;
-    if (next) explicit.push(toRequest(sentence,true)||declaredNext(sentence,true));
+    if (next) add(explicit,toRequest(sentence,true)||declaredNext(sentence,true));
     for (const part of sentence.split(/(?<=[.!?。])\s+/)) {
-      explicit.push(toRequest(part,false)||declaredNext(part,next));
-      unfinished.push(unfinishedRequest(part));
+      if (part !== sentence || !next) add(explicit,toRequest(part,false)||declaredNext(part,next));
+      add(unfinished,unfinishedRequest(part));
     }
     if (next && task) continue;
     next = false;
   }
-  return {candidates:[...explicit,...unfinished].filter(Boolean),body:lines.join('\n')};
+  return explicit.concat(unfinished);
 }
 export function followupFromAnswer(text) {
-  return answerCandidates(text).candidates[0];
+  return answerCandidates(publicLines(text||''))[0];
 }
 // 명시 제안이 없는 완료 답변도 결과에 실제로 언급된 주제에서만 후속 작업을 찾는다.
 // 임의 프로젝트 추측 / 모델 호출 / 반복되는 범용 "검토해줘" 제안은 하지 않는다.
 function contextualCandidates(body,request) {
-  const context=body+'\n'+publicLines(request).join('\n'),result=[];
+  const context=body+'\n'+request,result=[];
   if (/매출/.test(body) && /월별|채널별|기간별|주문|온라인|스토어|쇼핑몰|판매/.test(context)
       && /(?:분석|집계|비교|정리)[^.!?\n]{0,30}(?:마쳤|완료|했습니다|했어요|끝냈)/.test(body)) {
     if (!/원인|요인|기여|영향/.test(context)) result.push(suggestion('매출 변화에 가장 크게 영향을 준 요인을 분석해줘','매출 분석 결과의 후속 확인'));
@@ -116,6 +122,10 @@ function contextualCandidates(body,request) {
       && !/체크리스트|\[[ xX]\]/.test(context)) {
     result.push(suggestion('안내한 작업 순서를 실행할 수 있는 체크리스트로 정리해줘','답변에 있는 작업 순서 정리'));
   }
+  if (/코드|구현|함수|동작|처리 로직/.test(request) && /수정했|해결했|반영했|구현했/.test(body)
+      && !/회귀|검증|테스트|시험|검사|통과/.test(body)) {
+    result.push(suggestion('이번에 수정한 동작의 주요 경로를 회귀 검사해줘','직전 수정 결과의 실제 동작 확인'));
+  }
   return result.filter(Boolean);
 }
 function normalized(text) {
@@ -123,16 +133,46 @@ function normalized(text) {
 }
 export function latestFollowupAnswer(session) {
   const messages = session?.messages || [];
-  const last=messages.findLast(row=>row.role==='user'||row.role==='assistant');
+  const last=messages.findLast(row=>row.role==='user'||row.role==='assistant'||
+    (row.role==='system'&&!row.progressCommentary&&stoppedText.test(row.text)));
   return last?.role==='assistant'?last:undefined;
 }
+function followupContext(session) {
+  const answer = latestFollowupAnswer(session);
+  if (!answer?.text.trim() || (answer.id && session.completedContinuationId === answer.id)) return;
+  const request = session.messages.findLast(row => row.role === 'user')?.text || '';
+  if (!decline.test(request)) return {answer, request};
+}
+export function canOfferFollowup(session) {
+  return Boolean(followupContext(session));
+}
+function relevanceTerms(request) {
+  return new Set((request.match(/[가-힣]{2,}|[\w-]{3,}/g)||[])
+    .map(word=>word.toLowerCase().replace(/(?:을|를|은|는|의|에서|하고|까지|부터)$/,''))
+    .filter(word=>word.length>=2 && !/^(?:다음|작업|요청|한국어|해주세요|해줘|이어서|진행|추가)$/.test(word)));
+}
+function rank(row,terms) {
+  const relevant=[...relevanceTerms(row.prompt)].filter(term=>terms.has(term)).length;
+  const priority=/(?:^|\s)(?:우선|먼저|선행|필수)(?:$|\s)/.test(row.prompt);
+  return (priority?40:0)+Math.min(relevant,4)*4;
+}
 export function originalAnswerFollowups(session) {
-  const messages = session?.messages || [],last=latestFollowupAnswer(session);
-  if (!last || (last.id && session.completedContinuationId === last.id)) return [];
-  const request = messages.findLast(row => row.role === 'user')?.text || '';
-  if (decline.test(request)) return [];
-  const {candidates,body}=answerCandidates(last.text);
-  const previous=new Set(messages.slice(-12).filter(row=>row.role==='user'&&row.text.length<500).map(row=>normalized(row.text)));
-  const candidate=[...candidates,...contextualCandidates(body,request)].find(row=>!previous.has(normalized(row.prompt)));
-  return candidate?[candidate]:[];
+  const context=followupContext(session);
+  if (!context) return [];
+  const lines=publicLines(context.answer.text);
+  const candidates=answerCandidates(lines);
+  const previous=new Set(session.messages.slice(-12).filter(row=>row.role==='user'&&row.text.length<500).map(row=>normalized(row.text)));
+  const request=publicLines(context.request).slice(-60).join('\n');
+  const terms=relevanceTerms(request);
+  const best=(rows)=>{
+    let candidate,score=-1;
+    for (const row of rows) {
+      if (previous.has(normalized(row.prompt))) continue;
+      const current=rank(row,terms);
+      if (current>score) {candidate=row;score=current;}
+    }
+    return candidate;
+  };
+  const candidate=best(candidates)||best(contextualCandidates(lines.join('\n'),request));
+  return candidate ? [candidate] : [];
 }

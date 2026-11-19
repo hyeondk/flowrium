@@ -28,7 +28,14 @@ async function create(t) {
     runs: new Map(),
     loadedThreads: new Set(),
     status: { authenticated: true },
-    store: { state: { sessions: [], settings: {} } },
+    store: {
+      state: { sessions: [], settings: {} },
+      session(id) {
+        const found = this.state.sessions.find(session => session.id === id);
+        if (!found) throw Error("대화를 찾을 수 없습니다.");
+        return found;
+      },
+    },
     client: { approvals: new Map(), start: async () => {} },
     emitEvent(event) {
       this.emit("event", event);
@@ -276,7 +283,7 @@ test("계정 한도는 허용 필드만 반환하고 로그아웃은 명시 요�
   assert.equal(security.accountRevision, 1);
 });
 
-test("절전, 자리 비움, 업무 마감 잠금 / 승인 복원 / 작업 중에만 절전 방지 / 내용 없는 운영체제 알림", async (t) => {
+test("절전, 자리 비움, 업무 마감 잠금 / 승인 복원 / 작업 중에만 절전 방지 / 잠금 상태 운영체제 알림", async (t) => {
   const {
     api,
     security,
@@ -308,6 +315,8 @@ test("절전, 자리 비움, 업무 마감 잠금 / 승인 복원 / 작업 중�
   assert(!security.locked);
   controller.store.state.sessions.push({
     id: "대화",
+    title: "잠긴 대화의 비공개 이름",
+    updatedAt: "2026-11-19",
     workflow: { kind: "pause" },
   });
   controller.runs.set("대화", { sessionId: "대화",ownerRevision:security.accountRevision });
@@ -338,6 +347,34 @@ test("절전, 자리 비움, 업무 마감 잠금 / 승인 복원 / 작업 중�
   assert.equal(security.reason, "workday");
   assert.deepEqual(blockers, ["prevent-app-suspension", 0]);
   assert.equal(notifications.length, 2);
+  assert.doesNotMatch(JSON.stringify(notifications), /비공개 이름/);
+});
+test("운영체제에 대화 이름과 답변 완료 / 실패 / 결정 / 권한 승인을 구분해 전달한다", async (t) => {
+  const { api, controller, notifications, power } = await create(t);
+  controller.store.state.sessions.push({
+    id: "대화", title: "광고 매출 분석", updatedAt: "2026-11-19",
+  });
+  controller.emitEvent({ type: "done", status: "completed", sessionId: "대화" });
+  assert.equal(notifications.length, 0, "운영체제 알림 설정을 따릅니다.");
+  await api.setSecurityPreferences({ notifyApproval: true, notifyDone: true });
+  controller.emitEvent({ type: "done", status: "completed", sessionId: "대화", text: "답변 원문 비밀" });
+  controller.emitEvent({ type: "done", status: "failed", sessionId: "대화", text: "실패 상세 비밀" });
+  controller.emitEvent({ type: "input", requestId: "질문", sessionId: "대화", questions: [{ isSecret: true, question: "질문 원문 비밀" }] });
+  controller.emitEvent({ type: "approval", requestId: "승인", sessionId: "대화", details: "권한 요청 원문 비밀" });
+  controller.emitEvent({ type: "done", status: "interrupted", sessionId: "대화" });
+  assert.deepEqual(notifications, [
+    { title: "답변 완료", body: "‘광고 매출 분석’ 대화의 답변이 완료됐습니다." },
+    { title: "작업 실패", body: "‘광고 매출 분석’ 대화의 작업을 완료하지 못했습니다." },
+    { title: "광고 매출 분석 / 결정 요청", body: "어시스턴트가 질문이 있으니 결정 부탁드립니다." },
+    { title: "권한 승인 요청", body: "‘광고 매출 분석’ 대화에서 권한 승인을 기다리고 있습니다." },
+  ]);
+  await api.setSecurityPreferences({ lockOnSuspend: false });
+  power.emit("lock-screen");
+  controller.emitEvent({ type: "done", status: "completed", sessionId: "대화" });
+  assert.deepEqual(notifications.at(-1), { title: "답변 완료", body: "대화의 답변이 완료됐습니다." });
+  power.emit("unlock-screen");
+  controller.emitEvent({ type: "done", status: "completed", sessionId: "대화" });
+  assert.match(notifications.at(-1).body, /광고 매출 분석/);
 });
 test("계정이 바뀌면 잠금 중에 도착한 이전 계정의 질문을 취소하고 복원 목록에서 지운다", async (t) => {
   const { controller, security, api } = await create(t);

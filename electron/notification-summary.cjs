@@ -40,4 +40,11 @@ function completionSummary(body, status = "completed") {
   const remaining = excerpt(sections.remaining[0], complete ? "후속 작업은 대화에서 확인해 주세요." : "대화에서 중단 원인을 확인해 주세요.");
   return [`결과 / ${result}`, `검증 / ${verified}`, `남은 사항 / ${remaining}`].join("\n");
 }
-module.exports = { completionSummary };
+function notificationConversationTitle(value) {
+  if (typeof value !== "string") return "";
+  const clean = value.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ").replace(/\s+/gu, " ").trim();
+  const characters = Array.from(clean);
+  return characters.length <= 80 ? clean : characters.slice(0, 79).join("") + "…";
+}
+
+module.exports = { completionSummary, notificationConversationTitle };

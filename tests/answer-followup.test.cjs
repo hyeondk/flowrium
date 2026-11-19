@@ -47,6 +47,8 @@ test('완료 상태와 뒤따른 작업 로그에도 본문에 있는 다음 행
   assert.equal(latestFollowupAnswer(session),answer);
   assert.equal(originalAnswerFollowups(session)[0].prompt,'채널별 매출을 비교해줘');
   assert.deepEqual(originalAnswerFollowups({...session,messages:[...session.messages,{role:'user',text:'다른 작업을 시작해줘'}]}),[]);
+  for(const text of ['작업을 완료하지 못했습니다. 네트워크 오류','사용자의 요청으로 작업이 중지됐습니다.'])
+    assert.deepEqual(originalAnswerFollowups({...session,messages:[...session.messages,{role:'system',text}]}),[]);
 });
 
 test('완료 보고의 미검증 사항을 구체적인 다음 요청으로 보존한다',async()=>{
@@ -89,4 +91,19 @@ test('코드와 작성물 속 분석 결과로 추천을 만들지 않으며 긴
   const start=performance.now();
   for(let i=0;i<30;i++)assert(originalAnswerFollowups(session)[0]);
   assert(performance.now()-start<2000,'로컬 추천 30회가 2초 이내에 끝나야 한다');
+});
+
+test('미검증 결과와 최신 요청의 우선순위로 다음 작업을 고른다', async () => {
+  const {canOfferFollowup,followupFromAnswer,originalAnswerFollowups} = await loaded;
+  const session = (request, text) => ({messages:[{role:'user',text:request},{id:'latest',role:'assistant',text}]});
+  const answer = '다음 권장 작업\n- 화면 여백을 확인해 주세요.\n- 예약 알림의 수신 시간을 검증해 주세요.';
+  assert.equal(originalAnswerFollowups(session('예약 알림 누락이 가장 중요합니다.',answer))[0].prompt,'예약 알림의 수신 시간을 검증해줘');
+  assert.equal(originalAnswerFollowups(session('화면 여백부터 봐줘',answer.replace('예약 알림의','먼저 예약 알림의')))[0].prompt,'먼저 예약 알림의 수신 시간을 검증해줘');
+  assert.equal(followupFromAnswer('윈도우의 예약 알림은 아직 미검증입니다.').prompt,'윈도우의 예약 알림을 검증해줘');
+  assert.equal(followupFromAnswer('다음에는 실제 기기에서 알림을 검증해야 합니다.').prompt,'실제 기기에서 알림을 검증해줘');
+  const completed = session('일정이 있는지 알려줘','그날은 일정이 없습니다.');
+  assert.equal(canOfferFollowup(completed),true);
+  assert.deepEqual(originalAnswerFollowups(completed),[]);
+  assert.equal(canOfferFollowup({...completed,completedContinuationId:'latest'}),false);
+  assert.equal(canOfferFollowup(session('다음 단계는 제안하지 마세요.',answer)),false);
 });

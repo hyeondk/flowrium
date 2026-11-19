@@ -188,6 +188,7 @@ test('완료 알림은 3줄 요약만 전달하고 같은 사건의 중복 수�
  s.controller.emit('event',{type:'done',status:'completed',sessionId:s.a.id});
  const once=await s.workflow.state();
  assert.equal(once.notifications.length,1);assert.equal(sent.length,1);
+ assert.equal(once.notifications[0].title,s.store.session(s.a.id).title);
  assert.equal(once.notifications[0].body.split('\n').length,3);
  assert.match(once.notifications[0].body,/설치본은 확인하지 않았습니다/);
  assert.equal(s.store.session(s.a.id).messages.at(-1).text,body);
@@ -212,7 +213,10 @@ test('새 작업이 답변 없이 실패하면 지난 작업의 검증 성공을
 test('비밀 질문이 있었던 턴은 답변 원문을 완료 알림 요약에 인용하지 않는다',async t=>{
  const s=await setup(t);
  s.controller.emit('event',{type:'input',sessionId:s.a.id,requestId:'합성-비밀-질문',questions:[{id:'secret',isSecret:true}],isBlocking:true});
- await s.wait(state=>state.notifications.length===1);
+ const waiting=await s.wait(state=>state.notifications.length===1);
+ assert.equal(waiting.notifications[0].kind,"decision");
+ assert.equal(waiting.notifications[0].title,s.store.session(s.a.id).title);
+ assert.equal(waiting.notifications[0].body,"어시스턴트가 질문이 있으니 결정 부탁드립니다.");
  await s.controller.finish(s.a.id,'## 완료한 내용\n임시 보호 값은 요약에 표시하면 안 됩니다.');
  const state=await s.wait(value=>value.notifications.length===2);
  assert.equal(state.notifications[0].kind,'done');

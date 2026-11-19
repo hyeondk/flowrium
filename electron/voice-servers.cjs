@@ -9,6 +9,7 @@ const processes=require('./voice-server-process.cjs');
 const IDS=['recognition','synthesis'];
 const LABELS={recognition:'음성 인식 서버',synthesis:'음성 합성 서버'};
 const MAX_CONFIG=256*1024,MAX_LOG=48*1024;
+const CONFIG_REPLACE_RETRY_CODES=new Set(['EPERM','EACCES','EBUSY']);
 const BLOCKED_ENV=/^(?:HOME|USERPROFILE|CODEX_HOME|FLOWRIUM_USER_DATA|ELECTRON_RUN_AS_NODE|NODE_OPTIONS|LD_PRELOAD|DYLD_.*|GIT_ASKPASS|SSH_ASKPASS)$/i;
 const copy=value=>structuredClone(value);
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -72,7 +73,22 @@ function registerVoiceServers(register,options){
    return output;
   }catch(error){if(error.code==='ENOENT')return{version:1,revision:0,servers:Object.fromEntries(IDS.map(key=>[key,defaults(key)]))};throw error;}
  }
- async function write(who,value){await fs.mkdir(directory,{recursive:true,mode:0o700});const file=filename(who),temporary=file+'.'+randomUUID()+'.tmp';try{await fs.writeFile(temporary,JSON.stringify(value),{flag:'wx',mode:0o600});await fs.rename(temporary,file);}finally{await fs.rm(temporary,{force:true});}}
+ async function write(who,epoch,value){
+  await fs.mkdir(directory,{recursive:true,mode:0o700});
+  const file=filename(who),temporary=file+'.'+randomUUID()+'.tmp';
+  try{
+   await fs.writeFile(temporary,JSON.stringify(value),{flag:'wx',mode:0o600});
+   for(let attempt=0;;attempt++){
+    assertAllowed(who,epoch);
+    try{await fs.rename(temporary,file);return;}
+    catch(error){
+     // Windows scanners can briefly hold an open handle on a config file.
+     if(attempt>=5||!CONFIG_REPLACE_RETRY_CODES.has(error.code))throw error;
+     await delay(50*2**attempt);
+    }
+   }
+  }finally{await fs.rm(temporary,{force:true});}
+ }
  function record(run,stream,value){const line={at:new Date().toISOString(),stream,text:redact(value,run.secrets)};if(!line.text)return;run.logs.push(line);while(run.logs.length>180||run.logs.reduce((total,row)=>total+row.text.length,0)>MAX_LOG)run.logs.shift();}
  function current(key,who=owner()){const run=runs.get(key);return run?.owner===who?run:undefined;}
  async function state(){const who=owner(),epoch=revision();assertAllowed(who,epoch);const saved=await read(who);assertAllowed(who,epoch);return{revision:saved.revision,servers:IDS.map(key=>({config:publicConfig(saved.servers[key]),run:publicRun(key,current(key,who))}))};}
@@ -149,7 +165,7 @@ function registerVoiceServers(register,options){
   if(current(key,who)&&(['starting','running','stopping'].includes(current(key,who).phase)||current(key,who).cleanupFailed||processTools.alive(current(key,who).child)))throw Error('서버를 중지한 뒤 실행 설정을 변경해 주세요.');
   const value=config(input.config,key),prior=saved.servers[key];let encryptedEnvironment=prior.encryptedEnvironment,environmentNames=prior.environmentNames;
   if(input.environment!==undefined){const values=environment(input.environment);environmentNames=Object.keys(values);if(environmentNames.length){if(!secretStorage?.isEncryptionAvailable?.())throw Error('서버 환경변수 저장에 운영체제 보안 저장소가 필요합니다.');encryptedEnvironment=secretStorage.encryptString(JSON.stringify(values)).toString('base64');}else encryptedEnvironment='';}
-  saved.servers[key]={...value,environmentNames,encryptedEnvironment};saved.revision++;assertAllowed(who,epoch);await write(who,saved);plans.clear();assertAllowed(who,epoch);return state();
+  saved.servers[key]={...value,environmentNames,encryptedEnvironment};saved.revision++;assertAllowed(who,epoch);await write(who,epoch,saved);plans.clear();assertAllowed(who,epoch);return state();
  }));
  register('previewVoiceServer',key=>serial(()=>plan(id(key))));
  register('voiceServerAction',input=>serial(async()=>{

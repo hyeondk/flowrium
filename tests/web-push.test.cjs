@@ -28,6 +28,30 @@ f.setLocked(true);assert.deepEqual(await f.runtime.notify({id:'locked',kind:'don
 f.setOwner(1);await f.runtime.notify({id:'owner',kind:'done'});assert.equal((await f.runtime.status()).devices.length,0);await assert.rejects(f.runtime.action({action:'test',id}));f.setOwner(0);f.setScope('scope-b');await f.runtime.notify({id:'scope',kind:'done'});assert.equal(f.sent.length,0);
 f.setScope('scope-a');const pending=f.runtime.notify({id:'queued',kind:'done'});f.runtime.invalidate();await pending;assert.equal(f.sent.length,0);
 });
+test('기기별 표시 설정에 따라 사건 유형과 대화 이름만 전달하고 질문/답변 원문은 보내지 않는다',async t=>{
+  const f=await fixture(t);
+  await f.runtime.action({action:'prepare'});
+  const kinds=['done','decision','error'],sessionId='합성 대화 식별자';
+  const one=await f.runtime.action({action:'subscribe',subscription:sub('a'),label:'대화 이름 표시 기기',kinds});
+  const two=await f.runtime.action({action:'subscribe',subscription:sub('b'),label:'일반 기기',kinds});
+  await assert.rejects(f.runtime.action({action:'preferences',id:one.id,kinds,showConversationTitle:'true'}));
+  const defaults=(await f.runtime.status()).devices;
+  assert.equal(defaults.find(device=>device.id===one.id).showConversationTitle,false);
+  await f.runtime.action({action:'preferences',id:one.id,kinds,showConversationTitle:true});
+  await f.runtime.action({action:'preferences',id:one.id,kinds});
+  const status=(await f.runtime.status()).devices;
+  assert.equal(status.find(device=>device.id===one.id).showConversationTitle,true);
+  assert.equal(status.find(device=>device.id===two.id).showConversationTitle,false);
+  const title='광고 매출 분석',body='미리보기에 포함할 수 없는 원문과 링크 #key=secret';
+  await f.runtime.notify({id:'answer',kind:'done',title,body,sessionId});
+  await f.runtime.notify({id:'question',kind:'decision',group:'질문',title,body,sessionId});
+  await f.runtime.notify({id:'approval',kind:'approval',group:'승인',title,body,sessionId});
+  assert.deepEqual(f.sent.map(({kind,notice,conversationTitle})=>[kind,notice,conversationTitle]),[
+    ['done','done',title],['done','done',undefined],['decision','question',title],['decision','question',undefined],
+    ['decision','approval',title],['decision','approval',undefined],
+  ]);
+  assert.doesNotMatch(JSON.stringify(f.sent),/secret|미리보기|합성 대화 식별자/);
+});
 test('만료된 기기는 제거하고 운영체제 암호화 불가 시 구독을 저장하지 않는다',async t=>{
 const f=await fixture(t);await f.runtime.action({action:'prepare'});const {id}=await f.runtime.action({action:'subscribe',subscription:sub(),label:'기기',kinds:['done']});f.fail(Object.assign(Error('gone'),{statusCode:410}));assert.deepEqual(await f.runtime.action({action:'test',id}),{sent:false});assert.equal((await f.runtime.status()).devices.length,0);
 const denied=new PushRuntime({directory:f.directory,secretStorage:{isEncryptionAvailable:()=>false},getContext:()=>({enabled:true,scopeId:'active'})});assert.equal((await denied.status()).available,false);await assert.rejects(denied.action({action:'prepare'}));await denied.shutdown();
@@ -44,6 +68,11 @@ const client={url:'https://mobile.example/',focus:async()=>focused++,postMessage
 const self={location:{origin:'https://mobile.example'},addEventListener:(name,fn)=>events[name]=fn,registration:{showNotification:async(title,options)=>shown.push({title,...options})},clients:{matchAll:async()=>[client]}};
 vm.runInNewContext(await fs.readFile(path.join(__dirname,'../electron/mobile/sw.js'),'utf8'),{self,URL});
 events.push({data:{json:()=>({kind:'done',title:'비밀 제목',body:'원문',path:'/#key=secret',tag:'/#key=secret'})},waitUntil:task=>pending=task});await pending;
-assert.equal(shown[0].title,'Flowrium');assert.equal(shown[0].body,'작업이 완료됐습니다.');assert.equal(JSON.stringify(shown).includes('secret'),false);
+assert.equal(shown[0].title,'답변 완료');assert.equal(shown[0].body,'대화의 답변이 완료됐습니다.');
+events.push({data:{json:()=>({kind:'decision',notice:'question',conversationTitle:'광고 매출 분석',title:'비밀 제목',body:'원문',path:'/#key=secret'})},waitUntil:task=>pending=task});await pending;
+assert.equal(shown[1].title,'광고 매출 분석 / 결정 요청');assert.equal(shown[1].body,'어시스턴트가 질문이 있으니 결정 부탁드립니다.');
+events.push({data:{json:()=>({kind:'constructor',notice:'__proto__',conversationTitle:'무시할 이름'})},waitUntil:task=>pending=task});await pending;
+assert.equal(shown[2].title,'알림 확인');
+assert.doesNotMatch(JSON.stringify(shown),/secret|비밀 제목|원문|무시할 이름/);
 events.notificationclick({notification:{close:()=>{}},waitUntil:task=>pending=task});await pending;assert.equal(focused,1);assert.equal(posted.type,'flowrium:notification');
 });

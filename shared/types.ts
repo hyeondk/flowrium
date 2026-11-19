@@ -171,6 +171,7 @@ export interface FlowriumEvent {
   session?: Session;
 }
 export interface Bootstrap {
+  externalActivity?: Record<string,'running'|'pending'>;
   conversationProjects?: Project[];
   projects: Project[];
   sessions: Session[];

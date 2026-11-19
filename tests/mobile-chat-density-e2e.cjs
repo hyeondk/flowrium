@@ -103,7 +103,7 @@ async function main(){
   await page.waitForTimeout(850);assert.equal(await page.locator('.mobile-response-notice').count(),0,'한글 조합 중에는 질문 알림을 미룬다');
   await field.dispatchEvent('compositionend');await field.blur();
   const arrival=page.locator('.mobile-response-notice');await arrival.waitFor();
-  assert.equal(await arrival.getByText('응답 요청이 도착했어요',{exact:true}).count(),1);
+  assert.equal(await arrival.getByText('어시스턴트가 질문이 있으니 결정 부탁드립니다.',{exact:true}).count(),1);
   assert(!(await arrival.innerText()).includes('추가 분석에 포함할 기간'));
   const arrivalSize=await arrival.boundingBox();assert(arrivalSize.width<=360&&arrivalSize.height>=176);
   await page.screenshot({path:path.join(output,'mobile-question-arrival.png'),animations:'disabled'});
@@ -121,6 +121,7 @@ async function main(){
   await workflow.load();workflow.notification('done','월별 매출 분석','결과 / 최근 3개월 매출 분석 완료\n검증 / 주문 합계와 월별 집계 확인\n남은 사항 / 채널별 원인 분석',chat.id,chat.id);await workflow.save();
   await page.getByRole('navigation',{name:'모바일 메뉴'}).getByRole('button',{name:'비서',exact:true}).click();
   const doneCard=page.locator('.mobile-notification-card[data-notification-kind=done]');await doneCard.waitFor();
+  assert(await doneCard.getByText(`‘${chat.title}’ 대화의 답변이 완료됐습니다.`,{exact:true}).isVisible());
   assert((await doneCard.locator('.mobile-notification-summary').boundingBox()).height<=60);
   await doneCard.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'mobile-notifications.png'),animations:'disabled'});
   pending=[{...question,requestId:randomUUID()}];await refresh();await arrival.waitFor();locked=true;

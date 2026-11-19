@@ -3,7 +3,8 @@ const fs = require("node:fs/promises"),
   http = require("node:http"),
   { spawn } = require("node:child_process"),
   { randomBytes, timingSafeEqual, createHash } = require("node:crypto");
-const {executionFor} = require('./execution-state.js');
+const {continuationAnswer,executionFor} = require('./execution-state.js');
+const {latestFollowupAnswer}=require('./mobile/answer-followup.js');
 const {attachmentDisplayText}=require('./mobile/attachment-text.js');
 const {MobileUpdater} = require('./mobile-updater.cjs');
 const {MobileRequestUploads,chunkBytes,singleUploadBytes} = require('./mobile-request-uploads.cjs');
@@ -24,9 +25,9 @@ const allowed = new Set([
   "checkMobileUpdate", "applyMobileUpdate",
 ]);
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-function mobileSummary(s, active, deciding, revision, activity) {
+function mobileSummary(s, active, deciding, revision, activity, unsettled) {
   const { id, projectId, title, createdAt, updatedAt } = s;
-  const executionState=executionFor(s,active,deciding);
+  const executionState=executionFor(s,active,deciding,unsettled);
   return {
     id,
     projectId,
@@ -37,11 +38,13 @@ function mobileSummary(s, active, deciding, revision, activity) {
     defaultProjectMode: s.defaultProjectMode,
     completedContinuationId:s.completedContinuationId,
     scope: s.scope,
-    canCompleteWaiting: executionState==='waiting' && !s.compacting && !s.queuedMessages?.some(q=>q.status==='queued'||q.status==='sending'),
+    canCompleteWaiting: executionState==='waiting',
+    continuationMessageId: executionState==='waiting' ? continuationAnswer(s)?.id : undefined,
     revision,
     activity,
     messageCount: s.messages.length,
     lastMessageId: s.messages.at(-1)?.id,
+    recommendationMessageId: latestFollowupAnswer(s)?.id ?? null,
     messages: [],
     workflow: s.workflow && {
       kind: s.workflow.kind,
@@ -504,7 +507,11 @@ function registerRemote(
                 createdAt: p.createdAt,
                 trustedForFileAccess: await store.isProjectTrusted(p.id),
               }))),
-              sessions: snapshot.sessions.map(s=>mobileSummary(display(s),Boolean(controller.runs.get(s.id)&&!controller.runs.get(s.id).claimingWriter||externalPreview(s)),deciding.has(s.id),revisionOf(s.id),runLabels.get(controller.runs.get(s.id)))),
+              sessions: snapshot.sessions.map(s=>{
+                const run=controller.runs.get(s.id),external=externalPreview(s);
+                const active=Boolean(run&&!run.claimingWriter&&!run.finalized||external?.running);
+                return mobileSummary(display(s),active,deciding.has(s.id),revisionOf(s.id),runLabels.get(run),Boolean(external));
+              }),
               settings: {
                 theme: snapshot.settings.theme === 'dark' ? 'dark' : 'light',
                 accentColor: ['blue','green','purple'].includes(snapshot.settings.accentColor) ? snapshot.settings.accentColor : 'blue',
@@ -522,7 +529,7 @@ function registerRemote(
                 authenticated: connection.authenticated,
                 accountLabel: connection.accountLabel,
               },
-              running: [...controller.runs.keys()],
+              running: [...controller.runs].filter(([,run])=>!run.claimingWriter&&!run.finalized).map(([id])=>id),
               approvals: requests.map(e => e.type === "input" ? mobileInput(e) : e),
             };
           });
@@ -673,6 +680,7 @@ function registerRemote(
       "/date-picker.js": "date-picker.js",
       "/date-picker.css": "date-picker.css",
       "/confirmation.js": "confirmation.js",
+      "/decision-notice.js": "decision-notice.js",
       "/chatgpt.svg": "chatgpt.svg",
       "/mobile-shell.css": "mobile-shell.css",
       "/model-display.js": "model-display.js",
