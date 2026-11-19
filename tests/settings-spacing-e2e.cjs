@@ -46,7 +46,8 @@ async function run(){
     if(!baseline){
      assert.equal(await dialog.locator('[data-settings-group]:not([hidden])').count(),1,'선택한 범주만 표시');
      assert(row.gaps.every(gap=>gap>=11.5),`범주 내 요소 간격 ${JSON.stringify(row)}`);
-     assert(row.top>=15&&row.bottom>=15,`첫·마지막 여백 ${JSON.stringify(row)}`);
+     // 브라우저 배율과 스크롤 끝의 부분 픽셀을 실제 표시 단위로 비교한다.
+     assert(Math.round(row.top)>=15&&Math.round(row.bottom)>=15,`첫·마지막 여백 ${JSON.stringify(row)}`);
      assert(row.overflow<=1,`가로 넘침 ${JSON.stringify(row)}`);
      assert(row.boxes.every(box=>box.top===null||(box.top>=11.5&&box.bottom>=11.5)),`상자 안쪽 여백 ${JSON.stringify(row)}`);
     }
