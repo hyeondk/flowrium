@@ -14,7 +14,10 @@
   border-radius:8px; color:var(--muted); font-size:12px; white-space:nowrap;
 }
 .app-shell .workspace-utilities>.header-search:hover {background:var(--accent-bg); color:var(--accent)}
-.app-shell .workspace-utilities>.header-search kbd {margin-inline-start:4px; padding:0; border:0; background:none; color:var(--text); font:inherit; font-size:13px; font-weight:700; line-height:18px}
+.app-shell .workspace-utilities>.header-search kbd {
+  margin-inline-start:4px; padding:0; border:0; background:none; color:var(--text);
+  font:inherit; font-size:13px; font-weight:700; line-height:18px; translate:0 .5px;
+}
 .project-toolbar-actions .header-search>:is(span,kbd) {display:none}
 @container workspace-header (max-width:440px) {
   .workspace-utilities .header-search>:is(span,kbd) {display:none}

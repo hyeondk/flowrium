@@ -219,14 +219,26 @@ async function run(){
     if(!baseline){
       const header=page.locator('.main-shell>.topbar');
       await settledLayout(header);
+      await page.evaluate(()=>document.fonts.ready);
       results.headerTools=await header.evaluate(node=>{
         const header=node.getBoundingClientRect();
         const buttons=[...node.querySelectorAll('.workspace-utilities>button')].map(button=>button.getBoundingClientRect());
+        const textCenter=element=>{
+          const box=element.getBoundingClientRect(),font=getComputedStyle(element);
+          const canvas=document.createElement('canvas').getContext('2d');
+          canvas.font=font.font;
+          const ink=canvas.measureText(element.textContent);
+          const offset=(ink.fontBoundingBoxAscent-ink.fontBoundingBoxDescent-ink.actualBoundingBoxAscent+ink.actualBoundingBoxDescent)/2;
+          return box.top+box.height/2+offset*box.height/parseFloat(font.lineHeight);
+        };
+        const search=node.querySelector('.header-search');
         return {count:buttons.length,gaps:buttons.slice(1).map((button,index)=>button.left-buttons[index].right),
-          right:header.right-buttons.at(-1).right,vertical:buttons.map(button=>Math.abs((button.top+button.bottom-header.top-header.bottom)/2))};
+          right:header.right-buttons.at(-1).right,vertical:buttons.map(button=>Math.abs((button.top+button.bottom-header.top-header.bottom)/2)),
+          searchOffset:Math.abs(textCenter(search.querySelector('span'))-textCenter(search.querySelector('kbd')))};
       });
       assert.equal(results.headerTools.count,4);
       assert(results.headerTools.gaps.every(gap=>gap>=3)&&results.headerTools.right>=12&&results.headerTools.vertical.every(shift=>shift<1),JSON.stringify(results.headerTools));
+      assert(results.headerTools.searchOffset<.5,'검색 문구와 단축키의 글자 중심 정렬 '+JSON.stringify(results.headerTools));
       await expect(page.locator('.workspace-side .command-trigger,.workspace-side .workspace-utilities')).toHaveCount(0);
       await expect(page.locator('.side-usage-refresh strong')).toHaveText('63%');
       results.sidebarUsage=await page.locator('.side-usage').evaluate(async node=>{
