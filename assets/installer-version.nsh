@@ -1,7 +1,7 @@
 !macro customHeader
-  BrandingText "Flowrium 261119_11"
+  BrandingText "Flowrium 261119_12"
 !macroend
 
 !macro customInstall
-  WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion" "261119_11"
+  WriteRegStr SHELL_CONTEXT "${UNINSTALL_REGISTRY_KEY}" "DisplayVersion" "261119_12"
 !macroend

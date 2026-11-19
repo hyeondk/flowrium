@@ -500,7 +500,11 @@ export function ProjectOverview({
       <header className="project-document-toolbar">
         <div className="project-toolbar-leading">
           <button className="mobile-menu project-toolbar-icon" onClick={onMenu} aria-label="메뉴 열기" title="메뉴 열기"><Menu size={17}/></button>
-          {tab !== 'home' && <button className="project-back-button" onClick={()=>chooseTab('home')} aria-label="프로젝트 홈으로 돌아가기"><ArrowLeft size={14}/>뒤로</button>}
+          {tab !== 'home' && (
+            <button type="button" className="project-back-button" onClick={()=>chooseTab('home')} aria-label="프로젝트 홈으로 돌아가기">
+              <ArrowLeft size={14} aria-hidden="true"/><span>프로젝트</span>
+            </button>
+          )}
           <span>{tab==='home'?'프로젝트':activeTab}</span>
         </div>
         <div className="project-toolbar-actions">
