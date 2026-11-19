@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { test } = require('node:test');
-const { readCodexRolloutContext } = require('../electron/codex-rollout-context.cjs');
+const { readCodexRolloutContext, relativeRolloutPath } = require('../electron/codex-rollout-context.cjs');
 
 const threadId = '12345678-1234-7234-8234-123456789abc';
 const otherId = '12345678-1234-7234-8234-123456789def';
@@ -73,4 +73,18 @@ test('링크를 통한 다른 기록 접근을 거절하고 큰 기록에서는 
   assert.equal(await readCodexRolloutContext(input), null);
   await fs.appendFile(input.rolloutPath, event(2048));
   assert.equal((await readCodexRolloutContext(input))?.used, 2048);
+});
+
+test('윈도우 확장 경로는 실제 드라이브와 공유 폴더 별칭에 한해 비교한다', () => {
+  assert.equal(relativeRolloutPath('C:\\Codex', '\\\\?\\c:\\codex\\sessions\\sample.jsonl', 'win32'), 'sessions\\sample.jsonl');
+  assert.equal(relativeRolloutPath('\\\\server\\share\\project', '\\\\?\\UNC\\SERVER\\SHARE\\project', 'win32'), '');
+  assert.notEqual(relativeRolloutPath('C:\\Codex', '\\\\?\\C:\\Codex.', 'win32'), '');
+  assert.notEqual(relativeRolloutPath('C:\\Codex', '\\\\?\\GLOBALROOT\\Device\\Codex', 'win32'), '');
+});
+
+test('윈도우 실제 파일의 일반 경로와 확장 경로 및 줄바꿈이 섞여도 읽는다', { skip: process.platform !== 'win32' }, async t => {
+  const input = await fixture(t);
+  await fs.writeFile(input.rolloutPath, (input.meta(threadId, path.toNamespacedPath(input.cwd)) + event(2048)).replaceAll('\n', '\r\n'));
+  const result = await readCodexRolloutContext({ ...input, rolloutPath: path.toNamespacedPath(input.rolloutPath) });
+  assert.equal(result?.used, 2048);
 });

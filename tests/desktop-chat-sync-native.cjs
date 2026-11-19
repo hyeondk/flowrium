@@ -123,15 +123,22 @@ async function main() {
     const incomingReply=received('동기화 응답 2');
     assert.equal((await done).params.turn.status,'completed');
     await incomingReply;
-    await monitor.scan(runtime);
-    await monitor.stop(runtime);
     const { tokenUsage }=(await usage).params;
     const recordedThread=await D.readThread(reader,id,cwd);
-    const context=await readCodexRolloutContext({threadId:id,rolloutPath:recordedThread.path,cwd,codexHome:profile});
-    assert.equal(context?.used,tokenUsage.last.inputTokens+tokenUsage.last.outputTokens);
+    const expectedUsed=tokenUsage.last.inputTokens+tokenUsage.last.outputTokens;
+    let context;
+    const deadline=Date.now()+4000;
+    do {
+      context=await readCodexRolloutContext({threadId:id,rolloutPath:recordedThread.path,cwd,codexHome:profile});
+      if(context?.used===expectedUsed)break;
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }while(Date.now()<deadline);
+    assert.equal(context?.used,expectedUsed,'외부 작업의 완료 사용량을 원본 기록에서 읽어야 합니다.');
     assert.equal(context?.max,tokenUsage.modelContextWindow);
     assert.equal(context?.total,tokenUsage.total.totalTokens);
+    await monitor.scan(runtime);
     assert.deepEqual((await contextEmission).contextUsage,context);
+    await monitor.stop(runtime);
     assert.deepEqual(runtime.contextUsage(live),context);
     assert.deepEqual(live.messages.filter(m=>m.role!=='system').map(m=>m.text),['첫 번째 로컬 요청','동기화 응답 1',externalText,'동기화 응답 2']);
     await desktop.request('thread/unsubscribe',{threadId:id});

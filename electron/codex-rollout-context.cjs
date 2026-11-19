@@ -3,8 +3,7 @@ const { constants } = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { fileURLToPath } = require('node:url');
-const { relativePath, samePath: sameFilesystemPath } = require('./path-boundary.cjs');
-const { samePath } = require('./history.cjs');
+const { relativePath } = require('./path-boundary.cjs');
 
 const HEADER_BYTES = 64 * 1024;
 const TAIL_BYTES = 1024 * 1024;
@@ -12,6 +11,28 @@ const EVENT_BYTES = 32 * 1024;
 const THREAD_ID = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 const TOKEN_COUNT = Buffer.from('"token_count"');
 const RECORDED_DIRS = new Set(['sessions', 'archived_sessions']);
+
+function windowsPathAlias(value) {
+  const prefix = /^\\\\[?.]\\/.exec(value);
+  if (!prefix) return value;
+  const target = value.slice(prefix[0].length);
+  let conventional;
+  if (/^[A-Z]:\\/i.test(target)) conventional = target;
+  if (/^UNC\\[^\\]+\\[^\\]+(?:\\|$)/i.test(target)) conventional = '\\\\' + target.slice(4);
+  // Extended paths can preserve trailing dots and spaces. Only change the
+  // spelling used for comparisons if it can name the same ordinary file.
+  if (!conventional || conventional.split('\\').some(part => /[. ]$/.test(part))) return value;
+  return conventional;
+}
+
+function relativeRolloutPath(from, to, platform = process.platform) {
+  if (platform === 'win32') return path.win32.relative(windowsPathAlias(from), windowsPathAlias(to));
+  return relativePath(from, to, platform);
+}
+
+function sameRolloutPath(from, to) {
+  return relativeRolloutPath(from, to) === '';
+}
 
 function parseRecord(bytes) {
   try {
@@ -76,13 +97,15 @@ async function readCodexRolloutContext({ threadId, rolloutPath, cwd, codexHome =
   let handle;
   try {
     const file = rolloutPath.startsWith('file:') ? fileURLToPath(rolloutPath) : rolloutPath;
-    if (!path.isAbsolute(file) || !path.basename(file).startsWith('rollout-') || !path.basename(file).endsWith(`-${threadId}.jsonl`)) return null;
+    const filename = path.basename(file);
+    if (!path.isAbsolute(file) || !filename.startsWith('rollout-') || !filename.endsWith(`-${threadId}.jsonl`)) return null;
     const realHome = await fs.realpath(codexHome);
     const real = await fs.realpath(file);
-    const relative = relativePath(realHome, real);
-    if (!RECORDED_DIRS.has(relative.split(path.sep)[0])) return null;
+    const relative = relativeRolloutPath(realHome, real);
+    const directory = relative.split(path.sep)[0];
+    if (!RECORDED_DIRS.has(process.platform === 'win32' ? directory.toLowerCase() : directory)) return null;
     // Permit the configured home itself to be a filesystem alias. Reject links inside it.
-    if (!sameFilesystemPath(file, real) && !sameFilesystemPath(file, path.join(codexHome, relative))) return null;
+    if (!sameRolloutPath(file, real) && !sameRolloutPath(file, path.join(codexHome, relative))) return null;
     const before = await fs.lstat(file);
     if (!before.isFile() || before.size === 0) return null;
     handle = await fs.open(real, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
@@ -93,14 +116,16 @@ async function readCodexRolloutContext({ threadId, rolloutPath, cwd, codexHome =
     const headerEnd = header?.indexOf(10) ?? -1;
     if (headerEnd < 0) return null;
     const meta = parseRecord(header.subarray(0, headerEnd));
-    if (meta?.type !== 'session_meta' || meta.payload?.id !== threadId || !samePath(meta.payload?.cwd, cwd)) return null;
+    if (meta?.type !== 'session_meta' || meta.payload?.id !== threadId || typeof meta.payload.cwd !== 'string') return null;
+    const recordedCwd = meta.payload.cwd.startsWith('file:') ? fileURLToPath(meta.payload.cwd) : meta.payload.cwd;
+    if (!path.isAbsolute(recordedCwd) || !sameRolloutPath(recordedCwd, cwd)) return null;
 
     const start = Math.max(0, opened.size - TAIL_BYTES);
     const tail = start === 0 && header.length === opened.size ? header : await readBytes(handle, opened.size - start, start);
     if (!tail) return null;
     const after = await handle.stat();
     if (after.size < opened.size || (after.size === opened.size && after.mtimeMs !== opened.mtimeMs)) return null;
-    if (!sameFile(opened, await fs.lstat(file)) || !sameFilesystemPath(real, await fs.realpath(file))) return null;
+    if (!sameFile(opened, await fs.lstat(file)) || !sameRolloutPath(real, await fs.realpath(file))) return null;
     return lastContext(tail, start);
   } catch {
     return null;
@@ -109,4 +134,4 @@ async function readCodexRolloutContext({ threadId, rolloutPath, cwd, codexHome =
   }
 }
 
-module.exports = { readCodexRolloutContext };
+module.exports = { readCodexRolloutContext, relativeRolloutPath };
