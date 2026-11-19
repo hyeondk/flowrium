@@ -201,7 +201,7 @@ async function publishStage(store,projectId,stage,record,index,check) {
   await check();
   return record;
 }
-async function storeRequestSource(store,projectId,content,{guard,defer=false}={}) {
+async function storeRequestSource(store,projectId,content,{guard,defer=false,onStagedBytes}={}) {
   const project=store.project(projectId),originalPath=project.path;
   const check=async()=>{
     await guard?.();
@@ -216,7 +216,10 @@ async function storeRequestSource(store,projectId,content,{guard,defer=false}={}
     const filename=path.join(stage,'request.txt'), handle=await fs.open(filename,'wx',0o600);
     let index;
     try{
-      index=await indexBytes(chunksOf(content),bytes=>handle.writeFile(bytes),check);
+      index=await indexBytes(chunksOf(content),async bytes=>{
+        await handle.writeFile(bytes);
+        onStagedBytes?.(bytes.length);
+      },check);
       await handle.sync();
     }finally{await handle.close();}
     const identity=version(await fs.lstat(filename,{bigint:true}));

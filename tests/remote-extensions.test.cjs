@@ -52,6 +52,35 @@ test('휴대폰의 큰 입력은 인증 후 같은 프로젝트의 원문 하나
   await assert.rejects(fs.stat(path.join(projectFolder,'.flowrium','attachments',staged.id)),{code:'ENOENT'});
 });
 
+test('휴대폰 전송 조각은 권한 확인과 임시 파일 쓰기까지 끝난 뒤에만 접수한다',async t=>{
+  const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
+  const {createHash}=require('node:crypto'),{Store}=require('../electron/store.cjs');
+  const {MobileRequestUploads}=require('../electron/mobile-request-uploads.cjs');
+  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-mobile-part-'));
+  const uploads=new MobileRequestUploads();
+  const release=Promise.withResolvers();
+  t.after(async()=>{release.resolve();await uploads.clear();await fs.rm(dir,{recursive:true,force:true});});
+  const store=new Store(path.join(dir,'profile'));await store.load();
+  const root=path.join(dir,'project');await fs.mkdir(root);
+  const project=await store.addProject(root);
+  const bytes=Buffer.from('승인한 전송 조각');
+  const checksum=createHash('sha256').update(bytes).digest('hex');
+  const entered=Promise.withResolvers();
+  let checks=0,settled=false;
+  uploads.begin('fixture',bytes.length,store,project.id,async()=>{
+    if(++checks===2){entered.resolve();await release.promise;}
+  });
+  const result=uploads.part('fixture',0,bytes,checksum).finally(()=>{settled=true;});
+  await entered.promise;
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(settled,false,'권한 확인을 기다리는 중에는 조각을 접수하지 않는다');
+  release.resolve();
+  assert.deepEqual(await result,{offset:bytes.length});
+  const staged=path.join(dir,'profile','mobile-request-staging-v1');
+  const [entry]=await fs.readdir(staged);
+  assert.deepEqual(await fs.readFile(path.join(staged,entry,'request.txt')),bytes);
+});
+
 test('휴대폰 100MiB 초과 단일 원문은 인증된 조각 재전송, 해시 검증, 계정 격리와 미완료 정리를 거친다',async t=>{
   const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
   const {createHash}=require('node:crypto'),{createReadStream}=require('node:fs'),{Store}=require('../electron/store.cjs');

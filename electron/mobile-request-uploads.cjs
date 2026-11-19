@@ -36,10 +36,14 @@ class MobileRequestUploads {
       }
       const stream=new PassThrough({highWaterMark:chunkBytes});
       stream.on('error',()=>{});
-      row={stream,size,offset:0,chain:Buffer.alloc(32),hash:createHash('sha256')};
+      row={stream,size,offset:0,stagedOffset:0,chain:Buffer.alloc(32),hash:createHash('sha256')};
       this.rows.set(key,row);
-      row.saved=Promise.resolve().then(()=>this.save(store,projectId,stream,{guard,defer:true})).catch(error=>{
-        row.error=error;stream.destroy(error);throw error;
+      const onStagedBytes=length=>{
+        row.stagedOffset+=length;
+        if(row.writing && row.stagedOffset>=row.writing.end)row.writing.resolve();
+      };
+      row.saved=Promise.resolve().then(()=>this.save(store,projectId,stream,{guard,defer:true,onStagedBytes})).catch(error=>{
+        row.error=error;row.writing?.reject(error);stream.destroy(error);throw error;
       });
       row.saved.catch(()=>{});
     }
@@ -60,13 +64,20 @@ class MobileRequestUploads {
     if(row.lastOffset===offset && row.lastChecksum===checksum)return {offset:row.offset};
     if(offset!==row.offset || row.record)throw invalid();
     row.busy=true;this.refresh(key,row);
+    // A PassThrough write only means the buffer was accepted. Wait for the
+    // guarded UTF-8 writer to receive and store this part before confirming it.
+    const writing=Promise.withResolvers();
+    row.writing={...writing,end:offset+bytes.length};
     try{
-      await new Promise((resolve,reject)=>row.stream.write(bytes,error=>error?reject(error):resolve()));
+      await Promise.all([
+        new Promise((resolve,reject)=>row.stream.write(bytes,error=>error?reject(error):resolve())),
+        writing.promise,
+      ]);
       if(row.error)throw row.error;
       row.chain=digest(Buffer.concat([row.chain,sum]));row.hash.update(bytes);
       row.lastOffset=offset;row.lastChecksum=checksum;row.offset+=bytes.length;
       return {offset:row.offset};
-    }finally{row.busy=false;}
+    }finally{row.writing=undefined;row.busy=false;}
   }
   async finish(key,expected) {
     const row=this.rows.get(key);
