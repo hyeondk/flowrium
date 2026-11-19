@@ -1,6 +1,7 @@
 const D = require('./codex-transfer-data.cjs');
 const { UUID } = require('./project-store.cjs');
 const {withLiveTurn,interleaveLocalMessages}=require('./mobile/live-turn.js');
+const {readCodexRolloutContext}=require('./codex-rollout-context.cjs');
 
 function bindNative(runtime, session, threadId, cwd) {
   if (!threadId || session.codexLink) return;
@@ -34,6 +35,24 @@ async function connection(runtime, session, context) {
 function guardSession(runtime, session, id, context) {
   runtime.guard(context.owner, context.revision, context.epoch);
   if (runtime.store.session(session.id) !== session || session.threadId !== id) throw Error('대화가 변경되었습니다. 다시 확인해 주세요.');
+}
+
+function contextUsage(runtime,session) {
+  const sample=runtime.contextSamples?.get(session);
+  if(!sample||sample.threadId!==session.threadId)return session.context;
+  try{runtime.guard(sample.owner,sample.revision,sample.epoch);}catch{return session.context;}
+  return !session.context||sample.usage.updatedAt>=session.context.updatedAt?sample.usage:session.context;
+}
+
+async function mirrorContextUsage(runtime,session,thread,cwd,context) {
+  const usage=await readCodexRolloutContext({threadId:thread.id,rolloutPath:thread.path,cwd,codexHome:runtime.options.codexHome});
+  guardSession(runtime,session,thread.id,context);
+  if(!usage||deferred(runtime,session))return;
+  const previous=contextUsage(runtime,session);
+  if(previous&&previous.updatedAt>=usage.updatedAt)return;
+  runtime.contextSamples??=new WeakMap();
+  runtime.contextSamples.set(session,{...context,threadId:thread.id,usage});
+  runtime.controller.emitEvent({type:'contextUsage',sessionId:session.id,contextUsage:usage});
 }
 
 const unfinished = status => status === 'inProgress' || status === 'in_progress';
@@ -216,6 +235,7 @@ async function syncSession(runtime, sessionId, force, background) {
   guardSession(runtime, session, id, context);
   const latest = await probe(runtime, session, context, cwd);
   guardSession(runtime, session, id, context);
+  await mirrorContextUsage(runtime,session,latest.thread,cwd,context);
   if (latest.active||latest.provisional) {
     await mirrorActiveTurn(runtime,session,latest,cwd,context);
     return {sync:latest.active?'active':'deferred'};
@@ -372,4 +392,4 @@ function rename(controller, session, name) {
   });
 }
 
-module.exports = { liveTurn, liveView, probe, bindNative, sync, openDesktop, mergeNative, listingTitles, rename, flushInitialTitle };
+module.exports = { liveTurn, liveView, contextUsage, probe, bindNative, sync, openDesktop, mergeNative, listingTitles, rename, flushInitialTitle };

@@ -156,6 +156,7 @@ export interface InputQuestion {
 }
 export type InputAnswers = Record<string, { answers: string[] }>;
 export interface FlowriumEvent {
+  contextUsage?: Session['context'];
   workProgress?: {messageId: string; step: WorkStep};
   questions?: InputQuestion[];
   isBlocking?: boolean;
@@ -165,7 +166,7 @@ export interface FlowriumEvent {
   restoredSessions?: Session[];
   turnId?: string;
   turnMessages?: Message[];
-  type: "externalTurn" | "sessionList" | "delta" | "status" | "error" | "done" | "approval" | "session" | "input" | "inputResolved";
+  type: "contextUsage" | "externalTurn" | "sessionList" | "delta" | "status" | "error" | "done" | "approval" | "session" | "input" | "inputResolved";
   sessionId?: string;
   text?: string;
   status?: string;

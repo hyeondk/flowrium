@@ -130,6 +130,7 @@ class CodexTransfer {
  }
  liveTurn(session){return require('./chat-sync.cjs').liveTurn(this,session);}
  liveView(session){return require('./chat-sync.cjs').liveView(this,session);}
+ contextUsage(session){return require('./chat-sync.cjs').contextUsage(this,session);}
  isBusy(){return this.busy||!!this.operation;}
  async shutdown(){this.closed=true;await require('./chat-sync-monitor.cjs').stop(this);while(this.busy||this.operation)await new Promise(resolve=>setTimeout(resolve,20));if(this.ownsClient)this.client.close();}
 }

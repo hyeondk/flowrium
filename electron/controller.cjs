@@ -91,6 +91,8 @@ class Controller extends EventEmitter {
     if(event.type==='session' && event.session){
       const source=this.store.peekSession?.(event.sessionId);
       const preview=source&&this.codexTransfer?.liveTurn?.(source);
+      const context=source&&this.codexTransfer?.contextUsage?.(source);
+      if(context&&context.updatedAt>=(event.session.context?.updatedAt||''))event={...event,session:{...event.session,context}};
       if(preview)event={...event,session:{...event.session,messages:require('./mobile/live-turn.js').withLiveTurn(event.session.messages,preview.turnId,preview.rows)}};
     }
     this.emit("event", event);

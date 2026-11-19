@@ -208,6 +208,25 @@ function externalActivity(state:'running'|'pending'):ExecutionActivity {
     : {unsettled:true,text:'',status:'Codex 앱의 작업 상태를 확인하고 있습니다.'};
 }
 
+const contextPercentFormat = new Intl.NumberFormat('ko-KR', {maximumFractionDigits:1});
+function ChatContextMeter({context}:{context:Session['context']}) {
+  const known = context && Number.isFinite(context.used) && context.used>=0 && Number.isFinite(context.max) && context.max>0;
+  const percent = known ? context.used/context.max*100 : undefined;
+  const fill = percent===undefined ? undefined : Math.min(100,percent);
+  const detail = known
+    ? `${context.used.toLocaleString('ko-KR')} / ${context.max.toLocaleString('ko-KR')} 토큰`
+    : '컨텍스트 사용량을 아직 확인하지 못했습니다.';
+  const usage = percent===undefined ? undefined : `${contextPercentFormat.format(percent)}% 사용`;
+  return <span className="chat-token-summary" tabIndex={0} data-available={Boolean(known)}
+    data-visual-tooltip={usage?`컨텍스트 길이\n${usage}\n${detail}`:detail} role={known?'meter':'img'}
+    aria-label={known?'컨텍스트 길이':detail} aria-valuemin={known?0:undefined} aria-valuemax={known?100:undefined}
+    aria-valuenow={fill} aria-valuetext={usage?`${usage} / ${detail}`:undefined}>
+    <span className="chat-token-track" aria-hidden="true">
+      {fill!==undefined&&<span className="chat-token-fill" style={{width:`${fill}%`}}/>}
+    </span>
+  </span>;
+}
+
 function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>}) {
   const [logoutOpen,setLogoutOpen] = useState(false);
   const update = useDesktopUpdate();
@@ -431,6 +450,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       if (!alive) return;
       if(restoringActivity&&event.sessionId&&['status','externalTurn','done'].includes(event.type))changedActivity.add(event.sessionId);
       if(["done","approval","input","inputResolved","error"].includes(event.type))window.dispatchEvent(new Event("flowrium-attention-refresh"));
+      if(event.type==='contextUsage'&&event.sessionId&&event.contextUsage){
+        const context=event.contextUsage;
+        setData(previous=>({...previous,sessions:previous.sessions.map(s=>
+          s.id===event.sessionId&&(!s.context||s.context.updatedAt<context.updatedAt)?{...s,context}:s
+        )}));
+      }
       if(event.type==='externalTurn'&&event.sessionId&&event.turnId&&event.turnMessages){
         setData(previous=>({...previous,sessions:previous.sessions.map(s=>s.id===event.sessionId?{
           ...s,messages:withLiveTurn(s.messages,event.turnId!,event.turnMessages!)
@@ -1169,9 +1194,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       <h2 title={session.title}>{session.title}</h2>
                     </div>
                     <div className="session-actions">
-                      {session.context && <span className="chat-token-summary" title={`문맥 ${session.context.percent}% / ${session.context.used.toLocaleString("ko-KR")} / ${session.context.max.toLocaleString("ko-KR")} 토큰`} aria-label={`사용 토큰 ${session.context.used.toLocaleString("ko-KR")} / 전체 ${session.context.max.toLocaleString("ko-KR")} / 문맥 ${session.context.percent}%`}>
-                        <span>{session.context.used.toLocaleString("ko-KR")} 토큰</span><small>{session.context.percent}%</small>
-                      </span>}
+                      <ChatContextMeter context={session.context}/>
                       {(session.codexLink || session.desktopThread || session.context || session.workflow || !!session.queuedMessages?.length) &&
                         <details className="session-details" key={`connection:${session.id}`}>
                           <summary aria-label="대화 연결 및 작업 도구" title="대화 연결 및 작업 도구"><Settings2 size={16}/></summary>

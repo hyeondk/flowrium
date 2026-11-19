@@ -448,6 +448,8 @@ async function launch() {
     }));
     for(const session of snapshot.sessions){
       const record=store.peekSession(session.id),preview=record&&codexTransfer?.liveTurn(record);
+      const context=record&&codexTransfer?.contextUsage(record);
+      if(context)session.context=context;
       if(preview){
         snapshot.externalActivity[session.id]=preview.running?'running':'pending';
         session.messages=require('./mobile/live-turn.js').withLiveTurn(session.messages,preview.turnId,preview.rows);

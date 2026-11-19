@@ -151,8 +151,11 @@
 .conversation-dock .session-heading .eyebrow svg{width:13px;height:13px;flex:none}
 .conversation-dock[data-chat-active=true] .session-heading h2{font-size:15px;line-height:19px;font-weight:700;letter-spacing:-.2px;white-space:normal;word-break:keep-all;margin:0}
 .conversation-dock .session-actions{flex:none;align-items:center;gap:4px}
-.chat-token-summary{display:grid;gap:3px;justify-items:end;min-width:0;max-width:130px;padding-inline-end:3px;color:var(--muted);font-size:11px;line-height:15px;white-space:nowrap;font-variant-numeric:tabular-nums}
-.chat-token-summary>small{font-size:10px;line-height:13px;color:var(--muted)}
+.chat-token-summary{display:grid;place-items:center;flex:none;inline-size:44px;block-size:28px;border-radius:7px;cursor:help}
+.chat-token-summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.chat-token-track{display:block;inline-size:36px;block-size:5px;overflow:hidden;border-radius:999px;background:var(--line);}
+.chat-token-fill{display:block;block-size:100%;border-radius:inherit;background:var(--accent)}
+.chat-token-summary[data-available=false] .chat-token-track{background:repeating-linear-gradient(to right,var(--line) 0 4px,transparent 4px 7px)}
 .session-details>summary {
   display:grid; place-items:center; width:30px; height:30px; color:var(--muted);
   cursor:pointer; list-style:none; border-radius:7px;

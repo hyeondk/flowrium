@@ -11,6 +11,7 @@ const { Controller } = require('../electron/controller.cjs');
 const { CodexTransfer } = require('../electron/codex-transfer.cjs');
 const D = require('../electron/codex-transfer-data.cjs');
 const monitor = require('../electron/chat-sync-monitor.cjs');
+const { readCodexRolloutContext } = require('../electron/codex-rollout-context.cjs');
 
 function onceEvent(emitter, event, matches) {
   const result=new Promise((resolve, reject) => {
@@ -59,7 +60,7 @@ async function main() {
         {type:'response.created',response:{id,status:'in_progress'}},
         {type:'response.output_item.added',output_index:0,item:{...item,content:[]}},
         {type:'response.output_item.done',output_index:0,item},
-        {type:'response.completed',response:{id,status:'completed',output:[item],usage:{input_tokens:5,output_tokens:5,total_tokens:10}}}
+        {type:'response.completed',response:{id,status:'completed',output:[item],usage:{input_tokens:5,output_tokens:5+requests,total_tokens:10+requests}}}
       ];
       res.writeHead(200,{'Content-Type':'text/event-stream'}).end(events.map(e=>'data: '+JSON.stringify(e)+'\n\n').join(''));
     });
@@ -78,7 +79,7 @@ async function main() {
     const project=await addTrustedFixtureProject(store, cwd),session=await store.createSession(project.id);
     await store.saveSettings({model:'gpt-5.5'});
     controller=new Controller(store,{client:primary,canRun:()=>true});
-    runtime=new CodexTransfer(store,controller,{readClient:reader,accountOwner:()=> 'synthetic',canRun:()=>true});
+    runtime=new CodexTransfer(store,controller,{readClient:reader,codexHome:profile,accountOwner:()=> 'synthetic',canRun:()=>true});
     await controller.connect();
     const operations = {};
     const register=(name,method)=>{operations[name]=method;};
@@ -99,6 +100,8 @@ async function main() {
     // There is no renderer and no selected chat. Only the main process monitor
     // can bring the source user's request and the subsequent answer into view.
     const done=onceEvent(desktop,'notification',e=>e.method==='turn/completed'&&e.params.threadId===id);
+    const usage=onceEvent(desktop,'notification',e=>e.method==='thread/tokenUsage/updated'&&e.params.threadId===id&&e.params.tokenUsage?.last?.outputTokens===7);
+    const contextEmission=onceEvent(controller,'event',e=>e.type==='contextUsage'&&e.sessionId===session.id&&e.contextUsage?.used===12);
     const remoteStarted=Promise.withResolvers(),remoteRelease=Promise.withResolvers();
     hold={started:remoteStarted,release:remoteRelease};
     const externalText='상대 앱에서 작성한 요청';
@@ -122,6 +125,14 @@ async function main() {
     await incomingReply;
     await monitor.scan(runtime);
     await monitor.stop(runtime);
+    const { tokenUsage }=(await usage).params;
+    const recordedThread=await D.readThread(reader,id,cwd);
+    const context=await readCodexRolloutContext({threadId:id,rolloutPath:recordedThread.path,cwd,codexHome:profile});
+    assert.equal(context?.used,tokenUsage.last.inputTokens+tokenUsage.last.outputTokens);
+    assert.equal(context?.max,tokenUsage.modelContextWindow);
+    assert.equal(context?.total,tokenUsage.total.totalTokens);
+    assert.deepEqual((await contextEmission).contextUsage,context);
+    assert.deepEqual(runtime.contextUsage(live),context);
     assert.deepEqual(live.messages.filter(m=>m.role!=='system').map(m=>m.text),['첫 번째 로컬 요청','동기화 응답 1',externalText,'동기화 응답 2']);
     await desktop.request('thread/unsubscribe',{threadId:id});
     console.log('화면과 선택 대화 없는 자동 동기화 / 상대 작업 중 입력 수신 / 같은 원본에서 최종 답변과 정확한 순서 및 중복 없음');
