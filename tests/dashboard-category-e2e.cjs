@@ -21,6 +21,7 @@ async function verifyCardReorder(page, cards) {
   const held=(id)=>card(id).and(page.locator('[data-project-drag="moving"]')).waitFor();
   const settle=()=>settledLayout(cards);
   await settle();
+  await card(last).hover();
   const origin=await center(last), target=await center(first);
   assert(origin.y>target.y,'시작과 대상은 서로 다른 행');
   await page.mouse.move(origin.x,origin.y);
@@ -93,6 +94,7 @@ async function main() {
     const page = await app.firstWindow();
     page.setDefaultTimeout(12000);
     await page.setViewportSize({width:1440,height:900});
+    await app.evaluate(({app,BrowserWindow})=>{app.focus({steal:true});BrowserWindow.getAllWindows()[0].focus();});
     const cards = page.locator('.pf-project-entries');
     const recent = page.locator('.pf-recent-cards');
     const summary = page.locator('.pf-dashboard-summary');
@@ -124,8 +126,12 @@ async function main() {
       context.font=style.font;
       return context.measureText(input.placeholder).width<=input.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight);
     }),'검색 안내 문구가 전체 표시되어야 합니다.');
-    const searchBorders = await search.evaluate(n=>[n,n.parentElement].map(el=>parseFloat(getComputedStyle(el).borderTopWidth)));
-    assert(searchBorders[0]===0 && searchBorders[1]>=.5 && searchBorders[1]<=1.1,JSON.stringify(searchBorders));
+    const searchBorders = await search.evaluate(input=>({
+      widths:[input,input.parentElement].map(node=>parseFloat(getComputedStyle(node).borderTopWidth)),
+      devicePixel:1/devicePixelRatio,
+    }));
+    const [innerBorder,outerBorder]=searchBorders.widths;
+    assert(innerBorder===0&&outerBorder>=.5&&outerBorder<=Math.max(1,searchBorders.devicePixel)+.05,JSON.stringify(searchBorders));
     await search.focus();
     assert.equal(await search.evaluate(n=>getComputedStyle(n).boxShadow),'none');
     assert.notEqual(await search.evaluate(n=>getComputedStyle(n.parentElement).boxShadow),'none');
