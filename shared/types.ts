@@ -161,6 +161,7 @@ export interface InputQuestion {
 }
 export type InputAnswers = Record<string, { answers: string[] }>;
 export interface FlowriumEvent {
+  streamingMessage?: Pick<Message,'id'|'createdAt'|'turnId'>;
   contextUsage?: Session['context'];
   workProgress?: {messageId: string; step: WorkStep};
   workCommentary?: Message;

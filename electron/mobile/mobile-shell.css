@@ -248,6 +248,9 @@ body:has(#content[data-view=chat]) .bar{display:none}
 #content .mobile-draft-pages button,#content .mobile-draft-pages input{min-height:40px;padding:4px 8px}
 #content .mobile-draft-pages input{width:6ch;text-align:center;font-variant-numeric:tabular-nums}
 .mobile-timeline{zoom:.9}
+.mobile-message-meta{display:flex;align-items:flex-end;gap:7px;margin-block-end:4px}
+.mobile-message-meta time{display:grid;font-size:.75rem;line-height:1.25;color:var(--soft);white-space:nowrap;font-variant-numeric:tabular-nums}
+.mobile-message-meta time span:first-child{font-size:.69rem}
 #content form :is(.mobile-followup,.mobile-followup-progress) {display:flex;align-items:center;gap:8px;text-align:left;background:var(--selected);color:var(--focus);width:100%;margin:5px 0;word-break:keep-all}
 #content form .mobile-followup-progress{font-size:.8rem;font-variant-numeric:tabular-nums}
 #content form .mobile-followup span{flex:1;min-width:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
@@ -260,7 +263,7 @@ body:has(#content[data-view=chat]) .bar{display:none}
 .mobile-work>button::after{content:"⌄";color:var(--focus);margin-inline-start:4px}
 .mobile-work>button[aria-expanded=true]::after{transform:rotate(180deg)}
 .mobile-work ol {list-style:none;padding:0 12px;margin:5px 0;border-left:2px solid var(--hero-line)}
-.mobile-work li {padding:5px 0;font-size:.88rem;white-space:pre-wrap;overflow-wrap:break-word}
+.mobile-work li {padding:5px 0;font-size:.88rem;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
 .mobile-work li span,.mobile-work time{color:var(--soft);font-size:.83rem;margin-inline-start:6px}
 :focus-visible {outline:2px solid var(--focus);outline-offset:2px}
 #content[data-view=chat] {display:flex;flex-direction:column;min-height:100dvh;padding-top:max(3px,env(safe-area-inset-top));padding-bottom:calc(max(58px,1.1rem + 40px) + var(--nav-floor) + 8px)}
@@ -330,6 +333,8 @@ html {background:var(--bg)}
 #content .chat-compose textarea {min-height:44px;height:2.8rem;resize:vertical;border:0;padding:8px}
 #content .chat-compose .main-action{grid-column:3;min-height:40px;padding:6px 9px;white-space:normal}
 #content .chat-compose .actions{justify-content:flex-end}
+#content .mobile-delivery-actions button[data-delivery=queue]{background:var(--surface);border:1px solid var(--line);color:var(--text)}
+#content .mobile-delivery-actions button[data-delivery=steer]{background:var(--row-tint);border:1px solid color-mix(in srgb,var(--focus) 30%,var(--line));color:var(--focus)}
 #content .chat-compose .continuation-actions{margin:2px 0}
 #content .mobile-citation{margin:.5rem 0 0}
 #content .mobile-citation button {display:block;max-width:100%;font:700 .88rem var(--font-ui);min-height:38px;color:var(--focus);background:var(--row-tint);white-space:normal;overflow-wrap:anywhere}

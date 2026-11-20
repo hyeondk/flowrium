@@ -1,4 +1,4 @@
-import {useEffect, useId, useMemo, useRef, useState, type ReactNode} from 'react';
+import {useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Ref} from 'react';
 import {Activity, ChevronDown, FileText, Globe, Pencil, Search, Terminal, UsersRound} from 'lucide-react';
 import type {Message, WorkStep} from '../shared/types';
 import {workDuration} from '../electron/mobile/work-time.js';
@@ -14,6 +14,7 @@ export function historyRows(messages:Message[], first:number):Row[] {
   const rows:Row[]=[];
   const groups=new Map<string,Progress>();
   const steps=new Map<string,Map<string,Record>>();
+  const commentaries=new Map<string,Set<string>>();
   const owners=new Map<string,string>();
   let request='start';
   function remember(message:Message) {
@@ -26,6 +27,13 @@ export function historyRows(messages:Message[], first:number):Row[] {
       group={key,records:[]};
       groups.set(key,group);
       rows.push({progress:group});
+    }
+    if (record?.message?.progressCommentary) {
+      let seen=commentaries.get(key);
+      if (!seen) {seen=new Set();commentaries.set(key,seen);}
+      const normalized=record.message.text.replace(/\r\n/g,'\n').trim();
+      if (seen.has(normalized)) return group;
+      seen.add(normalized);
     }
     if (record?.step) {
       let seen=steps.get(key);
@@ -116,42 +124,46 @@ function logLabel(text:string) {
   if(text.startsWith('도구 실행 기록'))return '도구 실행';
   return '작업 기록';
 }
-function WorkTimeline({records,compact=false}:{records:Record[];compact?:boolean}) {
+function WorkTimeline({records,live=false,listRef,onScroll}:{records:Record[];live?:boolean;listRef?:Ref<HTMLOListElement>;onScroll?:()=>void}) {
   const aliases=agentsFor(records);
   const previousStates=new Map<string,WorkStep['state']>();
-  const entries=records.map(record=>{
+  const entries:{record:Record;agentEvents?:NonNullable<WorkStep['agents']>;count:number}[]=[];
+  for (const record of records) {
     const agentEvents=record.step?.agents?.filter(agent=>{
       const previous=previousStates.get(agent.id);
       previousStates.set(agent.id,agent.state);
       return previous!==agent.state;
     });
-    return {record,agentEvents};
-  }).filter(({record,agentEvents})=>!record.step?.agents?.length || agentEvents?.length);
-  const visible=compact ? entries.slice(-4) : entries;
-  return <ol aria-label={compact?'실시간 작업 과정':'작업 과정'} className={compact?'composer-work-timeline':'turn-progress-list'}>
-    {visible.map(({record,agentEvents})=>{
+    if (record.step?.agents?.length && !agentEvents?.length) continue;
+    const last=entries.at(-1);
+    if (last && record.step?.kind==='search' && last.record.step?.kind==='search' && record.step.state===last.record.step.state && record.step.label===last.record.step.label) last.count++;
+    else entries.push({record,agentEvents,count:1});
+  }
+  return <ol aria-label={live?'실시간 작업 과정':'작업 과정'} className={live?'composer-work-timeline':'turn-progress-list'} ref={listRef} onScroll={onScroll} tabIndex={live?0:undefined}>
+    {entries.map(({record,agentEvents,count})=>{
       const {step,message}=record;
       const id=step ? 'step:'+step.id : message!.id;
       if (message?.progressCommentary) return <li key={id} className="work-timeline-commentary">
-        {compact ? <span>{message.text}</span> : <MessageContent role="assistant" text={message.text}/>}
+        <MessageContent role="assistant" text={message.text}/>
       </li>;
       const Icon=step?.kind ? icons[step.kind] : Activity;
       const label=step?.label || logLabel(message!.text);
-      const detail=!compact && message && message.text.trim()!==label && !/^(?:실행 도구 \/ 명령|파일 변경 기록|도구 실행 기록)(?:\n(?:진행 중|완료|확인 필요|거절|중단))?$/.test(message.text.trim());
+      const detail=!live && message && message.text.trim()!==label && !/^(?:실행 도구 \/ 명령|파일 변경 기록|도구 실행 기록)(?:\n(?:진행 중|완료|확인 필요|거절|중단))?$/.test(message.text.trim());
       return <li key={id} className="work-timeline-event" data-work-kind={step?.kind}>
         <div className="turn-progress-line"><Icon size={13} aria-hidden="true"/>
           {agentEvents?.length ? <div className="work-timeline-agents">{agentEvents.map(agent=><span key={agent.id} data-step-state={agent.state}>
             {aliases.get(agent.id)?.name}: {agentEvent[agent.state]}
           </span>)}</div> : <>
             <span>{label}</span>{step && <small data-step-state={step.state}>{labels[step.state]}</small>}
-            {!compact && step?.files?.length===1 && <span className="work-timeline-file" title={step.files[0].path}>{step.files[0].path.split(/[/\\]/).at(-1)}</span>}
-            {!compact && Boolean(step?.files?.length && step.files.length>1) && <small>파일 {step!.files!.length}개</small>}
+            {count>1 && <small aria-label={`${count}건`}>×{count}</small>}
+            {!live && step?.files?.length===1 && <span className="work-timeline-file" title={step.files[0].path}>{step.files[0].path.split(/[/\\]/).at(-1)}</span>}
+            {!live && Boolean(step?.files?.length && step.files.length>1) && <small>파일 {step!.files!.length}개</small>}
           </>}
         </div>
         {detail && <WorkOriginal text={message.text}/>}
       </li>;
     })}
-    {!visible.length && <li>{compact?'진행 내용이 확인되면 표시됩니다.':'기록된 세부 단계가 없습니다.'}</li>}
+    {!entries.length && <li>{live?'진행 내용이 확인되면 표시됩니다.':'기록된 세부 단계가 없습니다.'}</li>}
   </ol>;
 }
 
@@ -183,13 +195,22 @@ export function TurnProgress({progress,active,checking}:{progress:Progress;activ
 
 export function LiveWorkTimeline({progress}:{progress?:Progress}) {
   const records=useMemo(()=>orderedRecords(progress?.records||[]),[progress]);
+  const list=useRef<HTMLOListElement>(null);
+  const followLatest=useRef(true);
+  useLayoutEffect(()=>{
+    const el=list.current;
+    if (el && followLatest.current) el.scrollTop=el.scrollHeight;
+  },[records]);
   return <section className="composer-live-work" aria-label="실시간 작업 상태">
     <div className="composer-live-work-heading"><span className="status-dot online" aria-hidden="true"/>실시간 작업 과정</div>
-    <WorkTimeline records={records} compact/>
+    <WorkTimeline records={records} live listRef={list} onScroll={()=>{
+      const el=list.current;
+      if (el) followLatest.current=el.scrollHeight-el.clientHeight-el.scrollTop<=8;
+    }}/>
   </section>;
 }
 
-export function AnswerProgress({active,progress,finished,children}:{active:boolean;progress?:Progress;finished:boolean;children?:ReactNode}) {
+export function AnswerProgress({active,progress,finished}:{active:boolean;progress?:Progress;finished:boolean}) {
   const [percent,setPercent]=useState(0);
   const [showDone,setShowDone]=useState(false);
   const wasActive=useRef(false);
@@ -232,7 +253,6 @@ export function AnswerProgress({active,progress,finished,children}:{active:boole
         <span>{active?'답변 작성 중입니다.':'답변 작성 완료'} ({shown.toFixed(1)}%)</span>
         {active && <small title="작업 시간을 바탕으로 예상한 값입니다.">예상</small>}
       </div>
-      {active&&children}
     </div>
   </div></article>;
 }

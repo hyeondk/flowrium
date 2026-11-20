@@ -40,9 +40,11 @@ async function run() {
     });
     if(!baseline){
       assert(metrics.headingToCopy<=20&&metrics.copyToDetails<=30,JSON.stringify(metrics));
-      const back=page.getByRole('button',{name:'프로젝트 홈으로 돌아가기',exact:true});
+      const back=page.getByRole('button',{name:'대시보드로 돌아가기',exact:true});
       await back.click();
+      await page.locator('.main-shell[data-view=dashboard]').waitFor();
       assert.equal(await back.count(),0);
+      await page.locator('.pf-project-entry').filter({hasText:'자료 검토'}).click();
       await page.getByRole('button',{name:'프로젝트 메뉴',exact:true}).click();
       const nav=page.getByRole('navigation',{name:'프로젝트 상세 탭'});
       await nav.getByRole('button',{name:'문서',exact:true}).click();

@@ -10,20 +10,12 @@ const approvalTurns = new Map();
 const inputTurns = new Map();
 const write = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 const notify = (method, params) => write({ method, params });
-function complete(threadId, turnId, message, policy) {
+function complete(threadId, turnId, message, policy, streamed=false) {
   if (!turns.has(turnId)) return;
-  notify("item/agentMessage/delta", {
-    threadId,
-    turnId,
-    itemId: `${turnId}-item`,
-    delta: "확인한 ",
-  });
-  notify("item/agentMessage/delta", {
-    threadId,
-    turnId,
-    itemId: `${turnId}-item`,
-    delta: "결과입니다.",
-  });
+  if (!streamed) {
+    notify("item/agentMessage/delta", {threadId,turnId,itemId:`${turnId}-item`,delta:"확인한 "});
+    notify("item/agentMessage/delta", {threadId,turnId,itemId:`${turnId}-item`,delta:"결과입니다."});
+  }
   notify("item/completed", {
     threadId,
     turnId,
@@ -173,14 +165,29 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       return;
     }
     if (process.env.FLOWRIUM_TEST_STEP_GATE && prompt.includes('작업 단계 스트림 시험')) {
+      const gate=process.env.FLOWRIUM_TEST_STEP_GATE, exists=require('node:fs').existsSync;
       const item={id:turnId+'-tool',type:'commandExecution',status:'inProgress'};
       const child=turnId+'-child';
       const collaboration={type:'collabAgentToolCall',receiverThreadIds:[child],tool:'spawnAgent'};
+      const progress='실시간 설명 맨 앞입니다.\n\n'+'긴 작업 설명 한글 문장을 전부 보여줘야 합니다. '.repeat(300)+'\n\n실시간 설명 맨 끝입니다.';
+      for(const suffix of ['live','imported'])notify('item/completed',{threadId,turnId,item:{
+        id:turnId+'-commentary-'+suffix,type:'agentMessage',phase:'commentary',text:progress,
+      }});
       notify('thread/started',{thread:{id:child,parentThreadId:threadId,agentNickname:'준비 작업'}});
       notify('item/completed',{threadId,turnId,item:{...collaboration,id:turnId+'-spawn',status:'completed',agentsStates:{[child]:{status:'running',message:'표시하지 않을 에이전트 전문'}}}});
       notify('item/started',{threadId,turnId,item});
+      const fullAnswer='답변 타이핑 첫 문장. '+'단계를 확인한 내용을 기록합니다. '.repeat(12)+'답변 타이핑 끝 문장.';
+      let addedSearches=false,answerStreamed=false;
       const timer=setInterval(()=>{
-        if(!require('node:fs').existsSync(process.env.FLOWRIUM_TEST_STEP_GATE))return;
+        if(!addedSearches && exists(gate+'.search')){
+          addedSearches=true;
+          for(let index=0;index<6;index++)notify('item/completed',{threadId,turnId,item:{id:turnId+'-search-'+index,type:'webSearch',action:{type:'search'}}});
+        }
+        if(!answerStreamed && exists(gate+'.stream')){
+          answerStreamed=true;
+          notify('item/agentMessage/delta',{threadId,turnId,itemId:turnId+'-item',delta:fullAnswer});
+        }
+        if(!exists(gate))return;
         clearInterval(timer);
         notify('item/completed',{threadId,turnId,item:{...item,status:'completed',exitCode:0}});
         notify('item/completed',{threadId,turnId,item:{...collaboration,id:turnId+'-wait',tool:'wait',status:'completed',agentsStates:{[child]:{status:'completed'}}}});
@@ -188,7 +195,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
           path:'docs/작업 기록.md',diff:'--- 작업 기록\n+++ 작업 기록\n@@ -1 +1,2 @@\n-기존\n+수정\n+추가',
         }]}});
         notify('item/completed',{threadId,turnId,item:{id:turnId+'-web',type:'webSearch',action:{type:'openPage',url:'https://example.test/work'}}});
-        complete(threadId,turnId,'작업 단계를 확인했습니다.');
+        complete(threadId,turnId,fullAnswer,undefined,answerStreamed);
       },40);
       return;
     }

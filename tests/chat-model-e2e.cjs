@@ -36,6 +36,29 @@ async function main() {
     await waitForChoice(value);
     assert.equal(await page.getByRole('dialog', {name:'설정', exact:true}).count(), 0);
   }
+  async function verifyInstantModelChange(id) {
+    await app.evaluate(({ipcMain}, id)=>{
+      const channel='flowrium:editConversation', save=ipcMain._invokeHandlers.get(channel);
+      let release;
+      const waiting=new Promise(resolve=>{release=resolve;});
+      globalThis.releaseTestModelSave=()=>{release();};
+      ipcMain.removeHandler(channel);
+      ipcMain.handle(channel,async(event,session,input)=>{
+        if(session===id&&input.action==='model'&&input.model==='gpt-6.1-terra')await waiting;
+        return save(event,session,input);
+      });
+    },id);
+    try {
+      await choose('gpt-6.1-terra');
+      assert.equal((await snapshot()).sessions.find(item=>item.id===id).preferences.model,undefined,'저장 응답 전에 화면 선택 반영');
+      await choose('gpt-6.1-sol');
+    } finally {
+      await app.evaluate(()=>globalThis.releaseTestModelSave());
+    }
+    await page.waitForFunction(async id=>(await window.flowrium.bootstrap()).sessions.find(item=>item.id===id)?.preferences?.model==='gpt-6.1-sol',id);
+    await choose('');
+    await page.waitForFunction(async id=>!(await window.flowrium.bootstrap()).sessions.find(item=>item.id===id)?.preferences?.model,id);
+  }
   async function verifyTurn(id, model, effort) {
     const before = (await snapshot()).sessions.find(s => s.id === id).messages.length;
     await composer(page).fill('전송 모델 확인 ' + id);
@@ -56,6 +79,8 @@ async function main() {
     await settings.getByRole('button',{name:'설정 닫기',exact:true}).click();
     await settings.waitFor({state:'detached'});
     const open=button('Reasoning and speed');
+    assert.equal(await open.getAttribute('data-speed'),'fast');
+    assert.equal(await open.locator('svg + span').count(),1);
     await open.click();
     const controls=page.getByRole('group',{name:'Model controls',exact:true});
     await controls.waitFor();
@@ -83,7 +108,11 @@ async function main() {
     await controls.getByRole('button',{name:'Speed',exact:true}).click();
     const speed=controls.getByRole('group',{name:'Execution speed',exact:true});
     assert.equal(await speed.getByRole('button',{name:'Fast',exact:true}).getAttribute('aria-pressed'),'true');
+    await speed.getByRole('button',{name:'Standard',exact:true}).click();
+    assert.equal(await open.locator('svg').count(),0);
     await speed.getByRole('button',{name:'Ultrafast',exact:true}).click();
+    assert.equal(await open.getAttribute('data-speed'),'ultrafast');
+    assert.equal(await open.locator('svg + span').count(),1);
     await page.waitForFunction(async id=>(await window.flowrium.bootstrap()).sessions.find(item=>item.id===id)?.preferences?.speed==='ultrafast',id);
     const state=await snapshot();
     assert.equal(state.settings.speed,'fast');
@@ -99,7 +128,23 @@ async function main() {
     await speed.getByRole('button',{name:'Ultrafast',exact:true,pressed:true}).waitFor();
     const reset=controls.getByRole('button',{name:'기본값으로 복구',exact:true});
     await reset.hover();
-    await controls.getByRole('tooltip',{name:'속도와 추론 수준을 계정 기본값으로 복구합니다'}).waitFor();
+    const tooltip=controls.getByRole('tooltip',{name:'속도와 추론 수준을 계정 기본값으로 복구합니다'});
+    await tooltip.waitFor();
+    for(const theme of ['light','dark']){
+      const metrics=await tooltip.evaluate((element,theme)=>{
+        const root=document.documentElement;
+        const original=root.dataset.theme;
+        root.dataset.theme=theme;
+        const color=getComputedStyle(element).color,background=getComputedStyle(element).backgroundColor;
+        const sample=value=>value.match(/[.\d]+/g).slice(0,3).map(Number).map(c=>c/255).map(c=>c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4).reduce((sum,c,i)=>sum+c*[0.2126,0.7152,0.0722][i],0);
+        const contrast=(Math.max(sample(color),sample(background))+0.05)/(Math.min(sample(color),sample(background))+0.05);
+        const rectangle=element.getBoundingClientRect();
+        const popup=element.closest(':popover-open');
+        root.dataset.theme=original;
+        return {contrast,insideViewport:rectangle.left>=0&&rectangle.right<=innerWidth&&rectangle.top>=0&&rectangle.bottom<=innerHeight,popup:!!popup};
+      },theme);
+      assert.ok(metrics.contrast>=4.5&&metrics.insideViewport&&metrics.popup,theme+' 도움말 대비·경계 '+JSON.stringify(metrics));
+    }
     await reset.click();
     await page.waitForFunction(async id=>{
       const settings=(await window.flowrium.bootstrap()).sessions.find(item=>item.id===id)?.preferences;
@@ -123,6 +168,7 @@ async function main() {
     await openConversation(page, a.title);
     await waitForChoice('');
     assert.match(await page.locator('.chat-model-picker').getAttribute('title'), /기본 설정 따르기.*GPT-6.1 Sol/);
+    await verifyInstantModelChange(a.id);
     await verifyPerformanceSettings(a.id);
     await fs.writeFile(env.FLOWRIUM_TEST_CATALOG_FILE,'합성 모델 출시');
     await picker().focus();

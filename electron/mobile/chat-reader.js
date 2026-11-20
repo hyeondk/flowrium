@@ -42,7 +42,7 @@ export function messageBody(text) {
   body.append(label,list);return body;
 }
 export function groupMobileHistory(messages,session,running) {
-  const rows=[],groups=new Map(),owners=new Map(),timing=new Map();
+  const rows=[],groups=new Map(),owners=new Map(),timing=new Map(),commentaries=new Map();
   let owner='start';
   for(const m of messages)if(m.role==='user'){
     if(m.turnId && !owners.has(m.turnId))owners.set(m.turnId,m.id);
@@ -54,17 +54,24 @@ export function groupMobileHistory(messages,session,running) {
     if(!step.label)return;
     let group=groups.get(id);
     if(!group){group={id:session.id+'|'+id,steps:[],...timing.get(id)};groups.set(id,group);rows.push({group});}
+    if(step.commentary) {
+      const seen=commentaries.get(id)||new Set(), normalized=step.label.replace(/\r\n/g,'\n').trim();
+      if(seen.has(normalized))return;
+      seen.add(normalized);commentaries.set(id,seen);
+    }
     if(step.id){
       const previous=group.steps.find(item=>item.id===step.id);
       if(previous){Object.assign(previous,step);return;}
     }
-    group.steps.push(step);
+    group.steps.push({...step});
   }
   for(const message of messages) {
     if(message.role==='user')owner=owners.get(message.turnId)||message.id;
     const key=owners.get(message.turnId)||message.turnId||owner;
     if(message.role==='system' || message.progressCommentary){
-      add(key,{id:message.id,label:message.text,createdAt:message.createdAt});
+      if(message.workSteps?.length && !message.progressCommentary) {
+        for(const step of message.workSteps)add(key,step);
+      } else add(key,{id:message.id,label:message.text,createdAt:message.createdAt,commentary:message.progressCommentary});
     }else{
       if(message.role==='user')rows.push({message});
       for(const step of message.workSteps||[])add(key,step);
@@ -86,9 +93,17 @@ export function progressButton(group) {
   button.textContent=workDuration(group.start,group.end)||(group.running?'작업 진행 중':'작업 내역 보기');
   button.setAttribute('aria-label',button.textContent);
   list.id='work-'+group.id;list.setAttribute('aria-label','작업 과정');button.setAttribute('aria-controls',list.id);
+  const entries=[];
   for(const step of group.steps){
-    const item=element('li');item.append(element('strong',step.label));
+    const previous=entries.at(-1);
+    if(previous&&step.kind==='search'&&previous.step.kind==='search'&&step.state===previous.step.state&&step.label===previous.step.label)previous.count++;
+    else entries.push({step,count:1});
+  }
+  for(const {step,count} of entries){
+    const item=element('li');
+    item.append(step.commentary?markdownBody(step.label):element('strong',step.label));
     if(stepStates[step.state])item.append(element('span',stepStates[step.state]));
+    if(count>1)item.append(element('span','×'+count));
     if(Number.isFinite(Date.parse(step.createdAt))){
       const time=element('time',new Date(step.createdAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}));
       time.dateTime=step.createdAt;item.append(time);

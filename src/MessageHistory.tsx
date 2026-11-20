@@ -1,11 +1,12 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,type MutableRefObject,type ReactNode,type RefObject} from 'react';
-import {ArrowDown,History} from 'lucide-react';
+import {ArrowDown} from 'lucide-react';
 import type {Message} from '../shared/types';
 import {attachmentDisplayText} from '../electron/mobile/attachment-text.js';
 import {historyRows,TurnProgress} from './TurnProgress';
 import './message-history.css';
 const PAGE=100;
-type Anchor={id?:string;y:number;top:number;height:number};
+const PRELOAD_DISTANCE=80;
+type Anchor={id?:string;y:number;top:number;height:number;first:number};
 type Props={messages:Message[];running:boolean;checking?:boolean;scrollRef:RefObject<HTMLDivElement|null>;stickToBottom:MutableRefObject<boolean>;renderMessage(message:Message,hasLaterRequest:boolean,failedRequest?:Message):ReactNode};
 /** 표시 범위만 줄이며 원래 Session과 모델의 실행 문맥은 변경하지 않습니다. */
 export default function MessageHistory({messages,running,checking,scrollRef,stickToBottom,renderMessage}:Props){
@@ -38,9 +39,11 @@ export default function MessageHistory({messages,running,checking,scrollRef,stic
  const latest=()=>{const el=scrollRef.current;if(el)el.scrollTop=el.scrollHeight;};
  useLayoutEffect(()=>{
   const el=scrollRef.current;if(!el)return;
-  const anchor=pending.current;pending.current=undefined;
+  const anchor=pending.current;
+  if(anchor&&anchor!=='bottom'&&anchor.first===first)return;
+  pending.current=undefined;
   if(anchor&&anchor!=='bottom'){
-   const node=anchor.id?[...el.querySelectorAll<HTMLElement>('[data-message-id]')].find(row=>row.dataset.messageId===anchor.id):undefined;
+   const node=anchor.id?el.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(anchor.id)}"]`):undefined;
    el.scrollTop=node?el.scrollTop+node.getBoundingClientRect().top-anchor.y:anchor.top+el.scrollHeight-anchor.height;
   }else if(anchor==='bottom'||stickToBottom.current)latest();
  },[first,messages]);
@@ -52,13 +55,37 @@ export default function MessageHistory({messages,running,checking,scrollRef,stic
   resize.observe(el);if(content.current)resize.observe(content.current);
   return()=>resize.disconnect();
  },[scrollRef,stickToBottom]);
- function previous(){
-  const el=scrollRef.current;if(!el||!first)return;
-  const edge=Math.max(el.getBoundingClientRect().top,controls.current?.getBoundingClientRect().bottom||0);
-  const node=[...el.querySelectorAll<HTMLElement>('[data-message-id]')].find(row=>row.getBoundingClientRect().bottom>edge+1);
-  pending.current={id:node?.dataset.messageId,y:node?.getBoundingClientRect().top||0,top:el.scrollTop,height:el.scrollHeight};
-  stickToBottom.current=false;setStart(Math.max(0,first-PAGE));
- }
+ useEffect(()=>{
+  const el=scrollRef.current;
+  if(!el||!first)return;
+  let previousTop=el.scrollTop;
+  const loadPrevious=()=>{
+   if(pending.current==='bottom')return;
+   const edge=Math.max(el.getBoundingClientRect().top,controls.current?.getBoundingClientRect().bottom||0);
+   const node=Array.from(el.querySelectorAll<HTMLElement>('[data-message-id]'))
+    .find(row=>row.getBoundingClientRect().bottom>edge+1);
+   const loading=Boolean(pending.current);
+   pending.current={id:node?.dataset.messageId,y:node?.getBoundingClientRect().top||0,top:el.scrollTop,height:el.scrollHeight,first};
+   stickToBottom.current=false;
+   if(!loading)setStart(Math.max(0,first-PAGE));
+  };
+  const onScroll=()=>{
+   const top=el.scrollTop;
+   if(top<previousTop&&top<=PRELOAD_DISTANCE)loadPrevious();
+   previousTop=top;
+  };
+  const onWheel=(event:WheelEvent)=>{
+   // 연속된 도구 기록이 한 행에 묶이면 페이지를 추가해도 스크롤 높이가 늘지 않을 수 있다.
+   if(event.deltaY<0&&el.scrollTop<=1&&!pending.current)loadPrevious();
+  };
+  el.addEventListener('scroll',onScroll,{passive:true});
+  el.addEventListener('wheel',onWheel,{passive:true});
+  if(el.scrollHeight<=el.clientHeight+1)loadPrevious();
+  return()=>{
+   el.removeEventListener('scroll',onScroll);
+   el.removeEventListener('wheel',onWheel);
+  };
+ },[first,scrollRef,stickToBottom]);
  function recent(){
   stickToBottom.current=true;pending.current='bottom';const next=Math.max(0,messages.length-PAGE);
   if(next===start){pending.current=undefined;latest();}else setStart(next);
@@ -66,7 +93,7 @@ export default function MessageHistory({messages,running,checking,scrollRef,stic
  return <>
   {messages.length>PAGE&&<div className="message-history-controls" ref={controls} role="region" aria-label="대화 표시 범위">
    <p role="status">대화 {messages.length.toLocaleString('ko-KR')}개 (이전 {first.toLocaleString('ko-KR')}개)</p>
-   <div>{first>0&&<button type="button" className="button subtle" onClick={previous}><History size={14}/>이전 메시지 {Math.min(PAGE,first)}개 더 보기</button>}<button type="button" className="button subtle" onClick={recent}><ArrowDown size={14}/>최근 메시지로</button></div>
+   <div><button type="button" className="button subtle" onClick={recent}><ArrowDown size={14}/>최근 메시지로</button></div>
   </div>}
   <div className="message-history-items" ref={content} onClickCapture={event=>{
    const target=event.target instanceof Element?event.target:undefined;

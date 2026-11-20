@@ -31,6 +31,14 @@ async function main(){
   let current=(await snapshot()).sessions.find(s=>s.id===session.id);assert.equal(current.messages[0].attachments.length,2);assert.equal(current.messages[0].text,'첨부한 자료를 확인해 주세요.');
   await until(async()=>await button('작업 보내기').isVisible());
   await input().fill('대기검증');await input().press('Enter');await button('작업 중지').waitFor();
+  const deliveryStyles=await page.locator('.chat-run-controls>.chat-delivery').evaluateAll(buttons=>buttons.map(button=>{
+    const style=getComputedStyle(button);
+    return {width:style.borderTopWidth,background:style.backgroundColor,y:button.getBoundingClientRect().top};
+  }));
+  assert.equal(deliveryStyles.length,2);
+  assert(deliveryStyles.every(button=>parseFloat(button.width)>0));
+  assert.notEqual(deliveryStyles[0].background,deliveryStyles[1].background);
+  assert(Math.abs(deliveryStyles[0].y-deliveryStyles[1].y)<.5);
   await input().fill('후속 지시');await button('추가 지시 대기열에 넣기').click();await page.locator('.chat-queue-panel').getByText('후속 지시',{exact:true}).waitFor();
   await button('대화 관리').click();
   assert(await page.getByLabel('대화 이름',{exact:true}).isEnabled());

@@ -159,9 +159,11 @@ async function verifyProjectNavigation(page){
     assert.equal(await navigation.getByRole('button',{name:label,exact:true}).count(),1,label+' 진입 보존');
   }
   await navigation.getByRole('button',{name:'프로젝트 설정',exact:true}).click();
-  const back=page.getByRole('button',{name:'프로젝트 홈으로 돌아가기',exact:true});
+  const back=page.getByRole('button',{name:'대시보드로 돌아가기',exact:true});
   await back.waitFor();
   await back.click();
+  await page.locator('.main-shell[data-view=dashboard]').waitFor();
+  await page.locator('.pf-project-entry').filter({hasText:'도시 산책 안내서'}).click();
   await page.locator('.overview-goal progress').waitFor();
   return {searchOpenedAndClosed:true,detailEntries:labels.length,projectSettingsOpened:true,projectHomeRestored:true};
 }

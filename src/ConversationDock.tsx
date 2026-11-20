@@ -34,8 +34,15 @@ export default function ConversationDock(props:Props){
  useEffect(()=>{if(props.revealQuestion)setMinimized(false)},[props.revealQuestion]);
  useEffect(()=>{if(scope==='assistant'&&!chatActive&&!props.dotsEligible)setScope('home')},[scope,chatActive,props.dotsEligible]);
  useEffect(()=>{if(props.projectNavigation){setSelectedProject(props.projectNavigation.id);setScope('project');setQuery('')}},[props.projectNavigation]);
- useEffect(()=>{if(!chatActive&&props.projectId)setSelectedProject(props.projectId)},[props.projectId,chatActive]);
- useEffect(()=>{if(chatActive&&selected){setScope(selected.generalAssistant?'assistant':selected.scope||'project');if(!selected.scope)setSelectedProject(selected.projectId)}},[chatActive,sessionId,selected?.scope,selected?.generalAssistant]);
+ useEffect(()=>{if(props.projectId)setSelectedProject(current=>current||props.projectId||'')},[props.projectId]);
+ const selectedChatId=selected?.id;
+ const selectedScope=selected?.generalAssistant?'assistant':selected?.scope||'project';
+ const selectedChatProject=selected&&!selected.scope?selected.projectId:undefined;
+ useEffect(()=>{
+   if(!chatActive||!selectedChatId)return;
+   setScope(selectedScope);
+   if(selectedChatProject)setSelectedProject(selectedChatProject);
+ },[chatActive,selectedChatId,selectedScope,selectedChatProject]);
  useEffect(()=>{if(props.filter!=='all')setScope('all')},[props.filter]);
  useEffect(()=>{if(!props.open)return;const key=(e:KeyboardEvent)=>{if(isImeKey(e))return;if(e.key==='Escape'&&!modeMenu&&!document.querySelector('dialog[open],[role=dialog],.modal-backdrop')){props.onClose();}};document.addEventListener('keydown',key);return()=>document.removeEventListener('keydown',key)},[props.open,props.onClose,modeMenu]);
  useEffect(()=>{try{localStorage.setItem(layoutKey,JSON.stringify({layout,minimized}));setStorageError('')}catch{setStorageError('이 기기에서 보기 설정을 보관하지 못했습니다.')}},[layout,minimized]);
@@ -46,6 +53,14 @@ export default function ConversationDock(props:Props){
  const latest=[...sessions].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
  const visible=latest.filter(s=>(scope==='all'||scope==='home'||(scope==='project'?!s.scope&&(!selectedProject||s.projectId===selectedProject):s.scope===scope))&&(!query||s.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()))&&(props.filter==='all'||sessionExecution(s,activities[s.id],requests,proposals)===props.filter));
  function group(value:Scope){setScope(value);setQuery('');props.onLeaveChat();props.onFilter('all')}
+ function goBack(){
+   if(chatActive&&selected){
+     if(selectedChatProject)setSelectedProject(selectedChatProject);
+     group(selectedScope==='assistant'&&!props.dotsEligible?'general':selectedScope);
+   }else if(chatActive){
+     props.onLeaveChat();
+   }else group('home');
+ }
  const count=(value:'integrated'|'general')=>sessions.filter(s=>s.scope===value).length;
  return <MotionPresence open={props.open} durationMs={280}>{phase=><>
   <button className="dock-mobile-scrim" aria-label="대화함 닫기" data-phase={phase} onClick={props.onClose}/>
@@ -60,7 +75,7 @@ export default function ConversationDock(props:Props){
       type="button" className="dock-back"
       aria-label={chatActive ? '대화 목록으로' : '대화 홈으로'}
       title={chatActive ? '대화 목록으로' : '대화 홈으로'}
-      onClick={() => chatActive ? props.onLeaveChat() : group('home')}>
+      onClick={goBack}>
       <ArrowLeft size={14} aria-hidden="true"/>Back
     </button>}
    <div className="dock-status-tabs" aria-label="대화 진행 상태">{(['running','waiting','decision'] as const).map(state=><button key={state} data-state={state} title={executionLabels[state]+' '+props.counts[state]} aria-label={executionLabels[state]+' 상태 '+props.counts[state]+'개'} aria-pressed={props.filter===state} onClick={()=>{props.onLeaveChat();props.onFilter(props.filter===state?'all':state)}}><i/><span>{executionLabels[state]}</span><strong>{props.counts[state]}</strong></button>)}</div>

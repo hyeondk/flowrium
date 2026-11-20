@@ -83,6 +83,7 @@ async function verifyComposerResize(page, historyTitle, recommendationTitle) {
 
 async function run(){
  const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-chat-layout-'))),baseline=process.argv.includes('--baseline');let app,page;
+ const report=process.env.FLOWRIUM_TEST_REPORT_DIR||path.join(root,'.flowrium-tmp/qa-261115_03');
  const measurements=[],errors=[];let resizeMetrics;
  try{
   const profile=path.join(temp,'profile'),folder=path.join(temp,'synthetic-project');await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount});
@@ -108,13 +109,14 @@ async function run(){
   resizeMetrics=await verifyComposerResize(page,session.title,recommendation.title);
   const originalWidth=(await measure()).dock.width;await page.getByRole('button',{name:'대화 패널 넓히기',exact:true}).click();await settledLayout(page.locator('.conversation-dock'));let m=await measure();assert.equal(m.focus,'false');assert(m.dock.width>originalWidth,'명시적인 우측 패널 폭 확대');assert(await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).isVisible());await page.getByRole('button',{name:'대화 패널 좁히기',exact:true}).click();await settledLayout(page.locator('.conversation-dock'));m=await measure();assert(Math.abs(m.dock.width-originalWidth)<1);
   // 고정 안내가 본문을 덮지 않고 과거 기록을 추가한 후에도 가시 위치가 유지되는지 확인합니다.
-  const body=page.locator('.messages');await body.evaluate(e=>{e.scrollTop=120;});await page.waitForTimeout(80);
-  const anchor=()=>body.evaluate(e=>{const b=e.getBoundingClientRect(),n=[...e.querySelectorAll('[data-message-id]')].find(n=>n.getBoundingClientRect().bottom>b.top+60);return{id:n?.dataset.messageId,y:n?.getBoundingClientRect().top,top:e.scrollTop,height:e.scrollHeight};});const before=await anchor();await page.getByRole('button',{name:'이전 메시지 100개 더 보기',exact:true}).evaluate(e=>e.click());
+  const body=page.locator('.messages');
+  const anchor=scrollTo=>body.evaluate((e,next)=>{if(next!==undefined)e.scrollTop=next;const b=e.getBoundingClientRect(),n=[...e.querySelectorAll('[data-message-id]')].find(n=>n.getBoundingClientRect().bottom>b.top+60);return{id:n?.dataset.messageId,y:n?.getBoundingClientRect().top,top:e.scrollTop,height:e.scrollHeight};},scrollTo);
+  const before=await anchor(60);await page.waitForFunction(()=>document.querySelectorAll('.messages [data-message-id]').length===200);
   const immediate=await anchor();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));const frames=await anchor();await page.waitForTimeout(450);const settled=await anchor();for(const value of [immediate,frames,settled]){assert.equal(value.id,before.id);assert(Math.abs(value.y-before.y)<1.5);}
-  await page.getByRole('button',{name:'최근 메시지로',exact:true}).click();await fs.mkdir(path.join(root,'.flowrium-tmp/qa-261115_03'),{recursive:true});await page.screenshot({path:path.join(root,'.flowrium-tmp/qa-261115_03/chat-after.png')});
+  await page.getByRole('button',{name:'최근 메시지로',exact:true}).click();await fs.mkdir(report,{recursive:true});await page.screenshot({path:path.join(report,'chat-after.png')});
   await openConversation(page,typing.title,{expanded:false});const input=page.getByLabel('Codex에 보낼 작업 요청');await input.fill('넓은 화면에서 Enter 전송 확인');await input.press('Enter');await page.locator('.message.assistant').first().waitFor();assert.equal((await page.evaluate(id=>window.flowrium.bootstrap().then(d=>d.sessions.find(s=>s.id===id)),typing.id)).messages.filter(m=>m.role==='user').length,1);
   await page.getByRole('button',{name:'대화 목록으로',exact:true}).click();await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();assert.equal(await page.locator('.app-shell').getAttribute('data-chat-focus'),'false');assert.deepEqual(errors,[]);console.log('우측 고정 대화 / 6개 화면 크기 / 본 화면 유지와 패널 폭 조정 / 입력 높이 드래그·키보드·복원 / 좁은 창의 긴 추천 전문과 대기 버튼 / 과거 기록 위치 / 전체 대화 보존 / Enter 전송 통과');
  }catch(error){console.error('대화 배치 실측',JSON.stringify(measurements));throw error;
- }finally{await fs.mkdir(path.join(root,'.flowrium-tmp/qa-261115_03'),{recursive:true});await fs.writeFile(path.join(root,'.flowrium-tmp/qa-261115_03','chat-layout-'+(baseline?'before':'after')+'.json'),JSON.stringify({baseline,measurements,resizeMetrics,errors},null,2));if(app)await app.close().catch(()=>{});await fs.rm(temp,{recursive:true,force:true,maxRetries:8,retryDelay:150});}
+ }finally{await fs.mkdir(report,{recursive:true});await fs.writeFile(path.join(report,'chat-layout-'+(baseline?'before':'after')+'.json'),JSON.stringify({baseline,measurements,resizeMetrics,errors},null,2));if(app)await app.close().catch(()=>{});await fs.rm(temp,{recursive:true,force:true,maxRetries:8,retryDelay:150});}
 }
 run().catch(e=>{console.error(e);process.exitCode=1});

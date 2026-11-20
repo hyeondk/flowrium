@@ -36,7 +36,6 @@ type Props = {
   defaultSpeed?: Speed;
   conversationKey: string;
   disabled: boolean;
-  modelDisabled?: boolean;
   pro: boolean;
   onOpen?(): void;
   onChange(selection: ChatModelSelection): void;
@@ -89,7 +88,9 @@ function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disab
 
   return <>
     <button className="chat-performance-trigger" type="button" ref={trigger} popoverTarget={id} disabled={disabled}
-      aria-label="Reasoning and speed" title="Reasoning and speed" onKeyDown={closeOnEscape}>{label}</button>
+      aria-label="Reasoning and speed" title={speedLabels[speed]+' / '+label} data-speed={speed} onKeyDown={closeOnEscape}>
+      {speed!=='standard'&&<Zap size={12} aria-hidden="true"/>}<span>{label}</span>
+    </button>
     <div id={id} ref={popup} className="chat-performance-popup" popover="auto" role="group" aria-label="Model controls"
       onKeyDown={closeOnEscape} onToggle={event=>{if(event.newState==='closed')clearPreview();else{setShowSpeed(false);onOpen?.();}}}>
       <div className="chat-performance-heading">
@@ -125,7 +126,7 @@ function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disab
   </>;
 }
 
-export default function ChatModelPicker({models, preferences, defaultModel, defaultEffort, defaultSpeed, conversationKey, disabled, modelDisabled, pro, onChange, onOpen}: Props) {
+export default function ChatModelPicker({models, preferences, defaultModel, defaultEffort, defaultSpeed, conversationKey, disabled, pro, onChange, onOpen}: Props) {
   const model=preferences?.model;
   const available = (id: string) => modelDisplayName(models.find(item => item.id === id) || id);
   const inherited = defaultModel || models.find(item => item.isDefault)?.id;
@@ -134,7 +135,7 @@ export default function ChatModelPicker({models, preferences, defaultModel, defa
   const active=models.find(item=>item.id===(model||inherited));
   return <div className="chat-model-controls">
     <div className="model-select chat-model-picker" data-model={model||''} title={model ? `이 대화의 모델 (${label})` : defaultLabel}>
-      <ChoicePicker label="이 채팅의 모델" value={model || ''} triggerLabel={label} disabled={disabled||modelDisabled} placement="up" menuMinWidth={240} onOpen={onOpen} onFocus={onOpen}
+      <ChoicePicker label="이 채팅의 모델" value={model || ''} triggerLabel={label} disabled={disabled} placement="up" menuMinWidth={240} onOpen={onOpen} onFocus={onOpen}
         onChange={model=>onChange({model})} options={[
           {value:'',label:defaultLabel},
           ...(model&&!models.some(item=>item.id===model)?[{value:model,label}]:[]),

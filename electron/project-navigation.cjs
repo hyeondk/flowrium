@@ -53,6 +53,19 @@ async function catalog(store, getRuntime, verifiedContext) {
   return {guard, runtime, remote, status, matches:matchProjects(store.state.projects, remote), context};
 }
 
+async function projectForNewThread(store,runtime,project,cwd) {
+  if(!runtime || !samePath(cwd,project.path))return;
+  const source=await catalog(store,()=>runtime).catch(()=>undefined);
+  if(!source || source.status!=='supported') {
+    const link=project.codexNameLink;
+    if(link && link.owner===runtime.owner?.())return link.id;
+    return;
+  }
+  source.guard();
+  if(store.project(project.id)!==project)throw Error('프로젝트 등록 상태가 바뀌었습니다. 목록에서 다시 선택해 주세요.');
+  return source.matches.get(project.id)?.id;
+}
+
 function nameStatus(project,source) {
   if (!source) return project.pendingCodexName?'queued':'offline';
   if (project.pendingCodexName && project.pendingCodexName.owner!==source.context.owner)return 'differentAccount';
@@ -165,4 +178,4 @@ async function pushMove(source, order, id) {
   source.guard();
 }
 
-module.exports = {orderedIds, withRemoteOrder, matchProjects, catalog, nameStatus, renameProject, incomingNames, pushMove};
+module.exports = {orderedIds, withRemoteOrder, matchProjects, catalog, nameStatus, renameProject, incomingNames, pushMove, projectForNewThread};

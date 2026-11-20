@@ -93,12 +93,12 @@ function mobileMessages(s, params, revision) {
   while (start > 0 && end - start < limit) {
     const m = items[start - 1],
       visible = m.role === "assistant" || m.role === "user" || (progress && m.progressCommentary === true);
-    // 휴대폰에는 단계 이름, 상태, 시각만 전달한다. 명령과 도구 출력은 컴퓨터에 남긴다.
+    // 휴대폰에는 공개 설명과 단계 이름, 상태, 시각만 전달한다.
+    const workSteps=progress&&m.workSteps?.map(({id,label,state,kind,createdAt,completedAt})=>({id,label,state,createdAt,...(kind && {kind}),...(completedAt && {completedAt})}));
     const toolLabel=progress && m.role==='system' && (m.progressCommentary===true ? m.text :
       m.text.startsWith('실행 도구 / 명령') ? '명령 실행' :
       m.text.startsWith('파일 변경 기록') ? '파일 변경' :
-      m.text.startsWith('도구 실행 기록') ? '도구 실행' : undefined);
-    const workSteps=progress&&visible&&m.workSteps?.map(({id,label,state,createdAt,completedAt})=>({id,label,state,createdAt,...(completedAt && {completedAt})}));
+      m.text.startsWith('도구 실행 기록') ? '도구 실행' : workSteps?.[0]?.label);
     const text=m.role==='user'?attachmentDisplayText(m.text):m.text;
     const size = (visible ? Buffer.byteLength(text) : 0)+(workSteps?Buffer.byteLength(JSON.stringify(workSteps)):0);
     if (messages.length && bytes + size > 512 * 1024) break;
@@ -665,6 +665,7 @@ function registerRemote(
       "/composer-markdown.js": "composer-markdown.js",
       "/composer-markdown.css": "composer-markdown.css",
       "/chat-reader.js": "chat-reader.js",
+      "/chat-clock.js": "chat-clock.js",
       "/question-reply.js": "question-reply.js",
       "/work-time.js": "work-time.js",
       "/project-mode.js": "project-mode.js",

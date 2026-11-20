@@ -6,6 +6,14 @@ const {addAttachments,resolveAttachments}=require('../electron/chat-attachments.
 const {Drafts}=require('../electron/drafts.cjs');
 async function fixture(t){const root=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-chat-core-'));await fs.mkdir(path.join(root,'project'));const store=new Store(path.join(root,'profile'));await store.load();const project=await addTrustedFixtureProject(store, path.join(root,'project'));const session=await store.createSession(project.id);const result={root,store,project,session,controllers:[]};t.after(async()=>{for(const c of result.controllers)await c.shutdown();await fs.rm(root,{recursive:true,force:true,maxRetries:6,retryDelay:200});});return result;}
 const png=require('./chat-fixtures.cjs').png;
+test('첫 요청에서 짧은 제목을 만들고 인사말, 마크다운, 파일 경로를 제외한다',()=>{
+ const {suggestConversationTitle}=require('../electron/chat-title.cjs');
+ assert.equal(suggestConversationTitle('안녕하세요! 위 프로젝트를 참고해서 월간 매출 보고서 초안을 작성해 주세요.'),'월간 매출 보고서 초안');
+ assert.equal(suggestConversationTitle('## 대시보드 오류 확인\n\n세부 내용입니다.'),'대시보드 오류 확인');
+ assert.equal(suggestConversationTitle('/Users/example/private.txt\n결제 명세 검토를 진행해 주세요.'),'결제 명세 검토');
+ assert.equal(suggestConversationTitle('',[{name:'월간 집계.xlsx'}]),'월간 집계 확인');
+ assert(Array.from(suggestConversationTitle('긴 제목 '.repeat(20))).length<=32);
+});
 function wait(c,predicate){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{c.off('event',handler);reject(Error('검증 이벤트 대기 시간 초과'));},6000);function handler(e){if(predicate(e)){clearTimeout(timer);c.off('event',handler);resolve(e);}}c.on('event',handler);});}
 test('첨부는 프로젝트에 보관하고 원본 크기와 해시, 래스터 이미지를 검증한다',async t=>{
  const{store,project}=await fixture(t);

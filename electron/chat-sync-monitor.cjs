@@ -43,11 +43,21 @@ async function poll(runtime,watch){
   const context=await runtime.ready(true),owner=context.owner;
   if(watch.owner!==owner){
     watch.owner=owner;watch.cursor=0;watch.projectNamesAt=0;watch.errors.clear();watch.stamps.clear();watch.active.clear();watch.priority.clear();
+    watch.catalogPresence=undefined;
     runtime.syncStamps=new WeakMap();
   }
   const {rows,info}=await catalog(runtime,context);
   if(!canScan(runtime))return;
-  const trash=await section(runtime,watch,context,'휴지통',()=>runtime.controller.trashRuntime?.syncNative?.(rows,context,runtime,info));
+  const knownIds = new Set(runtime.store.visibleSessions().map(session=>session.threadId).filter(Boolean));
+  const present = new Set(rows.filter(row=>knownIds.has(row.id)).map(row=>row.id));
+  const missingFromCompleteList = !info.nextCursor && [...(watch.catalogPresence || [])]
+    .some(id=>knownIds.has(id) && !present.has(id));
+  watch.catalogPresence = present;
+  // A missing row only advances the check. The trash reconciler still verifies
+  // both complete lists, the exact thread and its account before moving anything.
+  const trash=await section(runtime,watch,context,'휴지통',()=>runtime.controller.trashRuntime?.syncNative?.(rows,context,runtime,{
+    ...info, force:missingFromCompleteList,
+  }));
   guard(runtime,context);
   if(trash?.changed){
     const restored=(trash.restored||[]).map(id=>runtime.store.peekSession(id)).filter(Boolean);

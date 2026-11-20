@@ -235,12 +235,25 @@ async function run() {
       await page.getByText("답사 기록 071", { exact: true }).count(),
       0,
     );
-    await btn("이전 메시지 더 보기").click();
-    await page.getByText("답사 기록 022", { exact: true }).waitFor();
-    assert.equal(await page.locator(".message").count(), 100);
-    await btn("이전 메시지 더 보기").click();
-    await page.getByText("답사 기록 001", { exact: true }).waitFor();
-    assert.equal(await page.locator(".message").count(), 121);
+    await page.waitForFunction(()=>!document.querySelector('#content').getAnimations().some(animation=>animation.playState==='running'));
+    assert(await page.evaluate(()=>document.scrollingElement.scrollHeight-innerHeight-scrollY<2),'처음 열면 최근 기록 위치');
+    for (const [count,first] of [[100,'답사 기록 022'],[121,'답사 기록 001']]) {
+      const before=await page.evaluate(()=>{
+        const header=document.querySelector('.mobile-chat-heading').getBoundingClientRect().bottom;
+        const timeline=document.querySelector('.mobile-timeline');
+        window.scrollTo(0,scrollY+timeline.getBoundingClientRect().top-header+40);
+        const visible=[...timeline.querySelectorAll('[data-message-id]')].find(element=>element.getBoundingClientRect().bottom>header);
+        return {id:visible.dataset.messageId,y:visible.getBoundingClientRect().top};
+      });
+      await page.getByText(first,{exact:true}).waitFor();
+      assert.equal(await page.locator('.message').count(),count);
+      const restored=page.locator(`[data-message-id="${before.id}"]`);
+      for(const delay of [0,80,280]){
+        if(delay)await page.waitForTimeout(delay);
+        const top=await restored.evaluate(el=>el.getBoundingClientRect().top);
+        assert(Math.abs(top-before.y)<1.5,'이전 기록이 추가되는 동안 읽던 위치 유지 '+JSON.stringify({before,top,delay}));
+      }
+    }
     assert.equal(await btn("이전 메시지 더 보기").count(), 0);
     assert.equal(pages.filter((q) => q.before).length, 2);
     const anchor=page.getByText('답사 기록 060',{exact:true});

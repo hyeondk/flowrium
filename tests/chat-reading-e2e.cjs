@@ -77,6 +77,18 @@ async function checkQueuedOriginal(app,page,input,sessionId) {
 
 async function checkWorkProgress(page,input,popup,gate,title) {
   await page.getByRole('button',{name:'작업 보내기',exact:true}).waitFor();
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  await page.evaluate(()=>{
+    const history=document.querySelector('.messages');
+    const watch=new MutationObserver(()=>{
+      const row=history.querySelector('.message.user[data-outgoing=true]');
+      if(!row)return;
+      window.firstOutgoing=row;
+      window.outgoingAnimation=getComputedStyle(row).animationName;
+      watch.disconnect();
+    });
+    watch.observe(history,{childList:true,subtree:true});
+  });
   await input.fill('작업 단계 스트림 시험');
   await input.press('Enter');
   const historyButton=page.locator('.turn-progress-trigger').last();
@@ -85,6 +97,22 @@ async function checkWorkProgress(page,input,popup,gate,title) {
   await live.getByText('명령 실행',{exact:true}).waitFor();
   await live.getByText('작업 중',{exact:true}).waitFor();
   await live.getByText('준비 작업: 작업을 시작했습니다',{exact:true}).waitFor();
+  assert.equal(await live.getByText('실시간 설명 맨 앞입니다.',{exact:true}).count(),1);
+  assert.equal(await live.getByText('실시간 설명 맨 끝입니다.',{exact:true}).count(),1);
+  await live.evaluate(el=>{el.scrollTop=0;});
+  await expect.poll(()=>live.evaluate(el=>el.scrollTop)).toBe(0);
+  await fs.writeFile(gate+'.search','검색');
+  await expect(live.getByText('×6',{exact:true})).toBeAttached();
+  const scroll=await live.evaluate(el=>{
+    const note=el.querySelector('.work-timeline-commentary'),first=note.querySelector('p');
+    return {top:el.scrollTop,client:el.clientHeight,height:el.scrollHeight,width:el.clientWidth,contentWidth:el.scrollWidth,
+      first:first.getBoundingClientRect().top-el.getBoundingClientRect().top,clamp:getComputedStyle(note).webkitLineClamp,
+      text:note.textContent.length};
+  });
+  assert(scroll.text>6000&&scroll.height>scroll.client&&scroll.contentWidth<=scroll.width+1);
+  assert.equal(scroll.clamp,'none');
+  assert.equal(scroll.top,0);
+  assert(scroll.first>=0&&scroll.first<scroll.client);
   assert.equal(await page.locator('.messages .turn-progress-list').count(),0);
   const answer=page.locator('.chat-live-response .answer-progress');
   const readPercent=async()=>Number((await answer.innerText()).match(/([\d.]+)%/)?.[1]);
@@ -93,12 +121,39 @@ async function checkWorkProgress(page,input,popup,gate,title) {
   const gap=await page.locator('.composer-live-work-heading').evaluate(el=>parseFloat(getComputedStyle(el).gap));
   assert.equal(gap,6);
   assert(!(await live.innerText()).includes('표시하지 않을 에이전트 전문'));
+  const prior=page.locator('.message.assistant .message-prose p').first();
+  const renderedSize=el=>({font:getComputedStyle(el).fontSize,height:getComputedStyle(el).lineHeight,zoom:getComputedStyle(el.closest('.message-history-items')).zoom});
+  const stableSize=await prior.evaluate(renderedSize);
+  const outgoing=await page.evaluate(()=>({
+    name:window.outgoingAnimation,same:window.firstOutgoing?.isConnected,
+    count:document.querySelectorAll('[data-message-id="'+window.firstOutgoing?.dataset.messageId+'"]').length,
+    date:window.firstOutgoing?.querySelector('.message-date')?.textContent,
+    above:window.firstOutgoing?.querySelector('.message-date')?.getBoundingClientRect().bottom<=window.firstOutgoing?.querySelector('time span:last-child')?.getBoundingClientRect().top,
+  }));
+  assert.equal(outgoing.name,'chat-message-arrival');
+  assert(outgoing.same&&outgoing.above);
+  assert.equal(outgoing.count,1);
+  assert.match(outgoing.date,/^\d{2}\.\d{2}\.\d{2}\.$/);
+  await fs.writeFile(gate+'.stream','응답');
+  const typed=page.locator('.chat-message-typing .message-prose p');
+  await typed.waitFor();
+  const initialText=await typed.textContent();
+  assert(initialText&&!initialText.endsWith('답변 타이핑 끝 문장.'));
+  assert.deepEqual(await typed.evaluate(renderedSize),stableSize);
+  await expect(typed).toContainText('답변 타이핑 끝 문장.');
+  const answerId=await typed.evaluate(el=>el.closest('[data-message-id]').dataset.messageId);
   await fs.writeFile(gate,'완료');
   await expect(answer).toContainText('답변 작성 완료 (100.0%)');
   await live.waitFor({state:'hidden'});
+  const finalAnswer=page.locator('[data-message-id="'+answerId+'"] .message-prose p');
+  assert.equal(await finalAnswer.count(),1);
+  assert.deepEqual(await finalAnswer.evaluate(renderedSize),stableSize);
+  await expect(finalAnswer).toContainText('답변 타이핑 끝 문장.');
   await historyButton.click();
   await popup.getByText('준비 작업: 작업을 마쳤습니다',{exact:true}).waitFor();
-  assert.equal(await popup.locator('li').count(),5);
+  assert.equal(await popup.getByText('실시간 설명 맨 앞입니다.',{exact:true}).count(),1);
+  assert.equal(await popup.getByText('실시간 설명 맨 끝입니다.',{exact:true}).count(),1);
+  assert(await popup.getByText(/^×[67]$/).count());
   const workTools=page.locator('.work-tool-details');
   const settings=page.getByLabel('대화 연결 및 작업 도구',{exact:true});
   await settings.click();
@@ -115,7 +170,7 @@ async function checkWorkProgress(page,input,popup,gate,title) {
   await historyButton.click();
   await popup.getByText('준비 작업: 작업을 마쳤습니다',{exact:true}).waitFor();
   await historyButton.click();
-  console.log('실시간 진행률 소수점 1자리 및 완료 100% / 하위 에이전트 상태 / 파일 변경 행 수·소스 / 완료한 작업 기록 재실행 복원 확인');
+  console.log('6,000자 넘는 작업 원문과 맨 앞 스크롤 보존 / 연속 검색 모아 보기 / 실시간·완료 기록 중복 제거 / 답변 타이핑과 글자 크기 일치 / 발신 말풍선 지속·날짜 위아래 정렬 / 작업 도구 및 재시작 기록 복원 확인');
 }
 
 async function run() {

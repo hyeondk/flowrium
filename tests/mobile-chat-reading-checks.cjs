@@ -6,9 +6,11 @@ const photoHeader="# Files mentioned by the user:\n\n## codex-clipboard-abcd.png
 async function addReadingFixture(store,projectId){
   const initial=randomUUID(),second=randomUUID();
   const message=(role,text,turnId)=>({id:randomUUID(),role,text,turnId,createdAt:new Date().toISOString()});
+  const progress=()=>({...message('system','작업 설명을 한 번만 표시합니다.',initial),progressCommentary:true});
+  const search=()=>({...message('system','웹 검색',initial),workSteps:[{id:randomUUID(),label:'웹 검색',state:'completed',kind:'search',createdAt:new Date().toISOString()}]});
   return store.createSession(projectId,{title:'휴대폰 읽기 확인',messages:[
     {...message('user',photoHeader+'첫 요청',initial),workStartedAt:'2026-10-05T01:00:00Z',workCompletedAt:'2026-10-05T01:03:26Z'},message('system','실행 도구 / 명령\n시험용 출력 원문',initial),
-    message('assistant','**진행**',initial),message('system','파일 변경 기록\n시험용 출력 원문',initial),
+    message('assistant','**진행**',initial),message('system','파일 변경 기록\n시험용 출력 원문',initial),progress(),progress(),search(),search(),search(),
     message('user','다음 요청',second),message('system','도구 실행 기록\n시험용 출력 원문',second),
     message('assistant','마지막 응답\n\n**다음 단계**\n- 인터뷰 질문을 한 쪽으로 정리',second),
   ]});
@@ -26,10 +28,13 @@ async function checkReading(page,chat,origin,key,folder) {
   await first.waitFor();assert.equal(await page.locator('[data-work-group]').count(),2);
   await first.click();
   const popup=page.getByRole('list',{name:'작업 과정'});
-  assert.deepEqual(await popup.locator('li strong').allTextContents(),['명령 실행','파일 변경']);
+  assert.deepEqual(await popup.locator('li strong').allTextContents(),['명령 실행','파일 변경','웹 검색']);
+  assert.equal(await popup.getByText('작업 설명을 한 번만 표시합니다.',{exact:true}).count(),1);
+  assert.equal(await popup.getByText('×3',{exact:true}).count(),1);
   await first.click();assert.equal(await first.getAttribute('aria-expanded'),'false');
   const user=page.locator('article[data-role=user]').first(),assistant=page.locator('article[data-role=assistant]').first();
   assert.equal(await user.locator('.mobile-markdown').textContent().then(s=>s.trim()),'첫 요청');
+  assert.match(await user.locator('time span').first().textContent(),/^\d{2}\.\d{2}\.\d{2}\.$/);
   assert((await user.boundingBox()).x>(await assistant.boundingBox()).x+20);
   await assistant.locator('strong').getByText('진행').waitFor();
   const field=page.getByRole('textbox',{name:'요청',exact:true});

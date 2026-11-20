@@ -290,13 +290,19 @@ class Controller extends EventEmitter {
       for (const id of session.workflow?.reportProjects || []) if (id!==session.projectId) await this.store.requireProjectTrust(id);
     }
     const requests=require('./chat-long-request.cjs');
-    let source, message;
+    let source, message, titleRequest;
+    const {defaultTitles,suggestConversationTitle}=require('./chat-title.cjs');
+    const needsTitle=()=>!session.threadId && !session.pendingThreadName && !session.workflow &&
+      !session.personalAssistant && !session.generalAssistant && defaultTitles.has(session.title) &&
+      !session.messages.some(item=>item.role==='user');
     if(input.requestSourceId){
       const file=await requests.sourceRecord(this.store,session.projectId,input.requestSourceId);
       source=require('./chat-request-source.cjs').checkedRequestSource(file);
       message=requests.sourceLabel(source);
+      if(needsTitle())titleRequest=await require('./chat-request-source.cjs').filePage(file,0).catch(()=>undefined);
     } else {
       message=chatInput(input.text,Boolean(attachmentIds.length));
+      if(needsTitle() && input.text.trim())titleRequest=input.text.slice(0,6000);
       if(message.length > maxChatInput){
         source=await require('./chat-attachments.cjs').storeRequestSource(this.store,session.projectId,message,{guard:()=>{
           if(this.options.canRun?.()===false || ownerRevision!==(this.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
@@ -400,12 +406,10 @@ class Controller extends EventEmitter {
     };
     run.userMessageId=userMessage.id;
     if(internal.queueItem)internal.queueItem.status='sending';
+    if(needsTitle())session.title=suggestConversationTitle(titleRequest || '',attachments);
+    const generatedName=!!this.codexTransfer?.bindNative && !session.pendingThreadName && !session.threadId &&
+      !session.codexLink && !session.sourceThreadId && !session.messages.some(item=>item.role==='user');
     session.messages.push(userMessage);
-    if (!session.pendingThreadName && !session.workflow && !session.personalAssistant && session.messages.filter((m) => m.role === "user").length === 1)
-      session.title = Array.from(message.trimStart().replace(/\s+/g, " ").slice(0, 100))
-        .slice(0, 42)
-        .join("");
-    const generatedName=!!this.codexTransfer?.bindNative && !session.pendingThreadName && !session.threadId && !session.codexLink && !session.sourceThreadId && session.messages.filter(m=>m.role==='user').length===1;
     const sentTitle=session.title;
     if(generatedName)session.pendingThreadName=sentTitle;
     session.updatedAt = new Date().toISOString();
@@ -527,13 +531,14 @@ class Controller extends EventEmitter {
           )
           .join("\n\n")
           .slice(-40_000)}\n\n현재 요청:\n`;
-      const binding = project.codexNameLink;
-      const inRegisteredProject = binding && binding.owner === this.codexTransfer?.owner?.() &&
-        require('./path-boundary.cjs').samePath(cwd, project.path);
+      const projectId = await require('./project-navigation.cjs').projectForNewThread(this.store,this.codexTransfer,project,cwd);
       await verifyAccess();
+      if (run.cancelled || run.finalized) return this.finish(run, "interrupted");
+      if (this.options.canRun?.()===false || run.ownerRevision!==(this.options.queueOwner?.()??'local'))
+        throw Error('계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.');
       const result = await client.request("thread/start", {
         ...threadParams,
-        ...(inRegisteredProject && {projectId:binding.id}),
+        ...(projectId && {projectId}),
         dynamicTools:[...dynamicTools,currentRequest.reader].map(t=>({type:"function",...t})),
       });
       if(dynamicTools.length)this.store.session(run.sessionId).applicationTools=true;
@@ -656,6 +661,7 @@ class Controller extends EventEmitter {
       this.emitEvent({
         type: "delta",
         sessionId: run.sessionId,
+        streamingMessage: {id:assistant.id,createdAt:assistant.createdAt,turnId:assistant.turnId},
         text: `${isNew && run.itemOrder.length > 1 ? "\n\n" : ""}${value}`,
       });
     else
@@ -748,9 +754,14 @@ class Controller extends EventEmitter {
     const itemId = params.item?.id || params.itemId;
     if (params.item?.type === 'agentMessage' && params.item.phase === 'commentary') {
       run.commentaryItems ||= new Map();
-      if (!run.commentaryItems.has(itemId)) run.commentaryItems.set(itemId, {
-        id:randomUUID(),role:'system',progressCommentary:true,turnId:run.turnId,createdAt:new Date().toISOString(),text:'',
-      });
+      if (!run.commentaryItems.has(itemId)) {
+        const id = run.threadId && run.turnId && itemId
+          ? require('./codex-transfer-data.cjs').stable('codex-message:'+run.threadId+':'+run.turnId+':'+itemId+':0')
+          : randomUUID();
+        run.commentaryItems.set(itemId,{
+          id,role:'system',progressCommentary:true,turnId:run.turnId,createdAt:new Date().toISOString(),text:'',
+        });
+      }
     }
     const commentary = run.commentaryItems?.get(itemId);
     if (commentary && ['item/started','item/completed','item/agentMessage/delta'].includes(method)) {
@@ -763,7 +774,7 @@ class Controller extends EventEmitter {
         const session=this.store.peekSession(run.sessionId);
         if (!session.messages.includes(commentary)) session.messages.push(commentary);
         this.emitEvent({type:'status',sessionId:session.id,status:'running',text:commentary.text.slice(0,160),
-          workCommentary:{...commentary,text:commentary.text.slice(-6000)}});
+          workCommentary:{...commentary}});
       }
       return;
     }

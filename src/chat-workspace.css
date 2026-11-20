@@ -209,7 +209,8 @@
 .conversation-dock .message-meta{display:flex;align-items:center;min-height:22px;margin:0 4px 4px;gap:6px;flex-wrap:nowrap;line-height:18px}
 .conversation-dock .message-meta strong{font-size:12px;line-height:18px;font-weight:700}
 .conversation-dock .message.assistant .message-meta>strong{translate:0 1px}
-.conversation-dock .message-time{flex:none;font-size:11px;line-height:18px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.conversation-dock .message-time{display:grid;flex:none;justify-items:start;font-size:11px;line-height:14px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.conversation-dock .message-date{font-size:10px}
 .conversation-dock .message-bubble-row{display:flex;align-items:flex-end;gap:7px;min-width:0;max-width:100%}
 .conversation-dock .message-bubble-row>.message-bubble{flex:1;min-width:0}
 .conversation-dock .message-bubble{min-width:0;max-width:100%;padding:9px 12px;border:1px solid var(--line-soft);border-radius:20px;background:var(--card-subtle);box-shadow:none}
@@ -217,6 +218,14 @@
 .conversation-dock .message.user{max-width:96%;margin-inline:auto 0}
 .conversation-dock .message.user .message-bubble{background:var(--accent-bg);border-color:transparent}
 .conversation-dock .message.user .message-bubble-row>.message-time{padding-bottom:3px}
+.conversation-dock .message.user[data-outgoing=true]{animation:chat-message-arrival .28s cubic-bezier(.18,.74,.28,1) both}
+@keyframes chat-message-arrival{from{opacity:.35;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.conversation-dock .chat-message-typing .message-prose>p:last-child::after{content:"";display:inline-block;inline-size:2px;block-size:.85em;margin-inline-start:3px;vertical-align:-.03em;border-radius:1px;background:var(--accent);animation:chat-typing-caret .8s ease-in-out infinite alternate}
+@keyframes chat-typing-caret{from{opacity:.4}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){
+ .conversation-dock .message.user[data-outgoing=true]{animation:none}
+ .conversation-dock .chat-message-typing .message-prose>p:last-child::after{display:none}
+}
 .conversation-dock .message.user .message-meta{justify-content:flex-end;gap:5px}
 .conversation-dock .message.system .message-bubble{padding:0;border:0;background:transparent}
 .conversation-dock .markdown,.conversation-dock .message .message-prose,.conversation-dock .message .message-prose p{

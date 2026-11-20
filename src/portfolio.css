@@ -996,13 +996,6 @@
 }
 
 
-.project-toolbar-leading .project-back-button {
-  display: inline-flex; align-items: center; justify-content: center; flex: none; gap: 4px;
-  min-height: 28px; padding: 2px 8px; border: 1px solid var(--line-soft);
-  border-radius: 7px; background: var(--panel); color: var(--muted);
-  font: inherit; white-space: nowrap;
-}
-.project-back-button > svg { flex: none; }
 .project-toolbar-leading > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-resource-nav { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line-soft); padding-bottom: 6px; }
 .project-resource-nav button { padding: 4px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); }

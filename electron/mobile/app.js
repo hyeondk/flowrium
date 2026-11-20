@@ -8,6 +8,7 @@ import {creditBalance} from './usage-credits.js';
 import {attachComposerMarkdown} from './composer-markdown.js';
 import {attachmentDisplayText} from './attachment-text.js';
 import {messageBody,groupMobileHistory,progressButton,clearProgressChoices} from './chat-reader.js';
+import {chatClock} from './chat-clock.js';
 import {installDatePicker} from './date-picker.js';
 import {settingsGuides, reconnectForm} from './install.js';
 import {mobileUpdateSection, resetUpdate, resumeUpdateSettings} from './mobile-update.js';
@@ -80,13 +81,16 @@ let busy = false,
   accessEpoch = 0;
 let historyPage, mobileRecommendation,
   historyBusy = false,
+  historyLoadingOlder = false,
+  historyOlderQueued = false,
   historyError = "",
+  historyErrorOlder = false,
   historyEpoch = 0;
 function resetHistory() {
   historyEpoch++;
   historyPage = undefined;
   mobileRecommendation = undefined;
-  historyBusy = false;
+  historyBusy = historyLoadingOlder = historyOlderQueued = historyErrorOlder = false;
   historyError = "";
 }
 const drafts = new Map();
@@ -556,13 +560,19 @@ function go(view, id, options={}) {
   if (["assistant","settings"].includes(view)) void loadExtras();
 }
 async function loadMessages(older = false) {
-  if (historyBusy || gate || route !== "chat") return;
+  if (gate || route !== "chat") return;
+  if (historyBusy) {
+    if (older && !historyLoadingOlder && historyPage?.before) historyOlderQueued = true;
+    return;
+  }
   const id = selectedSession,
     epoch = historyEpoch,
     previous = historyPage;
   if (older && !previous?.before) return;
   historyBusy = true;
+  historyLoadingOlder = older;
   historyError = "";
+  historyErrorOlder = false;
   render();
   const query = new URLSearchParams({ limit: "50", progress: "1" });
   if (older) query.set("before", previous.before);
@@ -617,12 +627,22 @@ async function loadMessages(older = false) {
     if (error.status === 409 && older) {
       historyPage = undefined;
       refresh = true;
-    } else historyError = error.message;
+    } else {
+      historyError = error.message;
+      historyErrorOlder = older;
+    }
   } finally {
     if (epoch === historyEpoch) {
-      historyBusy = false;
+      const loadQueuedOlder = historyOlderQueued;
+      historyBusy = historyLoadingOlder = historyOlderQueued = false;
       render();
+      if (!previous && historyPage?.messages.length && !historyError) {
+        window.scrollTo({top:document.scrollingElement.scrollHeight,behavior:'instant'});
+        historyScrollTop = window.scrollY;
+      }
       if (refresh) void loadMessages();
+      else if (historyPage?.before && !historyError && nearHistoryStart()
+        && (loadQueuedOlder || older || document.scrollingElement.scrollHeight-innerHeight<96)) void loadMessages(true);
     }
   }
 }
@@ -1185,17 +1205,17 @@ function chat(root) {
   if (historyError) {
     root.append(
       node("p", historyError, "hint"),
-      action("기록 다시 불러오기", () => loadMessages()),
+      action("기록 다시 불러오기", () => loadMessages(historyErrorOlder)),
     );
   } else if (!historyPage)
     root.append(loadingRegion('최근 메시지', 'chat'));
-  if (historyPage?.before) {
-    const more = action("이전 메시지 더 보기", () => loadMessages(true));
-    more.disabled = historyBusy;
-    root.append(more);
-  }
   const timeline=groupMobileHistory(historyPage?.messages||[],s,running(s.id));
   const history=node('div',undefined,'mobile-timeline');root.append(history);
+  if (historyLoadingOlder) {
+    const loading=node('p','이전 기록을 불러오는 중','hint');
+    loading.setAttribute('role','status');
+    history.append(loading);
+  }
   for (const row of timeline.rows) {
     if(row.group){history.append(progressButton(row.group));continue;}
     const m=row.message;
@@ -1204,13 +1224,15 @@ function chat(root) {
     block.dataset.messageId = m.id;
     const citations=presentCitations(m.text||'',m.role,running(s.id)&&m.id===s.lastMessageId);
 
-    block.append(
-      node(
-        "small",
-        (m.role === "user" ? "나" : m.role === "assistant" ? "Codex" : "작업 상태") + " / " + date(m.createdAt),
-      ),
-      messageBody(m.role==='user'&&!m.attachmentHeaderRemoved?attachmentDisplayText(citations.text):citations.text),
-    );
+    const meta=node('div',undefined,'mobile-message-meta'),clock=chatClock(m.createdAt);
+    meta.append(node('small',m.role==='user'?'나':m.role==='assistant'?'Codex':'작업 상태'));
+    if(clock){
+      const time=node('time');
+      time.dateTime=m.createdAt;
+      time.append(node('span',clock.date),node('span',clock.time));
+      meta.append(time);
+    }
+    block.append(meta,messageBody(m.role==='user'&&!m.attachmentHeaderRemoved?attachmentDisplayText(citations.text):citations.text));
     const cited=new Set(citations.references?.map(ref=>ref.attachmentId).filter(Boolean));
     appendAttachments(block,(m.attachments||[]).filter(file=>!cited.has(file.id)),s.projectId,m.id);
     for(const group of citations.groups)block.append(citationCard(s,m,group));
@@ -1269,7 +1291,7 @@ function chat(root) {
     }
   },listener);
   const canSteer = running(s.id) && data.canSteer;
-  const submit = node("button", canSteer ? "현재 작업에 전달" : running(s.id) ? "추가 지시 대기열에 넣기" : "요청 보내기", "main-action");
+  const submit = node("button", canSteer ? "지금 전달" : running(s.id) ? "추가 지시 대기열에 넣기" : "요청 보내기", "main-action");
   submit.type = "submit";
   submit.disabled = busy || !data.connection?.authenticated;
   const options=node('div',undefined,'chat-options');
@@ -1386,7 +1408,9 @@ function chat(root) {
   attachmentComposer(form,s);
   form.insertBefore(form.querySelector('.attachments'),options);
   if (canSteer) {
-    const choices=node('div',undefined,'actions'), queue=node('button','다음 차례');
+    const choices=node('div',undefined,'actions mobile-delivery-actions'), queue=node('button','다음 차례');
+    submit.dataset.delivery='steer';
+    submit.setAttribute('aria-label','현재 작업에 추가 지시 보내기');
     queue.type='submit'; queue.dataset.delivery='queue'; queue.disabled=submit.disabled;
     queue.setAttribute('aria-label','추가 지시 대기열에 넣기');
     choices.append(submit,queue);form.append(choices);
@@ -1863,7 +1887,20 @@ function pushSettings(root){
   box.append(node('p','연결을 종료하거나 계정을 바꾸면 알림도 중지됩니다. 새 연결 주소에서는 기기를 다시 등록하세요.','hint'));root.append(box);
 }
 
-let renderedChatId;
+let renderedChatId, historyScrollTop=window.scrollY;
+function nearHistoryStart(){
+  const first=content.querySelector('.mobile-timeline');
+  const header=content.querySelector('.mobile-chat-heading');
+  if(!first||!header)return false;
+  const top=first.getBoundingClientRect().top;
+  return top>=header.getBoundingClientRect().bottom-96 && top<innerHeight;
+}
+window.addEventListener('scroll',()=>{
+  const top=Math.max(0,window.scrollY);
+  const approachingStart=top<historyScrollTop;
+  historyScrollTop=top;
+  if(approachingStart && route==='chat' && !historyError && historyPage?.before && nearHistoryStart())void loadMessages(true);
+},{passive:true});
 function visibleMessageAnchor(){
   if(route!=='chat'||renderedChatId!==selectedSession||gate)return;
   const messages=content.querySelectorAll('[data-message-id]');
@@ -1970,7 +2007,10 @@ function render() {
   }
   renderedChatId=data && !gate && route==='chat' ? selectedSession : undefined;
   const restored=anchor && content.querySelector('[data-message-id="'+CSS.escape(anchor.id)+'"]');
-  if(restored)window.scrollBy(0,restored.getBoundingClientRect().top-anchor.top);
+  if(restored){
+    window.scrollBy(0,restored.getBoundingClientRect().top-anchor.top);
+    historyScrollTop=window.scrollY;
+  }
   if(progressFocus)content.querySelector('[data-work-group="'+CSS.escape(progressFocus)+'"]')?.focus({preventScroll:true});
   if (field) {
     const next = [...content.querySelectorAll("[data-field]")].find(
