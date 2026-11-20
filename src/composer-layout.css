@@ -14,7 +14,8 @@
 .app-shell .conversation-dock .composer:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 10%,transparent)}
 .conversation-dock .has-session .composer:not(.working) .composer-topline{display:none}
 .conversation-dock .composer-topline{padding:0 2px 4px;min-height:21px}
-.conversation-dock .composer-topline>span{font-size:11px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+.conversation-dock .composer-topline>span{font-size:11px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.conversation-dock .composer.working .composer-topline{justify-content:flex-end}
 .app-shell .conversation-dock .composer textarea.composer-input[data-height-mode]{
   height:auto;min-height:26px;max-height:min(104px,var(--composer-limit));display:block;width:100%;
   padding:2px 1px;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;
@@ -55,19 +56,48 @@ html[data-composer-resizing],html[data-composer-resizing] *{cursor:row-resize!im
 .conversation-dock .chat-image-strip{padding:4px 2px 8px}
 .conversation-dock .chat-image-strip .chat-image-tile img{width:100%;height:100%}
 
-/* 작업 내역은 답변 사이에 카드가 아닌 한 줄 접기 항목으로 이어집니다. */
 .turn-progress{max-width:100%;margin:2px 0 7px}
-.turn-progress-trigger{display:inline-flex;align-items:center;gap:6px;padding:3px 0;border:0;border-radius:5px;color:var(--muted);background:transparent;min-height:26px;font-size:12px;line-height:19px;cursor:pointer;text-align:left;flex-wrap:wrap}
+.turn-progress-trigger,.turn-progress-current{display:inline-flex;align-items:center;gap:6px;padding:3px 0;border:0;border-radius:5px;color:var(--muted);background:transparent;min-height:26px;font-size:12px;line-height:19px;text-align:left;flex-wrap:wrap}
+.turn-progress-trigger{cursor:pointer}
 .turn-progress-trigger:hover{color:var(--accent)}
-.turn-progress-trigger small,.turn-progress-live{font-size:11px;color:var(--muted)}
-.turn-progress-live{color:var(--accent)}
-.turn-progress-list{margin:4px 0 0 6px;padding:0 0 0 12px;list-style:none;border-inline-start:1px solid var(--line)}
-.turn-progress-list li{padding:6px 0}
-.turn-progress-line{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-.turn-progress-line strong{font-size:12px;line-height:19px}
-.turn-progress-line time{margin-left:auto;white-space:nowrap;font-size:11px;line-height:18px;color:var(--muted)}
-.turn-progress-line [data-step-state]{font-size:11px;color:var(--accent)}
-.turn-progress-list .message-detail{margin:5px 0 0}
+.turn-progress-trigger small{font-size:11px;color:var(--muted)}
+.turn-progress-list,.composer-live-work{background:color-mix(in srgb,var(--panel) 84%,var(--muted));border-radius:8px;color:var(--text)}
+.turn-progress-list{margin:3px 0 0;padding:8px 10px;list-style:none;font-size:12px;line-height:1.55;min-width:0}
+.turn-progress-list>li + li{margin-block-start:6px}
+.turn-progress-line{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
+.turn-progress-line svg{flex:none;color:var(--muted)}
+.turn-progress-line small{color:var(--muted);white-space:nowrap}
+.turn-progress-line [data-step-state=running]{color:var(--accent)}
+.turn-progress-line [data-step-state=failed]{color:var(--danger)}
+.work-timeline-agents{display:grid;gap:2px;min-width:0}
+.work-timeline-agents>span,.work-timeline-commentary,.work-timeline-file{word-break:keep-all;overflow-wrap:anywhere}
+.work-timeline-file{text-decoration:underline;text-underline-offset:2px}
+.work-timeline-original{margin:2px 0 0 19px;color:var(--muted)}
+.work-timeline-original summary{font-size:11px;cursor:pointer}
+.work-timeline-original pre{margin:4px 0 0;padding:6px 8px;color:var(--text);background:var(--panel);border-radius:5px;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere;max-block-size:18em;overflow:auto;font-size:11px;line-height:1.55}
+.work-timeline-commentary .message-prose{font-size:12px;line-height:1.55}
+.work-timeline-commentary .message-prose :is(p,ul,ol){margin-block:3px}
+.composer-live-work{padding:6px 8px;margin-block:2px 5px;font-size:11px;line-height:1.45;word-break:keep-all}
+.composer-live-work-heading,.answer-progress{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-weight:700}
+.composer-live-work-heading>.status-dot,.answer-progress>.status-dot{width:6px;height:6px;flex:none}
+.composer-work-timeline{display:grid;gap:3px;list-style:none;padding:0;margin:4px 0 0;max-block-size:78px;overflow:auto;overscroll-behavior:contain}
+.composer-work-timeline :is(.work-timeline-commentary,.work-timeline-agents span){display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.conversation-dock[data-minimized=true] .composer-live-work{display:none}
+.answer-progress{color:var(--muted);font-size:12px;line-height:1.45;font-variant-numeric:tabular-nums}
+.answer-progress small{padding-inline:4px;border-radius:3px;background:var(--card-subtle);color:var(--muted);font-weight:400}
+.answer-progress + .markdown{margin-block-start:5px}
+.work-tool-details{display:grid;gap:2px;padding-block:3px;border-top:1px solid var(--line-soft)}
+.work-tool-details summary{display:flex;align-items:center;gap:6px;border-radius:6px;padding:6px 8px;list-style:none;cursor:pointer;color:var(--text);font-size:12px}
+.work-tool-details summary::-webkit-details-marker{display:none}
+.work-tool-details summary:hover,.work-tool-details details[open] summary{background:var(--card-subtle)}
+.work-tool-details summary small{margin-inline-start:auto;color:var(--muted);white-space:nowrap}
+.work-tool-details p,.work-tool-details>details>ul{font-size:11px;margin:3px 8px;padding:0;color:var(--muted);list-style:none}
+.work-tool-details>details>ul:not(.chat-attachment-list)>li{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:3px 0}
+.work-tool-details li>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.work-tool-details li>button{flex:none;background:var(--selected);color:var(--accent);border:0;padding:3px 5px;border-radius:4px;font-size:10px}
+.work-added{color:#31734d}
+:root[data-theme=dark] .work-added{color:#8fd1a6}
+.work-removed{color:var(--danger)}
 .turn-progress-trigger svg:last-child{transition:transform .2s ease-in-out}
 .turn-progress-trigger[aria-expanded=true] svg:last-child{transform:rotate(180deg)}
 /* 그림은 본문과 같은 배율을 쓰며 대화 영역보다 커지지 않습니다. */

@@ -36,3 +36,14 @@ test('긴 문장의 부정 조건을 잘라 성공으로 바꾸지 않는다', (
  assert.match(qualified,/검증 내용은 대화에서 확인/);
  assert.doesNotMatch(qualified,/통과했습니다/);
 });
+
+test('완료 알림은 소요 시간 대신 답변에서 70자 이하 미리보기를 만든다',()=>{
+ const {completionPreview}=require('../electron/notification-summary.cjs');
+ const answer='예상 소요 시간: 3초입니다.\n# 작업 결과\n'+('광고 주문서의 월별 합계와 성과를 비교해 보고서를 정리했습니다. '.repeat(5));
+ const result=completionPreview(answer,'completed');
+ assert.match(result,/광고 주문서의 월별 합계/);
+ assert(Array.from(result).length<=70);
+ assert(!result.includes('소요 시간'));
+ assert(!completionPreview('/Users/test/별도.txt','completed').includes('/Users/'));
+ assert.match(completionPreview(answer,'failed'),/완료하지 못했습니다/);
+});

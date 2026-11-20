@@ -1,4 +1,4 @@
-import {useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent} from 'react';
+import {useId, useRef, useState, type CSSProperties, type KeyboardEvent} from 'react';
 import {RotateCcw, Zap} from 'lucide-react';
 import ChoicePicker from './ChoicePicker';
 import type {ChatPreferences, Effort, Model, Speed} from '../shared/types';
@@ -12,19 +12,17 @@ const speedOrder: Speed[] = ['standard','fast','ultrafast'];
 const effortLabels: Record<Effort,string> = {none:'None',minimal:'Minimal',low:'Low',medium:'Medium',high:'High',xhigh:'XHigh',max:'Max',ultra:'Ultra'};
 const sliderKeys = new Set(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown']);
 
-function speedOptions(model?: Model) {
-  const advertised=model?.supportedSpeeds;
-  return advertised ? speedOrder.filter(speed=>speed==='standard'||advertised.includes(speed)) : speedOrder;
+function speedAvailable(speed:Speed,model?:Model,pro=false) {
+  return speed==='standard'||(speed!=='ultrafast'||pro)&&(model?.supportedSpeeds?.includes(speed)??true);
 }
 
-export function AccountSpeedPreference({model,speed,onChange}: {model?:Model;speed?:Speed;onChange(speed:Speed):void}) {
-  const speeds=speedOptions(model);
+export function AccountSpeedPreference({model,speed,pro,onChange}: {model?:Model;speed?:Speed;pro:boolean;onChange(speed:Speed):void}) {
   return <label className="field-label">
     속도
-    <span>새 작업의 실행 속도입니다. 사용 가능한 속도는 모델과 계정에 따라 달라집니다.</span>
-    <select className="text-input" aria-label="기본 실행 속도" value={speed&&speeds.includes(speed)?speed:'standard'}
+    <span>새 작업의 실행 속도입니다. Ultrafast는 지원 모델을 사용하는 Pro 계정에서 선택할 수 있습니다.</span>
+    <select className="text-input" aria-label="기본 실행 속도" value={speed&&speedAvailable(speed,model,pro)?speed:'standard'}
       onChange={event=>onChange(event.target.value as Speed)}>
-      {speeds.map(value=><option key={value} value={value}>{speedLabels[value]}</option>)}
+      {speedOrder.map(value=><option key={value} value={value} disabled={!speedAvailable(value,model,pro)}>{speedLabels[value]}</option>)}
     </select>
   </label>;
 }
@@ -38,16 +36,19 @@ type Props = {
   defaultSpeed?: Speed;
   conversationKey: string;
   disabled: boolean;
+  modelDisabled?: boolean;
+  pro: boolean;
   onOpen?(): void;
   onChange(selection: ChatModelSelection): void;
 };
 
-function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disabled, onChange, onOpen}: {
+function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disabled, pro, onChange, onOpen}: {
   model?: Model;
   preferences?: ChatPreferences;
   defaultEffort?: Effort;
   defaultSpeed?: Speed;
   disabled: boolean;
+  pro: boolean;
   onChange(selection: ChatModelSelection): void;
   onOpen?(): void;
 }) {
@@ -58,18 +59,15 @@ function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disab
   const [preview,setPreview]=useState<Effort>();
   const pending=useRef<Effort>(undefined);
   const moving=useRef(false);
-  const timer=useRef<ReturnType<typeof setTimeout>>(undefined);
   const availableEfforts=new Set(effortOptions(model).map(row=>row.reasoningEffort));
   const efforts=(Object.keys(effortLabels) as Effort[]).filter(effort=>availableEfforts.has(effort));
   const savedEffort=effectiveEffort(model,preferences?.effort??defaultEffort) as Effort|undefined;
   const position=Math.max(0,efforts.indexOf(preview??savedEffort??efforts[0]));
   const label=effortLabels[efforts[position]]||'Default';
-  const speeds=speedOptions(model);
   const requestedSpeed=preferences?.speed??defaultSpeed??'standard';
-  const speed=speeds.includes(requestedSpeed)?requestedSpeed:'standard';
+  const speed=speedAvailable(requestedSpeed,model,pro)?requestedSpeed:'standard';
 
   function clearPreview() {
-    clearTimeout(timer.current);
     moving.current=false;
     pending.current=undefined;
     setPreview(undefined);
@@ -89,7 +87,6 @@ function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disab
     trigger.current?.focus({preventScroll:true});
   }
 
-  useEffect(()=>()=>clearTimeout(timer.current),[]);
   return <>
     <button className="chat-performance-trigger" type="button" ref={trigger} popoverTarget={id} disabled={disabled}
       aria-label="Reasoning and speed" title="Reasoning and speed" onKeyDown={closeOnEscape}>{label}</button>
@@ -99,8 +96,11 @@ function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disab
         <button type="button" className="chat-performance-icon" aria-label="Speed" title="Speed" aria-expanded={showSpeed} aria-controls={id+'-speed'}
           data-fast={speed!=='standard'} onClick={()=>setShowSpeed(value=>!value)}><Zap size={16}/></button>
         <div><span>Reasoning</span><strong>{label}</strong></div>
-        <button type="button" className="chat-performance-icon" aria-label="Restore defaults" title="Restore defaults"
-          disabled={disabled||(!preferences?.effort&&!preferences?.speed)} onClick={()=>onChange({effort:'',speed:''})}><RotateCcw size={14}/></button>
+        <span className="chat-performance-reset" data-local-tooltip>
+          <button type="button" className="chat-performance-icon" aria-label="기본값으로 복구" aria-describedby={id+'-reset-tip'} data-local-tooltip
+            disabled={disabled||(!preferences?.effort&&!preferences?.speed)} onClick={()=>onChange({effort:'',speed:''})}><RotateCcw size={14}/></button>
+          <span id={id+'-reset-tip'} className="chat-performance-tooltip" role="tooltip">속도와 추론 수준을 계정 기본값으로 복구합니다</span>
+        </span>
       </div>
       {efforts.length > 1 ? <input className="chat-effort-slider" type="range" aria-label="Reasoning effort" aria-valuetext={label}
         aria-disabled={disabled} min={0} max={efforts.length-1} step={1} value={position}
@@ -115,18 +115,17 @@ function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disab
           const next=efforts[Number(event.target.value)];
           pending.current=next;
           setPreview(next);
-          clearTimeout(timer.current);
-          if(!moving.current)timer.current=setTimeout(commit,180);
+          if(!moving.current)commit();
         }}/> : <p className="chat-performance-note">{efforts.length ? 'One level available' : 'Model default'}</p>}
       {showSpeed&&<div id={id+'-speed'} className="chat-speeds" role="group" aria-label="Execution speed">
-        {speeds.map(value=><button key={value} type="button" disabled={disabled} aria-pressed={value===speed}
+        {speedOrder.map(value=><button key={value} type="button" disabled={disabled||!speedAvailable(value,model,pro)} aria-pressed={value===speed}
           onClick={()=>onChange({speed:value})}>{speedLabels[value]}</button>)}
       </div>}
     </div>
   </>;
 }
 
-export default function ChatModelPicker({models, preferences, defaultModel, defaultEffort, defaultSpeed, conversationKey, disabled, onChange, onOpen}: Props) {
+export default function ChatModelPicker({models, preferences, defaultModel, defaultEffort, defaultSpeed, conversationKey, disabled, modelDisabled, pro, onChange, onOpen}: Props) {
   const model=preferences?.model;
   const available = (id: string) => modelDisplayName(models.find(item => item.id === id) || id);
   const inherited = defaultModel || models.find(item => item.isDefault)?.id;
@@ -135,7 +134,7 @@ export default function ChatModelPicker({models, preferences, defaultModel, defa
   const active=models.find(item=>item.id===(model||inherited));
   return <div className="chat-model-controls">
     <div className="model-select chat-model-picker" data-model={model||''} title={model ? `이 대화의 모델 (${label})` : defaultLabel}>
-      <ChoicePicker label="이 채팅의 모델" value={model || ''} triggerLabel={label} disabled={disabled} placement="up" menuMinWidth={240} onOpen={onOpen} onFocus={onOpen}
+      <ChoicePicker label="이 채팅의 모델" value={model || ''} triggerLabel={label} disabled={disabled||modelDisabled} placement="up" menuMinWidth={240} onOpen={onOpen} onFocus={onOpen}
         onChange={model=>onChange({model})} options={[
           {value:'',label:defaultLabel},
           ...(model&&!models.some(item=>item.id===model)?[{value:model,label}]:[]),
@@ -143,6 +142,6 @@ export default function ChatModelPicker({models, preferences, defaultModel, defa
         ]}/>
     </div>
     <ChatPerformance key={conversationKey} model={active} preferences={preferences} defaultEffort={defaultEffort} defaultSpeed={defaultSpeed}
-      disabled={disabled} onChange={onChange} onOpen={onOpen}/>
+      disabled={disabled} pro={pro} onChange={onChange} onOpen={onOpen}/>
   </div>;
 }

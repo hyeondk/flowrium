@@ -38,7 +38,7 @@ export default function IconTooltips(){
    const node=(event.target as Element)?.closest<HTMLElement>('[data-visual-tooltip],button,[role=button]');
    if(node===target||(event.type==='pointerover'&&focusedVisual()))return;
    hide();
-   if(!node)return;
+   if(!node||node.closest('[data-local-tooltip]'))return;
    const visual=node.getAttribute('data-visual-tooltip');
    if(!visual&&!node.querySelector('svg'))return;
    const text=visual||node.getAttribute('title')||node.getAttribute('aria-label');

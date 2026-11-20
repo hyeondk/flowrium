@@ -39,7 +39,7 @@ async function run(){
     box.pointerEvents==='none'&&box.topOffset>6&&box.clearBelowBadge>10),JSON.stringify(badgeCases));
   assert(Math.abs(badgeCases[0].width-badgeCases[0].height)<.1,'한 자리 알림 숫자는 원형');
   assert(badgeCases.slice(1).every(box=>box.width>=box.height&&box.width<27),'여러 자리 알림 숫자는 낮고 둥근 모양');
-  const questionBox=await questionNotice.boundingBox();assert(Math.abs(questionBox.width-360)<1);assert(questionBox.height>=175.5,JSON.stringify(questionBox));
+  const questionBox=await questionNotice.boundingBox();assert(Math.abs(questionBox.width-390)<1);assert(questionBox.height<115,JSON.stringify(questionBox));
   await page.screenshot({path:path.join(output,'안내-질문.png'),animations:'disabled'});
   const captureNotice=async(locator,name)=>{const box=await locator.boundingBox(),width=await page.evaluate(()=>innerWidth),scale=page.viewportSize().width/width;await page.screenshot({path:path.join(output,name),clip:{x:box.x*scale,y:box.y*scale,width:box.width*scale,height:box.height*scale},animations:'disabled'});};
   await captureNotice(questionNotice,'알림-질문-확대.png');
@@ -47,7 +47,7 @@ async function run(){
   const form=page.locator('.conversation-question .input-request');await form.waitFor();
   assert.equal(await page.locator('.composer-area .input-request').count(),0);
   assert.equal(await form.locator('input:checked').count(),0);assert(await form.getByRole('button',{name:'답변 보내기',exact:true}).isDisabled());
-  assert.equal(await page.locator('.flow-question-notice[data-tone=question]').count(),0);
+  await questionNotice.waitFor({state:'hidden'});
   await page.screenshot({path:path.join(output,'대화-질문카드.png'),animations:'disabled'});
   await form.getByRole('radio',{name:/요약/}).check();await form.getByRole('radio',{name:'직접 입력',exact:true}).check();
   await form.getByLabel('직접 답변').fill('매출 비교 자료');await form.getByLabel('비밀 답변').fill('임시 합성 확인값');
@@ -56,9 +56,9 @@ async function run(){
   const completed=page.locator('.flow-question-notice[data-tone=success]');await completed.waitFor();
   const conversationTitle=await page.evaluate(async id=>(await window.flowrium.bootstrap()).sessions.find(s=>s.id===id).title,session.id);
   assert.equal(await completed.getByRole('status').innerText(),`‘${conversationTitle}’ 대화의 답변이 완료됐습니다.`);
-  assert.equal(await completed.locator('.flow-notice-summary p').count(),3);
-  const completeText=await completed.innerText();assert.match(completeText,/검증 내용은 대화에서 확인/);assert(!completeText.includes('임시 합성 확인값'));
-  const completeBox=await completed.boundingBox();assert(Math.abs(completeBox.width-360)<1);assert(completeBox.height>=175.5,JSON.stringify(completeBox));
+  assert.equal(await completed.locator('.flow-notice-summary p').count(),1);
+  const completeText=await completed.innerText();assert.match(completeText,/답변을 마쳤습니다/);assert(!completeText.includes('임시 합성 확인값'));
+  const completeBox=await completed.boundingBox();assert(Math.abs(completeBox.width-390)<1);assert(completeBox.height<115,JSON.stringify(completeBox));
   await page.screenshot({path:path.join(output,'안내-완료.png'),animations:'disabled'});
   await captureNotice(completed,'알림-완료-확대.png');
   const state=await page.evaluate(()=>window.flowrium.bootstrap());assert(!JSON.stringify(state).includes('임시 합성 확인값'));
@@ -70,8 +70,54 @@ async function run(){
   await approvalNotice.getByRole('button',{name:'대화에서 확인하기',exact:true}).click();
   const approval=page.locator('.conversation-dock').getByRole('region',{name:'실행 승인 요청'});await approval.waitFor();
   await approval.getByRole('button',{name:'거절',exact:true}).click();await approval.waitFor({state:'detached'});
-  await fs.writeFile(path.join(output,'알림-질문-검증.json'),JSON.stringify({passed:true,badgeCases,questionBox,completeBox,small,questionInsideConversation:true,noAutoSelection:true,threeSummaryLines:true,secretNotStored:true,approvalNoticeAndExplicitDecline:true},null,2)+'\n');
-  console.log('알림 / 360px 공통 너비 / 176px 기본 높이 / 같은 대화 질문 이동 / 자동 선택 없음 / 명시 제출 / 3줄 실제 요약 / 비밀 답변 비보관 / 390px 화면 경계 검사 통과');
+  await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'광고 문서 두 번째 확인',mode:'plan'}),session.id);
+  await page.locator('.flow-question-notice[data-tone=success][data-phase=idle]').waitFor();
+  await page.locator('.header-decisions').click();
+  let popup=page.getByRole('dialog',{name:'알림',exact:true});
+  await popup.locator('.attention-item p').first().waitFor();
+  assert((await popup.locator('.attention-item p').allTextContents()).every(text=>Array.from(text).length<=70));
+  const total=await popup.locator('.attention-item').count();
+  assert(total>=3);
+  for(const width of [1440,390]){
+   await page.setViewportSize({width,height:900});
+   const padding=await popup.evaluate(element=>{
+    const surface=getComputedStyle(element),row=getComputedStyle(element.querySelector('.attention-item'));
+    return [parseFloat(surface.paddingTop),parseFloat(surface.paddingBottom),parseFloat(row.paddingTop),parseFloat(row.paddingBottom)];
+   });
+   assert.equal(padding[0],padding[1]);
+   assert.equal(padding[2],padding[3]);
+   assert(padding[1]<=14&&padding[3]<=8);
+  }
+  await page.setViewportSize({width:1440,height:900});
+  const rows=popup.locator('.attention-item'),ids=(await rows.evaluateAll(items=>items.map(item=>item.dataset.notificationId))).slice(0,3);
+  const row=id=>popup.locator(`[data-notification-id="${id}"]`);
+  await row(ids[0]).locator('.attention-remove').click();
+  await row(ids[0]).waitFor({state:'detached'});
+  await row(ids[1]).getByRole('checkbox').check();
+  await row(ids[2]).getByRole('checkbox').check();
+  await popup.getByRole('button',{name:'선택 삭제 (2)',exact:true}).click();
+  for(const id of ids.slice(1))await row(id).waitFor({state:'detached'});
+  assert((await page.evaluate(()=>window.flowrium.workflowState())).notifications.every(n=>!ids.includes(n.id)));
+  await popup.getByRole('button',{name:'알림 닫기',exact:true}).click();
+  await popup.waitFor({state:'hidden'});
+  await app.evaluate(({BrowserWindow},root)=>{
+    const require=process.getBuiltinModule('node:module').createRequire(root+'/package.json');
+    const state={status:'available',currentVersion:'261120_01',latestVersion:'261120_02',message:'시험 새 버전을 설치할 수 있습니다.'};
+    require('./electron/updater.cjs').DesktopUpdater.prototype.getState=()=>state;
+    BrowserWindow.getAllWindows()[0].webContents.send('flowrium:update',state);
+  },root);
+  const update=page.locator('.flow-question-notice').filter({hasText:'Flowrium 261120_02 업데이트가 나왔습니다.'});
+  await update.waitFor();
+  assert.equal(await update.getByRole('button',{name:'알림 닫기',exact:true}).count(),0);
+  await update.waitFor({state:'detached',timeout:7000});
+  await page.locator('.header-decisions').click();
+  popup=page.getByRole('dialog',{name:'알림',exact:true});
+  const updateItem=popup.locator('.attention-item').filter({hasText:'Flowrium 261120_02 업데이트가 나왔습니다.'});
+  await updateItem.getByRole('button',{name:'업데이트 열기',exact:true}).click();
+  await page.getByRole('dialog',{name:'설정',exact:true}).getByRole('region',{name:'프로그램 업데이트',exact:true}).waitFor();
+  assert.equal((await page.evaluate(()=>window.flowrium.workflowState())).notifications.filter(n=>n.updateVersion==='261120_02').length,1);
+  await fs.writeFile(path.join(output,'알림-질문-검증.json'),JSON.stringify({passed:true,badgeCases,questionBox,completeBox,small,questionInsideConversation:true,noAutoSelection:true,shortSummary:true,secretNotStored:true,approvalNoticeAndExplicitDecline:true},null,2)+'\n');
+  console.log('알림 / 390px 공통 너비 / 간결한 안내 / 같은 대화 질문 이동 / 자동 선택 없음 / 명시 제출 / 70자 요약 / 비밀 답변 비보관 / 390px 화면 경계 검사 통과');
  }finally{try{if(app)await closeInstalledApp(app,'알림과 질문 전용 검사 앱 종료')}finally{await fs.rm(temporary,{recursive:true,force:true,maxRetries:6,retryDelay:150})}}
 }
 run().catch(error=>{console.error(error);process.exitCode=1});

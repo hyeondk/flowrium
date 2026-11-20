@@ -8,7 +8,7 @@ const {Store} = require('../electron/store.cjs');
 const {openConversation, composer, settledLayout} = require('./shell-test-helpers.cjs');
 const {closeInstalledApp} = require('./update-installed-ui.cjs');
 
-async function verifyContinuationRows(page, generated) {
+async function verifyContinuationRows(page) {
   const section = page.locator('.composer .chat-continuation');
   for (const width of [320, 390, 960, 1440]) {
     await page.setViewportSize({width, height:900});
@@ -19,7 +19,7 @@ async function verifyContinuationRows(page, generated) {
         return {left,right,top,bottom,center:(top+bottom)/2};
       };
       return {
-        recommendation:rect(node.querySelector('.followup-request,.followup-accept')),
+        recommendation:rect(node.querySelector('.followup-accept')),
         proceed:rect(node.querySelector('.followup-proceed')),
         complete:rect(node.querySelector('.followup-complete')),
         section:rect(node),
@@ -27,14 +27,9 @@ async function verifyContinuationRows(page, generated) {
     });
     const {recommendation, proceed, complete} = rows;
     assert(Math.abs(proceed.center-complete.center)<1 && proceed.right<=complete.left && complete.right<=rows.section.right,
-      JSON.stringify({width,generated,rows}));
-    if (generated) {
-      assert(recommendation.bottom<=proceed.top+.5 && Math.abs(recommendation.right-complete.right)<1,
-        JSON.stringify({width,generated,rows}));
-    } else {
-      assert(Math.abs(recommendation.center-proceed.center)<1 && recommendation.right<proceed.left,
-        JSON.stringify({width,generated,rows}));
-    }
+      JSON.stringify({width,rows}));
+    assert(recommendation.bottom<=proceed.top+.5 && Math.abs(recommendation.right-complete.right)<1,
+      JSON.stringify({width,rows}));
   }
 }
 
@@ -72,32 +67,44 @@ async function verifyFollowupTiming() {
     await page.setViewportSize({width:1440,height:900});
     await page.locator('.side-usage[data-connected=true]').waitFor();
     const accept = page.locator('.followup-accept[data-source="conversation"]');
-    const request = page.getByRole('button',{name:'다음 작업 추천받기',exact:true});
     const input = composer(page);
-    await openConversation(page,waiting.title);
-    await request.waitFor();
-    await verifyContinuationRows(page,false);
-    await request.click();
-    await page.getByRole('status').getByText('현재 대화에서 이어갈 구체적인 작업을 찾지 못했습니다.').waitFor();
-    const hasNotice = await page.locator('.chat-continuation p').evaluate(node=>
-      node.getBoundingClientRect().top>=node.parentElement.querySelector('.followup-complete').getBoundingClientRect().bottom);
-    assert.equal(hasNotice,true);
+    await page.evaluate(()=>{
+      window.recommendationProgress = [];
+      const observer = new MutationObserver(()=>{
+        const progress=document.querySelector('.followup-progress');
+        const button=document.querySelector('.followup-proceed');
+        if(!progress||!button)return;
+        const a=progress.getBoundingClientRect(), b=button.getBoundingClientRect();
+        const row={width:innerWidth,value:Number(progress.getAttribute('aria-valuenow')),text:progress.textContent,
+          sameRow:Math.abs(a.top+a.height/2-b.top-b.height/2)<1 && a.right<b.left};
+        const previous=window.recommendationProgress.at(-1);
+        if(previous?.value!==row.value||previous?.width!==row.width)window.recommendationProgress.push(row);
+      });
+      observer.observe(document.querySelector('.app-shell'),{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['aria-valuenow']});
+    });
+    for(const width of [320,390,960,1440]){
+      await page.setViewportSize({width,height:900});
+      await openConversation(page,waiting.title);
+      await accept.waitFor({timeout:10000});
+      const rows=await page.evaluate(()=>window.recommendationProgress.filter(row=>row.width===innerWidth));
+      assert.deepEqual(rows.map(row=>row.value),[0,25,50,75,100],JSON.stringify(rows));
+      assert(rows.every(row=>row.sameRow&&row.text===`작업 추천 중 (${row.value.toFixed(1)}%)`),JSON.stringify(rows));
+    }
     await openConversation(page,long.title);
     await accept.waitFor({timeout:10000});
     assert.equal(await accept.locator('small').innerText(),'다음 작업 추천');
-    await verifyContinuationRows(page,true);
+    await verifyContinuationRows(page);
     await input.fill('직접 작성한 초안');
     await accept.click();
     assert.equal(await input.inputValue(),'직접 작성한 초안\n\n'+expected);
-    for(const session of [declined,finished,fresh]){
+    await openConversation(page,finished.title);
+    await accept.filter({hasText:/판매표.*확인한 범위/}).waitFor({timeout:10000});
+    assert.equal(await input.inputValue(),'');
+    for(const session of [declined,fresh]){
       await openConversation(page,session.title);
       assert.equal(await accept.count(),0);
       assert.equal(await input.inputValue(),'');
-      assert.equal(await request.count(),session.id===finished.id?1:0);
-      if(session.id===finished.id){
-        await request.click();
-        await page.getByRole('status').getByText('현재 대화에서 이어갈 구체적인 작업을 찾지 못했습니다.').waitFor();
-      }
+      assert.equal(await page.getByRole('progressbar',{name:'작업 추천 중'}).count(),0);
     }
     assert.equal(await fs.readFile(trace,'utf8'),'','대화를 열고 초안을 선택해도 모델 호출 없음');
     await page.evaluate(() => {
@@ -122,8 +129,8 @@ async function verifyFollowupTiming() {
     const state = await page.evaluate(sessionId=>window.flowrium.bootstrap().then(s=>s.sessions.find(v=>v.id===sessionId)),fresh.id);
     assert.deepEqual(state.messages.filter(m=>m.role==='user').map(m=>m.text),['분류표를 확인해줘']);
     assert.equal(await fs.readFile(trace,'utf8'),'전송\n','실제 사용자 턴 이외의 요청이 없어 추가 토큰을 사용하지 않음');
-    console.log('무초점 답변 후 추천 '+Math.round(metrics.delay)+'ms / 추가 모델 호출 0 / 클릭과 Tab은 편집 가능한 초안만 생성 / 거부·빈 대화·긴 답변 통과');
-    console.log('320·390·960·1440px / 결과 전에는 추천과 진행·완료가 같은 줄 / 결과 뒤에는 전체 너비 추천과 아래 줄의 진행·완료');
+    console.log('무초점 답변 후 추천 '+Math.round(metrics.delay)+'ms / 추가 모델 호출 0 / 클릭과 Tab은 편집 가능한 초안만 생성 / 명시 후속 없는 답변·거부·빈 대화·긴 답변 통과');
+    console.log('320·390·960·1440px / 소수 첫째 자리 진행률과 진행·완료가 같은 줄 / 결과 뒤에는 전체 너비 추천과 아래 줄의 진행·완료');
   } finally {
     try { if(app) await closeInstalledApp(app,'로컬 추천 화면 종료'); }
     finally { await fs.rm(dir,{recursive:true,force:true,maxRetries:6,retryDelay:150}); }

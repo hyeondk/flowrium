@@ -5,7 +5,8 @@ const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { UUID, readJSON } = require("./project-store.cjs");
 const {visibleProposals,QUESTION_DECISION_NOTICE}=require('./execution-state.js');
-const {completionSummary}=require('./notification-summary.cjs');
+const {completionSummary,completionPreview}=require('./notification-summary.cjs');
+const {newer}=require('./version.cjs');
 const run = promisify(execFile);
 const copy = value => structuredClone(value);
 const invalid = () => new Error("업무 연결과 알림 요청의 형식을 확인해 주세요.");
@@ -85,6 +86,7 @@ class WorkflowRuntime {
       if(record?.version!==1||!Number.isSafeInteger(record.revision)||["notifications","proposals","deliveries","reminders","reports","quota"].some(k=>!Array.isArray(record[k])||record[k].length>10000))throw invalid();
       record.preferences=preferences(record.preferences);
       record.recommendations ||= [];record.goalFirings ||= [];record.toolCalls ||= [];
+      if(!Array.isArray(record.dismissedNotificationKeys))record.dismissedNotificationKeys=[];
       for(const field of ["notifications","proposals","deliveries","reminders","reports"])for(const value of record[field])id(value.id);
       this.record=record;
       let changed=false;
@@ -117,19 +119,34 @@ class WorkflowRuntime {
     this.queue=next.catch(()=>{});
     return next.finally(()=>this.transitions--);
   }
-  notification(kind,title,body,sessionId,group,eventKey){
+  notification(kind,title,body,sessionId,group,eventKey,preview){
     if(eventKey){const existing=this.record.notifications.find(n=>n.eventKey===eventKey);if(existing)return existing;}
+    if(eventKey && this.record.dismissedNotificationKeys?.includes(eventKey))return;
     const record={id:randomUUID(),kind,title:String(title).slice(0,200),body:String(body||"").slice(0,6000),sessionId:sessionId||null,
-      group:group||sessionId||kind,createdAt:this.stamp(),readAt:null,...(eventKey?{eventKey}:{})};
+      group:group||sessionId||kind,createdAt:this.stamp(),readAt:null,...(eventKey?{eventKey}:{}),...(preview?{preview}:{})};
     this.record.notifications.unshift(record);
     this.record.notifications=this.record.notifications.slice(0,2000);
     try{Promise.resolve(this.options.notify?.(record)).catch(error=>this.noticeError(error));}catch(error){this.noticeError(error);}
     return record;
   }
   async state(){
-    return this.serial(async()=>{this.ready();return{...copy(this.record),pending:await this.options.pending?.()||[],
+    return this.serial(async()=>{this.ready();await this.syncUpdateNotice();const record=copy(this.record);delete record.dismissedNotificationKeys;delete record.latestUpdateNotified;return{...record,pending:await this.options.pending?.()||[],
       projects:this.store.state.projects.map(p=>({id:p.id,name:p.name})),
       sessions:this.store.state.sessions.slice(0,200).map(s=>({id:s.id,projectId:s.projectId,title:s.title,running:this.controller.runs.has(s.id)}))};});
+  }
+  async syncUpdateNotice(){
+    const update=this.options.updateState?.();
+    if(!update?.currentVersion)return;
+    const previous=this.record.notifications,last=this.record.latestUpdateNotified;
+    this.record.notifications=previous.filter(n=>!n.updateVersion||newer(n.updateVersion,update.currentVersion));
+    if(update.status==='available'&&newer(update.latestVersion,update.currentVersion)&&(!last||newer(update.latestVersion,last))){
+      this.record.latestUpdateNotified=update.latestVersion;
+      const body='새 버전을 설치하면 최신 기능과 수정 사항을 이용할 수 있습니다.';
+      const notice=this.notification('update',`Flowrium ${update.latestVersion} 업데이트가 나왔습니다.`,body,null,'프로그램 업데이트');
+      notice.updateVersion=update.latestVersion;
+    }
+    if(this.record.latestUpdateNotified===last&&this.record.notifications.length===previous.length){this.record.notifications=previous;return;}
+    try{await this.save();}catch(error){this.record.notifications=previous;this.record.latestUpdateNotified=last;throw error;}
   }
   pendingDecisionLinks(){
     return this.serial(()=>{
@@ -368,6 +385,20 @@ class WorkflowRuntime {
           if(input.readOnly!==true)throw new Error("미확인 알림은 먼저 확인해 주세요.");
           this.record.notifications=this.record.notifications.filter(n=>!n.readAt);await this.save();return true;
         }
+        case "deleteNotifications":{
+          if(!Array.isArray(input.ids)||!input.ids.length||input.ids.length>2000)throw invalid();
+          const wanted=new Set(input.ids.map(id));
+          const removed=this.record.notifications.filter(n=>wanted.has(n.id));
+          if(!removed.length)return true;
+          const previous=this.record.notifications, dismissed=this.record.dismissedNotificationKeys;
+          this.record.notifications=previous.filter(n=>!wanted.has(n.id));
+          this.record.dismissedNotificationKeys=[...new Set([...removed.flatMap(n=>n.eventKey?[n.eventKey]:[]),...(dismissed||[])])].slice(0,2000);
+          try{await this.save();}catch(error){
+            this.record.notifications=previous;this.record.dismissedNotificationKeys=dismissed;
+            throw error;
+          }
+          return true;
+        }
         case "reportNow":return this.report();
         case "recommend":return this.recommend();
         case "collect":return this.collect();
@@ -466,7 +497,8 @@ class WorkflowRuntime {
       const currentAnswer=session.messages.slice(latestUser+1).findLast(m=>m.role==="assistant")?.text||"";
       const secretAnswer=this.secretAnswerSessions.delete(session.id);
       const turnKey=event.turnId||session.messages.at(-1)?.id;
-      this.notification(event.status==="completed"?"done":"error",session.title,completionSummary(secretAnswer?"":currentAnswer,event.status),session.id,session.workflow?.teamSlot?.runId||session.id,turnKey?`done:${session.id}:${turnKey}:${event.status}`:undefined);
+      const visibleAnswer=secretAnswer?"":currentAnswer;
+      this.notification(event.status==="completed"?"done":"error",session.title,completionSummary(visibleAnswer,event.status),session.id,session.workflow?.teamSlot?.runId||session.id,turnKey?`done:${session.id}:${turnKey}:${event.status}`:undefined,completionPreview(visibleAnswer,event.status));
       for(const delivery of this.record.deliveries.filter(d=>d.targetId===session.id&&d.reportId&&d.status==="sent"&&!d.completedAt)){
         const report=this.record.reports.find(r=>r.id===delivery.reportId);if(!report||report.status!=="writing")continue;
         delivery.completedAt=this.stamp();

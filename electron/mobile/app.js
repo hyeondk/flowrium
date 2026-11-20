@@ -1,7 +1,7 @@
 import {maxChatInput,nativeQueueAction,nativeQueueQuestion,nativeQueueExplanation,nativeQueueNotice,queuedInputView,clearQueueAction,clearQueueQuestion,clearQueueExplanation} from './chat-input.js';
 import {uploadText,discardUpload} from './request-upload.js';
 import {attachDraftEditor} from './draft-editor-events.js';
-import {canOfferFollowup,latestFollowupAnswer,originalAnswerFollowups} from './answer-followup.js';
+import {canOfferFollowup,latestFollowupAnswer,prepareAnswerFollowup} from './answer-followup.js';
 import {presentCitations} from './file-citations.js';
 import {projectMode} from './project-mode.js';
 import {creditBalance} from './usage-credits.js';
@@ -78,13 +78,14 @@ let teamBoard,
 let busy = false,
   gate = "",
   accessEpoch = 0;
-let historyPage,
+let historyPage, mobileRecommendation,
   historyBusy = false,
   historyError = "",
   historyEpoch = 0;
 function resetHistory() {
   historyEpoch++;
   historyPage = undefined;
+  mobileRecommendation = undefined;
   historyBusy = false;
   historyError = "";
 }
@@ -222,7 +223,7 @@ const showNotice = (message, tone = "info") => {
   notice.textContent = message;
   notice.hidden = false;
   notice.dataset.phase = "enter";
-  errorTimer = setTimeout(hideNotice, 6000);
+  errorTimer = setTimeout(hideNotice, 5000);
 };
 const submissionReceipts=new Map();
 const textUploads=new Map();
@@ -1295,28 +1296,42 @@ function chat(root) {
   uploadLabel.textContent=textUploads.get(s.id)?.label||'';form.append(uploadStatus);
   if(historyPage && s.executionState !== 'decision' && !running(s.id) && !pending.length && !busy) {
     const history={...s,messages:historyPage.messages};
-    const canRecommend=(!Object.hasOwn(s,'recommendationMessageId')||s.recommendationMessageId===latestFollowupAnswer(history)?.id)
-      && canOfferFollowup(history);
-    const suggested=canRecommend?originalAnswerFollowups(history)[0]:undefined;
-    if(suggested){
-      const accept=()=>{
-        if(text.value || composingField || busy)return;
-        text.value=suggested.prompt;text.dispatchEvent(new Event('input',{bubbles:true}));
-        text.focus({preventScroll:true});text.setSelectionRange(text.value.length,text.value.length);
+    const answer=latestFollowupAnswer(history);
+    if(answer && (!Object.hasOwn(s,'recommendationMessageId')||s.recommendationMessageId===answer.id) && canOfferFollowup(history)){
+      const recommendation=node('div',undefined,'mobile-followup-progress');
+      recommendation.setAttribute('role','progressbar');
+      recommendation.setAttribute('aria-label','작업 추천 중');
+      recommendation.setAttribute('aria-valuemax','100');
+      const progress=percent=>{
+        recommendation.textContent='작업 추천 중 ('+percent.toFixed(1)+'%)';
+        recommendation.setAttribute('aria-valuenow',String(percent));
       };
-      const button=action('',accept,'mobile-followup');
-      button.append(node('small','다음 작업 추천'),node('span',suggested.prompt),node('kbd','Tab'));
-      button.hidden=!!text.value;
-      const sync=()=>{button.hidden=!!text.value || !!composingField;};
-      text.addEventListener('input',sync,listener);text.addEventListener('compositionstart',()=>button.hidden=true,listener);text.addEventListener('compositionend',()=>queueMicrotask(sync),listener);
-      text.addEventListener('keydown',event=>{
-        if(event.key==='Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing && event.keyCode!==229 && !composingField && !text.value && !button.hidden){
-          event.preventDefault();accept();
-        }
-      },listener);
-      form.append(button);
-    }else if(canRecommend){
-      form.append(action('다음 작업 추천',()=>showNotice('현재 대화에서 이어갈 구체적인 작업을 찾지 못했습니다.'),'mobile-followup-request'));
+      const show=suggested=>{
+        const accept=()=>{
+          if(fullText() || composingField || busy)return;
+          text.value=suggested.prompt;text.dispatchEvent(new Event('input',{bubbles:true}));
+          text.focus({preventScroll:true});text.setSelectionRange(text.value.length,text.value.length);
+        };
+        const button=action('',accept,'mobile-followup');
+        button.append(node('small','다음 작업 추천'),node('span',suggested.title),node('kbd','Tab'));
+        const sync=()=>{button.hidden=!!fullText() || !!composingField;};
+        sync();
+        text.addEventListener('input',sync,listener);text.addEventListener('compositionstart',()=>button.hidden=true,listener);text.addEventListener('compositionend',()=>queueMicrotask(sync),listener);
+        text.addEventListener('keydown',event=>{
+          if(event.key==='Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing && event.keyCode!==229 && !composingField && !fullText() && !button.hidden){
+            event.preventDefault();accept();
+          }
+        },listener);
+        recommendation.replaceWith(button);
+      };
+      form.append(recommendation);
+      if(mobileRecommendation?.id===s.id && mobileRecommendation.answerId===answer.id && mobileRecommendation.text===answer.text)
+        show(mobileRecommendation.suggested);
+      else void prepareAnswerFollowup(history,progress,listener.signal).then(suggested=>{
+        if(listener.signal.aborted||!suggested)return;
+        mobileRecommendation={id:s.id,answerId:answer.id,text:answer.text,suggested};
+        show(suggested);
+      });
     }
   }
   form.append(options);

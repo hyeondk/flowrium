@@ -95,7 +95,7 @@
   margin-inline-start:auto;padding:0;border:0;background:var(--panel);
 }
 .conversation-dock .dock-status-tabs>button{
-  display:flex;align-items:center;justify-content:center;gap:4px;min-height:23px;
+  display:flex;align-items:center;justify-content:center;gap:6px;min-height:23px;
   padding:2px 4px;border:0;border-radius:5px;background:transparent;color:var(--muted);font-size:11px;line-height:17px;
 }
 .conversation-dock .dock-status-tabs>button[aria-pressed=true]{background:var(--selected);color:var(--accent)}
@@ -263,3 +263,16 @@
  .conversation-dock .message-meta-actions :is(.icon-button,.ui-like-button){width:36px;height:36px;min-width:36px;min-height:36px}
  .conversation-dock .dock-scope-tabs>button{min-height:32px}
 }
+.composer-web-fallback {
+  display:grid;
+  gap:6px;
+  padding:8px 10px;
+  border:1px solid var(--line-soft);
+  border-radius:9px;
+  background:var(--accent-bg);
+  color:var(--text);
+  font-size:12px;
+}
+.composer-web-fallback p {margin:0;word-break:keep-all;overflow-wrap:anywhere;}
+.composer-web-fallback>div {display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;}
+.composer-web-fallback .button {min-height:27px;gap:5px;}

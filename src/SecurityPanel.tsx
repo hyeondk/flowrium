@@ -7,7 +7,7 @@ import type {
   SecurityState,
 } from "../shared/security";
 import "./security.css";
-import {creditBalance, type AccountUsage} from "./account-usage";
+import {creditBalance, creditsInUse, type AccountUsage} from "./account-usage";
 
 const initial: SecurityState = {
   loaded: false,
@@ -354,7 +354,7 @@ export function SecurityPanel({ security, accountUsage }: Props & {accountUsage:
       {usage && (
         <div className="security-usage">
           <div className="security-credits" aria-label="계정 크레딧">
-            <p><span>남은 크레딧</span><strong>{creditBalance(usage.credits)}</strong></p>
+            <p><span>남은 크레딧</span><strong className="security-credit-balance" data-active={creditsInUse(usage)}>{creditBalance(usage.credits)}</strong></p>
             {usage.resetCredits !== undefined && <p><span>사용 한도 재설정</span><strong>{usage.resetCredits.toLocaleString('ko-KR')}회</strong></p>}
           </div>
           {usage.allowed === false && (

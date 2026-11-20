@@ -52,8 +52,8 @@
 .side-project-list>p{padding:6px 10px;margin:0;color:var(--muted);font-size:12px;line-height:20px}
 .app-shell .workspace-side .sidebar-surface :is(.side-dashboard,.side-project){height:var(--side-project-row);min-height:var(--side-project-row)}
 .workspace-side .side-row>.side-project-icon{position:relative;display:grid;place-items:center;flex:none;width:18px;height:18px;overflow:visible}
-.side-project-markers{position:absolute;left:-11px;bottom:calc(100% - 6px);display:flex;width:38px;pointer-events:none}
-.side-project-marker{display:flex;flex:none;width:100%;align-items:center;justify-content:center;gap:2px;height:14px;min-height:14px;padding:1px;border-radius:3px;background:color-mix(in srgb,var(--project-status-color) 16%,var(--panel));color:var(--text);font-size:8.5px;font-weight:700;line-height:12px;white-space:nowrap}
+.side-project-markers{position:absolute;left:-11px;bottom:calc(100% - 6px);display:flex;width:42px;pointer-events:none}
+.side-project-marker{display:flex;flex:none;width:100%;align-items:center;justify-content:center;gap:5px;height:14px;min-height:14px;padding:1px;border-radius:3px;background:color-mix(in srgb,var(--project-status-color) 16%,var(--panel));color:var(--text);font-size:8.5px;font-weight:700;line-height:12px;white-space:nowrap}
 .side-project-marker i{display:block;width:4px;height:4px;flex:none;border-radius:1px;background:var(--project-status-color)}
 .side-project-marker[data-state=running]{--project-status-color:#4b8cbb}
 .side-project-marker[data-state=waiting]{--project-status-color:#8c96ac}
@@ -80,7 +80,8 @@
 .side-usage-refresh progress::-webkit-progress-bar{background:var(--line-soft);border-radius:4px}
 .side-usage-refresh progress::-webkit-progress-value{background:var(--accent-ink);border-radius:4px}
 .side-credit-row{position:absolute;left:43px;right:5px;bottom:4px;display:flex;align-items:center;gap:5px;min-width:0;color:var(--muted);font-size:11px;line-height:16px}
-.side-credit-row strong{min-width:0;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent-ink);font-variant-numeric:tabular-nums}
+.side-credit-balance{min-width:0;margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent-ink);font-weight:400;font-variant-numeric:tabular-nums}
+.side-credit-row[data-active=true] .side-credit-balance{font-weight:700}
 .side-account-actions{grid-row:2;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;gap:0;padding:0;border-top:1px solid var(--line-soft)}
 .app-shell .workspace-side .sidebar-surface .side-account-actions>.side-row{justify-content:flex-start;width:100%;min-width:0;height:32px;min-height:32px;padding:0 0 0 12px;gap:3px;border:0;font-size:11px;line-height:18px}
 .app-shell .workspace-side .side-account-actions .side-row svg{width:14px;height:14px}

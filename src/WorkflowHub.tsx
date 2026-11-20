@@ -1,4 +1,6 @@
 import { AnimatedCheckbox, AnimatedSwitch } from './ui-motion';
+import { RefreshCw } from 'lucide-react';
+import { noticePreview } from './AttentionCenter';
 import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 import DecisionRequestPanel from "./DecisionRequestPanel";
 import type {FlowriumAPI,Session} from "../shared/types";
@@ -122,7 +124,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
   const unread=data?.notifications.filter(n=>!n.readAt).length||0;
   return <section className="workflow-hub" aria-label="업무 연결과 비서">
     <header><div className="ui-title-stagger"><h2>업무 연결과 비서</h2><p>대화 사이의 요청과 결과, 필요한 결정과 알림을 한곳에서 확인합니다.</p></div>
-      <button disabled={busy} onClick={()=>void refresh().catch(e=>setError(describe(e)))}>새로고침</button></header>
+      <button type="button" className="button primary workflow-refresh" disabled={busy} onClick={()=>void refresh().catch(e=>setError(describe(e)))}><RefreshCw size={15} aria-hidden="true"/>새로고침</button></header>
     <nav aria-label="업무 연결 화면">{([
       ["decisions","결정과 보고"],["notifications",`알림 ${unread}`],["messages","대화에 전달"],["assistant","비서와 예약"]
     ] as const).map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</nav>
@@ -160,8 +162,8 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
         <button disabled={busy} onClick={()=>void act({action:"clearNotifications",readOnly:true})}>읽은 알림 정리</button></div>
       {[...new Set(data.notifications.map(n=>n.group))].map(group=><section key={group}><h3>{data.sessions.find(s=>s.id===group)?.title||(/^[a-f0-9-]{36}$/i.test(group)?"팀 업무 보고":group)}</h3>
         {data.notifications.filter(n=>n.group===group&&(!unreadOnly||!n.readAt)).map(n=><article className="workflow-card" key={n.id}>
-          <h4>{n.title}{!n.readAt&&" (미확인)"}</h4><time>{new Date(n.createdAt).toLocaleString("ko-KR")}</time><p>{n.body}</p>
-          <div className="workflow-actions">{!n.readAt&&<button onClick={()=>void act({action:"read",ids:[n.id]})}>읽음 표시</button>}{n.sessionId&&<button onClick={()=>void open(n.sessionId)}>대화 열기</button>}</div>
+          <h4>{n.title}{!n.readAt&&" (미확인)"}</h4><time>{new Date(n.createdAt).toLocaleString("ko-KR")}</time><p>{noticePreview(n)}</p>
+          <div className="workflow-actions">{!n.readAt&&<button onClick={()=>void act({action:"read",ids:[n.id]})}>읽음 표시</button>}{n.sessionId&&<button onClick={()=>void open(n.sessionId)}>대화 열기</button>}<button disabled={busy} onClick={()=>void act({action:"deleteNotifications",ids:[n.id]})}>삭제</button></div>
         </article>)}</section>)}
       {!data.notifications.length&&<p>도착한 알림이 없습니다.</p>}
     </>}
@@ -184,12 +186,14 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
         <h3>개인 비서 운영 설정</h3><p>켜기 전에는 주기 감시와 AI 보고를 실행하지 않습니다. AI 보고를 켜면 연결한 ChatGPT 계정의 사용량을 씁니다.</p>
         <label><AnimatedSwitch checked={prefs.enabled} onChange={e=>preference("enabled",e.target.checked)}/>정한 시간에 프로젝트 감시와 반복 목표 알림 켜기</label>
         <label><AnimatedSwitch checked={prefs.aiReports} onChange={e=>preference("aiReports",e.target.checked)}/>수집한 근거를 개인 비서 AI에게 보내 보고받기</label>
-        <label>보고를 보관할 프로젝트<select aria-label="보고를 보관할 프로젝트" value={prefs.projectId||""} onChange={e=>preference("projectId",e.target.value||null)}><option value="">선택하세요</option>{data.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <label>감시 주기<select aria-label="감시 주기" value={prefs.intervalMinutes} onChange={e=>preference("intervalMinutes",Number(e.target.value))}>{[5,15,30,60,120,240,1440].map(n=><option key={n} value={n}>{n}분</option>)}</select></label>
-        <div className="workflow-actions"><label>시작 시각<select aria-label="시작 시각" value={prefs.startHour} onChange={e=>preference("startHour",Number(e.target.value))}>{Array.from({length:24},(_,n)=><option key={n} value={n}>{n}시</option>)}</select></label>
-          <label>마침 시각<select aria-label="마침 시각" value={prefs.endHour} onChange={e=>preference("endHour",Number(e.target.value))}>{Array.from({length:24},(_,n)=><option key={n} value={n}>{n}시</option>)}</select></label></div>
-        <fieldset><legend>운영 요일</legend><div className="workflow-actions">{dayNames.map((day,index)=><label key={day}><AnimatedCheckbox checked={prefs.weekdays.includes(index)} onChange={e=>preference("weekdays",e.target.checked?[...prefs.weekdays,index]:prefs.weekdays.filter(d=>d!==index))}/>{day}</label>)}</div></fieldset>
-        <label>시간대<input value={prefs.timezone} maxLength={100} onChange={e=>preference("timezone",e.target.value)}/></label>
+        <div className="workflow-schedule">
+          <label>보고를 보관할 프로젝트<select aria-label="보고를 보관할 프로젝트" value={prefs.projectId||""} onChange={e=>preference("projectId",e.target.value||null)}><option value="">선택하세요</option>{data.projects.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+          <label>감시 주기<select aria-label="감시 주기" value={prefs.intervalMinutes} onChange={e=>preference("intervalMinutes",Number(e.target.value))}>{[5,15,30,60,120,240,1440].map(n=><option key={n} value={n}>{n}분</option>)}</select></label>
+          <label>시작 시각<select aria-label="시작 시각" value={prefs.startHour} onChange={e=>preference("startHour",Number(e.target.value))}>{Array.from({length:24},(_,n)=><option key={n} value={n}>{n}시</option>)}</select></label>
+          <label>마침 시각<select aria-label="마침 시각" value={prefs.endHour} onChange={e=>preference("endHour",Number(e.target.value))}>{Array.from({length:24},(_,n)=><option key={n} value={n}>{n}시</option>)}</select></label>
+          <fieldset className="workflow-days"><legend>운영 요일</legend><div>{dayNames.map((day,index)=><label key={day}><AnimatedCheckbox checked={prefs.weekdays.includes(index)} onChange={e=>preference("weekdays",e.target.checked?[...prefs.weekdays,index]:prefs.weekdays.filter(d=>d!==index))}/>{day}</label>)}</div></fieldset>
+          <label>시간대<input value={prefs.timezone} maxLength={100} onChange={e=>preference("timezone",e.target.value)}/></label>
+        </div>
         <label><AnimatedSwitch checked={prefs.github} onChange={e=>preference("github",e.target.checked)}/>GitHub 현황을 보고에 포함</label>
         <label><AnimatedSwitch checked={prefs.mail} onChange={e=>preference("mail",e.target.checked)}/>연결한 메일 현황을 보고에 포함</label>
         <div className="workflow-actions"><button disabled={busy}>비서 설정 저장</button><button type="button" disabled={busy} onClick={()=>void act({action:"reportNow"},"현재 상태 보고를 만들었습니다.")}>지금 상태 보고</button></div>

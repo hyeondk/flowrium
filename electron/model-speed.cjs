@@ -7,6 +7,10 @@ function serviceTier(speed) {
   return tiers[speed];
 }
 
+function serviceTierForPlan(speed, plan) {
+  return serviceTier(speed === 'ultrafast' && (typeof plan !== 'string' || plan.trim().toLowerCase() !== 'pro') ? 'standard' : speed);
+}
+
 function supportedSpeeds(model) {
   if (!model || !Array.isArray(model.serviceTiers) && !Array.isArray(model.additionalSpeedTiers)) return undefined;
   const advertised = Array.isArray(model.serviceTiers) ? model.serviceTiers : [];
@@ -23,4 +27,4 @@ function supportedTier(tier, model) {
   return supported && tier && !supported.some(speed => serviceTier(speed) === tier) ? 'default' : tier;
 }
 
-module.exports = {serviceTier, supportedSpeeds, supportedTier};
+module.exports = {serviceTier, serviceTierForPlan, supportedSpeeds, supportedTier};

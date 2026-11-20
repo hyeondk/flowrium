@@ -247,7 +247,8 @@ body:has(#content[data-view=chat]) .bar{display:none}
 #content .mobile-draft-pages button,#content .mobile-draft-pages input{min-height:40px;padding:4px 8px}
 #content .mobile-draft-pages input{width:6ch;text-align:center;font-variant-numeric:tabular-nums}
 .mobile-timeline{zoom:.9}
-#content form :is(.mobile-followup,.mobile-followup-request) {display:flex;align-items:center;gap:8px;text-align:left;background:var(--selected);color:var(--focus);width:100%;margin:5px 0;word-break:keep-all}
+#content form :is(.mobile-followup,.mobile-followup-progress) {display:flex;align-items:center;gap:8px;text-align:left;background:var(--selected);color:var(--focus);width:100%;margin:5px 0;word-break:keep-all}
+#content form .mobile-followup-progress{font-size:.8rem;font-variant-numeric:tabular-nums}
 #content form .mobile-followup span{flex:1;min-width:0;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .mobile-followup small{flex:none;color:var(--focus);font-size:.75rem;font-weight:700}
 #content form .mobile-followup[hidden]{display:none}
@@ -281,7 +282,7 @@ html {background:var(--bg)}
 #content[data-view=projects] .activity-chart ol{padding:8px;border:1px solid var(--line);border-radius:9px}
 #content .activity-chart small{font-size:.78rem;color:var(--soft)}
 #content .chat-compose{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:5px;margin:10px 0 0;padding:7px;background:var(--panel);border-radius:12px}
-#content .chat-compose>label,#content .chat-compose :is(.mobile-followup,.mobile-followup-request),#content .chat-compose>.hint,#content .chat-compose>.actions{grid-column:1/-1}
+#content .chat-compose>label,#content .chat-compose :is(.mobile-followup,.mobile-followup-progress),#content .chat-compose>.hint,#content .chat-compose>.actions{grid-column:1/-1}
 #content .chat-compose>label,#content .chat-compose .chat-options label {margin:0}
 #content .chat-compose .chat-options {display:block;grid-row:auto;grid-column:2;min-width:0}
 #content .chat-compose select{font-size:.82rem;min-height:38px;padding:3px 5px;border:0}
@@ -328,7 +329,7 @@ html[data-mobile-keyboard] .chat-compose:focus-within{scroll-margin-block:8px}
 .mobile-question-reply dl{display:grid;gap:8px;margin:6px 0 0}
 .mobile-question-reply dt{font-size:13px;line-height:19px;color:var(--soft);margin:0 0 2px;white-space:pre-wrap}
 .mobile-question-reply dd{font-size:15px;line-height:21px;color:var(--text);margin:0;white-space:pre-wrap}
-#content .chat-compose :is(.mobile-followup,.mobile-followup-request){margin:0;padding:6px 9px;border-radius:8px;line-height:19px;min-height:40px}
+#content .chat-compose :is(.mobile-followup,.mobile-followup-progress){margin:0;padding:6px 9px;border-radius:8px;line-height:19px;min-height:40px}
 #content .chat-compose .main-action{border-radius:9px}
 #content .chat-compose textarea{padding:5px 7px;line-height:22px;min-height:44px;max-height:132px}
 #content .chat-compose .chat-options select{padding-inline:6px 28px;height:40px;min-height:40px;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}

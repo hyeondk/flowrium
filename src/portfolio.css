@@ -1025,3 +1025,6 @@
   margin-block-start: 8px;
 }
 .app-shell .pf-overview .project-document-content .overview-tools-body { gap: 12px; }
+
+.dashboard-heading-actions {display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.pf-content .portfolio-refresh {display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:9px;white-space:nowrap}

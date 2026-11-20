@@ -3,7 +3,7 @@ import {ArrowRight, Check, LoaderCircle, Sparkles} from 'lucide-react';
 import type {Session} from '../shared/types';
 import {awaitsContinuation,continuationAnswer} from '../shared/execution-state';
 import ResizableComposerInput from './ResizableComposerInput';
-import {canOfferFollowup, originalAnswerFollowups, latestFollowupAnswer} from './answer-followup';
+import {canOfferFollowup, prepareAnswerFollowup, latestFollowupAnswer} from './answer-followup';
 import './chat-continuation.css';
 
 type Props = {
@@ -42,7 +42,13 @@ export default function ChatContinuation({
   const [action, setAction] = useState<'continue'|'complete'|null>(null);
   const [error, setError] = useState('');
   const [accepted, setAccepted] = useState('');
-  const [checked, setChecked] = useState('');
+  const [generation, setGeneration] = useState<{
+    key: string;
+    answer: string;
+    percent: number;
+    result?: NonNullable<Awaited<ReturnType<typeof prepareAnswerFollowup>>>;
+  }>();
+  const finished = useRef<typeof generation>(undefined);
   const composing = useRef(false);
   const revision = useRef(0);
   const continuingFlight = useRef(false);
@@ -52,10 +58,27 @@ export default function ChatContinuation({
     setAction(null); setError('');
   }, [key]);
   const canShowRecommendation = useMemo(() => eligible && canOfferFollowup(session), [eligible, session]);
-  const suggestion = useMemo(() => canShowRecommendation && active ? originalAnswerFollowups(session)[0] : undefined,
-    [canShowRecommendation, active, session]);
+  const answerText = last?.text;
+  useEffect(() => {
+    if (!canShowRecommendation || !active || !answerText || !key) return;
+    if (finished.current?.key === key && finished.current.answer === answerText) return;
+    const controller = new AbortController();
+    void prepareAnswerFollowup(session, percent => setGeneration({key,answer:answerText,percent}), controller.signal)
+      .then(result => {
+        if (controller.signal.aborted || !result) return;
+        const state = {key, answer: answerText, percent: 100, result};
+        finished.current = state;
+        setGeneration(state);
+      });
+    return () => controller.abort();
+    // 동기화로 대화 객체가 바뀌어도 같은 답변에는 한 번만 추천을 만든다.
+  }, [canShowRecommendation, active, key, answerText]);
+  const current = active && canShowRecommendation && generation?.key === key && generation.answer === answerText ? generation : undefined;
+  const suggestion = current?.result;
   const candidate = suggestion && (!draft || key !== accepted) ? suggestion : undefined;
   const preview = candidate && !draft && !busy ? candidate.prompt : undefined;
+  const preparing = canShowRecommendation && active && key !== accepted && !suggestion;
+  const percent = current?.percent ?? 0;
   function accept() {
     if (candidate && !composing.current && !busy && (draft || !textareaRef.current?.value)) {
       setAccepted(key); onChoose(candidate.prompt);
@@ -89,15 +112,17 @@ export default function ChatContinuation({
         }
       }}
     />
-    {(candidate || (canShowRecommendation && active && key !== accepted) || waiting || error) && <section className="chat-continuation" aria-label="다음 작업">
+    {(candidate || preparing || waiting || error) && <section className="chat-continuation" aria-label="다음 작업">
       {candidate
         ? <button type="button" className="followup-accept" data-source="conversation" onClick={accept} disabled={busy}
             title={candidate.prompt} aria-label={candidate.title + ' 입력창에 추가'}>
             <Sparkles size={13}/><small>다음 작업 추천</small><span>{candidate.title}</span>{preview && <kbd>Tab</kbd>}
           </button>
-        : canShowRecommendation && active && key !== accepted &&
-          <button type="button" className="followup-request" onClick={() => setChecked(key)} disabled={busy}
-            aria-label="다음 작업 추천받기"><Sparkles size={13}/>다음 작업 추천</button>}
+        : preparing &&
+          <div className="followup-progress" role="progressbar" aria-label="작업 추천 중"
+            aria-valuenow={percent} aria-valuemax={100} title="완료한 추천 생성 단계의 비율">
+            <Sparkles size={13}/><span>작업 추천 중 ({percent.toFixed(1)}%)</span>
+          </div>}
       {waiting && <div className="chat-continuation-actions">
         <button type="button" className="followup-proceed" disabled={busy || action!==null || !authenticated}
           onClick={() => void resolveWaiting('continue')}>{action==='continue' ? <LoaderCircle size={13} className="spin"/> : <ArrowRight size={13}/>}진행하기</button>
@@ -105,7 +130,6 @@ export default function ChatContinuation({
           disabled={busy || action!==null} onClick={() => void resolveWaiting('complete')}>
           {action==='complete' ? <LoaderCircle size={13} className="spin"/> : <Check size={13}/>}완료</button>
       </div>}
-      {!candidate && canShowRecommendation && key === checked && <p role="status">현재 대화에서 이어갈 구체적인 작업을 찾지 못했습니다.</p>}
       {error && <p role="alert">{error}</p>}
     </section>}
   </>;

@@ -70,7 +70,7 @@ export default function MessageHistory({messages,running,checking,scrollRef,stic
   </div>}
   <div className="message-history-items" ref={content} onClickCapture={event=>{
    const target=event.target instanceof Element?event.target:undefined;
-   if(target?.closest('.turn-progress-trigger') || target?.closest('[data-message-details]')&&target.closest('summary,[data-message-detail-control]'))stickToBottom.current=false;
+   if(target?.closest('.turn-progress-trigger,.work-timeline-original summary') || target?.closest('[data-message-details]')&&target.closest('summary,[data-message-detail-control]'))stickToBottom.current=false;
   }}>{rows.map(row=>{
     if('message' in row)return renderMessage(row.message,row.message.role==='system'&&Date.parse(row.message.createdAt)<lastRequestAt,failedRequests.get(row.message.id));
     const current=Boolean(currentTurn && currentTurn===row.progress.turnId);

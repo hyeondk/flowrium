@@ -3,6 +3,12 @@ import type {UsageSnapshot} from '../shared/security';
 
 export {creditBalance} from '../electron/mobile/usage-credits.js';
 
+export function creditsInUse(value?:UsageSnapshot) {
+  const credits=value?.credits;
+  if(!credits?.unlimited && (!credits?.hasCredits || (credits.balance!==null && /^0+(?:\.0+)?$/.test(credits.balance))))return false;
+  return value?.allowed===false || Boolean(value?.buckets[0]?.windows.some(window=>window.usedPercent>=100));
+}
+
 export function useAccountUsage(connected: boolean) {
   const [value, setValue] = useState<UsageSnapshot>();
   const [error, setError] = useState('');

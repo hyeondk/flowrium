@@ -128,8 +128,9 @@ async function checkLargeDraft(page,input,verifyFailedSend,send,folder,{verifyLa
   await verifyFailedSend(exact);
   await persisted(exact);
   await paste(pasted);
+  const originals=page.locator('.messages article.message.user').getByText(/^긴 요청 원문 \([\d.,]+MB\)$/);
   await send.click();
-  await page.getByText(/긴 요청 원문 \(/).first().waitFor();
+  await originals.first().waitFor();
   await page.waitForFunction(()=>document.querySelector('.markdown-input textarea')?.value==='');
   const fs=require('node:fs/promises'),path=require('node:path');
   const attachments=path.join(folder,'.flowrium','attachments');
@@ -151,7 +152,6 @@ async function checkLargeDraft(page,input,verifyFailedSend,send,folder,{verifyLa
   const bytes=20*1024*1024+1,unit='한글 원문 '.repeat(25)+'\n';
   const oversized=unit.repeat(Math.floor(bytes/Buffer.byteLength(unit)))+'!'.repeat(bytes%Buffer.byteLength(unit));
   await send.waitFor();
-  const originals=page.getByText(/긴 요청 원문 \(/);
   const before=await originals.count();
   await paste(oversized);
   await persisted(oversized);

@@ -223,3 +223,34 @@ test('비밀 질문이 있었던 턴은 답변 원문을 완료 알림 요약에
  assert.doesNotMatch(state.notifications[0].body,/임시 보호 값/);
  assert.match(state.notifications[0].body,/결과는 대화에서 확인/);
 });
+
+test('알림 다중 삭제는 재실행 뒤에도 유지되고 같은 완료 이벤트를 다시 띄우지 않는다',async t=>{
+  const s=await setup(t);
+  for(const [value,id] of [['첫 번째 작업',s.a.id],['두 번째 작업',s.b.id]]){
+    await s.controller.send({sessionId:id,text:value,mode:'plan'});
+    await s.controller.finish(id,value+' 완료');
+  }
+  const data=await s.wait(d=>d.notifications.length===2);
+  await s.workflow.action({action:'deleteNotifications',ids:data.notifications.map(n=>n.id)});
+  assert.equal((await s.reload()).notifications.length,0);
+  await s.workflow.serial(()=>s.workflow.onEvent({type:'done',sessionId:s.a.id,status:'completed'}));
+  assert.equal((await s.workflow.state()).notifications.length,0);
+  assert.equal(s.store.session(s.a.id).messages.at(-1).text,'첫 번째 작업 완료');
+});
+
+test('신규 앱 버전 알림은 계정 기록에 한 번만 추가되고 설치 뒤 정리된다',async t=>{
+  let update={status:'idle',currentVersion:'261119_13'};
+  const s=await setup(t,{updateState:()=>update});
+  assert.equal((await s.workflow.state()).notifications.length,0);
+  update={...update,status:'available',latestVersion:'261120_01'};
+  const [first,second]=await Promise.all([s.workflow.state(),s.workflow.state()]);
+  assert.equal(first.notifications.length,1);
+  assert.equal(second.notifications[0].id,first.notifications[0].id);
+  assert.equal((await s.reload()).notifications[0].updateVersion,'261120_01');
+  await s.workflow.action({action:'deleteNotifications',ids:[first.notifications[0].id]});
+  assert.equal((await s.reload()).notifications.length,0);
+  update={...update,latestVersion:'261120_02'};
+  assert.equal((await s.workflow.state()).notifications[0].updateVersion,'261120_02');
+  update={status:'current',currentVersion:'261120_02'};
+  assert.equal((await s.reload()).notifications.length,0);
+});

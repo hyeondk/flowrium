@@ -49,7 +49,6 @@ export default function ProjectPorts({ project }: { project: Project }) {
     finally { if (alive.current && project.id === currentProject.current) setBusy(false); }
   }, [project.id, receive]);
   useEffect(() => { alive.current = true; setData(undefined); setNotice(''); void load(); return () => { alive.current = false; }; }, [load]);
-  useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 3600); return () => clearTimeout(timer); }, [notice]);
   async function action(input: ProjectPortsInput) {
     if (!api || writing.current) return;
     writing.current = true; setBusy(true); setError('');

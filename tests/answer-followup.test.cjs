@@ -28,11 +28,11 @@ test('마지막 답변만 읽고 거부, 중복, 대기 완료, 빈 대화를 �
   const answer = {id:'last', role:'assistant', text:'다음 작업: 판매표의 누락 행을 확인해 주세요.'};
   for (const session of [
     undefined, {messages:[]}, {messages:[answer,user]},
-    {messages:[user,{...answer,text:'판매표를 확인했습니다.'}]},
     {messages:[{...user,text:'후속 작업 추천은 하지 마세요.'},answer]},
-    {messages:[{...user,text:'판매표의 누락 행을 확인해줘'},answer]},
     {messages:[user,answer],completedContinuationId:'last'},
   ]) assert.deepEqual(originalAnswerFollowups(session), []);
+  const duplicate={messages:[{...user,text:'판매표의 누락 행을 확인해줘'},answer]};
+  assert.notEqual(originalAnswerFollowups(duplicate)[0].prompt,duplicate.messages[0].text);
   const session = {messages:[user,{...answer,text:'긴 본문 '.repeat(20000)+'\n'+answer.text}]};
   const before = JSON.stringify(session);
   const suggestions = originalAnswerFollowups(session);
@@ -65,7 +65,7 @@ test('다음이라는 접두어가 없어도 구체적인 산출 제안과 공�
   const make=text=>({messages:[{role:'user',text:'차이를 자세히 설명해줘'},{role:'assistant',text}]});
   assert.equal(originalAnswerFollowups(make('세 가지 비교 기준입니다.\n- 비용은 A가 낮습니다.\n- 처리 시간은 B가 짧습니다.\n- 지원 범위는 C가 넓습니다.'))[0].prompt,'답변에 나온 비교 기준과 차이를 한 표로 정리해줘');
   assert.equal(originalAnswerFollowups(make('연결 방법은 다음 순서입니다.\n1. 실행 환경을 확인합니다.\n2. 연결 주소를 설정합니다.\n3. 다시 연결해 동작을 확인합니다.'))[0].prompt,'안내한 작업 순서를 실행할 수 있는 체크리스트로 정리해줘');
-  assert.deepEqual(originalAnswerFollowups(make('완료 항목입니다.\n- 문서를 작성했습니다.\n- 폴더를 정리했습니다.\n- 파일을 저장했습니다.')),[]);
+  assert.match(originalAnswerFollowups(make('완료 항목입니다.\n- 문서를 작성했습니다.\n- 폴더를 정리했습니다.\n- 파일을 저장했습니다.'))[0].prompt,/문서.*핵심 결론/);
 });
 
 test('명시 제안 없는 분석 완료에서도 문맥에 맞는 후속 작업을 찾고 이미 한 요청은 반복하지 않는다',async()=>{
@@ -75,7 +75,7 @@ test('명시 제안 없는 분석 완료에서도 문맥에 맞는 후속 작업
   const session={workflow:{status:'done'},messages:[user,answer]},before=JSON.stringify(session);
   assert.equal(originalAnswerFollowups(session)[0].prompt,'매출 변화에 가장 크게 영향을 준 요인을 분석해줘');
   assert.equal(JSON.stringify(session),before);
-  assert.deepEqual(originalAnswerFollowups({messages:[user,{...answer,text:'확인한 결과입니다.'}]}),[]);
+  assert.match(originalAnswerFollowups({messages:[user,{...answer,text:'확인한 결과입니다.'} ]})[0].prompt,/온라인 스토어의 월별 매출/);
   assert.deepEqual(originalAnswerFollowups({messages:[{role:'user',text:'후속 작업은 추천하지 마'},answer]}),[]);
   const repeated={messages:[{role:'user',text:'채널별 매출을 비교해줘'},{role:'assistant',text:'다음 단계\n- 채널별 매출을 비교해 주세요.\n- 분류되지 않은 주문을 확인해 주세요.'}]};
   assert.equal(originalAnswerFollowups(repeated)[0].prompt,'분류되지 않은 주문을 확인해줘');
@@ -85,7 +85,7 @@ test('코드와 작성물 속 분석 결과로 추천을 만들지 않으며 긴
   const {originalAnswerFollowups}=await loaded;
   const answer='월별 매출 분석을 완료했습니다. 최근 주문 데이터를 정리했습니다.';
   for(const text of ['```text\n'+answer+'\n```',':::writing\n'+answer+'\n:::','> '+answer]) {
-    assert.deepEqual(originalAnswerFollowups({messages:[{role:'user',text:'예시를 읽어줘'},{role:'assistant',text}]}),[]);
+    assert.doesNotMatch(originalAnswerFollowups({messages:[{role:'user',text:'예시를 읽어줘'},{role:'assistant',text} ]})[0].prompt,/매출|주문/);
   }
   const session={messages:[{role:'user',text:'스토어 매출을 분석해줘'},{role:'assistant',text:'자료 설명 '.repeat(20000)+'\n'+answer}]};
   const start=performance.now();
@@ -103,7 +103,36 @@ test('미검증 결과와 최신 요청의 우선순위로 다음 작업을 고�
   assert.equal(followupFromAnswer('다음에는 실제 기기에서 알림을 검증해야 합니다.').prompt,'실제 기기에서 알림을 검증해줘');
   const completed = session('일정이 있는지 알려줘','그날은 일정이 없습니다.');
   assert.equal(canOfferFollowup(completed),true);
-  assert.deepEqual(originalAnswerFollowups(completed),[]);
+  assert.match(originalAnswerFollowups(completed)[0].prompt,/일정.*확인한 기간/);
   assert.equal(canOfferFollowup({...completed,completedContinuationId:'latest'}),false);
   assert.equal(canOfferFollowup(session('다음 단계는 제안하지 마세요.',answer)),false);
+});
+
+test('명시적인 후속 작업이 없을 때도 직전 답변에 맞춘 초안을 찾고 실제 처리 단계를 알린다',async()=>{
+  const {originalAnswerFollowups,prepareAnswerFollowup}=await loaded;
+  const session=(text,request='표를 확인해줘')=>({messages:[{role:'user',text:request},{role:'assistant',text}]});
+  const completed=session('판매표를 확인했습니다.');
+  const stages=[],start=performance.now();
+  const result=await prepareAnswerFollowup(completed,percent=>stages.push(percent.toFixed(1)));
+  assert.match(result.prompt,/판매표.*확인한 범위/);
+  assert.deepEqual(stages,['0.0','25.0','50.0','75.0','100.0']);
+  assert(performance.now()-start<10000);
+  assert.equal(result.prompt,originalAnswerFollowups(completed)[0].prompt);
+  assert.equal(originalAnswerFollowups(session('아이콘 정렬만 추가 조정이 필요합니다.'))[0].prompt,'아이콘 정렬만 추가 조정해줘');
+  assert.doesNotMatch(originalAnswerFollowups(session('승인번호 98352를 확인했습니다.'))[0].prompt,/98352/);
+  const abort=new AbortController();
+  assert.equal(await prepareAnswerFollowup(completed,()=>abort.abort(),abort.signal),undefined);
+});
+
+test('긴 요청의 원문 보관 표기를 추천 주제로 쓰지 않는다',async()=>{
+  const {originalAnswerFollowups}=await loaded;
+  const messages=[
+    {role:'user',text:'대시보드 알림을 검증해줘'},
+    {role:'assistant',text:'대시보드 알림을 검증했습니다.'},
+    {role:'user',text:'긴 요청 원문 (3.98MB)',sourceOnly:true},
+    {role:'assistant',text:'확인한 결과입니다.'},
+  ];
+  assert.match(originalAnswerFollowups({messages})[0].prompt,/^직전 답변을 바탕으로/);
+  messages.at(-1).text='판매표를 확인했습니다.';
+  assert.match(originalAnswerFollowups({messages})[0].prompt,/판매표.*확인한 범위/);
 });

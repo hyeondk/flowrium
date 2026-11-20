@@ -221,8 +221,7 @@ async function run() {
       assert.deepEqual(closed.percentages,['63%']);
       assert(!closed.credits && open.credits);
     }
-    const approvalNotices=page.locator('.flow-question-notice').getByRole('button',{name:'알림 닫기',exact:true});
-    while(await approvalNotices.count())await approvalNotices.first().click();
+    await page.locator('.flow-question-notice[data-tone=question]').waitFor({state:'hidden',timeout:12000});
     for(const [state,title] of [['running','진행 상태 검증'],['waiting','추가 입력 대기'],['decision','결정 상태 검증']]){
       await page.locator('.statusbar .execution-summary [data-state='+state+']').click();
       await page.waitForFunction(value=>document.querySelector('.dock-status-tabs [data-state='+value+']')?.getAttribute('aria-pressed')==='true',state);

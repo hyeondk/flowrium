@@ -14,6 +14,7 @@ import {
   FolderPlus,
   Layers,
   Plus,
+  RefreshCw,
   Search,
 } from "lucide-react";
 import type { Project, Session } from "../shared/types";
@@ -427,7 +428,7 @@ function OutputIndex({
             </option>
           ))}
         </select>
-        <button onClick={() => reload((r) => r + 1)}>새로 고침</button>
+        <button className="pf-primary portfolio-refresh" disabled={loading} onClick={() => reload((r) => r + 1)}><RefreshCw size={15} className={loading?'spin':undefined} aria-hidden="true"/>새로고침</button>
       </div>
       {loading && <LoadingProgress label="프로젝트 문서를 불러오는 중입니다." />}
       {unread.length > 0 && (
@@ -483,6 +484,7 @@ export function ProjectPortfolio({
   const [rev, reload] = useState(0),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [refreshing,setRefreshing]=useState(false);
   const [overrides, setOverrides] = useState<Record<string, Session>>({});
   const keys = projects.map((p) => p.id + "@" + p.path + "@" + p.name).sort().join("|");
   useEffect(() => {
@@ -498,7 +500,7 @@ export function ProjectPortfolio({
         })
         .catch((e) => {
           if (live) setError(errorText(e));
-        });
+        }).finally(()=>{if(live)setRefreshing(false);});
     return () => {
       live = false;
     };
@@ -634,7 +636,10 @@ export function ProjectPortfolio({
               }
             </p>}
           </div>
-          {view === "dashboard" && <button className="pf-primary" onClick={() => onNavigate("kickoff")}><Plus size={16}/>새 프로젝트</button>}
+          {view === "dashboard" && <div className="dashboard-heading-actions">
+            <button className="pf-primary portfolio-refresh" disabled={refreshing||!api} onClick={()=>{setRefreshing(true);reload(value=>value+1);}}><RefreshCw size={15} className={refreshing?'spin':undefined} aria-hidden="true"/>새로고침</button>
+            <button className="pf-primary" onClick={() => onNavigate("kickoff")}><Plus size={16}/>새 프로젝트</button>
+          </div>}
           {view === "kickoff" && <div className="pf-actions"><button onClick={onChooseProject}><FolderOpen size={15}/>기존 폴더 연결</button></div>}
         </header>
         {error && (

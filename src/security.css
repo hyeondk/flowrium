@@ -29,3 +29,4 @@
 @media(max-width:420px){.security-pin-form,.security-pin-form:has(>label:nth-of-type(3)){grid-template-columns:1fr}.security-row>select{width:124px;flex-basis:124px}.security-screen{padding:16px}.security-unlock{padding:24px}}
 .security-credits p{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0;color:var(--muted);word-break:keep-all}
 .security-credits strong{color:var(--accent);font-variant-numeric:tabular-nums}
+.security-credits .security-credit-balance[data-active=false]{font-weight:400}

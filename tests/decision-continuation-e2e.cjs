@@ -70,7 +70,7 @@ async function main(){const root=path.resolve(__dirname,'..'),qa=path.join(root,
  await composer(reopened).press('Enter');
  await composer(reopened).blur();
  await reopened.locator('.message.assistant').filter({hasText:'확인한 결과입니다.'}).waitFor();
- assert.equal(await reopened.locator('.followup-accept').count(),0,'다음 작업 없는 새 답변');
+ await reopened.locator('.followup-accept').filter({hasText:'별도 검토'}).waitFor({timeout:10000});
  assert.equal(await fs.readFile(followupTrace,'utf8'),previousCalls+'전송\n','명시 전송 한 번만 기록');
  const resumed=await reopened.evaluate(id=>window.flowrium.bootstrap().then(s=>s.sessions.find(row=>row.id===id)),completed.id);
  assert.equal(resumed.messages.filter(message=>message.role==='user').length,2);

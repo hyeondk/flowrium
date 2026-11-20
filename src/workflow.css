@@ -55,3 +55,21 @@
 
 .workflow-hub :is(p,h2,h3,h4,strong) { overflow-wrap:normal; }
 .workflow-hub :is(a,code) { overflow-wrap:anywhere; }
+
+.workflow-hub > header .workflow-refresh {
+ display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;padding:6px 12px;
+ border:1px solid transparent;border-radius:9px;background:var(--primary-gradient);color:var(--on-primary);
+ box-shadow:inset 0 1px 0 #ffffff35,0 4px 12px -7px #124b8690;
+}
+.workflow-schedule {
+ width:min(100%,650px);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:12px 16px;
+}
+.workflow-hub .workflow-schedule :is(select,input:not([type=checkbox])) {min-height:34px;padding:5px 9px;}
+.workflow-hub .workflow-schedule .workflow-days {padding:0;border:0;min-width:0;}
+.workflow-hub .workflow-days legend {padding:0;margin:0 0 8px;color:var(--text);font-size:13px;line-height:22px;}
+.workflow-days>div {display:flex;align-items:center;flex-wrap:wrap;gap:4px 12px;min-height:34px;}
+.workflow-hub .workflow-days label {gap:3px;min-height:25px;}
+@media(max-width:420px) {
+ .workflow-schedule {column-gap:8px;}
+ .workflow-days>div {gap:4px 7px;}
+}

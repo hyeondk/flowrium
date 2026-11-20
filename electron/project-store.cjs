@@ -1,6 +1,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
+const { validDetail } = require('./work-step.cjs');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const copy = (value) => structuredClone(value);
@@ -83,7 +84,8 @@ function validateSession(session, projectId) {
     if (message.workSteps !== undefined && (!Array.isArray(message.workSteps) || message.workSteps.some(step =>
       !step || typeof step.id !== 'string' || !step.id || step.id.length > 300 ||
       typeof step.label !== 'string' || !step.label || step.label.length > 200 ||
-      !['running','completed','failed','interrupted'].includes(step.state) || !validateDate(step.createdAt) || (step.completedAt !== undefined && !validateDate(step.completedAt))
+      !['running','completed','failed','interrupted'].includes(step.state) || !validateDate(step.createdAt) ||
+      (step.completedAt !== undefined && !validateDate(step.completedAt)) || !validDetail(step)
     ))) throw Error('저장된 작업 과정 형식을 확인해 주세요.');
     if(message.turnId!==undefined&&(typeof message.turnId!=="string"||message.turnId.length>300||!message.turnId))throw Error("메시지의 실행 식별자를 확인해 주세요.");
     if(message.reaction!==undefined&&message.reaction!=='like')throw Error('메시지 반응 형식을 확인해 주세요.');

@@ -99,7 +99,7 @@ async function run(){
   for(const [width,height]of [[1440,900],[1280,800],[1024,768],[800,700],[390,844],[320,568]]){
    await page.setViewportSize({width,height});await settledLayout(page.locator('.conversation-dock'));const m=await measure();measurements.push(m);assert.equal(m.focus,'false','대화가 본 화면을 숨기지 않음');if(width>=900){assert(m.dock.width>=350&&m.dock.width<=width*.46,'우측 대화 비율 '+width);assert(await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).isVisible(),'왼쪽 대시보드 유지 '+width);}else if(width<=760)assert(m.dock.width>=width-2,'작은 화면의 대화 폭 '+width);assert(m.messages.height>=height*.38,'본문 공간 '+width);assert(m.composer.height<=Math.max(185,height*.28),'입력 영역의 기본 높이 '+width);assert(m.messages.scroll<=m.messages.client+1,'본문 가로 넘침 없음 '+width);assert(m.dock.scroll<=m.dock.client+1&&m.documentOverflow<=1,'대화와 문서 가로 넘침 없음 '+width);assert(m.textarea.height>=25&&m.textarea.height<=105,'자동 입력 높이 26~104px '+width);
    assert.equal(await page.locator('.messages [data-message-id]').count(),100);assert(await page.locator('.messages').evaluate(e=>e.scrollHeight-e.clientHeight-e.scrollTop<3),'넓이 변경 후 최신 위치 유지');
-   assert.equal(await page.locator('.followup-accept').count(),0,'다음 단계가 없는 대화는 추천 공간을 차지하지 않음');
+   assert.equal(await page.locator('.followup-accept').count(),1,'다음 단계가 명시되지 않은 답변에도 추천 한 건 표시');
   }
   await page.setViewportSize({width:1440,height:900});
   await settledLayout(page.locator('.conversation-dock'));

@@ -15,9 +15,8 @@ async function isFile(file) {
 }
 async function resolveCodex(configured, options = {}) {
   if (configured && !(await isFile(configured)))
-    throw new Error(
-      "지정한 Codex 실행 파일을 찾지 못했습니다. 설정에서 경로를 확인해 주세요.",
-    );
+    throw Object.assign(new Error("지정한 Codex 실행 파일을 찾지 못했습니다. 설정에서 경로를 확인해 주세요."),
+      {code:"CODEX_EXECUTABLE_MISSING"});
   const platform = options.platform || process.platform;
   const resources = options.resourcesPath || process.resourcesPath || "";
   const nativeName = platform === "win32" ? "codex.exe" : "codex";
@@ -142,9 +141,8 @@ class CodexClient extends EventEmitter {
     const descriptor =
       this.options.descriptor || (await resolveCodex(configured, this.options));
     if (!descriptor)
-      throw new Error(
-        "Codex 실행 파일을 찾지 못했습니다. 설정에서 실행 파일 경로를 지정하거나 Codex를 설치해 주세요.",
-      );
+      throw Object.assign(new Error("Codex 실행 파일을 찾지 못했습니다. 설정에서 실행 파일 경로를 지정하거나 Codex를 설치해 주세요."),
+        {code:"CODEX_EXECUTABLE_MISSING"});
     this.descriptor = descriptor;
     this.intentionalClose = false;
     const env = {
@@ -213,7 +211,7 @@ class CodexClient extends EventEmitter {
     proc.stdin.on("error", () => {});
     proc.once("error", (error) => {
       if (this.proc === proc)
-        this._fail(new Error(`Codex를 실행하지 못했습니다. ${error.message}`));
+        this._fail(Object.assign(new Error("Codex를 실행하지 못했습니다."), {code:"CODEX_START",cause:error}));
     });
     proc.once("exit", (code, signal) => {
       if (this.proc !== proc) return;
@@ -223,7 +221,7 @@ class CodexClient extends EventEmitter {
         new Error(
           this.intentionalClose
             ? "Codex 연결을 종료했습니다."
-            : `Codex 연결이 종료됐습니다. 종료 상태: ${code ?? signal ?? "알 수 없음"}`,
+            : `Codex 연결이 종료됐습니다. 종료 상태 (${code ?? signal ?? "알 수 없음"})`,
         ),
       );
     });
@@ -358,6 +356,7 @@ class CodexClient extends EventEmitter {
         );
         error.rpcCode = message.error.code;
         error.rpcMessage = message.error.message;
+        error.codexErrorInfo = message.error.data?.codexErrorInfo;
         pending.reject(error);
       } else pending.resolve(message.result || {});
       return;

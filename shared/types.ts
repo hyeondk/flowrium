@@ -93,6 +93,10 @@ export interface WorkStep {
   label: string;
   state: "running" | "completed" | "failed" | "interrupted";
   createdAt: string;
+  kind?: 'command' | 'file' | 'search' | 'agent' | 'tool' | 'image' | 'context';
+  agents?: {id:string;name?:string;state:WorkStep['state']}[];
+  files?: {path:string;added?:number;removed?:number}[];
+  sourceUrl?: string;
 }
 export interface Session {
   defaultProjectMode?: "build";
@@ -137,6 +141,7 @@ export interface ConnectionStatus {
   available: boolean;
   authenticated: boolean;
   accountLabel?: string;
+  accountPlan?: string;
   dotsEligible?: boolean;
   cliPath?: string;
   error?: string;
@@ -158,6 +163,7 @@ export type InputAnswers = Record<string, { answers: string[] }>;
 export interface FlowriumEvent {
   contextUsage?: Session['context'];
   workProgress?: {messageId: string; step: WorkStep};
+  workCommentary?: Message;
   questions?: InputQuestion[];
   isBlocking?: boolean;
   projectsChanged?: boolean;
@@ -237,6 +243,7 @@ export interface FlowriumAPI
   deleteSession(id: string): Promise<void>;
   saveSettings(settings: Partial<Settings>): Promise<Settings>;
   connectionStatus(): Promise<ConnectionStatus>;
+  readChatConnection(): Promise<{ready:true} | {ready:false;reason:'login'|'unavailable'|'changed';message:string;desktopInstalled:boolean|null}>;
   listAvailableModels():ReturnType<FlowriumAPI['connect']>;
   connect(): Promise<{
     modelAccount?:string;
@@ -263,7 +270,7 @@ export interface FlowriumAPI
     decision: "accept" | "decline";
   }): Promise<void>;
   openExternal(
-    target: "chatgpt" | "codex-docs" | "download-docs" | "downloads",
+    target: "chatgpt" | "chatgpt-desktop" | "codex-docs" | "download-docs" | "downloads",
   ): Promise<void>;
   copyText(text: string): Promise<void>;
   openProject(id: string): Promise<void>;

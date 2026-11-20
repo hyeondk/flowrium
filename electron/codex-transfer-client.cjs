@@ -25,7 +25,7 @@ function createRunClient(controller,run){
   }catch(error){client.answerTool(requestId,{contentItems:[{type:'inputText',text:publicMessage(error)}],success:false});}
  });
  client.on('unsupported',()=>controller.emitEvent({type:'error',sessionId:run.sessionId,text:'원래 앱 전용 추가 입력을 Flowrium에서 처리할 수 없어 거절했습니다. 필요한 작업은 원래 앱에서 이어가 주세요.'}));
- client.on('disconnect',error=>{if(!run.finalized && !run.claimingWriter)controller.finish(run,'failed',publicMessage(linkedError(error))).catch(()=>{});});
+ client.on('disconnect',error=>{if(!run.finalized && !run.claimingWriter)controller.finish(run,'failed',linkedError(error)).catch(()=>{});});
  let releasing;
  run.releaseClient=()=>releasing??=(async()=>{
   try{if(client.ready&&run.threadId)await client.request('thread/unsubscribe',{threadId:run.threadId},2500).catch(()=>{});}

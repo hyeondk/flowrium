@@ -1,6 +1,7 @@
 const fs=require('node:fs/promises'),path=require('node:path');
 const {createHash}=require('node:crypto'),{fileURLToPath}=require('node:url');
 const {pages,samePath}=require('./history.cjs');
+const {projectWorkStep}=require('./work-step.cjs');
 const hash=value=>createHash('sha256').update(value).digest('hex');
 function stable(value){const h=hash(value).slice(0,32);return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;}
 function at(value,fallback=new Date().toISOString()){const d=new Date(typeof value==='number'?value*(Math.abs(value)<1e12?1000:1):value);return Number.isFinite(d.getTime())?d.toISOString():fallback;}
@@ -58,20 +59,26 @@ async function snapshot(client,threadId,cwd,forcedActive=false,options={}){
   records.push({...turn,items:entries});
   for(const [index,entry]of entries.entries()){
    const item=entry.item||entry,forwarded=delegatedInput(item);if(options.textOnly&&!forwarded&&!['userMessage','agentMessage','plan','exitedReviewMode'].includes(item?.type))continue;if(!item||typeof item!=='object')throw Error('대화 항목 형식을 확인하지 못했습니다.');const key=String(turn.id)+':'+(item.id||index);if(seen.has(key))continue;seen.add(key);itemCount++;
+   const started=entry.startedAtMs??item.startedAtMs??turn.startedAt;
+   const finished=entry.completedAtMs??item.completedAtMs??turn.completedAt;
+   const step=projectWorkStep(item, {
+    createdAt:at(started,at(thread.createdAt)), completedAt:finished==null?undefined:at(finished),
+    running:['inProgress','in_progress','running'].includes(item.status)||
+      Boolean(options.liveProgress&&!item.status&&finished==null&&started!=null),
+   });
    let role,body='',images=[];
    if(item.type==='userMessage'){role='user';for(const part of item.content||[]){if(part.type==='text'&&typeof part.text==='string')body+=(body?'\n':'')+part.text;else if(['localImage','image','file','localFile'].includes(part.type)){images.push(part);attachments.push({key,part});}}}
    else if(forwarded){role='user';body=forwarded;}
    else if(['agentMessage','plan'].includes(item.type)){role=item.phase==='commentary'?'system':'assistant';body=typeof item.text==='string'?item.text:'';}
    else if(item.type==='exitedReviewMode'){role='assistant';body=typeof item.review==='string'?item.review:'';}
-   else if(options.liveProgress){role='system';body=publicProgress(item);}
+   else if(options.liveProgress){role='system';body=publicProgress(item)||step?.label;}
    else if(item.type==='commandExecution'){role='system';body=['실행 도구 / 명령',item.command,item.aggregatedOutput].filter(v=>typeof v==='string'&&v).join('\n\n');}
    else if(item.type==='fileChange'){role='system';body='파일 변경 기록\n'+JSON.stringify(item.changes||item,null,2);}
    else if(/ToolCall$/.test(item.type||'')){role='system';body='도구 실행 기록\n'+JSON.stringify(item,null,2);}
+   else if(step){role='system';body=step.label;}
    else continue;
    if(!body&&images.length)body='첨부 자료 '+images.length+'개';
    if(!body)continue;
-   const started=entry.startedAtMs??item.startedAtMs??turn.startedAt;
-   const finished=entry.completedAtMs??item.completedAtMs??turn.completedAt;
    const stamp=at(role==='user'?started:finished??started,at(thread.createdAt));
    // 프로젝트 기록의 메시지 크기 제한 안에서 여러 조각으로 보존하며 본문을 자르지 않습니다.
    const timing = {};
@@ -81,6 +88,7 @@ async function snapshot(client,threadId,cwd,forcedActive=false,options={}){
     if (started && ended && ended >= started) timing.workCompletedAt = ended;
    }
    if (role === 'system' && item.type==='agentMessage' && item.phase==='commentary') timing.progressCommentary=true;
+   if (role === 'system' && step) timing.workSteps=[step];
    for(let offset=0;offset<body.length;offset+=1_900_000){messages.push({id:stable('codex-message:'+threadId+':'+key+':'+offset),role,text:body.slice(offset,offset+1_900_000),createdAt:stamp,...(offset===0&&timing),...(forwarded&&{delegated:true}),...(turn.id&&{turnId:String(turn.id)})});}
   }
  }

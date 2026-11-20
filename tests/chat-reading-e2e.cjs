@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const {randomUUID, randomBytes} = require('node:crypto');
 const {_electron} = require('playwright');
+const {expect} = require('playwright/test');
 const {Store} = require('../electron/store.cjs');
 const {openConversation} = require('./shell-test-helpers.cjs');
 
@@ -74,6 +75,49 @@ async function checkQueuedOriginal(app,page,input,sessionId) {
   console.log('후속 입력 '+expected.bytes+'바이트 / 기존 작업 대기열에서 한 번 전송 / 단일 턴 답변 / 원문 복사·되감기 입력 복원 전체 SHA-256 일치');
 }
 
+async function checkWorkProgress(page,input,popup,gate,title) {
+  await page.getByRole('button',{name:'작업 보내기',exact:true}).waitFor();
+  await input.fill('작업 단계 스트림 시험');
+  await input.press('Enter');
+  const historyButton=page.locator('.turn-progress-trigger').last();
+  await page.getByText('요청을 처리하고 있어요',{exact:true}).waitFor();
+  const live=page.getByRole('list',{name:'실시간 작업 과정',exact:true});
+  await live.getByText('명령 실행',{exact:true}).waitFor();
+  await live.getByText('작업 중',{exact:true}).waitFor();
+  await live.getByText('준비 작업: 작업을 시작했습니다',{exact:true}).waitFor();
+  assert.equal(await page.locator('.messages .turn-progress-list').count(),0);
+  const answer=page.locator('.chat-live-response .answer-progress');
+  const readPercent=async()=>Number((await answer.innerText()).match(/([\d.]+)%/)?.[1]);
+  const firstPercent=await readPercent();
+  await expect.poll(readPercent).toBeGreaterThan(firstPercent);
+  const gap=await page.locator('.composer-live-work-heading').evaluate(el=>parseFloat(getComputedStyle(el).gap));
+  assert.equal(gap,6);
+  assert(!(await live.innerText()).includes('표시하지 않을 에이전트 전문'));
+  await fs.writeFile(gate,'완료');
+  await expect(answer).toContainText('답변 작성 완료 (100.0%)');
+  await live.waitFor({state:'hidden'});
+  await historyButton.click();
+  await popup.getByText('준비 작업: 작업을 마쳤습니다',{exact:true}).waitFor();
+  assert.equal(await popup.locator('li').count(),5);
+  const workTools=page.locator('.work-tool-details');
+  const settings=page.getByLabel('대화 연결 및 작업 도구',{exact:true});
+  await settings.click();
+  await workTools.getByText('변경 사항',{exact:true}).click();
+  await expect(workTools).toContainText('작업 기록.md');
+  await expect(workTools).toContainText('+2 −1');
+  await workTools.getByText('하위 에이전트',{exact:true}).click();
+  await expect(workTools).toContainText('준비 작업');
+  await workTools.getByText('소스',{exact:true}).click();
+  await expect(workTools).toContainText('https://example.test/work');
+  await settings.click();
+  await page.reload();
+  await openConversation(page,title);
+  await historyButton.click();
+  await popup.getByText('준비 작업: 작업을 마쳤습니다',{exact:true}).waitFor();
+  await historyButton.click();
+  console.log('실시간 진행률 소수점 1자리 및 완료 100% / 하위 에이전트 상태 / 파일 변경 행 수·소스 / 완료한 작업 기록 재실행 복원 확인');
+}
+
 async function run() {
   const root = path.resolve(__dirname, '..');
   const temp = await fs.mkdtemp(path.join(root, '.flowrium-tmp', 'chat-reading-'));
@@ -116,14 +160,17 @@ async function run() {
     const popup=page.getByRole('list',{name:'작업 과정',exact:true});
     assert.equal(await popup.locator('details').count(),3);
     await popup.locator('summary').nth(1).click();
-    assert.match(await popup.locator('pre').innerText(),/둘째 기록/);
-    await popup.getByRole('button',{name:'원문 보기',exact:true}).click();
-    const original=popup.getByRole('region',{name:'작업 원문',exact:true});
+    const original=popup.locator('pre');
+    assert.match(await original.innerText(),/둘째 기록/);
     assert((await original.textContent()).includes('아주긴로그토큰'.repeat(400)));
     assert(await original.evaluate(el=>el.scrollWidth<=el.clientWidth+1));
     await popupButton.click();
     await popup.waitFor({state:'hidden'});
     const input=page.getByRole('textbox',{name:'Codex에 보낼 작업 요청'});
+    if(process.argv.includes('--work-progress')) {
+      await checkWorkProgress(page,input,popup,gate,title);
+      return;
+    }
     const draft='# 제목\n\n**강조** 그리고 `코드`\n\n- [x] 목록';
     await require('./inline-draft-checks.cjs').checkInlineDraft(page,input,draft);
     await require('./inline-draft-checks.cjs').checkLargeDraft(page,input,async()=>{
@@ -159,24 +206,7 @@ async function run() {
     await sent.locator('.chat-image-strip').waitFor();
     assert.equal(await sent.locator('.chat-image-strip li').count(),7);
     assert(!(await sent.locator('.chat-image-strip').innerText()).includes('.png'));
-    await page.getByRole('button',{name:'작업 보내기',exact:true}).waitFor();
-    await input.fill('작업 단계 스트림 시험');
-    await input.press('Enter');
-    const liveButton=page.locator('.turn-progress-trigger').last();
-    await popup.getByText('명령 실행',{exact:true}).waitFor();
-    await popup.getByText('작업 중',{exact:true}).waitFor();
-    await liveButton.click();
-    await popup.waitFor({state:'hidden'});
-    await liveButton.click();
-    await fs.writeFile(gate,'완료');
-    await popup.getByText('완료',{exact:true}).waitFor();
-    assert.equal(await popup.locator('li').count(),1);
-    await liveButton.click();
-    await page.reload();
-    await openConversation(page,title);
-    await liveButton.click();
-    await popup.getByText('완료',{exact:true}).waitFor();
-    await liveButton.click();
+    await checkWorkProgress(page,input,popup,gate,title);
     await checkQueuedOriginal(app,page,input,session.id);
     console.log('입력 마크다운 / 발신·수신 말풍선 / 요청별 과거와 실시간 작업 기록 및 재실행 복원 / 사진 가로 목록과 전송 후 보존 통과');
   } finally {

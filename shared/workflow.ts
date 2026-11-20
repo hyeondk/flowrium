@@ -14,6 +14,8 @@ export interface WorkflowPreferences {
 }
 export interface WorkflowNotification {
   id:string;kind:string;title:string;body:string;sessionId:string|null;group:string;createdAt:string;readAt:string|null;
+  preview?:string;
+  updateVersion?:string;
 }
 export interface WorkflowProposal {
   id:string;revision:number;kind:"request"|"external"|"next"|"report"|"team";title:string;body:string;
@@ -52,6 +54,7 @@ export type WorkflowAction =
   |{action:"read";ids:string[]}
   |{action:"readSession";sessionId:string}
   |{action:"clearNotifications";readOnly:true}
+  |{action:"deleteNotifications";ids:string[]}
   |{action:"reportNow"|"collect"|"recommend"}
   |{action:"reminderAdd";when:string;text:string;repeatDays:number}
   |{action:"reminderCancel";id:string}

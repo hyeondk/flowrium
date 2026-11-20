@@ -13,12 +13,12 @@ async function main(){
    measurements.push(geometry);assert(geometry.notice.y>=geometry.header.bottom,'알림이 헤더 영역 밖에 배치됨');assert.equal(geometry.pointerEvents,'none');assert.equal(geometry.responsePointerEvents,'auto');assert(geometry.buttons.every(button=>button.reachable),'알림 표시 중 모든 헤더 버튼에 실제 포인터가 도달함');
    await page.locator('.dock-reopen-tab').click({timeout:2000});await dock.waitFor();await dock.getByRole('button',{name:'대화함 접기',exact:true}).click({timeout:2000});await dock.waitFor({state:'detached'});
    const popup=page.getByRole('dialog',{name:'알림',exact:true});
-   if(width===390){await notice.getByRole('button',{name:'알림 닫기',exact:true}).click();await notice.waitFor({state:'detached'});assert((await page.evaluate(()=>window.flowrium.securityPending())).some(event=>event.type==='approval'),'배너를 닫은 뒤에도 승인 요청 보존');await page.locator('.header-decisions').click();}
+   if(width===390){assert.equal(await notice.getByRole('button',{name:'알림 닫기',exact:true}).count(),0);await notice.waitFor({state:'detached',timeout:7000});assert((await page.evaluate(()=>window.flowrium.securityPending())).some(event=>event.type==='approval'),'배너를 닫은 뒤에도 승인 요청 보존');await page.locator('.header-decisions').click();}
    else {await notice.getByRole('button',{name:'대화에서 확인하기',exact:true}).click();await page.locator('.conversation-dock .session-heading').getByRole('heading',{name:await page.evaluate(id=>window.flowrium.bootstrap().then(data=>data.sessions.find(row=>row.id===id).title),session.id),exact:true}).waitFor();}
    const card=(width===390?popup:page.locator('.conversation-dock')).getByRole('region',{name:'실행 승인 요청'});await card.waitFor();await card.getByRole('button',{name:'이번 작업 승인',exact:true}).click();await card.waitFor({state:'detached'});if(width===390)await popup.getByRole('button',{name:'알림 닫기',exact:true}).click();
    for(let i=0;i<100;i++){if(!(await page.evaluate(()=>window.flowrium.securityPending())).some(event=>event.sessionId===session.id))break;await page.waitForTimeout(30)}
   }
-  await fs.writeFile(path.join(qa,'decision-notice-layout-result.json'),JSON.stringify({passed:true,manualDismiss:true,headerReachableWhileVisible:true,pendingRequestPreserved:true,measurements},null,2)+'\n');console.log('결정 알림 실제 화면 / 세 화면 폭에서 헤더 밖 배치 / 표시 중 모든 헤더 포인터 도달 / 대화함 즉시 열기·닫기 / 해당 대화에서 직접 승인 / 배너 닫은 뒤 요청 보존·알림함 응답 통과');
+  await fs.writeFile(path.join(qa,'decision-notice-layout-result.json'),JSON.stringify({passed:true,automaticDismiss:true,headerReachableWhileVisible:true,pendingRequestPreserved:true,measurements},null,2)+'\n');console.log('결정 알림 실제 화면 / 세 화면 폭에서 헤더 밖 배치 / 표시 중 모든 헤더 포인터 도달 / 대화함 즉시 열기·닫기 / 해당 대화에서 직접 승인 / 자동으로 닫힌 뒤 요청 보존·알림함 응답 통과');
  }finally{try{if(app)await closeInstalledApp(app,'결정 알림 배치 검사 앱 종료')}finally{await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:150})}}
 }
 main().catch(error=>{console.error(error);process.exitCode=1});

@@ -5,7 +5,7 @@
 .composer .chat-continuation button:enabled:hover{background:var(--panel-alt);color:var(--text)}
 .composer .chat-continuation svg{flex:none}
 .composer .chat-continuation .followup-accept{grid-column:1/-1;color:var(--accent-bright)}
-.composer .chat-continuation .followup-request{grid-column:1;justify-self:start;color:var(--accent)}
+.composer .chat-continuation .followup-progress{grid-column:1;justify-self:start;display:flex;align-items:center;gap:6px;min-width:0;min-height:28px;padding:2px 6px;color:var(--accent);font-size:11px;line-height:18px;font-variant-numeric:tabular-nums}
 .composer .followup-accept span{min-width:0;word-break:keep-all;overflow-wrap:anywhere;line-height:16px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .composer .followup-accept kbd{flex:none;font:inherit;line-height:15px;padding:0 3px;border:1px solid var(--line);border-radius:4px}
 .composer .chat-continuation-actions :is(.followup-proceed,.followup-complete){flex:none}

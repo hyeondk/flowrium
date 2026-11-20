@@ -5,15 +5,10 @@ const { EventEmitter } = require("node:events");
 const { randomUUID } = require("node:crypto");
 const { CodexClient, resolveCodex } = require("./codex.cjs");
 const { text } = require("./store.cjs");
-const { publicMessage } = require("./errors.cjs");
+const { publicMessage, chatFailure } = require("./errors.cjs");
 const { HistoryImporter } = require("./history.cjs");
 const currentRequest = require("./scoped-request.cjs");
-
-const stepNames = {
-  commandExecution: "명령 실행", fileChange: "파일 변경", webSearch: "자료 검색",
-  mcpToolCall: "연결 도구", dynamicToolCall: "작업 도구", collabAgentToolCall: "작업 위임",
-  imageView: "이미지 확인", imageGeneration: "이미지 생성", contextCompaction: "문맥 정리",
-};
+const { projectWorkStep } = require('./work-step.cjs');
 
 const MODE_INSTRUCTIONS = {
   plan: "계획을 세우고 설명해 주세요. 사용자가 수정을 요청하면 프로젝트 범위에서 반영하세요.",
@@ -78,11 +73,11 @@ class Controller extends EventEmitter {
       this.loadedThreads.clear();
       this.status.authenticated = false;
       for (const run of [...this.runs.values()])
-        if(!run.claimingWriter && (!run.client || run.client===this.client))this.finish(run, "failed", error.message).catch(() => {});
+        if(!run.claimingWriter && (!run.client || run.client===this.client))this.finish(run, "failed", error).catch(() => {});
       this.emitEvent({
         type: "status",
         status: "disconnected",
-        text: error.message,
+        text: chatFailure(error).message,
       });
     });
   }
@@ -177,6 +172,7 @@ class Controller extends EventEmitter {
     this.status = {
       available: true,
       authenticated,
+      ...(authenticated && plan ? { accountPlan:plan } : {}),
       dotsEligible: authenticated && record.planType?.toLowerCase() === "pro",
       cliPath: this.client.descriptor?.label,
       ...(accountLabel ? { accountLabel } : {}),
@@ -452,7 +448,7 @@ class Controller extends EventEmitter {
         await this.finish(
           run,
           run.cancelled ? "interrupted" : "failed",
-          error.message,
+          error,
         );
         if(internal.queueItem)throw error;
       });
@@ -510,11 +506,11 @@ class Controller extends EventEmitter {
         .catch(error=>{throw require('./codex-transfer-client.cjs').linkedError(error);});
       if(resumed.thread?.id!==run.threadId)throw Error('원래 대화 식별자를 확인하지 못했습니다. 새 요청을 보내지 않았습니다.');
     }
-    return {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model,verifyAccess};
+    return {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model,verifyAccess,plan:account.account.planType};
   }
   async startRun(run,input,message,project) {
     if(this.store.session(run.sessionId).scope)return require('./conversation-scopes.cjs').startScopedRun(this,run,input,message,project);
-    const {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model,verifyAccess}=
+    const {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model,verifyAccess,plan}=
       run.prepared || await this.prepareProjectRun(run,input,project);
     let restoredContext = "";
     if (!run.threadId) {
@@ -597,7 +593,7 @@ class Controller extends EventEmitter {
           : { type: "readOnly" },
       model,
       effort: input.effort,
-      serviceTierForTurn: require('./model-speed.cjs').serviceTier(input.speed),
+      serviceTierForTurn: require('./model-speed.cjs').serviceTierForPlan(input.speed,plan),
     });
     if (!turn.turn?.id) throw new Error("Codex 작업을 시작하지 못했습니다.");
     run.turnId = turn.turn.id;
@@ -684,7 +680,7 @@ class Controller extends EventEmitter {
       } else
         this.emitEvent({
           type: "error",
-          text: `로그인을 완료하지 못했습니다. ${params.error || "다시 시도해 주세요."}`,
+          text: `로그인을 완료하지 못했습니다. ${chatFailure(params.error,'브라우저에서 로그인을 다시 시작해 주세요.').message}`,
         });
       return;
     }
@@ -710,6 +706,14 @@ class Controller extends EventEmitter {
     if(method === "thread/compacted") {
       const s=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.threadId===params.threadId);
       if(s){s.compacting=false;this.emitEvent({type:"session",sessionId:s.id,session:structuredClone(s)});void this.messageQueue.flush(s.id);}
+    }
+    if (method === 'thread/started' && params.thread?.parentThreadId) {
+      const parent = this.findRun(params.thread.parentThreadId);
+      if (parent && (!parent.client || parent.client === client) && params.thread.agentNickname) {
+        parent.agentNames ||= new Map();
+        parent.agentNames.set(params.thread.id, params.thread.agentNickname);
+      }
+      return;
     }
     const run = this.findRun(params.threadId, params.turnId || params.turn?.id);
     if (!run || run.finalized) return;
@@ -750,14 +754,16 @@ class Controller extends EventEmitter {
     }
     const commentary = run.commentaryItems?.get(itemId);
     if (commentary && ['item/started','item/completed','item/agentMessage/delta'].includes(method)) {
-      const initial = !commentary.text;
       if (typeof params.item?.text === 'string' && params.item.text) commentary.text = params.item.text;
       else if (typeof params.delta === 'string') commentary.text += params.delta;
-      if (commentary.text && (initial || method === 'item/completed')) {
+      const now=Date.now();
+      run.commentaryPublished ||= new Map();
+      if (commentary.text && (now-(run.commentaryPublished.get(itemId)||0)>=250 || method === 'item/completed')) {
+        run.commentaryPublished.set(itemId,now);
         const session=this.store.peekSession(run.sessionId);
         if (!session.messages.includes(commentary)) session.messages.push(commentary);
-        this.emitEvent({type:'session',sessionId:session.id,session:structuredClone(session)});
-        this.emitEvent({type:'status',sessionId:session.id,status:'running',text:commentary.text.slice(0,160)});
+        this.emitEvent({type:'status',sessionId:session.id,status:'running',text:commentary.text.slice(0,160),
+          workCommentary:{...commentary,text:commentary.text.slice(-6000)}});
       }
       return;
     }
@@ -771,21 +777,20 @@ class Controller extends EventEmitter {
     if (method === "item/started" && params.item?.id) run.toolItems.set(params.item.id, params.item);
     if (method === "item/started" || method === "item/completed") {
       const item = params.item;
-      const label = item && Object.hasOwn(stepNames, item.type) && stepNames[item.type];
-      if (label && typeof item.id === 'string' && item.id.length <= 300) {
+      if (item?.id) {
         const user = this.store.peekSession(run.sessionId).messages.find(message => message.id === run.userMessageId);
         if (user) {
-          const steps = user.workSteps ||= [];
-          const previous = steps.find(step => step.id === item.id);
-          const state = method === 'item/started' ? 'running'
-            : ['failed','declined'].includes(item.status) || item.error || item.result?.isError || (typeof item.exitCode==='number' && item.exitCode!==0) ? 'failed' : 'completed';
-          if (!previous || (previous.state === 'running' && state !== 'running')) {
-            const tool = typeof item.tool === 'string' && /^[\w.-]{1,120}$/.test(item.tool) ? item.tool : '';
-            const step = {id:item.id, label:tool ? label+' ('+tool+')' : label, state, createdAt:previous?.createdAt || new Date().toISOString(), ...(state !== 'running' && {completedAt:new Date().toISOString()})};
+          const previous = user.workSteps?.find(step => step.id === item.id);
+          const now = new Date().toISOString();
+          if (!previous || previous.state === 'running' && method === 'item/completed') {
+            const next = projectWorkStep(item, {createdAt:previous?.createdAt || now, completedAt:now,
+              running:method === 'item/started', agentNames:run.agentNames});
+            if (!next) return;
+            const step = {...previous, ...next};
             if (previous) Object.assign(previous,step);
-            else steps.push(step);
+            else (user.workSteps ||= []).push(step);
             this.emitEvent({type:'status',sessionId:run.sessionId,status:'running',
-              text:label+(state==='running'?' 중입니다.':state==='failed'?' 중 확인할 내용이 있습니다.':'이 끝났습니다.'),
+              text:step.label+(step.state==='running'?' 중입니다.':step.state==='failed'?' 중 확인할 내용이 있습니다.':' 완료'),
               workProgress:{messageId:user.id,step}});
           }
         }
@@ -795,13 +800,13 @@ class Controller extends EventEmitter {
       this.emitEvent({
         type: "error",
         sessionId: run.sessionId,
-        text: `Codex 오류: ${params.error?.message || "알 수 없는 오류"}`,
+        text: chatFailure(params.error).message,
       });
     if (method === "turn/completed")
       await this.finish(
         run,
         params.turn?.status || "completed",
-        params.turn?.error?.message,
+        params.turn?.error,
       );
   }
   answerInput(input) {
@@ -904,6 +909,7 @@ class Controller extends EventEmitter {
       if (request.params?.threadId === run.threadId)
         client.approvals.delete(id);
     const session = this.store.peekSession(run.sessionId);
+    const failureMessage = status === 'failed' || error ? chatFailure(error).message : undefined;
     const user = session.messages.find(message => message.id === run.userMessageId);
     if (user?.workStartedAt) user.workCompletedAt = new Date().toISOString();
     for (const step of user?.workSteps || []) {
@@ -914,7 +920,7 @@ class Controller extends EventEmitter {
       session.messages.push({
         id: randomUUID(),
         role: "system",
-        text: `작업을 완료하지 못했습니다. ${error || "Codex가 작업 실패를 보고했습니다."}`,
+        text: `작업을 완료하지 못했습니다. ${failureMessage}`,
         createdAt: new Date().toISOString(),
       });
     else if (status === "interrupted")
@@ -962,7 +968,7 @@ class Controller extends EventEmitter {
       if(run.ownerRevision===(this.options.queueOwner?.()??'local'))this.emitEvent({
         type: "error",
         sessionId: session.id,
-        text: error || "작업이 실패했습니다.",
+        text: failureMessage,
       });
     if (saveError)
       if(run.ownerRevision===(this.options.queueOwner?.()??'local'))this.emitEvent({

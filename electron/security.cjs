@@ -32,7 +32,7 @@ const accountCommands = new Set([
   "configureMacPim", "prepareMacEvent", "commitMacEvent",
   "configureLinkDelivery", "connectKakao", "disconnectKakao", "sendKakaoLink", "sendLinkMail", "checkLinkMail", "webPushAction",
   "configureVoicePreferences", "configureVoice", "allowVoiceCapture", "transcribeVoice", "cancelVoiceCapture", "speakVoice",
-  "connect", "listAvailableModels",
+  "connect", "listAvailableModels", "readChatConnection",
   "login",
   "send",
   "runTeam",

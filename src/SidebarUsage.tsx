@@ -1,5 +1,5 @@
 import { Coins, Gauge, RefreshCw } from 'lucide-react';
-import { creditBalance, type AccountUsage } from './account-usage';
+import { creditBalance, creditsInUse, type AccountUsage } from './account-usage';
 
 const remainingPercent = (used: number) => Math.max(0, Math.min(100, 100 - used));
 
@@ -17,6 +17,7 @@ export default function SidebarUsage({usage, expanded}: {usage: AccountUsage; ex
   }).join('\n\n');
   const status = error || (busy ? '확인 중' : connected ? '한도 미제공' : '로그인 필요');
   const credits = value ? creditBalance(value.credits) : error ? '조회 실패' : '확인 중';
+  const spendingCredits = creditsInUse(value);
 
   return <div className="side-usage" data-connected={connected} aria-label="계정 사용량">
     <button type="button" className="side-usage-refresh" aria-label="사용량 새로고침"
@@ -30,8 +31,8 @@ export default function SidebarUsage({usage, expanded}: {usage: AccountUsage; ex
       </> : <small>{status}</small>}
     </button>
     {resetAt && <small className="side-usage-reset">({resetAt} 초기화)</small>}
-    {expanded && connected && <div className="side-credit-row" aria-label="남은 크레딧">
-      <Coins size={13} aria-hidden="true"/><span>크레딧</span><strong>{credits}</strong>
+    {expanded && connected && <div className="side-credit-row" aria-label={spendingCredits ? '사용 중인 크레딧 잔액' : '남은 크레딧'} data-active={spendingCredits}>
+      <Coins size={13} aria-hidden="true"/><span>크레딧</span><span className="side-credit-balance">{credits}</span>
     </div>}
   </div>;
 }

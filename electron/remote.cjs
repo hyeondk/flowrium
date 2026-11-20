@@ -341,7 +341,7 @@ function registerRemote(
   function update(event) {
     if (event.type === "status" && event.status === "connected") scheduleRestore();
     const run=controller.runs.get(event.sessionId);
-    if(server && run && (event.type==='delta'||event.type==='session'||event.workProgress))runRevisions.set(run,revisionOf(event.sessionId)+1);
+    if(server && run && (event.type==='delta'||event.type==='session'||event.workProgress||event.workCommentary))runRevisions.set(run,revisionOf(event.sessionId)+1);
     if(server && run && event.type==='status' && typeof event.text==='string')runLabels.set(run,event.text.slice(0,180));
     if (event.type === "approval" || event.type === "input")
       approvals.set(event.requestId, event);

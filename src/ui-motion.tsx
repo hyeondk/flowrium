@@ -115,16 +115,24 @@ export function MotionOverlay({ open, onClose, children, label, className = '', 
   </div></ModalPortal>;
 }
 
-type NoticeProps = { message: string; onClose?: () => void; tone?: 'success' | 'error' | 'info'; action?: ReactNode; className?: string };
-function Notice({ message, onClose, tone = 'info', action, className = '', kind }: NoticeProps & { kind: 'toast' | 'snackbar' }) {
+export const toastLifetime = 5000;
+type NoticeProps = { message: string; onClose?: () => void; tone?: 'success' | 'error' | 'info'; action?: ReactNode; className?: string; revision?: number };
+function Notice({ message, onClose, tone = 'info', action, className = '', revision, kind }: NoticeProps & { kind: 'toast' | 'snackbar' }) {
   const last = useRef(message); if (message) last.current = message;
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    if (kind !== 'toast' || !message || !close.current) return;
+    const timer = window.setTimeout(() => close.current?.(), toastLifetime);
+    return () => window.clearTimeout(timer);
+  }, [kind, message, revision]);
   const { present, phase } = usePresence(Boolean(message));
   if (!present) return null;
   return <div className={`ui-notification ui-${kind} ${className}`} role={tone === 'error' ? 'alert' : 'status'} aria-live={tone === 'error' ? 'assertive' : 'polite'} data-tone={tone} data-phase={phase}>
     <div className="ui-notification-surface" data-motion={kind} data-phase={phase} inert={phase === 'exit'}>
       <span className="ui-notice-indicator" aria-hidden="true">{tone === 'success' ? '✓' : tone === 'error' ? '!' : 'i'}</span>
       <span className="ui-notice-message">{last.current}</span>{action}
-      {onClose && <button type="button" className="ui-notice-close" aria-label="알림 닫기" onClick={onClose}>×</button>}
+      {kind === 'snackbar' && onClose && <button type="button" className="ui-notice-close" aria-label="알림 닫기" onClick={onClose}>×</button>}
     </div>
   </div>;
 }

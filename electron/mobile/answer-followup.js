@@ -1,8 +1,10 @@
+import {attachmentDisplayText} from './attachment-text.js';
+
 // Recommendations only use published conversation text, on this device.
 const decline = /(?:추천|제안|후속(?:\s*작업)?|다음\s*(?:단계|작업)|추가\s*질문)[^.!?\n]{0,24}(?:하지\s*마|지\s*말|없이|빼|생략|금지|필요\s*없|원하지\s*않)|(?:do not|don't|no)\s+(?:suggest|recommend|follow[ -]?up)/i;
 const stoppedText = /^(?:작업을 완료하지 못했습니다\.|사용자의 요청으로 작업이 중지됐습니다\.)/;
 const sectionHeading = /^(?:다음\s*(?:(?:권장|우선)\s*)?(?:작업|단계)|(?:권장\s*)?후속\s*작업|남은\s*(?:작업|사항|검증)|next steps?)\s*(?:[:：]\s*(.*))?$/i;
-const actionVerb = '정리|비교|검토|작성|검증|분류|분석|확인|점검|시험|검사|수정|추가|변환|요약|제작|구현|적용|진행|실행|대조|측정|반영|조사|계산|선정|생성|설계|수집|기록|준비';
+const actionVerb = '정리|비교|검토|작성|검증|분류|분석|확인|점검|시험|검사|수정|추가|변환|요약|제작|구현|적용|진행|실행|대조|측정|반영|조사|계산|선정|생성|설계|수집|기록|준비|조정|개선|보완';
 const actionNoun = new RegExp('(?:'+actionVerb+')$');
 const suggestedAction = new RegExp('^(.*?)('+actionVerb+')(?:(?:할|해\\s*볼)\\s*수\\s*(?:있습니다|있어요|있다)|해야\\s*(?:합니다|해요)|할\\s*필요가\\s*(?:있습니다|있어요)|하는\\s*(?:편이|것이|게)\\s*좋(?:습니다|아요|겠습니다))$');
 function suggestion(text, reason='직전 답변의 다음 작업') {
@@ -67,6 +69,8 @@ function unfinishedRequest(sentence) {
   }
   const remaining=/^(.{4,140}?(?:검증|확인|점검|시험|검사|테스트))(?:은|는|이|가)\s*(?:아직\s*)?(?:남아\s*있습니다|남았습니다|필요합니다)[.!]?$/.exec(body);
   if (remaining) return suggestion(remaining[1]+objectParticle(remaining[1])+' 진행해줘','직전 답변에 남은 확인 사항');
+  const adjustment=/^(.{4,140}?(?:조정|개선|보완|수정))(?:이|가)\s*(?:추가로\s*)?필요합니다[.!]?$/.exec(body);
+  if(adjustment)return suggestion(adjustment[1]+'해줘','직전 답변에 남은 개선 사항');
   const unverified=/^(.{4,140}?)(?:은|는|이|가)\s*(?:아직\s*)?미검증(?:입니다|됐습니다)?[.!]?$/.exec(body);
   return unverified?suggestion(unverified[1]+objectParticle(unverified[1])+' 검증해줘','직전 답변에 남은 확인 사항'):undefined;
 }
@@ -100,8 +104,7 @@ function answerCandidates(lines) {
 export function followupFromAnswer(text) {
   return answerCandidates(publicLines(text||''))[0];
 }
-// 명시 제안이 없는 완료 답변도 결과에 실제로 언급된 주제에서만 후속 작업을 찾는다.
-// 임의 프로젝트 추측 / 모델 호출 / 반복되는 범용 "검토해줘" 제안은 하지 않는다.
+// 명시적인 다음 행동 다음으로, 답변에 실제로 나온 결과의 활용 방법을 찾는다.
 function contextualCandidates(body,request) {
   const context=body+'\n'+request,result=[];
   if (/매출/.test(body) && /월별|채널별|기간별|주문|온라인|스토어|쇼핑몰|판매/.test(context)
@@ -140,7 +143,8 @@ export function latestFollowupAnswer(session) {
 function followupContext(session) {
   const answer = latestFollowupAnswer(session);
   if (!answer?.text.trim() || (answer.id && session.completedContinuationId === answer.id)) return;
-  const request = session.messages.findLast(row => row.role === 'user')?.text || '';
+  const latestRequest = session.messages.findLast(row => row.role === 'user');
+  const request = latestRequest?.sourceOnly ? '' : latestRequest?.text || '';
   if (!decline.test(request)) return {answer, request};
 }
 export function canOfferFollowup(session) {
@@ -156,14 +160,64 @@ function rank(row,terms) {
   const priority=/(?:^|\s)(?:우선|먼저|선행|필수)(?:$|\s)/.test(row.prompt);
   return (priority?40:0)+Math.min(relevant,4)*4;
 }
-export function originalAnswerFollowups(session) {
+
+const topicLead = /^(?:(?:다만|우선|먼저|이어서|따라서|실제로|현재|이번(?:에|에는|의)?|최종적으로|다시|추가로|결과적으로)\s*[,，]?\s+)+/;
+const genericTopic = /^(?:내용|요청|작업|이\s*작업|상태|이\s*상태|결과|확인한\s*결과|핵심|요약|응답|답변|모두|문제|각각|방법|항목|다음\s*단계|관련\s*내용|테스트|확인|그날|내일|오늘|어제|이번엔)(?:의\s*내용)?$/;
+const topicPrefix = /^(?:(?:결과|요약|현재\s*상태|확인\s*결과|검증\s*결과|완료\s*항목)\s*[:：]\s*)|^(?:[-*+]\s+|\d+[.)]\s+)(?:\[[ xX]\]\s*)?/;
+const topicContent = /^[가-힣\p{L}\p{N}][가-힣\p{L}\p{N} .,_()-]*$/u;
+const quietIntro = /^(?:예상\s*소요\s*시간|안녕하세요|감사합니다|도움이\s*되|요청을\s*확인|무엇을\s*도와)/;
+function findTopic(lines,terms) {
+  let best,score=-1;
+  for (const line of [...lines.slice(0,12),...lines.slice(-32)]) {
+    const sentences=line.replace(topicPrefix,'').split(/(?<=[.!?。])\s+/).slice(0,6);
+    for (const sentence of sentences) {
+      const clean=sentence.trim().replace(topicLead,'').replace(/[.!?。]+$/,'');
+      if (clean.length<2 || quietIntro.test(clean) || /https?:|[\\/@{}<>\[\]`"“”]|\d{6,}|(?:비밀번호|승인번호|인증번호|계좌번호|인증\s*토큰)\s*[\w-]+/.test(clean)) continue;
+      const keyword=/^(.{2,42}?)(?:에서는|에도|에서|은|는|이|가|을|를|으로)(?:\s|$)/.exec(clean)?.[1];
+      const inner=Array.from(clean.slice(0,160).matchAll(/(?:^|\s)([가-힣]{2,18}?)(?:은|는|이|가|을|를|에서)(?=\s)/g),match=>match[1]);
+      for(const term of [keyword,...inner,clean].filter(Boolean)) {
+        const topic=term.replace(/^(?:해당|관련된|다른|지금의|이전의)\s+/, '').trim();
+        if (topic.length>42 || !topicContent.test(topic) || genericTopic.test(topic)
+            || /(?:합니다|입니다|습니다|어요|해요|할까요|해줘|해줘요|주세요)$/.test(topic)) continue;
+        const relevant=[...relevanceTerms(topic)].filter(word=>terms.has(word)).length;
+        const value=relevant*5+(term===clean?0:4)+Math.min(topic.split(/\s+/).length,3);
+        if(value>score){best=topic;score=value;}
+      }
+    }
+  }
+  return best;
+}
+function contextualFallback(lines,request,terms,previous) {
+  const topic=findTopic(lines,terms) || findTopic(request.split('\n'),terms);
+  const answer=lines.join('\n');
+  const subject=topic?'직전 답변에서 다룬 ‘'+topic+'’에 대해 ':'직전 답변을 바탕으로 ';
+  const action =
+    /검증|점검|검사|시험|테스트|확인했/.test(answer) ? '확인한 범위와 추가 점검 항목을 정리해줘' :
+    /일정|예약|마감|기한/.test(answer) ? '확인한 기간과 다음에 확인할 항목을 정리해줘' :
+    /설치|설정|연결|사용\s*방법|단계|절차/.test(answer) ? '바로 따라 할 수 있는 점검 순서를 정리해줘' :
+    /문서|보고서|초안|문구|작성|정리|비교|분석/.test(answer) ? '핵심 결론과 활용할 수 있는 다음 단계 한 가지를 정리해줘' :
+    '바로 적용할 수 있는 예시와 확인 방법을 정리해줘';
+  const options=[
+    subject+action,
+    subject+'남은 질문이나 확인할 부분을 우선순위대로 알려줘',
+    subject+'가장 도움이 될 후속 작업 한 가지를 알려줘',
+  ];
+  const next=options.find(text=>!previous.has(normalized(text))) || options.at(-1);
+  return {source:'conversation',title:next,prompt:next,reason:'직전 답변의 후속 활용'};
+}
+
+// 단계마다 계산 범위가 달라 진행률은 완료한 처리 단계의 비율을 표시한다.
+function *followupSteps(session) {
   const context=followupContext(session);
   if (!context) return [];
+  yield 0;
   const lines=publicLines(context.answer.text);
-  const candidates=answerCandidates(lines);
-  const previous=new Set(session.messages.slice(-12).filter(row=>row.role==='user'&&row.text.length<500).map(row=>normalized(row.text)));
-  const request=publicLines(context.request).slice(-60).join('\n');
+  const request=publicLines(attachmentDisplayText(context.request)).slice(-60).join('\n');
   const terms=relevanceTerms(request);
+  yield 25;
+  const candidates=answerCandidates(lines);
+  const previous=new Set(session.messages.slice(-12).filter(row=>row.role==='user'&&!row.sourceOnly&&row.text.length<500).map(row=>normalized(row.text)));
+  yield 50;
   const best=(rows)=>{
     let candidate,score=-1;
     for (const row of rows) {
@@ -174,5 +228,23 @@ export function originalAnswerFollowups(session) {
     return candidate;
   };
   const candidate=best(candidates)||best(contextualCandidates(lines.join('\n'),request));
-  return candidate ? [candidate] : [];
+  yield 75;
+  const result=candidate||contextualFallback(lines,request,terms,previous);
+  yield 100;
+  return [result];
+}
+export function originalAnswerFollowups(session) {
+  const steps=followupSteps(session);
+  let step=steps.next();
+  while(!step.done)step=steps.next();
+  return step.value;
+}
+export async function prepareAnswerFollowup(session,onProgress,signal) {
+  const steps=followupSteps(session);
+  for (let step=steps.next();!signal?.aborted;step=steps.next()) {
+    if(step.done)return step.value[0];
+    onProgress(step.value);
+    // 다음 분석 단계로 넘어가기 전에 현재 단계를 입력창에 표시한다.
+    await new Promise(resolve=>setTimeout(resolve,20));
+  }
 }

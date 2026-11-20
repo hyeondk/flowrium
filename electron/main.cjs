@@ -307,6 +307,7 @@ async function launch() {
   const memory = require("./memory.cjs").registerMemory(register, store, { accountRevision: () => security.accountRevision });
   workflowRuntime = require("./workflow.cjs").registerWorkflow(register, store, controller, {
     canRun: () => !quitting && !migrationTransition && !importRestartRequired && !security.locked && !security.loggingOut && !updater?.isInstalling(),
+    updateState: () => updater.getState(),
     accountRevision: () => security.accountRevision,
     externalMethods: ['commitMacEvent','repositoryFlow'],
     repositoryAction: (id,input) => apiHandlers.get('repositoryAction')(id,input),
@@ -498,6 +499,11 @@ async function launch() {
   );
   register("saveSettings", (input) => controller.saveSettings(input));
   register("connectionStatus", () => controller.connectionStatus());
+  register('readChatConnection', async () => {
+    const {desktopAppInstalled,verifyChatConnection} = require('./chat-connection.cjs');
+    const status = await verifyChatConnection(controller);
+    return status.ready ? status : {...status,desktopInstalled:status.reason==='changed'?null:await desktopAppInstalled()};
+  });
   register("listCodexHistory", (projectId) =>
     controller.listCodexHistory(text(projectId, "프로젝트 식별자", 100)),
   );
@@ -511,9 +517,10 @@ async function launch() {
     if (result.authUrl) await shell.openExternal(result.authUrl);
     return result;
   });
-  register("send", (input) => {
+  register("send", async (input) => {
     if (updater.isInstalling()) throw new Error("업데이트가 진행 중입니다. 재시작 후 요청해 주세요.");
-    return controller.send(input, {fromComposer:true});
+    try { return await controller.send(input, {fromComposer:true}); }
+    catch (error) { throw Error(require('./errors.cjs').chatFailure(error).message); }
   });
   register("interrupt", (id) =>
     controller.interrupt(text(id, "대화 식별자", 100)),
@@ -530,6 +537,7 @@ async function launch() {
   const links = {
     downloads: "https://hyeondk.github.io/flowrium/",
     chatgpt: "https://chatgpt.com/",
+    "chatgpt-desktop": "https://learn.chatgpt.com/docs/app",
     "codex-docs": "https://learn.chatgpt.com/docs/app-server",
     "download-docs":
       "https://docs.github.com/ko/pages/getting-started-with-github-pages/creating-a-github-pages-site",

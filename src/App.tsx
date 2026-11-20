@@ -23,7 +23,7 @@ import ProjectCategoryLabel from "./ProjectCategoryLabel";
 import {ExecutionSummary} from "./ExecutionStatus";
 import {QUESTION_DECISION_NOTICE,sessionExecution,visibleProposals,type ExecutionActivity,type ExecutionState} from "../shared/execution-state";
 import type {WorkflowNotification,WorkflowProposal,WorkflowState} from "../shared/workflow";
-import {usePresence,MotionOverlay,ModalPortal,Toast,Snackbar,AnimatedCheckbox,LikeButton} from "./ui-motion";
+import {usePresence,MotionOverlay,ModalPortal,Toast,AnimatedCheckbox,LikeButton} from "./ui-motion";
 import PortfolioReports from "./PortfolioReports";
 import WorkActionPopup,{type PopupWorkKind} from "./WorkActionPopup";
 import MusicPanel from "./MusicPanel";
@@ -37,11 +37,12 @@ import SettingsLayout,{SettingsGroup} from "./SettingsLayout";
 import CodexTransferPanel,{CodexLinkBar} from "./CodexTransferPanel";
 import MessageHistory from "./MessageHistory";
 import MessageContent from "./MessageContent";
+import {AnswerProgress, LiveWorkTimeline, WorkToolDetails, latestWorkProgress, workAnswerCompleted} from "./TurnProgress";
 import {presentCitations} from "../electron/mobile/file-citations.js";
 import {attachmentDisplayText} from "../electron/mobile/attachment-text.js";
 import IconTooltips from "./IconTooltips";
 import DotsPanel from "./DotsPanel";
-import AttentionCenter,{answerNoticeTitle,FlowNotice} from "./AttentionCenter";
+import AttentionCenter,{answerNoticeTitle,FlowNotice,noticePreview} from "./AttentionCenter";
 import AccountSetupCard from "./AccountSetupCard";
 import type {TrashResult} from "../shared/trash";
 import ContextMenu from "./ContextMenu";
@@ -62,7 +63,7 @@ import Workbench, { WorkSessionControls } from "./Workbench";
 import { UpdatePanel, useDesktopUpdate } from "./UpdatePanel";
 import { workKinds } from "../shared/workbench";
 import packageInfo from "../package.json";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   PanelRight,
@@ -111,6 +112,7 @@ import type {
   Project,
   Session,
   ChatAttachment,
+  ChatPreferences,
 } from "../shared/types";
 
 type View = "workflow" | PortfolioView | "weekly" | "pause" | "music" | "overview" | "terminal" | "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
@@ -121,6 +123,14 @@ type CodexHistoryItem = {
   imported: boolean;
 };
 const api = window.flowrium;
+
+function previewChatModel(preferences?:ChatPreferences,selection?:ChatModelSelection):ChatPreferences|undefined {
+  if(!selection)return preferences;
+  return {...preferences,
+    ...(selection.model!==undefined&&{model:selection.model||undefined}),
+    ...(selection.effort!==undefined&&{effort:selection.effort||undefined}),
+    ...(selection.speed!==undefined&&{speed:selection.speed||undefined})};
+}
 const messageTime = {hour: "2-digit", minute: "2-digit"} as const;
 const statusTime = {...messageTime, month: "long", day: "numeric"} as const;
 const initial: Bootstrap = {
@@ -284,6 +294,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     }));
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsNavigation,setSettingsNavigation]=useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [connection, setConnection] = useState<ConnectionStatus>({
     available: false,
@@ -292,7 +303,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [models, setModels] = useState<Model[]>([]);
   const [connecting, setConnecting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [chatWebFallback,setChatWebFallback]=useState<{key:string;message:string;canLogin:boolean;showInstall:boolean}>();
+  const webInstallNotice=useRef(false);
   const modelSaveKey = useRef<string | null>(null);
+  const queuedModelChange = useRef<ChatModelSelection|undefined>(undefined);
+  const [modelPreview,setModelPreview]=useState<{key:string;selection:ChatModelSelection}>();
   const [savingModel, setSavingModel] = useState<string | null>(null);
   const [activities, setActivities] = useState<Record<string, ExecutionActivity>>({});
   const [approvals, setApprovals] = useState<FlowriumEvent[]>([]);
@@ -310,7 +325,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [deciding, setDeciding] = useState<Record<string, boolean>>({});
   const decisionFlights=useRef(new Set<string>());
   const [stopping, setStopping] = useState<Record<string, boolean>>({});
-  const [toast, setToast] = useState("");
+  const [toast,setToast]=useState<{message:string;tone:'info'|'error';revision:number}>({message:'',tone:'info',revision:0});
   const [dismissedRequests, setDismissedRequests] = useState<string[]>([]);
   const visibleRequests = approvals.filter(event => event.requestId && !dismissedRequests.includes(event.requestId));
   const questionNotice = visibleRequests.filter(event => event.type === 'input').at(-1) || visibleRequests.at(-1);
@@ -327,7 +342,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const noticeIds = useRef<Set<string> | undefined>(undefined);
   const [focusQuestion, setFocusQuestion] = useState<string>();
   const [reacting,setReacting]=useState<Record<string,boolean>>({});
-  const [snackbar,setSnackbar]=useState("");
   const composer = useRef<HTMLTextAreaElement>(null);
   const messages = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -342,6 +356,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const historyImporting = useRef(false);
   const project = data.projects.find((p) => p.id === projectId);
   const session = data.sessions.find((s) => s.id === sessionId);
+  const [workToolsSession,setWorkToolsSession]=useState<string>();
+  const workProgress=useMemo(()=>session?.messages && latestWorkProgress(session.messages),[session?.messages]);
+  const answerCompleted=useMemo(()=>Boolean(session?.messages && workAnswerCompleted(session.messages,workProgress)),[session?.messages,workProgress]);
   const conversationProject=session?[...data.projects,...(data.conversationProjects||[])].find(p=>p.id===session.projectId):project;
   const projectOnlySessions=data.sessions.filter(s=>!s.scope);
   const activeCounts={running:0,waiting:0,decision:0};
@@ -377,10 +394,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     return () => cancelAnimationFrame(frame);
   }, [focusQuestion, dockOpen, chatActive, sessionId, approvals]);
 
-  const notify = useCallback((message: string) => setToast(message), []);
+  const notify = useCallback((message: string) => setToast(old=>({message,tone:'info',revision:old.revision+1})), []);
   const accountUsage=useAccountUsage(Boolean(connection.authenticated));
   const modelCatalog=useModelCatalog(api,connection.authenticated&&!security.state.locked,setModels,notify);
-  const fail = useCallback((error:unknown)=>setSnackbar(error instanceof Error?error.message:"작업을 처리하지 못했습니다."),[]);
+  const fail = useCallback((error:unknown)=>setToast(old=>({message:error instanceof Error?error.message:"작업을 처리하지 못했습니다.",tone:'error',revision:old.revision+1})),[]);
   const receiveCatalog=useCallback((catalog:ProjectNavigationState)=>{
     setData(prev=>{
       const names=prev.projects.some(p=>catalog.names[p.id] && p.name!==catalog.names[p.id]);
@@ -398,16 +415,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const previous = noticeIds.current;
     noticeIds.current = new Set(attentionState.notifications.map(item=>item.id));
     if (!previous) return;
-    const newest = attentionState.notifications.find(item=>(item.kind==="done"||item.kind==="error") && !item.readAt && !previous.has(item.id));
+    const newest = attentionState.notifications.find(item=>["done","error","update"].includes(item.kind) && !item.readAt && !previous.has(item.id));
     if (newest) setCompletionNotice(newest);
   }, [attentionState]);
-  useEffect(() => {
-    if (!completionNotice || questionNotice) return;
-    const timer = setTimeout(()=>setCompletionNotice(undefined), 10000);
-    return ()=>clearTimeout(timer);
-  }, [completionNotice,questionNotice]);
+  useEffect(()=>{if(update?.status==="available")window.dispatchEvent(new Event("flowrium-attention-refresh"));},[update?.status,update?.latestVersion]);
   useEffect(()=>{if(!api)return;let alive=true;const refresh=()=>api.workflowState().then(value=>{if(alive){setProposals(value.proposals);setAttentionState(value)}}).catch(()=>{});void refresh();const timer=setInterval(refresh,5000);window.addEventListener("flowrium-attention-refresh",refresh);return()=>{alive=false;clearInterval(timer);window.removeEventListener("flowrium-attention-refresh",refresh)}},[]);
-  useEffect(()=>{if(!snackbar)return;const timer=setTimeout(()=>setSnackbar(''),6500);return()=>clearTimeout(timer)},[snackbar]);
   useEffect(() => {
     if (!api) {
       setLoaded(true);
@@ -536,6 +548,14 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           })
         }:row)}));
       }
+      if (event.type === 'status' && event.sessionId && event.workCommentary) {
+        const commentary=event.workCommentary;
+        setData(previous=>({...previous,sessions:previous.sessions.map(row=>row.id!==event.sessionId?row:{...row,
+          messages:row.messages.some(message=>message.id===commentary.id)
+            ? row.messages.map(message=>message.id===commentary.id?commentary:message)
+            : [...row.messages,commentary],
+        })}));
+      }
       if (event.type === "status" && event.sessionId && (event.status === "running" || event.status === "stopping"))
         setActivities((prev) =>
           ({ ...prev, [event.sessionId!]: { source:"local",text:prev[event.sessionId!]?.text || "",status:event.text || "작업 중입니다" } }),
@@ -627,11 +647,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     document.documentElement.dataset.theme = data.settings.theme;
     document.documentElement.dataset.accent = data.settings.accentColor || "blue";
   }, [data.settings.theme,data.settings.accentColor]);
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(""), 5200);
-    return () => clearTimeout(timer);
-  }, [toast]);
   useEffect(() => {
     const el = messages.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
@@ -756,29 +771,43 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     setData(prev => ({ ...prev, sessions: upsert(prev.sessions, value) }));
   }
   async function selectChatModel(change: ChatModelSelection) {
-    if (!api || modelSaveKey.current || !conversationProject) return;
+    if (!api || !conversationProject) return;
     const key = draftKey;
-    const selection={action:'model' as const,...change,model:change.model??session?.preferences?.model??''};
+    if(modelSaveKey.current && modelSaveKey.current!==key) return;
+    setModelPreview(previous=>({key,selection:{...(previous?.key===key?previous.selection:{}),...change}}));
+    if(modelSaveKey.current===key){
+      queuedModelChange.current={...queuedModelChange.current,...change};
+      return;
+    }
     modelSaveKey.current = key;
     setSavingModel(key);
     try {
-      if (session) {
-        rememberSession(await api.editConversation(session.id,selection));
-      } else {
-        const created = await api.createSession(conversationProject.id,selection.model);
-        rememberSession(created);
-        if (currentDraftKey.current === key) {
-          const destination = `session:${created.id}`;
-          voiceContinuity.current.preserve = destination;
-          setDrafts(prev => ({...prev, [destination]:prev[key] || {text:'', mode}, [key]:{text:'', mode}}));
-          setSessionId(created.id);
+      let saved=session;
+      let next:ChatModelSelection|undefined=change;
+      while(next){
+        const selection={action:'model' as const,...next,model:next.model??saved?.preferences?.model??''};
+        if(saved) saved=await api.editConversation(saved.id,selection);
+        else {
+          saved=await api.createSession(conversationProject.id,selection.model);
+          rememberSession(saved);
+          if(next.effort!==undefined||next.speed!==undefined) saved=await api.editConversation(saved.id,selection);
         }
-        if(change.effort!==undefined||change.speed!==undefined) rememberSession(await api.editConversation(created.id,selection));
+        rememberSession(saved);
+        next=queuedModelChange.current;
+        queuedModelChange.current=undefined;
+      }
+      if(!session && saved && currentDraftKey.current===key){
+        const destination=`session:${saved.id}`;
+        voiceContinuity.current.preserve=destination;
+        setDrafts(prev=>({...prev,[destination]:prev[key]||{text:'',mode},[key]:{text:'',mode}}));
+        setSessionId(saved.id);
       }
     } catch (error) {
       fail(error);
     } finally {
+      queuedModelChange.current=undefined;
       modelSaveKey.current = null;
+      setModelPreview(undefined);
       setSavingModel(null);
     }
   }
@@ -874,6 +903,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   useEffect(() => { if (!settingsOpen) setCategoryTarget(undefined); }, [settingsOpen]);
   function itemContext(event:{preventDefault():void;clientX:number;clientY:number},target:DeleteTarget){event.preventDefault();setItemMenu({x:event.clientX,y:event.clientY,target})}
   async function reloadItems(result?:TrashResult){if(!api)return;const next=await api.bootstrap();setData(next);if(sessionId&&!next.sessions.some(s=>s.id===sessionId)){setSessionId(undefined);setChatActive(false)}if(projectId&&!next.projects.some(p=>p.id===projectId)){setProjectId(next.projects[0]?.id);setView("dashboard")}notify(result?.notice||"항목을 반영했습니다.");await refreshAttention()}
+  function openUpdateSettings(){setCategoryTarget(undefined);setSettingsNavigation(value=>value+1);setSettingsOpen(true);}
   function useTemplate(prompt: string, nextMode: Mode) {
     const key = `project:${projectId || "unassigned"}`;
     setDrafts((prev) => ({
@@ -934,6 +964,26 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const text = requestText;
     let draftCleared = false;
     try {
+      if (!connection.authenticated && !wasRunning) {
+        const prepared = await api.readChatConnection();
+        if (currentDraftKey.current !== originKey) return;
+        if (!prepared.ready) {
+          if (textOverride && !/\S/.test(input)) {
+            setDrafts(prev => prev[originKey]?.text ? prev : {...prev,[originKey]:{...prev[originKey],text:requestText,mode}});
+          }
+          if (prepared.reason === 'changed') return fail(new Error(prepared.message));
+          setChatWebFallback({key:originKey,message:prepared.message,canLogin:prepared.reason==='login',showInstall:prepared.desktopInstalled===false});
+          if (prepared.desktopInstalled === false && !webInstallNotice.current) {
+            webInstallNotice.current = true;
+            const marker='flowrium.desktop-chat-install-hint';
+            let seen=false;
+            try { seen=localStorage.getItem(marker)==='1'; if(!seen)localStorage.setItem(marker,'1'); } catch { /* Keep the notice once per app launch if local storage is unavailable. */ }
+            if (!seen) notify('데스크톱 앱을 설치하면 Flowrium과 Codex 대화를 양방향으로 이어갈 수 있습니다.');
+          }
+          return;
+        }
+      }
+      setChatWebFallback(undefined);
       if (!await confirmChatFolders(conversationProject.id,session)) {
         if (textOverride && !/\S/.test(input)) {
           setDrafts(prev => prev[originKey]?.text ? prev : {
@@ -997,6 +1047,15 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       submittingRef.current = false;
       setSubmitting(false);
     }
+  }
+  async function openChatWeb() {
+    if (!api) return;
+    try {
+      if (/\S/.test(input)) await api.copyText(input);
+      if (session?.preferences?.chatGptUrl) await api.openSessionChatGPT(session.id);
+      else await api.openExternal('chatgpt');
+      notify(/\S/.test(input) ? '초안을 복사했습니다. 브라우저에서 붙여넣어 보내세요.' : '브라우저에서 대화를 열었습니다.');
+    } catch (error) { fail(error); }
   }
   async function handoff() {
     if (!api)
@@ -1195,16 +1254,16 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     </div>
                     <div className="session-actions">
                       <ChatContextMeter context={session.context}/>
-                      {(session.codexLink || session.desktopThread || session.context || session.workflow || !!session.queuedMessages?.length) &&
-                        <details className="session-details" key={`connection:${session.id}`}>
+                        <details className="session-details" key={`connection:${session.id}`} onToggle={event=>setWorkToolsSession(event.currentTarget.open ? session.id : undefined)}>
                           <summary aria-label="대화 연결 및 작업 도구" title="대화 연결 및 작업 도구"><Settings2 size={16}/></summary>
                           <div className="session-details-body">
                             <CodexLinkBar session={session} running={workActive}/>
                             {session.context && <div className="chat-context">문맥 {session.context.percent}% ({session.context.used.toLocaleString("ko-KR")} / {session.context.max.toLocaleString("ko-KR")} 토큰) <progress max={100} value={session.context.percent}/></div>}
                             {!queued && queue}
                             {session.workflow && <WorkSessionControls session={session} onSessionChange={rememberSession} running={workActive}/>}
+                            {workToolsSession===session.id && <WorkToolDetails progress={workProgress} messages={session.messages} projectId={session.projectId}/>}
                           </div>
-                        </details>}
+                        </details>
                       <ConversationTools onHandoff={handoff} onNew={newSession} onExport={async()=>{try{if(await api?.exportSession(session.id))notify("작업 대화를 내보냈습니다.");}catch(error){fail(error);}}} onDelete={()=>setDeletionTarget({kind:"session",id:session.id,name:session.title})} key={`tools:${session.id}`} session={session} models={models} running={workActive} onOpen={openWork} onChange={rememberSession} notify={notify} fail={fail} defaults={data.settings.chatDefaults} defaultModel={data.settings.model} onDefaults={chatDefaults=>setData(old=>({...old,settings:{...old.settings,chatDefaults}}))} onRewind={draft=>setDrafts(prev=>({...prev,[draftKey]:{text:draft.text,mode,attachments:draft.attachments}}))} />
                     </div>
                   </div>
@@ -1303,34 +1362,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         </div>
                       </article>
                     )}/>
-                    {workActive && (
-                      <article className="message assistant">
-                        <div className="message-body">
-                          <div className="message-meta">
-                        <span className="message-avatar assistant">
-                          <img className="chatgpt-avatar" src={chatgptAvatar} width="24" height="24" alt="" draggable={false}/>
-                        </span>
-                            <strong>Codex</strong>
-                            <span className="live-label">
-                              <span className="status-dot online" />
-                              작업 중
-                            </span>
-                          </div>
-                          <div className="message-bubble">
-                          {activity?.text ? (
-                            <div className="markdown">
-                              <MessageContent text={activity.text} role="assistant" streaming/>
-                            </div>
-                          ) : (
-                            <div className="working-indicator">
-                              <LoaderCircle size={14} className="spin" />
-                              {activity?.status}
-                            </div>
-                          )}
-                          </div>
-                        </div>
-                      </article>
-                    )}
+                    <AnswerProgress key={session.id} active={workActive} progress={workProgress} finished={answerCompleted}>
+                      {activity?.text && <div className="markdown"><MessageContent text={activity.text} role="assistant" streaming/></div>}
+                    </AnswerProgress>
                     {activity?.error && (
                       <div className="inline-error">{activity.error}</div>
                     )}
@@ -1381,19 +1415,24 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               <div className="composer-area">
                 {sessionApprovals.filter(event=>event.type!=="input" || !session).map(event=><DecisionRequestPanel key={event.requestId} event={event}/>)}
                 {draftError && <p role="alert" className="composer-draft-error">{draftError} <button onClick={retryDrafts}>초안 다시 불러오기</button></p>}
+                {!connection.authenticated && chatWebFallback?.key===draftKey && <section className="composer-web-fallback" aria-label="브라우저에서 대화 이어가기">
+                  <p role="status">{chatWebFallback.message}{!conversationProject?.conversationScope&&!session?.preferences?.chatGptUrl&&' 웹에서 코딩 작업을 하려면 작업 위치로 클라우드를 선택하세요.'}{attachments.length>0&&' 웹에서는 첨부 파일을 다시 선택해 주세요.'}</p>
+                  <div>
+                    {chatWebFallback.showInstall&&<button type="button" className="button subtle" onClick={()=>void api?.openExternal('chatgpt-desktop').catch(fail)}>데스크톱 앱 설치</button>}
+                    {chatWebFallback.canLogin&&<button type="button" className="button subtle" disabled={connecting} onClick={()=>void login()}>Flowrium에서 로그인</button>}
+                    <button type="button" className="button secondary" onClick={()=>void openChatWeb()}>{/\S/.test(input)?'초안 복사하고 웹 열기':'웹에서 이어가기'}<ExternalLink size={13}/></button>
+                  </div>
+                </section>}
                 <AttachmentComposer key={voiceContinuity.current.generation} projectId={project?.id} items={attachments} onChange={setAttachments} disabled={security.state.locked} report={notify}>{attachmentControl=>(
-                <div className={`composer ${running ? "working" : ""}`}>
-                  <div className="composer-topline">
-                    <span>
+                <div className={`composer ${workActive ? "working" : ""}`}>
+                  {workActive && <LiveWorkTimeline progress={workProgress}/>}
+                  {(!workActive || input) && <div className="composer-topline">
+                    {!workActive && <span>
                       <span
                         className={`status-dot ${connection.authenticated ? "online" : ""}`}
                       />
-                      {running
-                        ? activity?.status || "작업을 진행하고 있습니다"
-                        : project
-                          ? `${project.name} 작업 요청`
-                          : "작업 요청"}
-                    </span>
+                      {project ? `${project.name} 작업 요청` : "작업 요청"}
+                    </span>}
                     {input && (
                       <button
                         className="icon-button"
@@ -1403,7 +1442,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         <X size={13} />
                       </button>
                     )}
-                  </div>
+                  </div>}
                   <ChatContinuation key={draftKey} session={session} running={workActive || Boolean(activity?.unsettled) || sessionApprovals.length > 0 || Boolean(session && visibleProposals(proposals).some(p=>p.sourceId===session.id || p.targetId===session.id))}
                     authenticated={connection.authenticated} busy={submitting || savingModel === draftKey} draft={input} textareaRef={composer}
                     active={chatActive && dockOpen && !settingsOpen && !attentionOpen}
@@ -1424,10 +1463,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       <VoiceComposer key={voiceContinuity.current.generation} suspend={settingsOpen||attentionOpen||!dockOpen||!chatActive} disabled={running||security.state.locked} onText={text=>setDrafts(prev=>{
                         const draft=prev[draftKey];return {...prev,[draftKey]:{mode:draft?.mode||mode,text:[draft?.text,text].filter(Boolean).join("\n"),attachments:draft?.attachments}};
                       })} onSubmit={text=>void send([input,text].filter(Boolean).join("\n"))}/>
-                      <ChatModelPicker onOpen={()=>void modelCatalog.refresh(true)} models={models} preferences={session?.preferences} conversationKey={draftKey}
+                      <ChatModelPicker onOpen={()=>void modelCatalog.refresh(true)} models={models}
+                        preferences={previewChatModel(session?.preferences,modelPreview?.key===draftKey?modelPreview.selection:undefined)} conversationKey={draftKey}
                         defaultModel={data.settings.chatDefaults?.model||data.settings.model}
                         defaultEffort={data.settings.chatDefaults?.effort??data.settings.effort} defaultSpeed={data.settings.chatDefaults?.speed??data.settings.speed}
-                        disabled={!conversationProject || savingModel !== null || submitting}
+                        pro={connection.authenticated&&connection.accountPlan==='pro'}
+                        disabled={!conversationProject || (savingModel!==null && savingModel!==draftKey) || submitting} modelDisabled={savingModel!==null}
                         onChange={change => void selectChatModel(change)}/>
                     </div>
                     <div className="chat-run-controls">
@@ -1528,7 +1569,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         onGo={value=>{if(value==='weekly'||value==='pause')setReportDialog(value);else setView(value);setSidebarOpen(false);}} onProject={selectProject}
         onTrash={()=>{setTrashOpen(true);setSidebarOpen(false);}} onSettings={()=>{setSettingsOpen(true);setSidebarOpen(false);}}
         onLock={()=>{setSidebarOpen(false);if(!security.state.hasPin){setSettingsOpen(true);notify("설정에서 잠금 번호를 정하세요.");return;}void security.lock().catch(fail);}}
-        onLogout={()=>{setSidebarOpen(false);setLogoutOpen(true);}}/>
+        onLogin={()=>{setSidebarOpen(false);void login();}} onLogout={()=>{setSidebarOpen(false);setLogoutOpen(true);}}/>
       <main className="main-shell" data-view={view}>
         <header className="topbar">
           <div className="breadcrumbs">
@@ -1764,7 +1805,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       <TrashPanel open={trashOpen} onClose={()=>setTrashOpen(false)} onRestored={reloadItems}/>
 
       <MotionOverlay open={musicOpen} persist onClose={()=>setMusicOpen(false)} label="뮤직" className="music-popup"><header className="utility-popup-heading"><div><Music2 size={20}/><h2>뮤직</h2></div><button className="icon-button" aria-label="뮤직 닫기" onClick={()=>setMusicOpen(false)}><X size={18}/></button></header><MusicPanel visible={musicPresence.present} locked={security.state.locked}/></MotionOverlay>
-      <AttentionCenter open={attentionOpen} onShow={()=>setAttentionOpen(true)} onClose={()=>setAttentionOpen(false)} data={attentionState} sessions={data.sessions} requests={approvals} onOpen={selectSession} onQuestion={openQuestion} onDecisions={()=>{setAttentionOpen(false);setView(visibleProposals(proposals).length?'workflow':'inbox')}} onRefresh={refreshAttention}/>
+      <AttentionCenter open={attentionOpen} onClose={()=>setAttentionOpen(false)} data={attentionState} sessions={data.sessions} requests={approvals} onOpen={selectSession} onQuestion={openQuestion} onDecisions={()=>{setAttentionOpen(false);setView(visibleProposals(proposals).length?'workflow':'inbox')}} onUpdate={openUpdateSettings} onRefresh={refreshAttention}/>
       {!dockPresence.present && <button type="button" className="dock-reopen-tab"
         aria-label="대화 패널 펼치기" aria-expanded={false} title="대화 패널 펼치기"
         onClick={() => setDockOpen(true)}>
@@ -1781,21 +1822,22 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         <div className="pf-actions"><button autoFocus onClick={()=>setLogoutOpen(false)}>취소</button><button onClick={()=>{setLogoutOpen(false);void security.logout().catch(fail);}}>로그아웃 확인</button></div>
       </div></MotionOverlay>
       <div className="flow-notice-stack">
-      <Toast message={toast} onClose={()=>setToast('')}/>
-      {questionNotice ? <FlowNotice tone="question" title={questionNotice.type==="input"?QUESTION_DECISION_NOTICE:"승인 요청이 도착했어요"}
-        lines={[data.sessions.find(item=>item.id===questionNotice.sessionId)?.title || "답변을 기다리는 질문이 있습니다."]}
-        action={questionNotice.type==="input"?"대화에서 답하기":"대화에서 확인하기"} onOpen={()=>openQuestion(questionNotice)} onClose={()=>dismissQuestion(questionNotice)}/>
-        : completionNotice && <FlowNotice tone={completionNotice.kind==="done"?"success":"error"}
-          title={answerNoticeTitle(completionNotice,data.sessions.find(item=>item.id===completionNotice.sessionId)?.title)}
-          lines={completionNotice.body.split("\n")} action="대화 열기" onClose={()=>setCompletionNotice(undefined)}
-          onOpen={()=>{
+      <Toast message={toast.message} tone={toast.tone} revision={toast.revision} onClose={()=>setToast(old=>({...old,message:''}))}/>
+      <FlowNotice {...(questionNotice && questionNotice.requestId ? {noticeId:questionNotice.requestId,tone:"question" as const,
+        title:questionNotice.type==="input"?QUESTION_DECISION_NOTICE:"승인 요청이 도착했어요",
+        summary:data.sessions.find(item=>item.id===questionNotice.sessionId)?.title || "답변을 기다리는 질문이 있습니다.",
+        action:questionNotice.type==="input"?"대화에서 답하기":"대화에서 확인하기",onOpen:()=>openQuestion(questionNotice),onExpire:()=>dismissQuestion(questionNotice)}
+        : completionNotice ? {noticeId:completionNotice.id,tone:completionNotice.kind==="error"?"error" as const:"success" as const,
+          title:completionNotice.kind==="update"?completionNotice.title:answerNoticeTitle(completionNotice,data.sessions.find(item=>item.id===completionNotice.sessionId)?.title),
+          summary:noticePreview(completionNotice),action:completionNotice.kind==="update"?"업데이트 열기":"대화 열기",onExpire:()=>setCompletionNotice(undefined),
+          onOpen:()=>{
             const owner=data.sessions.find(item=>item.id===completionNotice.sessionId);
-            if (owner) selectSession(owner);
+            if(completionNotice.kind==="update")openUpdateSettings();
+            else if(owner)selectSession(owner);
             else setAttentionOpen(true);
             void api?.workflowAction({action:"read",ids:[completionNotice.id]}).then(refreshAttention).catch(fail);
             setCompletionNotice(undefined);
-          }}/>}
-      <Snackbar message={snackbar} tone="error" onClose={()=>setSnackbar('')}/>
+          }} : {})}/>
       </div>
       {historyPresence.present && (
         <ModalPortal><div
@@ -2002,7 +2044,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 <X size={20} />
               </button>
             </div>
-            <SettingsLayout initialGroup={categoryTarget ? "categories" : "general"}>
+            <SettingsLayout key={settingsNavigation} initialGroup={categoryTarget ? "categories" : "general"}>
               <SettingsGroup id="general"><UpdatePanel settings state={update} fail={fail}/></SettingsGroup>
               <SettingsGroup id="categories"><ProjectCategorySettings key={categoryTarget} projects={data.projects} categories={categories} initialProject={categoryTarget || projectId} onSaved={(id,category)=>{setCategories(previous=>({...previous,[id]:category}));setCategoryRevision(value=>value+1);}}/></SettingsGroup>
               <SettingsGroup id="security"><SecurityPanel security={security} accountUsage={accountUsage}/></SettingsGroup>
@@ -2113,7 +2155,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     연결을 확인하면 계정에서 사용 가능한 모델을 불러옵니다.
                   </p>
                 )}
-                <AccountSpeedPreference speed={data.settings.speed} model={models.find(row=>data.settings.model?row.id===data.settings.model:row.isDefault)}
+                <AccountSpeedPreference speed={data.settings.speed} pro={connection.authenticated&&connection.accountPlan==='pro'} model={models.find(row=>data.settings.model?row.id===data.settings.model:row.isDefault)}
                   onChange={speed=>void saveSettings({speed})}/>
                 <label className="field-label">
                   생각의 깊이

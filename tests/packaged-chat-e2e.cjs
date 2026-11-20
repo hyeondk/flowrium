@@ -54,6 +54,13 @@ async function run() {
     app=await _electron.launch({executablePath:executable,args:['--user-data-dir='+profile,'--use-mock-keychain'],env,timeout:45000});
     const location=await app.evaluate(({app})=>({packaged:app.isPackaged,data:app.getPath('userData')}));
     assert(location.packaged && path.relative(profile,location.data)==='','독립 프로필의 배포 앱이어야 합니다.');
+    const bundledEngine=await app.evaluate(({app})=>{
+      const path=process.getBuiltinModule('node:path');
+      const require=process.getBuiltinModule('node:module').createRequire(path.join(app.getAppPath(),'package.json'));
+      return require('./electron/codex.cjs').resolveCodex();
+    });
+    assert.equal(bundledEngine?.node,false);
+    assert.equal(await fs.realpath(bundledEngine.command),await fs.realpath(native),'별도 데스크톱 앱을 찾기 전에 배포본의 해당 운영체제용 Codex를 사용해야 합니다.');
     // Only this isolated packaged-app test supplies the user's native dialog choices.
     await app.evaluate(({dialog},choices)=>{
       const original=dialog.showMessageBox.bind(dialog);

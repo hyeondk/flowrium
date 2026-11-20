@@ -174,11 +174,20 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     }
     if (process.env.FLOWRIUM_TEST_STEP_GATE && prompt.includes('작업 단계 스트림 시험')) {
       const item={id:turnId+'-tool',type:'commandExecution',status:'inProgress'};
+      const child=turnId+'-child';
+      const collaboration={type:'collabAgentToolCall',receiverThreadIds:[child],tool:'spawnAgent'};
+      notify('thread/started',{thread:{id:child,parentThreadId:threadId,agentNickname:'준비 작업'}});
+      notify('item/completed',{threadId,turnId,item:{...collaboration,id:turnId+'-spawn',status:'completed',agentsStates:{[child]:{status:'running',message:'표시하지 않을 에이전트 전문'}}}});
       notify('item/started',{threadId,turnId,item});
       const timer=setInterval(()=>{
         if(!require('node:fs').existsSync(process.env.FLOWRIUM_TEST_STEP_GATE))return;
         clearInterval(timer);
         notify('item/completed',{threadId,turnId,item:{...item,status:'completed',exitCode:0}});
+        notify('item/completed',{threadId,turnId,item:{...collaboration,id:turnId+'-wait',tool:'wait',status:'completed',agentsStates:{[child]:{status:'completed'}}}});
+        notify('item/completed',{threadId,turnId,item:{id:turnId+'-file',type:'fileChange',status:'completed',changes:[{
+          path:'docs/작업 기록.md',diff:'--- 작업 기록\n+++ 작업 기록\n@@ -1 +1,2 @@\n-기존\n+수정\n+추가',
+        }]}});
+        notify('item/completed',{threadId,turnId,item:{id:turnId+'-web',type:'webSearch',action:{type:'openPage',url:'https://example.test/work'}}});
         complete(threadId,turnId,'작업 단계를 확인했습니다.');
       },40);
       return;

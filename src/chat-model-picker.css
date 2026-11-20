@@ -26,6 +26,7 @@
 .chat-performance-trigger {
   anchor-name:--composer-performance;
   flex:none;
+  inline-size:52px;
   min-height:26px;
   padding:2px 6px;
   border:1px solid transparent;
@@ -115,6 +116,27 @@
 
 .chat-performance-icon[data-fast=true] {color:var(--accent)}
 
+.chat-performance-reset {position:relative;display:grid;}
+.chat-performance-tooltip {
+  position:absolute;
+  z-index:1;
+  inset-block-start:calc(100% + 4px);
+  inset-inline-end:0;
+  inline-size:max-content;
+  max-inline-size:200px;
+  padding:5px 8px;
+  border-radius:6px;
+  background:#223345;
+  color:#fff;
+  font-size:11px;
+  line-height:1.5;
+  word-break:keep-all;
+  visibility:hidden;
+  pointer-events:none;
+}
+.chat-performance-reset:hover .chat-performance-tooltip,
+.chat-performance-reset:focus-within .chat-performance-tooltip {visibility:visible;}
+
 .chat-effort-slider {
   appearance:none;
   box-sizing:border-box;
@@ -169,6 +191,7 @@
   border-color:var(--line-soft);
   color:var(--accent);
 }
+.chat-speeds button:disabled {opacity:.52;cursor:not-allowed;}
 
 @media (prefers-reduced-motion:reduce) {
   .chat-performance-popup {transition:none}

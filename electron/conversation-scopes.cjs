@@ -81,13 +81,14 @@ async function scopeClient(controller,session){
  controller.scopeClients||=new Map();
  const owner=controller.store.conversations.owner(),key=owner+':'+session.scope;
  for(const [other,value]of controller.scopeClients)if(!other.startsWith(owner+':')){value.client?.close();controller.scopeClients.delete(other);}
- let entry=controller.scopeClients.get(key);if(entry)return entry.ready;
+ let entry=controller.scopeClients.get(key);
+ if(entry){const client=await entry.ready;client.flowriumAccountPlan=account.account.planType;return client;}
  const ready=(async()=>{
   const config=await controller.client.request('config/read',{includeLayers:false});
   const overrides=disabledConnections(config.config);
   Object.assign(overrides,{'features.view_image':false,'features.computer_use':false,'features.browser_use':false,'features.image_generation':false,'features.hooks':false,'features.memories':false,'features.apps':false,'features.plugins':false,'features.workspace_dependencies':false,'features.skip_host_skill_discovery':true,'tools.view_image':false});
   const client=controller.options.scopeClientFactory?.(overrides)||new CodexClient({...controller.client.options,configOverrides:overrides});entry.client=client;
-  client.on('notification',message=>controller.notification(message,client).catch(e=>{const run=controller.findRun(message.params?.threadId,message.params?.turnId);if(run)void controller.finish(run,'failed',e.message);}));
+  client.on('notification',message=>controller.notification(message,client).catch(e=>{const run=controller.findRun(message.params?.threadId,message.params?.turnId);if(run)void controller.finish(run,'failed',e);}));
   client.on('approval',request=>client.decide(request.requestId,'decline'));
   client.on('input',request=>controller.forwardInput(request,client));
   client.on('inputResolved',request=>controller.forwardInputResolved(request));
@@ -96,9 +97,10 @@ async function scopeClient(controller,session){
    try{if(!run||run.client!==client||run.cancelled||run.finalized||(run.turnId&&run.turnId!==params.turnId))throw Error('종료한 대화의 도구 요청입니다.');const result=await callScopeTool(controller,run,params);client.answerTool(requestId,{contentItems:[{type:'inputText',text:JSON.stringify(result)}],success:true});}
    catch(e){client.answerTool(requestId,{contentItems:[{type:'inputText',text:require('./errors.cjs').publicMessage(e)}],success:false});}
   });
-  client.on('disconnect',error=>{for(const run of controller.runs.values())if(run.client===client)void controller.finish(run,'failed',error.message);for(const id of entry.threads)controller.loadedThreads.delete(id);controller.scopeClients.delete(key);});
+  client.on('disconnect',error=>{for(const run of controller.runs.values())if(run.client===client)void controller.finish(run,'failed',error);for(const id of entry.threads)controller.loadedThreads.delete(id);controller.scopeClients.delete(key);});
   await client.start(controller.store.state.settings.codexPath);
   if(owner!==controller.store.conversations.owner()||controller.options.canRun?.()===false){client.close();throw Error('계정이나 잠금 상태가 바뀌었습니다.');}
+  client.flowriumAccountPlan=account.account.planType;
   return client;
  })();
  entry={ready,client:null,threads:new Set()};controller.scopeClients.set(key,entry);
@@ -138,7 +140,7 @@ async function startScopedRun(controller,run,input,message,project){
  if(run.cancelled||run.finalized)return controller.finish(run,'interrupted');
  assertScope(controller.store,session);if(controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
  const guidance=instructions[session.scope]+(run.requestPages?'\n현재 긴 요청의 원문을 읽을 때는 전용 도구 flowrium_read_current_request를 사용하세요. 이 도구는 사용자가 이번에 입력한 글만 반환합니다.':'');
- const turn=await client.request('turn/start',{threadId:run.threadId,clientUserMessageId:run.userMessageId,approvalPolicy:'never',approvalsReviewer:'user',permissions:params.permissions,cwd:params.cwd,model,effort:input.effort,serviceTierForTurn:require('./model-speed.cjs').serviceTier(input.speed),additionalContext:{flowrium_app:{kind:'application',value:'한국어로 답변해 주세요.\n'+guidance+'\n'+require('./chat-preferences.cjs').instructions(prefs)},...((context||previous||attachmentText)&&{flowrium_work:{kind:'untrusted',value:[context,previous,attachmentText].filter(Boolean).join('\n\n')}})},input:[{type:'text',text:message},...run.attachments.filter(a=>a.image).map(a=>({type:'localImage',path:a.path}))]});
+ const turn=await client.request('turn/start',{threadId:run.threadId,clientUserMessageId:run.userMessageId,approvalPolicy:'never',approvalsReviewer:'user',permissions:params.permissions,cwd:params.cwd,model,effort:input.effort,serviceTierForTurn:require('./model-speed.cjs').serviceTierForPlan(input.speed,client.flowriumAccountPlan),additionalContext:{flowrium_app:{kind:'application',value:'한국어로 답변해 주세요.\n'+guidance+'\n'+require('./chat-preferences.cjs').instructions(prefs)},...((context||previous||attachmentText)&&{flowrium_work:{kind:'untrusted',value:[context,previous,attachmentText].filter(Boolean).join('\n\n')}})},input:[{type:'text',text:message},...run.attachments.filter(a=>a.image).map(a=>({type:'localImage',path:a.path}))]});
  if(!turn.turn?.id)throw Error('ChatGPT 응답을 시작하지 못했습니다.');run.turnId=turn.turn.id;
  await controller.applyInitialTitle(run,session,client);
  const sent=session.messages.find(m=>m.id===run.userMessageId);if(sent)sent.turnId=run.turnId;await controller.store.save();

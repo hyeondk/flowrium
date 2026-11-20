@@ -237,6 +237,7 @@ jobs:
           node tests/chat-core-e2e.cjs
           node tests/chat-core-native-e2e.cjs
           node tests/chat-model-e2e.cjs
+          node tests/chat-connection-e2e.cjs
       - name: 목표·그래프·산출물·복원과 실제 모델 도구
         id: verify_5
         continue-on-error: true

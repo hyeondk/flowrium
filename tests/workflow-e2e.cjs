@@ -41,6 +41,17 @@ async function main(){
     await popup.getByText('아직 도착한 알림이 없습니다.',{exact:true}).waitFor();
     await popup.getByRole('button',{name:'알림 닫기'}).click();await popup.waitFor({state:'hidden'});
     await button("업무 연결 / 비서").click();await page.getByRole("heading",{name:"업무 연결과 비서",exact:true}).waitFor();
+    const refresh=button("새로고침");
+    assert(await refresh.locator('svg.lucide-refresh-cw').count());
+    await refresh.click();
+    await button("비서와 예약").click();
+    const schedule=page.locator('.workflow-schedule');
+    await schedule.waitFor();
+    const columns=await schedule.evaluate(grid=>[...grid.children].map(field=>({left:field.offsetLeft,top:field.offsetTop})));
+    assert.equal(columns.length,6);
+    assert(columns.every((field,index)=>field.left===columns[index%2].left));
+    assert(columns[0].left<columns[1].left);
+    assert(columns[0].top<columns[2].top&&columns[2].top<columns[4].top);
     await button("대화에 전달").click();await page.getByLabel("보내는 대화",{exact:true}).selectOption(source.id);await page.getByLabel("받는 대화",{exact:true}).selectOption(target.id);
     await page.getByLabel("조사 요청 제목",{exact:true}).fill("분리한 자료 조사");await page.getByLabel("전할 내용",{exact:true}).fill("두 자료의 근거를 비교해 보고하세요.");
     await button("승인할 조사 요청 만들기").click();const proposal=page.locator(".workflow-card").filter({has:page.getByText("분리한 자료 조사",{exact:true})});await proposal.waitFor();
