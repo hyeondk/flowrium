@@ -76,12 +76,14 @@ async function checkQueuedOriginal(app,page,input,sessionId) {
 }
 
 async function checkWorkProgress(page,input,popup,gate,title) {
-  await page.getByRole('button',{name:'작업 보내기',exact:true}).waitFor();
+  const send=page.getByRole('button',{name:'작업 보내기',exact:true});
+  await send.waitFor();
   await page.emulateMedia({reducedMotion:'no-preference'});
   await page.evaluate(()=>{
     const history=document.querySelector('.messages');
     const watch=new MutationObserver(()=>{
-      const row=history.querySelector('.message.user[data-outgoing=true]');
+      const row=[...history.querySelectorAll('.message.user[data-outgoing=true]')]
+        .find(message=>message.querySelector('.message-prose')?.textContent==='작업 단계 스트림 시험');
       if(!row)return;
       window.firstOutgoing=row;
       window.outgoingAnimation=getComputedStyle(row).animationName;
@@ -90,6 +92,7 @@ async function checkWorkProgress(page,input,popup,gate,title) {
     watch.observe(history,{childList:true,subtree:true});
   });
   await input.fill('작업 단계 스트림 시험');
+  await expect(send).toBeEnabled();
   await input.press('Enter');
   const historyButton=page.locator('.turn-progress-trigger').last();
   await page.getByText('요청을 처리하고 있어요',{exact:true}).waitFor();
