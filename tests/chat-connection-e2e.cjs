@@ -27,6 +27,10 @@ async function main() {
     const page = await app.firstWindow();
     page.setDefaultTimeout(12000);
     await page.setViewportSize({width:1280,height:900});
+    await page.locator('.workspace-side').hover();
+    const accountActions=page.locator('.side-account-actions');
+    await accountActions.getByRole('button',{name:'로그인',exact:true}).waitFor();
+    assert.equal(await accountActions.getByRole('button',{name:'로그아웃',exact:true}).count(),0);
     await app.evaluate(({app,shell,clipboard}) => {
       const require = process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json');
       require('./electron/chat-connection.cjs').desktopAppInstalled = async () => false;

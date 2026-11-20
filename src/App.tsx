@@ -88,6 +88,8 @@ import {
   History,
   LayoutDashboard,
   LoaderCircle,
+  LogIn,
+  LogOut,
   Menu,
   MessageSquare,
   Plus,
@@ -1418,9 +1420,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 {!connection.authenticated && chatWebFallback?.key===draftKey && <section className="composer-web-fallback" aria-label="브라우저에서 대화 이어가기">
                   <p role="status">{chatWebFallback.message}{!conversationProject?.conversationScope&&!session?.preferences?.chatGptUrl&&' 웹에서 코딩 작업을 하려면 작업 위치로 클라우드를 선택하세요.'}{attachments.length>0&&' 웹에서는 첨부 파일을 다시 선택해 주세요.'}</p>
                   <div>
-                    {chatWebFallback.showInstall&&<button type="button" className="button subtle" onClick={()=>void api?.openExternal('chatgpt-desktop').catch(fail)}>데스크톱 앱 설치</button>}
-                    {chatWebFallback.canLogin&&<button type="button" className="button subtle" disabled={connecting} onClick={()=>void login()}>Flowrium에서 로그인</button>}
-                    <button type="button" className="button secondary" onClick={()=>void openChatWeb()}>{/\S/.test(input)?'초안 복사하고 웹 열기':'웹에서 이어가기'}<ExternalLink size={13}/></button>
+                    {chatWebFallback.showInstall&&<button type="button" className="button subtle" onClick={()=>void api?.openExternal('chatgpt-desktop').catch(fail)}><Download size={14} aria-hidden="true"/>데스크톱 앱 설치</button>}
+                    {chatWebFallback.canLogin&&<button type="button" className="button subtle" disabled={connecting} onClick={()=>void login()}><LogIn size={14} aria-hidden="true"/>Flowrium에서 로그인</button>}
+                    <button type="button" className="button secondary" onClick={()=>void openChatWeb()}><ExternalLink size={14} aria-hidden="true"/>{/\S/.test(input)?'초안 복사하고 웹 열기':'웹에서 이어가기'}</button>
                   </div>
                 </section>}
                 <AttachmentComposer key={voiceContinuity.current.generation} projectId={project?.id} items={attachments} onChange={setAttachments} disabled={security.state.locked} report={notify}>{attachmentControl=>(
@@ -1619,9 +1621,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             if(event.type==="input") return <InputRequestPanel key={event.requestId} event={event} title={owner?.title} onOpen={owner?()=>selectSession(owner):undefined}/>;
             return <section className="approval-card" key={event.requestId}><h3>{owner?.title || "실행 요청"}</h3>
               <p>{event.details || event.method}</p><div>
-              {owner && <button className="button subtle" onClick={()=>selectSession(owner)}>대화 열기</button>}
-              <button className="button subtle" disabled={deciding[event.requestId || ""]} onClick={()=>decide(event,"decline")}>거절</button>
-              <button className="button primary" disabled={deciding[event.requestId || ""]} onClick={()=>decide(event,"accept")}>이번 작업 승인</button></div></section>;
+              {owner && <button className="button subtle" onClick={()=>selectSession(owner)}><MessageSquare size={14} aria-hidden="true"/>대화 열기</button>}
+              <button className="button subtle" disabled={deciding[event.requestId || ""]} onClick={()=>decide(event,"decline")}><X size={14} aria-hidden="true"/>거절</button>
+              <button className="button primary" disabled={deciding[event.requestId || ""]} onClick={()=>decide(event,"accept")}><Check size={14} aria-hidden="true"/>이번 작업 승인</button></div></section>;
           })}</div></div>
         ) : (view==="dashboard"||view==="kickoff"||view==="archive"||view==="outputs"||view==="timeline") ? (
           <ProjectPortfolio categoryRevision={categoryRevision} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} view={view} projects={navigation.projects} sessions={projectOnlySessions}
@@ -1819,7 +1821,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       </MotionOverlay>
       <MotionOverlay open={logoutOpen} onClose={()=>setLogoutOpen(false)} label="계정 로그아웃" className="logout-overlay"><div className="pf-logout-content">
         <h2>로그아웃할까요?</h2><p>이 기기의 Codex에서 ChatGPT 계정을 로그아웃합니다. 같은 로그인 정보를 쓰는 Codex 앱과 명령줄에서도 다시 로그인해야 할 수 있습니다. 저장한 프로젝트와 대화는 보존됩니다.</p>
-        <div className="pf-actions"><button autoFocus onClick={()=>setLogoutOpen(false)}>취소</button><button onClick={()=>{setLogoutOpen(false);void security.logout().catch(fail);}}>로그아웃 확인</button></div>
+        <div className="pf-actions"><button className="button secondary" autoFocus onClick={()=>setLogoutOpen(false)}><X size={14} aria-hidden="true"/>취소</button><button className="button primary" onClick={()=>{setLogoutOpen(false);void security.logout().catch(fail);}}><LogOut size={14} aria-hidden="true"/>로그아웃 확인</button></div>
       </div></MotionOverlay>
       <div className="flow-notice-stack">
       <Toast message={toast.message} tone={toast.tone} revision={toast.revision} onClose={()=>setToast(old=>({...old,message:''}))}/>
@@ -1998,7 +2000,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   onClick={closeCodexHistory}
                   disabled={historySaving}
                 >
-                  취소
+                  <X size={14} aria-hidden="true"/>취소
                 </button>
                 <button
                   className="button primary"
@@ -2007,9 +2009,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     historyLoading || historySaving || !historySelected.length
                   }
                 >
-                  {historySaving && <LoaderCircle size={14} className="spin" />}
+                  {historySaving ? <LoaderCircle size={14} className="spin" aria-hidden="true"/> : <Check size={14} aria-hidden="true"/>}
                   선택 대화 저장
-                  <Check size={14} />
                 </button>
               </div>
             </div>

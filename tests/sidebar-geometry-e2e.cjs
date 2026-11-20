@@ -54,7 +54,7 @@ async function run() {
       const scale=row.getBoundingClientRect().width/parseFloat(getComputedStyle(row).width);
       return {icon:[icon.x,icon.y,icon.width,icon.height],title:[title.x,title.y,title.height],height:parseFloat(getComputedStyle(row).height),
         count:count.textContent,background:getComputedStyle(count).backgroundColor,description:row.getAttribute('aria-description'),markerLabel:markers?.getAttribute('aria-label'),
-        markers:[...row.querySelectorAll('.side-project-marker')].map(marker=>{const dot=marker.querySelector('i'),r=dot.getBoundingClientRect(),box=marker.getBoundingClientRect(),label=marker.querySelector('span').getBoundingClientRect();return {state:marker.dataset.state,label:marker.textContent,visible:getComputedStyle(marker).display!=='none',width:parseFloat(getComputedStyle(dot).width),height:parseFloat(getComputedStyle(dot).height),boxWidth:box.width/scale,contentLeft:(r.left-box.left)/scale,contentRight:(box.right-label.right)/scale,x:r.x,y:r.y,right:r.right}})};
+        markers:[...row.querySelectorAll('.side-project-marker')].map(marker=>{const dot=marker.querySelector('i'),r=dot.getBoundingClientRect(),box=marker.getBoundingClientRect(),label=marker.querySelector('span').getBoundingClientRect();return {state:marker.dataset.state,label:marker.textContent,visible:getComputedStyle(marker).display!=='none',width:parseFloat(getComputedStyle(dot).width),height:parseFloat(getComputedStyle(dot).height),boxWidth:box.width/scale,contentLeft:(r.left-box.left)/scale,contentRight:(box.right-label.right)/scale,gap:(label.left-r.right)/scale,x:r.x,y:r.y,right:r.right}})};
     });
     const beforeMarkers=await markerGeometry();
     assert.deepEqual(beforeMarkers.markers.map(item=>[item.state,item.label]),[['waiting','대기']],'실제 발생한 상태만 폴더 위에 표시합니다.');
@@ -67,7 +67,7 @@ async function run() {
     const afterMarkers=await markerGeometry();
     const bannerWidths=[beforeMarkers,runningMarkers,afterMarkers].map(measurement=>measurement.markers[0]);
     assert.deepEqual(bannerWidths.map(marker=>marker.state),['waiting','running','decision']);
-    assert(bannerWidths.every(marker=>Math.abs(marker.boxWidth-38)<.1),'세 상태 배너의 실제 너비를 모두 38px로 유지합니다.');
+    assert(bannerWidths.every(marker=>Math.abs(marker.boxWidth-38)<.1&&Math.abs(marker.gap-5)<.1),'세 상태 배너의 너비와 점 간격을 38px, 5px로 맞춥니다.');
     assert(Math.max(...bannerWidths.map(marker=>marker.boxWidth))-Math.min(...bannerWidths.map(marker=>marker.boxWidth))<.1,'상태 이름 길이가 달라도 배너 너비는 같습니다.');
     assert(bannerWidths.every(marker=>marker.contentLeft>=.9&&marker.contentRight>=.9&&Math.abs(marker.contentLeft-marker.contentRight)<.1),'점과 글자를 포함한 전체 콘텐츠의 좌우 안쪽 여백을 대칭으로 유지합니다. '+JSON.stringify(bannerWidths));
     console.log(JSON.stringify({bannerWidths:bannerWidths.map(({state,boxWidth,contentLeft,contentRight})=>({state,boxWidth,contentLeft,contentRight}))}));
@@ -252,6 +252,21 @@ async function run() {
     await page.keyboard.press('Tab');
     await side.locator('.side-brand').focus();
     await page.waitForFunction(()=>document.querySelector('.workspace-side').dataset.expanded==='true');
+    await side.locator('.side-account-actions').getByRole('button',{name:'로그아웃',exact:true}).waitFor();
+    const credits=side.locator('.side-credit-row');
+    await credits.waitFor();
+    assert.equal(await credits.getAttribute('data-active'),'false');
+    const setUsage=async usedPercent=>{
+      await app.evaluate(({ipcMain},usedPercent)=>{
+        ipcMain.removeHandler('flowrium:readAccountUsage');
+        ipcMain.handle('flowrium:readAccountUsage',()=>({allowed:null,checkedAt:Date.now(),credits:{hasCredits:true,unlimited:false,balance:'1234.50'},buckets:[{name:'Codex',plan:'pro',windows:[{key:'primary',usedPercent,minutes:null,resetsAt:null}]}]}));
+      },usedPercent);
+      await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+      await credits.and(side.locator('[data-active="'+(usedPercent>=100)+'"]')).waitFor();
+      return Number(await credits.locator('.side-credit-balance').evaluate(element=>getComputedStyle(element).fontWeight));
+    };
+    assert.equal(await setUsage(100),700);
+    assert.equal(await setUsage(37),400);
     const addProjectButton=side.getByRole('button',{name:'프로젝트 추가',exact:true});
     await addProjectButton.focus();
     assert(await addProjectButton.evaluate(el=>el.matches(':focus-visible')),'프로젝트 추가 버튼에 키보드 초점을 표시합니다.');

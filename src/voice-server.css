@@ -26,6 +26,7 @@
 :is(.app-shell,.settings-modal,.motion-overlay) .voice-server-environment p { margin: 8px 0 12px; }
 :is(.app-shell,.settings-modal,.motion-overlay) .voice-server-env-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; gap: 8px; margin-top: 8px; }
 :is(.app-shell,.settings-modal,.motion-overlay) .voice-server-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; margin-top: 16px; }
+.voice-server-actions .button > svg { flex: none; }
 :is(.app-shell,.settings-modal,.motion-overlay) .voice-server-panel button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; border-radius: 8px; font-size: 12px; line-height: 22px; }
 :is(.app-shell,.settings-modal,.motion-overlay) .voice-server-notice { margin: 12px 0 0; font-size: 12px; line-height: 20px; color: var(--text); }
 :is(.app-shell,.settings-modal,.motion-overlay) .voice-server-hint { margin-top: 10px; }

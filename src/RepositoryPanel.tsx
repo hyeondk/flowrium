@@ -2,6 +2,7 @@ import { AnimatedCheckbox } from './ui-motion';
 import RepositoryInspection from "./RepositoryInspection";
 import RepositoryFlowPanel from "./RepositoryFlowPanel";
 import {useEffect,useState} from "react";
+import {Check,X} from "lucide-react";
 import type {RepoChange,PullRequest,RepoAction,RepositoryDefinition} from "../shared/repository";
 import type {Project} from "../shared/types";
 export default function RepositoryPanel({project}:{project:Project}) {
@@ -35,6 +36,6 @@ export default function RepositoryPanel({project}:{project:Project}) {
     {prs.map(pr=><div className="repo-pr" key={pr.number}><span>#{pr.number} {pr.title} ({pr.headRefName} → {pr.baseRefName})</span><button className="wb-secondary" onClick={()=>review(`#${pr.number} 요청을 ${pr.baseRefName}에 병합`,{action:"merge",number:pr.number,head:pr.headRefOid})}>병합</button></div>)}
     <label>대상 브랜치<input value={base} onChange={e=>setBase(e.target.value)}/></label><label>변경 요청 설명<textarea value={body} onChange={e=>setBody(e.target.value)}/></label>
     <button className="wb-secondary" disabled={!base.trim()||!body.trim()||!title.trim()} onClick={()=>review(`${base} 브랜치로 변경 요청 생성`,{action:"createPR",base,body,title})}>변경 요청 만들기</button>
-    {confirm && <section role="alert"><strong>{confirm.label}</strong><div className="wb-tools"><button className="wb-primary" onClick={()=>action(confirm.action)}>확인하고 실행</button><button className="wb-secondary" onClick={()=>setConfirm(undefined)}>취소</button></div></section>}
+    {confirm && <section role="alert"><strong>{confirm.label}</strong><div className="wb-tools"><button className="wb-primary" onClick={()=>action(confirm.action)}><Check size={15} aria-hidden="true"/>확인하고 실행</button><button className="wb-secondary" onClick={()=>setConfirm(undefined)}><X size={15} aria-hidden="true"/>취소</button></div></section>}
     </fieldset>{output && <pre role="status">{output}</pre>}</div></div>
 }

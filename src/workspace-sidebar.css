@@ -52,7 +52,7 @@
 .side-project-list>p{padding:6px 10px;margin:0;color:var(--muted);font-size:12px;line-height:20px}
 .app-shell .workspace-side .sidebar-surface :is(.side-dashboard,.side-project){height:var(--side-project-row);min-height:var(--side-project-row)}
 .workspace-side .side-row>.side-project-icon{position:relative;display:grid;place-items:center;flex:none;width:18px;height:18px;overflow:visible}
-.side-project-markers{position:absolute;left:-11px;bottom:calc(100% - 6px);display:flex;width:42px;pointer-events:none}
+.side-project-markers{position:absolute;left:-11px;bottom:calc(100% - 6px);display:flex;width:38px;pointer-events:none}
 .side-project-marker{display:flex;flex:none;width:100%;align-items:center;justify-content:center;gap:5px;height:14px;min-height:14px;padding:1px;border-radius:3px;background:color-mix(in srgb,var(--project-status-color) 16%,var(--panel));color:var(--text);font-size:8.5px;font-weight:700;line-height:12px;white-space:nowrap}
 .side-project-marker i{display:block;width:4px;height:4px;flex:none;border-radius:1px;background:var(--project-status-color)}
 .side-project-marker[data-state=running]{--project-status-color:#4b8cbb}

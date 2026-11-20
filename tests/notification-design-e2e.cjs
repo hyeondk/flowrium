@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path');
 const {_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs');
+const currentVersion=require('../package.json').flowriumVersion,nextVersion=require('../electron/version.cjs').nextVersion(currentVersion);
 const {addTrustedFixtureProject,backendFixtureAccount}=require('./project-trust-fixture.cjs');
 const {closeInstalledApp}=require('./update-installed-ui.cjs');
 async function run(){
@@ -100,22 +101,22 @@ async function run(){
   assert((await page.evaluate(()=>window.flowrium.workflowState())).notifications.every(n=>!ids.includes(n.id)));
   await popup.getByRole('button',{name:'알림 닫기',exact:true}).click();
   await popup.waitFor({state:'hidden'});
-  await app.evaluate(({BrowserWindow},root)=>{
+  await app.evaluate(({BrowserWindow},{root,currentVersion,nextVersion})=>{
     const require=process.getBuiltinModule('node:module').createRequire(root+'/package.json');
-    const state={status:'available',currentVersion:'261120_01',latestVersion:'261120_02',message:'시험 새 버전을 설치할 수 있습니다.'};
+    const state={status:'available',currentVersion,latestVersion:nextVersion,message:'시험 새 버전을 설치할 수 있습니다.'};
     require('./electron/updater.cjs').DesktopUpdater.prototype.getState=()=>state;
     BrowserWindow.getAllWindows()[0].webContents.send('flowrium:update',state);
-  },root);
-  const update=page.locator('.flow-question-notice').filter({hasText:'Flowrium 261120_02 업데이트가 나왔습니다.'});
+  },{root,currentVersion,nextVersion});
+  const update=page.locator('.flow-question-notice').filter({hasText:'Flowrium '+nextVersion+' 업데이트가 나왔습니다.'});
   await update.waitFor();
   assert.equal(await update.getByRole('button',{name:'알림 닫기',exact:true}).count(),0);
   await update.waitFor({state:'detached',timeout:7000});
   await page.locator('.header-decisions').click();
   popup=page.getByRole('dialog',{name:'알림',exact:true});
-  const updateItem=popup.locator('.attention-item').filter({hasText:'Flowrium 261120_02 업데이트가 나왔습니다.'});
+  const updateItem=popup.locator('.attention-item').filter({hasText:'Flowrium '+nextVersion+' 업데이트가 나왔습니다.'});
   await updateItem.getByRole('button',{name:'업데이트 열기',exact:true}).click();
   await page.getByRole('dialog',{name:'설정',exact:true}).getByRole('region',{name:'프로그램 업데이트',exact:true}).waitFor();
-  assert.equal((await page.evaluate(()=>window.flowrium.workflowState())).notifications.filter(n=>n.updateVersion==='261120_02').length,1);
+  assert.equal((await page.evaluate(()=>window.flowrium.workflowState())).notifications.filter(n=>n.updateVersion===nextVersion).length,1);
   await fs.writeFile(path.join(output,'알림-질문-검증.json'),JSON.stringify({passed:true,badgeCases,questionBox,completeBox,small,questionInsideConversation:true,noAutoSelection:true,shortSummary:true,secretNotStored:true,approvalNoticeAndExplicitDecline:true},null,2)+'\n');
   console.log('알림 / 390px 공통 너비 / 간결한 안내 / 같은 대화 질문 이동 / 자동 선택 없음 / 명시 제출 / 70자 요약 / 비밀 답변 비보관 / 390px 화면 경계 검사 통과');
  }finally{try{if(app)await closeInstalledApp(app,'알림과 질문 전용 검사 앱 종료')}finally{await fs.rm(temporary,{recursive:true,force:true,maxRetries:6,retryDelay:150})}}

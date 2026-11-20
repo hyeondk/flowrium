@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FolderOpen, RefreshCw, Terminal, X } from 'lucide-react';
+import { Activity, FolderOpen, Link, Play, RefreshCw, Save, Square, Terminal, X } from 'lucide-react';
 import type { VoiceServerConfig, VoiceServerId, VoiceServerPreview, VoiceServersState } from '../shared/voice-server';
 import { AnimatedSwitch, MotionOverlay } from './ui-motion';
 import './voice-server.css';
@@ -58,10 +58,25 @@ function ServerCard({ config, run, revision, onState, onConnect }: { config: Voi
     <div className="voice-server-environment"><label className="voice-server-power"><span>환경변수 새로 저장</span><AnimatedSwitch aria-label={`${title} 환경변수 새로 저장`} checked={replaceEnvironment} disabled={!editable} onChange={event => { setReplaceEnvironment(event.target.checked); setEnvironment([]); }}/></label><p>{config.environmentNames.length ? `저장된 이름: ${config.environmentNames.join(', ')}` : '저장된 환경변수가 없습니다.'} 값은 보안 저장하며 화면이나 로그에 다시 표시하지 않습니다.</p>
       {replaceEnvironment && <><p>새 목록으로 교체합니다. 아무 항목 없이 저장하면 기존 환경변수를 지웁니다.</p>{environment.map((row, index) => <div className="voice-server-env-row" key={index}><input aria-label={`${title} 환경변수 ${index + 1} 이름`} autoComplete="off" placeholder="환경변수 이름" value={row.name} disabled={!editable} onChange={event => setEnvironment(rows => rows.map((item, at) => at === index ? { ...item, name: event.target.value } : item))}/><input aria-label={`${title} 환경변수 ${index + 1} 값`} type="password" autoComplete="new-password" placeholder="값" value={row.value} disabled={!editable} onChange={event => setEnvironment(rows => rows.map((item, at) => at === index ? { ...item, value: event.target.value } : item))}/><button type="button" className="button subtle" aria-label={`${title} 환경변수 ${index + 1} 삭제`} disabled={!editable} onClick={() => setEnvironment(rows => rows.filter((_, at) => at !== index))}><X size={14}/></button></div>)}<div className="voice-server-actions"><button type="button" className="button secondary" disabled={!editable || environment.length >= 40} onClick={() => setEnvironment(rows => [...rows, { name: '', value: '' }])}>환경변수 추가</button></div></>}
     </div>
-    <div className="voice-server-actions"><button type="button" className="button secondary" disabled={busy || active} onClick={() => void action('probe')}>연결 확인</button>{run.phase === 'failed' && <button type="button" className="button secondary" disabled={busy} onClick={() => void action('stop')}>종료 다시 확인</button>}{run.phase === 'running' && <button type="button" className="button secondary" disabled={busy || dirty} onClick={() => void prepare('restart')}>다시 시작</button>}{onConnect && <button type="button" className="button secondary" disabled={busy || dirty} onClick={() => void perform(() => onConnect(id, config.endpoint), '이 주소를 음성 연결에 적용했습니다.')}>이 주소로 음성 연결</button>}<button type="button" className="button primary" disabled={!editable || !dirty} onClick={() => void save()}>서버 설정 저장</button></div>
+    <div className="voice-server-actions">
+      <button type="button" className="button secondary" disabled={busy || active} onClick={() => void action('probe')}><Activity size={14} aria-hidden="true"/>연결 확인</button>
+      {run.phase === 'failed' && <button type="button" className="button secondary" disabled={busy} onClick={() => void action('stop')}><Square size={14} aria-hidden="true"/>종료 다시 확인</button>}
+      {run.phase === 'running' && <button type="button" className="button secondary" disabled={busy || dirty} onClick={() => void prepare('restart')}><RefreshCw size={14} aria-hidden="true"/>다시 시작</button>}
+      {onConnect && <button type="button" className="button secondary" disabled={busy || dirty} onClick={() => void perform(() => onConnect(id, config.endpoint), '이 주소를 음성 연결에 적용했습니다.')}><Link size={14} aria-hidden="true"/>이 주소로 음성 연결</button>}
+      <button type="button" className="button primary" disabled={!editable || !dirty} onClick={() => void save()}><Save size={14} aria-hidden="true"/>서버 설정 저장</button>
+    </div>
     {dirty && <p className="voice-server-hint">변경한 설정을 먼저 저장해 주세요. 실행 중에는 서버를 끈 뒤 설정을 바꿀 수 있습니다.</p>}
     {notice && <p className="voice-server-notice" role="status">{notice}</p>}
     <details className="voice-server-logs"><summary>실행 로그 ({run.logs.length}개)</summary><div className="voice-server-actions"><button type="button" className="button subtle" disabled={busy || !run.logs.length} onClick={() => void action('clearLogs')}>로그 지우기</button></div><pre aria-label={`${title} 실행 로그`}>{run.logs.length ? run.logs.map(row => `${new Date(row.at).toLocaleTimeString('ko-KR')} / ${row.stream === 'stderr' ? '오류' : row.stream === 'stdout' ? '출력' : '상태'} / ${row.text}`).join('\n') : '아직 실행 로그가 없습니다.'}</pre></details>
-    <MotionOverlay open={Boolean(preview)} onClose={() => setPreview(null)} label="음성 서버 실행 확인" className="voice-server-preview">{preview && <><h2>음성 서버 실행 확인</h2><p>{preview.notice}</p><dl><dt>실행 파일</dt><dd>{preview.command}</dd><dt>인자 (한 줄에 하나씩)</dt><dd><pre>{preview.args.length ? preview.args.map((value, index) => `${index + 1}: ${value}`).join('\n') : '없음'}</pre></dd><dt>작업 폴더</dt><dd>{preview.cwd}</dd><dt>서버 주소</dt><dd>{preview.endpoint}</dd><dt>준비 확인</dt><dd>{preview.healthPath ? `${preview.healthPath}의 성공 응답` : '포트 연결만 확인합니다. 모델 준비 여부는 음성을 사용할 때 확인합니다.'}</dd><dt>환경변수 이름</dt><dd>{preview.environmentNames.join(', ') || '없음'}</dd></dl><div className="voice-server-actions"><button type="button" className="button secondary" onClick={() => setPreview(null)}>취소</button><button type="button" className="button primary" disabled={busy} onClick={() => void launch()}>{intent === 'restart' ? '종료 후 다시 시작' : '서버 시작'}</button></div></>}</MotionOverlay>
+    <MotionOverlay open={Boolean(preview)} onClose={() => setPreview(null)} label="음성 서버 실행 확인" className="voice-server-preview">{preview && <>
+      <h2>음성 서버 실행 확인</h2><p>{preview.notice}</p>
+      <dl><dt>실행 파일</dt><dd>{preview.command}</dd><dt>인자 (한 줄에 하나씩)</dt><dd><pre>{preview.args.length ? preview.args.map((value, index) => `${index + 1}: ${value}`).join('\n') : '없음'}</pre></dd><dt>작업 폴더</dt><dd>{preview.cwd}</dd><dt>서버 주소</dt><dd>{preview.endpoint}</dd><dt>준비 확인</dt><dd>{preview.healthPath ? `${preview.healthPath}의 성공 응답` : '포트 연결만 확인합니다. 모델 준비 여부는 음성을 사용할 때 확인합니다.'}</dd><dt>환경변수 이름</dt><dd>{preview.environmentNames.join(', ') || '없음'}</dd></dl>
+      <div className="voice-server-actions">
+        <button type="button" className="button secondary" onClick={() => setPreview(null)}><X size={14} aria-hidden="true"/>취소</button>
+        <button type="button" className="button primary" disabled={busy} onClick={() => void launch()}>
+          {intent === 'restart' ? <><RefreshCw size={14} aria-hidden="true"/>종료 후 다시 시작</> : <><Play size={14} aria-hidden="true"/>서버 시작</>}
+        </button>
+      </div>
+    </>}</MotionOverlay>
   </article>;
 }
