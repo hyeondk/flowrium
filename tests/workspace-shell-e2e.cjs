@@ -70,7 +70,8 @@ async function run(){
   await projectList();await page.locator('.dock-session').filter({has:page.locator('strong',{hasText:decision.title})}).click();assert.equal(await page.getByLabel('작업 모드',{exact:true}).count(),0);await page.getByLabel('Codex에 보낼 작업 요청').fill('승인검증');await button('작업 보내기').click();await page.locator('.dock-status-tabs [data-state=decision] strong').filter({hasText:'1'}).waitFor();await dashboard();
   const counts=await page.locator('.statusbar>.execution-summary>button').evaluateAll(nodes=>nodes.map(e=>({state:e.dataset.state,text:e.innerText.replace(/\s+/g,' ').trim(),count:Number(e.querySelector('strong').textContent)})));
   check(counts.length===3&&counts.every(e=>e.count===1),'작업중 / 대기 / 결정 집계',counts);
-  for(const [state,title]of [['running','대기검증'],['waiting',waiting.title],['decision','승인검증']]){
+  // 첫 입력을 보내도 사용자가 붙인 제목은 유지됩니다.
+  for(const [state,title]of [['running',running.title],['waiting',waiting.title],['decision',decision.title]]){
    const back=button('대화 목록으로');if(await back.isVisible())await back.click();
    await page.locator('.dock-status-tabs [data-state='+state+']').click();await page.locator('.dock-session-list').waitFor();
    const titles=await page.locator('.dock-session strong').allTextContents();check(titles.length===1&&titles[0]===title,'진행 상태 필터 '+state,titles);

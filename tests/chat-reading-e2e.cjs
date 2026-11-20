@@ -127,16 +127,30 @@ async function checkWorkProgress(page,input,popup,gate,title) {
   const prior=page.locator('.message.assistant .message-prose p').first();
   const renderedSize=el=>({font:getComputedStyle(el).fontSize,height:getComputedStyle(el).lineHeight,zoom:getComputedStyle(el.closest('.message-history-items')).zoom});
   const stableSize=await prior.evaluate(renderedSize);
-  const outgoing=await page.evaluate(()=>({
-    name:window.outgoingAnimation,same:window.firstOutgoing?.isConnected,
-    count:document.querySelectorAll('[data-message-id="'+window.firstOutgoing?.dataset.messageId+'"]').length,
-    date:window.firstOutgoing?.querySelector('.message-date')?.textContent,
-    above:window.firstOutgoing?.querySelector('.message-date')?.getBoundingClientRect().bottom<=window.firstOutgoing?.querySelector('time span:last-child')?.getBoundingClientRect().top,
-  }));
+  const outgoing=await page.evaluate(async()=>{
+    const first=window.firstOutgoing,id=first?.dataset.messageId;
+    const rows=document.querySelectorAll('.messages [data-message-id="'+CSS.escape(id||'')+'"]');
+    const date=first?.querySelector('.message-date'),clock=first?.querySelector('time span:last-child');
+    const dateBox=date?.getBoundingClientRect(),clockBox=clock?.getBoundingClientRect();
+    const bubble=first?.querySelector('.message-bubble')?.getBoundingClientRect();
+    const transcript=document.querySelector('.messages').getBoundingClientRect();
+    const composer=document.querySelector('.composer-area .composer').getBoundingClientRect();
+    const {sessions}=await window.flowrium.bootstrap();
+    const saved=sessions.flatMap(session=>session.messages).find(message=>message.id===id);
+    return {
+      name:window.outgoingAnimation,same:first?.isConnected&&rows[0]===first,
+      count:rows.length,saved:saved?.role==='user'&&saved.text==='작업 단계 스트림 시험',
+      date:date?.textContent,dateTop:dateBox?.top,dateBottom:dateBox?.bottom,clockTop:clockBox?.top,
+      bubbleTop:bubble?.top,bubbleBottom:bubble?.bottom,transcriptTop:transcript.top,composerTop:composer.top,
+    };
+  });
+  const geometry=JSON.stringify(outgoing);
   assert.equal(outgoing.name,'chat-message-arrival');
-  assert(outgoing.same&&outgoing.above);
+  assert(outgoing.same&&outgoing.saved,'전송 뒤에도 동일한 말풍선과 저장 ID / '+geometry);
   assert.equal(outgoing.count,1);
   assert.match(outgoing.date,/^\d{2}\.\d{2}\.\d{2}\.$/);
+  assert(outgoing.dateTop<outgoing.clockTop&&outgoing.dateBottom<=outgoing.clockTop+1,'연속한 날짜와 시간의 줄 위치 / '+geometry);
+  assert(outgoing.bubbleTop>=outgoing.transcriptTop-1&&outgoing.bubbleBottom<=outgoing.composerTop+1,'채팅 본문의 발신 말풍선과 입력창 위치 / '+geometry);
   await fs.writeFile(gate+'.stream','응답');
   const typed=page.locator('.chat-message-typing .message-prose p');
   await typed.waitFor();
