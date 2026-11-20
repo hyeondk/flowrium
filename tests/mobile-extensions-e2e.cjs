@@ -52,7 +52,7 @@ async function main(){
     Object.defineProperty(ServiceWorkerRegistration.prototype,'pushManager',{configurable:true,get:()=>manager});
   },{sub:subscription});
   const btn=name=>page.getByRole('button',{name,exact:true});
-  const openProject=()=>page.getByRole('button',{name:/현장 업무.*업무/}).click();
+  const openProject=()=>page.getByRole('region',{name:'프로젝트 현황',exact:true}).getByRole('button',{name:/현장 업무.*업무/}).click();
   const oneTime=remote.issueLink({ttlMinutes:15}),oneHash=new URL(oneTime.url).hash;await page.goto(origin+'/'+oneHash);await openProject();assert.equal(new URL(page.url()).hash,'');
   await checkReading(page,reading,origin,key,project.path);
   await require('./mobile-large-upload-checks.cjs').checkLargeMobileUpload(page,store,project,controller,origin);
