@@ -177,7 +177,28 @@ async function run() {
     await page.getByRole('heading',{name:'프로젝트 현황',exact:true}).waitFor();
     assert.equal(await page.locator('.activity-chart li').count(),7);
     await page.locator('.mobile-today').getByText('모바일 검토 마무리',{exact:true}).waitFor();
+    const recentWork=page.getByRole('region',{name:'최근 업무'});
+    const recentEntry=recentWork.getByRole('button',{name:/지난 현장 기록/});
+    await recentEntry.waitFor();
+    for(const width of [320,390,430]){
+      await page.setViewportSize({width,height:844});
+      const regions=await page.locator('#content[data-view=projects] > :is(.workspace-overview,.mobile-dashboard-panel)').evaluateAll(panels=>panels.map(panel=>{
+        const rect=panel.getBoundingClientRect(),style=getComputedStyle(panel);
+        return {left:rect.left,right:rect.right,padding:parseFloat(style.paddingLeft),overflow:panel.scrollWidth-panel.clientWidth};
+      }));
+      assert.equal(regions.length,5);
+      assert(regions.every(r=>Math.abs(r.left-regions[0].left)<1&&Math.abs(r.right-regions[0].right)<1&&r.padding>=12&&r.overflow<=1),JSON.stringify({width,regions}));
+    }
+    await page.setViewportSize({width:390,height:844});
+    const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/mobile/dashboard'&&response.ok());
+    await btn('새로고침').click();
+    await refreshed;
+    await recentEntry.click();
+    await page.getByRole('heading',{name:'지난 현장 기록',exact:true}).waitFor();
+    await btn('대시보드로').click();
+    await recentEntry.waitFor();
     await require('./mobile-shell-checks.cjs').checkMobileShell(page);
+    await require('./mobile-shell-checks.cjs').checkWorkspaceSizes(page);
     const tail=archivedSession.messages.at(-1),savedTail={...tail};
     Object.assign(tail,{role:'assistant',text:'후속 업무도 진행할까요?'});
     await btn('대기 대화 1개').click();await page.getByRole('heading',{name:'대기 대화',exact:true}).waitFor();

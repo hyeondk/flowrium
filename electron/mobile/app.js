@@ -822,24 +822,42 @@ function approvals(list, root) {
 function projects(root) {
   const today = new Date();
   const header = node('header', undefined, 'page-heading');
+  const heading = node('div');
   const calendar = node('time', new Intl.DateTimeFormat('ko-KR', {month:'long',day:'numeric',weekday:'short'}).format(today));
-  header.append(calendar,node('h1','대시보드'));
+  calendar.dateTime = new Intl.DateTimeFormat('sv-SE').format(today);
+  heading.append(calendar,node('h1','대시보드'));
+  const refresh = action('새로고침', async () => {
+    refresh.disabled = true;
+    try { await Promise.all([poll(),loadDashboard(true)]); }
+    finally { refresh.disabled = false; }
+  }, 'mobile-dashboard-refresh');
+  header.append(heading,refresh);
   const overview = node('section', undefined, 'workspace-overview');
   overview.append(header);
   const status=node('section',undefined,'mobile-execution');
   status.setAttribute('aria-label','프로젝트 대화 진행 상태');
+  const sessionsByProject = new Map(), counts = {running:0,waiting:0,decision:0};
+  for(const session of data.sessions) {
+    if(Object.hasOwn(counts,session.executionState)) counts[session.executionState]++;
+    const sessions = sessionsByProject.get(session.projectId);
+    if(sessions) sessions.push(session);
+    else sessionsByProject.set(session.projectId,[session]);
+  }
   for(const [key,name] of Object.entries(executionNames)){
-    const count=data.sessions.filter(s=>s.executionState===key).length;
+    const count=counts[key];
     const button=action('',()=>go('status',key));
     button.dataset.state=key;button.setAttribute('aria-label',name+' 대화 '+count+'개');
     button.append(node('span',name),node('strong',String(count)));status.append(button);
   }
   overview.append(status);
   root.append(overview);
-  const tasks=node('section',undefined,'mobile-today'),todo=data.sessions
+  const tasks=node('section',undefined,'mobile-today mobile-dashboard-panel'),todo=data.sessions
     .filter(s=>s.workflow && s.workflow.status!=='done')
     .sort((a,b)=>Number(b.executionState==='decision')-Number(a.executionState==='decision')||b.updatedAt.localeCompare(a.updatedAt));
-  tasks.append(node('h2','오늘 할 일'));
+  const tasksHeading=node('header',undefined,'list-heading');
+  tasksHeading.append(node('h2','오늘 할 일'));
+  tasks.setAttribute('aria-label','오늘 할 일');
+  tasks.append(tasksHeading);
   const {due=[],goals=[],phases={}}=dashboardFacts||{};
   for(const item of due.slice(0,3))if(project(item.projectId))tasks.append(row(project(item.projectId).name,item.due,()=>go('project',item.projectId),item.due===dashboardFacts.today?'오늘 기한':'기한 경과'));
   for(const item of goals.slice(0,5))if(project(item.projectId))tasks.append(row(item.text,project(item.projectId).name,()=>go('project',item.projectId),item.target!=null?(item.current||0)+' / '+item.target:'목표'));
@@ -848,15 +866,16 @@ function projects(root) {
     tasks.append(loadingRegion('오늘 할 일'));
     if(loadErrors.has('오늘 할 일'))tasks.append(action('오늘 할 일 다시 불러오기',()=>loadDashboard(true)));
   }else if(!todo.length && !due.length && !goals.length)tasks.append(node('p','진행할 업무가 없습니다.','hint'));
-  const projectList = node('section', undefined, 'mobile-list-panel');
+  const projectList = node('section', undefined, 'mobile-list-panel mobile-dashboard-panel');
+  projectList.setAttribute('aria-label','프로젝트 현황');
   const projectsHeading=node('header',undefined,'list-heading');
   projectsHeading.append(node('h2','프로젝트 현황'),node('small',data.projects.length+'개'));
   projectList.append(projectsHeading);
-  root.append(tasks,projectList,activityChart());
+  root.append(tasks,projectList);
   if(Object.keys(phases).length){
-    const counts=node('p',undefined,'hint');
-    counts.textContent=Object.entries(phases).map(([phase,count])=>phase+' '+count+'개').join(' / ');
-    projectList.append(counts);
+    const phaseCounts=node('p',undefined,'mobile-project-phases');
+    phaseCounts.textContent=Object.entries(phases).map(([phase,count])=>phase+' '+count+'개').join(' / ');
+    projectList.append(phaseCounts);
   }
   if (!data.projects.length)
     projectList.append(
@@ -867,7 +886,7 @@ function projects(root) {
       ),
     );
   for (const p of data.projects) {
-    const list = data.sessions.filter((s) => s.projectId === p.id);
+    const list = sessionsByProject.get(p.id) || [];
     projectList.append(
       row(
         p.name,
@@ -877,9 +896,19 @@ function projects(root) {
       ),
     );
   }
+  const recentSessions = data.sessions.slice().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,4);
+  if(recentSessions.length) {
+    const recent = node('section',undefined,'mobile-list-panel mobile-dashboard-panel mobile-recent');
+    recent.setAttribute('aria-label','최근 업무');
+    const recentHeading = node('header',undefined,'list-heading');
+    recentHeading.append(node('h2','최근 업무'));
+    recent.append(recentHeading,...recentSessions.map(sessionRow));
+    root.append(recent);
+  }
+  root.append(activityChart());
 }
 function activityChart(){
-  const chart=node('section',undefined,'activity-chart'), days=[];
+  const chart=node('section',undefined,'activity-chart mobile-dashboard-panel'), days=[];
   for(let offset=6;offset>=0;offset--){
     const day=new Date();day.setHours(0,0,0,0);day.setDate(day.getDate()-offset);
     const next=new Date(day);next.setDate(next.getDate()+1);
@@ -1838,7 +1867,7 @@ let renderedChatId;
 function visibleMessageAnchor(){
   if(route!=='chat'||renderedChatId!==selectedSession||gate)return;
   const messages=content.querySelectorAll('[data-message-id]');
-  const headerBottom=document.querySelector('.bar').getBoundingClientRect().bottom;
+  const headerBottom=content.querySelector('.mobile-chat-heading')?.getBoundingClientRect().bottom || 0;
   let lo=0,hi=messages.length;
   while(lo<hi){
     const middle=Math.floor((lo+hi)/2);

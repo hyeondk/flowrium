@@ -1,6 +1,19 @@
 const nav = document.querySelector('#nav');
 const buttons = [...nav.querySelectorAll('button')];
 const viewport = window.visualViewport;
+const html = document.documentElement;
+const wideLayout = () => html.dataset.workspaceLayout === 'wide';
+function updateWorkspaceLayout() {
+  // CSS screen dimensions stay comparable across portrait and landscape. A narrow
+  // split-screen window still needs the compact layout on a larger tablet.
+  const shortScreenEdge = Math.min(screen.width, screen.height) || Math.min(innerWidth, innerHeight);
+  const layout = shortScreenEdge >= 800 && html.clientWidth >= 740 ? 'wide' : 'compact';
+  if (html.dataset.workspaceLayout === layout) return;
+  clearDrag();
+  suppressClick = false;
+  nav.scrollLeft = 0;
+  html.dataset.workspaceLayout = layout;
+}
 const keyboardField='textarea,input:not([readonly]):is(:not([type]),[type=text],[type=search],[type=email],[type=url],[type=tel],[type=password],[type=number]),[contenteditable=true]';
 let restingHeight = viewport?.height ?? innerHeight;
 let keyboardOrigin;
@@ -15,7 +28,9 @@ function updateKeyboard() {
     html.style.setProperty('--mobile-visible-height',current+'px');
     const form=active.closest('.chat-compose');
     if(form){
-      const top=(viewport?.offsetTop||0)+6,bottom=top+current-12;
+      const offset=viewport?.offsetTop||0;
+      const heading=screen?.querySelector('.mobile-chat-heading')?.getBoundingClientRect().bottom || 0;
+      const top=Math.max(offset,heading)+6,bottom=offset+current-6;
       const input=active.getBoundingClientRect(),send=form.querySelector('button[type=submit]')?.getBoundingClientRect();
       const last=send && send.bottom-input.top<current-16?Math.max(input.bottom,send.bottom):input.bottom;
       if(last>bottom)scrollBy({top:last-bottom,behavior:'instant'});
@@ -36,7 +51,7 @@ document.addEventListener('focusout', () => requestAnimationFrame(updateKeyboard
 
 // A normal-width bar scrubs through tabs. With enlarged text, leave room for
 // each label and let the browser pan through the row without changing screens.
-const overflowing = () => nav.scrollWidth > nav.clientWidth + 1;
+const overflowing = () => !wideLayout() && nav.scrollWidth > nav.clientWidth + 1;
 const selected = () => buttons.find(button => button.getAttribute('aria-current') === 'page');
 const clampTab = value => Math.max(0, Math.min(buttons.length - 1, value));
 
@@ -63,6 +78,9 @@ new MutationObserver(() => {
 
 let drag;
 let suppressClick = false;
+updateWorkspaceLayout();
+window.addEventListener('resize', updateWorkspaceLayout);
+screen.orientation?.addEventListener('change', updateWorkspaceLayout);
 function clearDrag() {
   drag = undefined;
   delete nav.dataset.dragging;
@@ -75,7 +93,7 @@ function fingerPosition(x) {
   return clampTab((x - first.left - first.width / 2) / pitch);
 }
 nav.addEventListener('pointerdown', event => {
-  if (!event.isPrimary || event.button !== 0 || !event.target.closest('button')) return;
+  if (wideLayout() || !event.isPrimary || event.button !== 0 || !event.target.closest('button')) return;
   suppressClick = false;
   if (overflowing() && event.pointerType !== 'mouse') return;
   drag = {id:event.pointerId, x:event.clientX, y:event.clientY, scroll:nav.scrollLeft, pan:overflowing()};
@@ -131,7 +149,7 @@ nav.addEventListener('click', event => {
 // Consume one deliberate horizontal trackpad gesture, including its momentum.
 let lastWheel = -Infinity, wheelDistance = 0, wheelCommitted = false;
 nav.addEventListener('wheel', event => {
-  if (event.ctrlKey || event.metaKey || overflowing()) return;
+  if (wideLayout() || event.ctrlKey || event.metaKey || overflowing()) return;
   const horizontal = event.deltaX || (event.shiftKey ? event.deltaY : 0);
   if (!horizontal || (!event.shiftKey && Math.abs(horizontal) <= Math.abs(event.deltaY))) return;
   event.preventDefault();
@@ -150,10 +168,11 @@ nav.addEventListener('wheel', event => {
 }, {passive:false});
 nav.addEventListener('keydown', event => {
   const index = buttons.indexOf(document.activeElement);
-  if (index < 0 || !['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+  const [previous,following] = wideLayout() ? ['ArrowUp','ArrowDown'] : ['ArrowLeft','ArrowRight'];
+  if (index < 0 || ![previous,following,'Home','End'].includes(event.key)) return;
   event.preventDefault();
   const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
-    : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+    : (index + (event.key === following ? 1 : -1) + buttons.length) % buttons.length;
   buttons[next].focus();
   buttons[next].click();
 });

@@ -163,4 +163,60 @@ async function checkMobileShell(page) {
   await classic.dispose();
   console.log('모바일 하단 바 320/390/768px, 44px 터치 영역, 선택 표시 연속 추적, 양 끝에서 단일 선택, 세로 및 취소 동작, 가로 휠 관성, 확대 글자에서 실제 스크롤, 키보드 탐색 및 동작 줄이기 통과');
 }
-module.exports={checkMobileShell};
+
+async function checkWorkspaceSizes(page) {
+  const cdp=await page.context().newCDPSession(page);
+  const desktop=(name,w,h)=>[
+    {name:name+' 세로',w,h,layout:'wide',top:24,bottom:20},
+    {name:name+' 가로',w:h,h:w,layout:'wide',top:24,bottom:20},
+  ];
+  const devices=[
+    {name:'아이폰',w:390,h:844,layout:'compact',top:47,bottom:34},
+    {name:'안드로이드 휴대폰',w:412,h:915,layout:'compact',top:28,bottom:24},
+    {name:'안드로이드 휴대폰 가로',w:915,h:412,layout:'compact',left:32,right:15,bottom:16},
+    {name:'아이패드 미니 세로',w:744,h:1133,layout:'compact',top:24,bottom:20},
+    {name:'아이패드 미니 가로',w:1133,h:744,layout:'compact',top:24,bottom:20},
+    {name:'이전 아이패드 미니 가로',w:1024,h:768,layout:'compact',top:20},
+    ...desktop('아이패드 10.2형',810,1080),
+    ...desktop('아이패드 11형',834,1194),
+    {name:'아이패드 11형 분할 화면',w:540,h:834,screenWidth:1194,screenHeight:834,layout:'compact',top:24,bottom:20},
+  ];
+  const metrics=[];
+  try {
+    for (const device of devices) {
+      const {name,w,h,screenWidth=w,screenHeight=h,layout,top=0,bottom=0,left=0,right=0}=device;
+      await cdp.send('Emulation.setDeviceMetricsOverride',{width:w,height:h,screenWidth,screenHeight,deviceScaleFactor:2,mobile:true,
+        screenOrientation:{type:screenWidth>screenHeight?'landscapePrimary':'portraitPrimary',angle:screenWidth>screenHeight?90:0}});
+      await cdp.send('Emulation.setSafeAreaInsetsOverride',{insets:{top,bottom,left,right}});
+      await page.waitForFunction(({layout,w})=>document.documentElement.dataset.workspaceLayout===layout && innerWidth===w,{layout,w});
+      const values=await page.evaluate(()=>{
+        const header=document.querySelector('.bar'),main=document.querySelector('#content'),nav=document.querySelector('#nav'),
+          logo=document.querySelector('#home'),root=document.documentElement;
+        const box=el=>el.getBoundingClientRect(),height=main.style.minHeight;
+        main.style.minHeight=(innerHeight+160)+'px';scrollTo(0,110);
+        const geometry={headerTop:box(header).top,logoTop:box(logo).top,logoLeft:box(logo).left,scroll:scrollY,
+          layer:document.elementFromPoint(box(logo).left+4,Math.max(1,box(header).height/3))?.closest('.bar')===header,
+          filter:getComputedStyle(header).backdropFilter,navTop:box(nav).top,navBottom:innerHeight-box(nav).bottom,
+          navLeft:box(nav).left,navRight:box(nav).right,contentLeft:box(main).left,
+          contentCols:getComputedStyle(main).gridTemplateColumns.split(' ').length,
+          overflow:root.scrollWidth-root.clientWidth};
+        main.style.minHeight=height;scrollTo(0,0);
+        return geometry;
+      });
+      const summary=JSON.stringify({name,layout,...values});
+      assert(values.scroll>=100 && Math.abs(values.headerTop)<=1 && values.layer && values.filter.includes('blur('),summary);
+      assert(values.logoTop>=top && values.logoLeft>=left && values.overflow<=1,summary);
+      assert(values.navLeft>=left-1 && values.navRight<=w-right+1 && values.navBottom>=bottom-1,summary);
+      if(layout==='wide')assert(values.navRight<=values.contentLeft+1 && values.contentCols===2,summary);
+      else assert(values.navTop>h/2 && values.navBottom>=8 && values.navBottom>=bottom+4,summary);
+      metrics.push([name,layout,values.navBottom]);
+    }
+  } finally {
+    await cdp.send('Emulation.setSafeAreaInsetsOverride',{insets:{}});
+    await cdp.send('Emulation.clearDeviceMetricsOverride');
+    await cdp.detach();
+    await page.setViewportSize({width:390,height:844});
+  }
+  console.log('모바일 안전 영역, 스크롤 가림, 기기 회전 및 분할 창 '+JSON.stringify(metrics));
+}
+module.exports={checkMobileShell,checkWorkspaceSizes};

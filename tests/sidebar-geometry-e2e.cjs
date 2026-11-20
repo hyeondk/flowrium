@@ -259,7 +259,7 @@ async function run() {
     const setUsage=async usedPercent=>{
       await app.evaluate(({ipcMain},usedPercent)=>{
         ipcMain.removeHandler('flowrium:readAccountUsage');
-        ipcMain.handle('flowrium:readAccountUsage',()=>({allowed:null,checkedAt:Date.now(),credits:{hasCredits:true,unlimited:false,balance:'1234.50'},buckets:[{name:'Codex',plan:'pro',windows:[{key:'primary',usedPercent,minutes:null,resetsAt:null}]}]}));
+        ipcMain.handle('flowrium:readAccountUsage',()=>({allowed:null,checkedAt:Date.now(),credits:{hasCredits:true,unlimited:false,balance:'1234.50'},buckets:[{name:'Codex',plan:'pro',windows:[{key:'primary',usedPercent,minutes:null,resetsAt:1900000000000}]}]}));
       },usedPercent);
       await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
       await credits.and(side.locator('[data-active="'+(usedPercent>=100)+'"]')).waitFor();
