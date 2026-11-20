@@ -24,8 +24,11 @@ const quit=String.raw`function run(argv){ObjC.import('AppKit');const app=$.NSRun
   for(let iteration=0;iteration<(sequential?2:1);iteration++){
   pid=undefined;remaining=false;await fs.writeFile(log,'');
   await run('/usr/bin/open',['-n','-a',appPath,'--stderr',log,'--stdout',out,'--env','FLOWRIUM_LIFECYCLE_DIAGNOSTICS=1','--env','FLOWRIUM_USER_DATA='+profile,'--env','CODEX_HOME='+codex,'--args',...(archive?[]:[root]),'--user-data-dir='+profile],{timeout:15000});
-  const deadline=Date.now()+30000;while(Date.now()<deadline){const rows=await stages();if(rows.some(row=>row.phase==='bootstrap-ready'))break;await delay(100);}
-  const before=await stages();assert(before.some(row=>row.phase==='ready-to-show'));assert(before.some(row=>row.phase==='bootstrap-ready'));result.readyToShow=true;result.bootstrapReady=true;
+  const deadline=Date.now()+30000;let before=[];while(Date.now()<deadline){before=await stages();if(before.some(row=>row.phase==='bootstrap-ready')&&before.some(row=>row.phase==='ready-to-show'))break;await delay(100);}
+  const phases=before.map(row=>row.phase);
+  assert(phases.includes('ready-to-show'),'화면 준비가 끝나야 합니다. 관측 단계 / '+phases.join(', '));
+  assert(phases.includes('bootstrap-ready'),'설정과 프로젝트를 읽어야 합니다. 관측 단계 / '+phases.join(', '));
+  result.readyToShow=true;result.bootstrapReady=true;
   const apps=await applications(),matches=[];for(const app of apps){try{const command=(await run('/bin/ps',['-p',String(app.pid),'-o','command='],{timeout:5000})).stdout;if(command.includes(profile))matches.push(app);}catch{}}
   assert.equal(matches.length,1);pid=matches[0].pid;const started=Date.now();assert.equal((await requestQuit()).requested,true);result.normalQuitRequested=true;
   while(Date.now()-started<15000&&await live())await delay(100);remaining=await live();const after=await stages();result.quitStages=after.filter(row=>row.phase.startsWith('quit-')||row.phase==='closed').map(row=>({phase:row.phase,windows:row.windows}));result.remainingAfter15Seconds=remaining;result.observedMilliseconds=Date.now()-started;assert(after.some(row=>row.phase==='quit-finished'),'저장 및 정리를 마친 뒤 종료 단계에 도달해야 한다');
