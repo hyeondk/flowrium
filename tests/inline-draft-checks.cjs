@@ -128,7 +128,7 @@ async function checkLargeDraft(page,input,verifyFailedSend,send,folder,{verifyLa
   await verifyFailedSend(exact);
   await persisted(exact);
   await paste(pasted);
-  const originals=page.locator('.messages article.message.user').getByText(/^긴 요청 원문 \([\d.,]+MB\)$/);
+  const originals=page.locator('.messages article.message.user, .mobile-timeline article.message[data-role="user"]').getByText(/^긴 요청 원문 \([\d.,]+MB\)$/);
   await send.click();
   await originals.first().waitFor();
   await page.waitForFunction(()=>document.querySelector('.markdown-input textarea')?.value==='');
