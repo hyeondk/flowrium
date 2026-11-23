@@ -1,6 +1,7 @@
 const D = require('./codex-transfer-data.cjs');
 const { UUID } = require('./project-store.cjs');
-const {withLiveTurn,interleaveLocalMessages}=require('./mobile/live-turn.js');
+const {withLiveTurn}=require('./mobile/live-turn.js');
+const {matchExchanges,retainLocalOrder}=require('./codex-transfer-merge.cjs');
 const {readCodexRolloutContext}=require('./codex-rollout-context.cjs');
 
 function bindNative(runtime, session, threadId, cwd) {
@@ -90,7 +91,7 @@ function mergeNative(local, incoming) {
   }
   for(const [turn,saved] of localByTurn){
     const source=byTurn.get(turn)||[];
-    require('./codex-transfer-merge.cjs').matchExchanges(saved,source,matches);
+    matchExchanges(saved,source,matches);
   }
   const result=[];
   for(const item of incoming){
@@ -99,7 +100,7 @@ function mergeNative(local, incoming) {
     if(merged)result.push(merged);
   }
   const preserved=new Set(result.map(m=>m.id));
-  return interleaveLocalMessages(result,local.filter(message=>!preserved.has(message.id)));
+  return retainLocalOrder(result,local,local.filter(message=>!preserved.has(message.id)));
 }
 
 async function refreshNative(runtime, session, cwd, context, thread) {

@@ -100,6 +100,19 @@ test('같은 턴에서 추가한 지시마다 답변 조각을 합치고 자동 
  }
 });
 
+test('원본의 일부 항목만 먼저 도착해도 같은 시각의 추가 지시를 그 답변 앞에 유지한다',()=>{
+ const {mergeNative}=require('../electron/chat-sync.cjs'),{mergeMessages}=require('../electron/codex-transfer-merge.cjs');
+ const row=(id,role,text)=>({id,role,text,turnId:'turn',createdAt:'2026-11-23T00:00:00.000Z'});
+ const local=[row('local-u','user','원래 요청'),row('local-steer','user','지금 전달한 지시'),row('local-a','assistant','추가 지시에 반영한 답변')];
+ const partial=[row('remote-u','user','원래 요청'),row('remote-a','assistant','추가 지시에 반영한 답변')];
+ const full=[partial[0],row('remote-steer','user','지금 전달한 지시'),partial[1]];
+ for (const merge of [mergeNative,mergeMessages]) {
+  const result=merge(local,partial);
+  assert.deepEqual(result.map(message=>message.id),local.map(message=>message.id));
+  assert.deepEqual(merge(result,full).map(message=>message.text),local.map(message=>message.text));
+ }
+});
+
 test('이름 저장 실패 시 그사이 도착한 답변과 대기 지시를 유지한다', async () => {
   const {rename} = require('../electron/chat-sync.cjs');
   const session = {id:'local', title:'이전 이름', messages:[], queuedMessages:[]};

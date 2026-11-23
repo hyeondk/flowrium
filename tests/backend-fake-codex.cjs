@@ -273,6 +273,8 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   if(method === 'turn/steer') {
     const turnId=params.expectedTurnId;
     if(!turns.has(turnId))return write({id,error:{code:-32602,message:'no active turn'}});
+    const saved=threads.get(params.threadId)?.find(turn=>turn.id===turnId);
+    saved?.items.push({id:params.clientUserMessageId||turnId+'-steer-'+saved.items.length,type:'userMessage',content:params.input});
     write({id,result:{turnId}});
     complete(params.threadId,turnId,'추가 지시 반영 / '+params.input[0].text);
     return;

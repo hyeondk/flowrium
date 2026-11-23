@@ -30,6 +30,29 @@ function matchExchanges(local,incoming,matches) {
   if(after.id!==before.id && !matches.has(after.id))matches.set(after.id,{...before,text:after.text});
  }
 }
+
+// A reader can publish an answer before it includes the local user's steered
+// message. Retain that input before its next matched item in the same turn.
+function retainLocalOrder(source, previous, unmatched) {
+ if (!unmatched.length) return source;
+ const sourceIds=new Set(source.map(message=>message.id));
+ const unplaced=new Map(unmatched.map(message=>[message.id,message]));
+ const nextByTurn=new Map(), before=new Map();
+ for (let index=previous.length-1;index>=0;index--) {
+  const message=previous[index], {id,turnId}=message;
+  if (!turnId) continue;
+  if (sourceIds.has(id)) nextByTurn.set(turnId,id);
+  else if (message.role==='user' && unplaced.has(id) && nextByTurn.has(turnId)) {
+   const next=nextByTurn.get(turnId);
+   if (!before.has(next)) before.set(next,[]);
+   before.get(next).push(unplaced.get(id));
+   unplaced.delete(id);
+  }
+ }
+ const ordered=before.size?source.flatMap(message=>[...(before.get(message.id)||[]).reverse(),message]):source;
+ return interleaveLocalMessages(ordered,[...unplaced.values()]);
+}
+
 function mergeMessages(previous,incoming){
  const byId=new Map(previous.map(message=>[message.id,message])),byGroup=new Map(),previousTurns=new Map(),incomingGroups=new Map();let latestTurn;
  for(const message of previous){if(message.role==='user'&&message.turnId)latestTurn=message.turnId;const turn=message.turnId||(message.role==='assistant'?latestTurn:undefined);if(!turn)continue;const key=turn+'|'+message.role;const rows=byGroup.get(key)||[];rows.push(message);byGroup.set(key,rows);if(!previousTurns.has(turn))previousTurns.set(turn,[]);previousTurns.get(turn).push(message);}
@@ -55,7 +78,7 @@ function mergeMessages(previous,incoming){
  // 참조 중인 과거 메시지나 로컬 안내를 삭제하지 않습니다. 이전 원문 사본도 별도로 남깁니다.
  const sourceIds=new Set(out.map(row=>row.id));
  const local=previous.filter(message=>!used.has(message.id)&&!sourceIds.has(message.id)).map(copy);
- return interleaveLocalMessages(out,local);
+ return retainLocalOrder(out,previous,local);
 }
 
 function restoreLinkedMessageOrder(session) {
@@ -69,4 +92,4 @@ function restoreLinkedMessageOrder(session) {
  }
  if(local.length)session.messages=interleaveLocalMessages(source,local);
 }
-module.exports={mergeMessages,matchExchanges,restoreLinkedMessageOrder};
+module.exports={mergeMessages,matchExchanges,restoreLinkedMessageOrder,retainLocalOrder};
