@@ -69,7 +69,7 @@ function objectParticle(text) {
 function unfinishedRequest(sentence) {
   if (/제외|보류|의도적으로|범위\s*밖|하지\s*않기로|승인|필요\s*없/.test(sentence)) return;
   const body=sentence.replace(/^(?:다만|단|아직)\s*[,，]?\s*/,'');
-  const match=/^(.{4,150}?)(?:은|는|을|를)\s*(?:(?:아직|이번(?:에|에는)|현재|직접)\s*)*(검증|확인|점검|시험|검사|테스트|수행|진행|실행)(?:하지\s*(?:않았|못했)|하지는\s*않았|하지\s*못한)[^.!?]*[.!]?$/.exec(body);
+  const match=/^(.{4,150}?)(?:은|는|을|를)\s*(?:(?:아직|이번(?:에|에는)|현재|직접)\s*)*(검증|확인|점검|시험|검사|테스트|수행|진행|실행|설치|배포|반영|적용|전환|이전|교체|복구|정리)(?:하지\s*(?:않았|못했)|하지는\s*않았|하지\s*못한)[^.!?]*[.!]?$/.exec(body);
   if (match) {
     const target=match[1].trim(),verb=match[2]==='수행'?'진행':match[2];
     return suggestion(target+objectParticle(target)+' '+verb+'해줘','직전 답변에 남은 확인 사항');
@@ -78,6 +78,8 @@ function unfinishedRequest(sentence) {
   if (remaining) return suggestion(remaining[1]+objectParticle(remaining[1])+' 진행해줘','직전 답변에 남은 확인 사항');
   const adjustment=/^(.{4,140}?(?:조정|개선|보완|수정))(?:이|가)\s*(?:추가로\s*)?필요합니다[.!]?$/.exec(body);
   if(adjustment)return suggestion(adjustment[1]+'해줘','직전 답변에 남은 개선 사항');
+  const pending=/^(.{4,140}?(?:설치|배포|반영|적용|전환|이전|교체|복구|정리|완성))(?:은|는|이|가)\s*(?:(?:아직|추가로)\s*)?(?:남았습니다|남아\s*있습니다|미완료입니다)[.!]?$/.exec(body);
+  if (pending) return suggestion(pending[1]+'해줘','직전 답변에 남은 작업');
   const unverified=/^(.{4,140}?)(?:은|는|이|가)\s*(?:아직\s*)?미검증(?:입니다|됐습니다)?[.!]?$/.exec(body);
   return unverified?suggestion(unverified[1]+objectParticle(unverified[1])+' 검증해줘','직전 답변에 남은 확인 사항'):undefined;
 }
@@ -204,7 +206,7 @@ function plainHistoryLines(text) {
   return publicLines(attachmentDisplayText(text)).filter(line=>line && !quietIntro.test(line) && !riskyLine.test(line));
 }
 function requestStyle(lines) {
-  const ending=lines.join('\n').match(/(?:해|봐|려|어|아|여|내|써|서|둬|줘|쳐|켜|와|돼)(\s*(?:주실\s*수\s*있나요|주실래요|주세요|줄래요|줘요|줄래|줘))(?=[\s.!?。？！…]*(?:\n|$))/g)?.at(-1);
+  const ending=lines.join('\n').match(/(?:해|봐|려|어|아|여|내|써|서|둬|줘|쳐|켜|와|돼|워|꿔|겨)(\s*(?:주실\s*수\s*있나요|주실래요|주세요|줄래요|줘요|줄래|줘))(?=[\s.!?。？！…]*(?:\n|$))/g)?.at(-1);
   if (!ending) return;
   const match=/(\s*(?:주실\s*수\s*있나요|주실래요|주세요|줄래요|줘요|줄래|줘))$/.exec(ending);
   return match?.[1]+(/(?:나요|래요?|래)$/.test(match?.[1]||'')?'?':'');
@@ -265,10 +267,45 @@ function specifyScope(candidate,history) {
   const what=action[1]+(action[2]||'');
   return suggestion(target+'의 '+what+(objectParticle(what)==='을'?'이':'가')+' '+place+'반영되는지 확인해줘',candidate.reason) || candidate;
 }
+
+const previousBuild = /(?:(?:이전|예전|구형|기존|직전)\s*(?:버전|설치본|빌드|실행\s*파일|앱\s*사본)|구\s*버전)/;
+const currentBuild = /(?:최신|새(?:로운)?|신규|새로\s*설치한)\s*(?:버전|설치본|빌드|실행\s*파일|앱\s*사본)/;
+const removeFiles = /(?:지워|지우|삭제|제거|비워|정리해|정리\s*부탁)/;
+const preservePrevious = new RegExp(previousBuild.source+/(?:\s*(?:실행\s*파일|설치본|빌드|사본|파일(?:들)?))?(?:은|는|을|를|도)?\s*(?:(?:그대로|모두|계속)\s+)*(?:유지해|보존해|남겨\s*(?:둬|두|줘)|삭제하지\s*마|지우지\s*마)/.source);
+const activeUse = /(?:사용|실행|가동|동작)\s*(?:중|하고\s*있|하는)|(?:참조|의존)하(?:고\s*있|는)/;
+const keptFiles = /유지했|보존했|보류했|남겼|남겨\s*(?:뒀|두었)|(?:삭제|제거|정리|지우)하지\s*(?:않|못)/;
+const phoneRelay = /(?:아이폰|휴대폰|모바일)(?:\s+연결)?\s*(?:중계|터널)|(?:cloudflared|Cloudflare\s*(?:중계|터널))/i;
+const noOpenWork = /(?:추가로\s*(?:진행|할)\s*(?:작업|일)|추가\s*조치(?:가\s*필요한\s*사항)?|남은\s*(?:작업|사항))\s*(?:은|는|이|가)?\s*(?:없습니다|없어요|없음)(?=$|[.!?\s])/;
+
+function activeBuildFollowup(lines,history) {
+  const request = history.usableRequest ? history.requestLines.join('\n')
+    : history.requestLines.some(line=>shallowRequest.test(line))
+      ? history.prior.find(turn=>turn.user)?.lines.join('\n') || '' : '';
+  if (!previousBuild.test(request) || !removeFiles.test(request) || preservePrevious.test(request)) return;
+
+  const answer = lines.join('\n');
+  const sentences = answer.split(/(?<=[.!?。])\s+|\n/);
+  const dependency = sentences.find(sentence=>activeUse.test(sentence) && phoneRelay.test(sentence) && (
+    previousBuild.test(sentence) || (!currentBuild.test(sentence) && keptFiles.test(sentence) &&
+      /(?:실행\s*파일|설치본|빌드|사본)/.test(sentence) && previousBuild.test(answer))
+  ));
+  if (!dependency || /(?:실행\s*파일|중계|터널)(?:은|는|이|가|도|을|를)?\s*(?:이미\s*)?(?:새|최신)\s*(?:버전|빌드)(?:에|으?로)[^.?!\n]{0,15}(?:옮겼|전환했|교체했|바꿨)/.test(dependency)) return;
+
+  const context = [answer, request, ...history.prior.filter(turn=>turn.user).flatMap(turn=>turn.lines)].join('\n');
+  const relay = phoneRelay.exec(dependency)[0];
+  const device = /아이폰|휴대폰|모바일/.exec(relay)?.[0] || '휴대폰';
+  const preserveConnection = /QR[^.?!\n]{0,28}(?:재스캔\s*없이|다시\s*(?:안\s*찍|찍지)|재연결\s*없이)/i.test(context)
+    ? 'QR을 다시 찍지 않도록 기존 연결을 유지하면서 ' : '기존 연결을 유지하면서 ';
+  const cleanup = /직전\s*(?:버전\s*)?복구본/.test(answer)
+    ? '교체가 확인되면 직전 복구본만 남기고 나머지 이전 빌드를 정리해줘'
+    : '교체가 확인되면 이전 빌드를 정리해줘';
+  return suggestion(preserveConnection+device+' 중계를 최신 버전으로 옮기고, '+cleanup,'이전 빌드 정리를 막은 실행 중 의존성');
+}
+
 function contextualFallback(lines,history) {
   const {requestLines,requestTerms,usableRequest,previous,prior}=history;
   const answer=lines.join('\n');
-  if (postponed.test(requestLines.join('\n')) && postponed.test(answer)) return;
+  if (noOpenWork.test(answer) || (postponed.test(requestLines.join('\n')) && postponed.test(answer))) return;
   const requestTopic=usableRequest && findTopic(requestLines,requestTerms);
   const evidence=new Set([...requestTerms,...relevanceTerms(answer)]);
   const carriesPrior=!usableRequest && requestLines.some(line=>shallowRequest.test(line));
@@ -291,9 +328,11 @@ function *followupSteps(session) {
   if (!context) return [];
   yield 0;
   const lines=publicLines(context.answer.text).filter(line=>!riskyLine.test(line));
+  const answer=lines.join('\n');
   const history=historyContext(session,context.answer,context.request);
   yield 25;
-  const candidates=isPing(lines,history.requestLines)?[]:answerCandidates(lines);
+  const ping=isPing(lines,history.requestLines);
+  const candidates=ping?[]:answerCandidates(lines);
   yield 50;
   const best=(rows)=>{
     let candidate,score=-1;
@@ -304,9 +343,11 @@ function *followupSteps(session) {
     }
     return candidate;
   };
-  const candidate=best(candidates)||best(contextualCandidates(lines.join('\n'),history.requestLines.join('\n')));
+  const dependency=ping?undefined:activeBuildFollowup(lines,history);
+  const candidate=dependency&&!history.previous.has(normalized(dependency.prompt)) ? dependency
+    : best(candidates)||(!ping&&!noOpenWork.test(answer)?best(contextualCandidates(answer,history.requestLines.join('\n'))):undefined);
   yield 75;
-  const result=isPing(lines,history.requestLines)?undefined:applyStyle(specifyScope(candidate,history)||contextualFallback(lines,history),history.style);
+  const result=ping?undefined:applyStyle(specifyScope(candidate,history)||contextualFallback(lines,history),history.style);
   yield 100;
   return result?[result]:[];
 }

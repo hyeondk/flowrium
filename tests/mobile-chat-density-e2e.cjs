@@ -116,6 +116,11 @@ async function main(){
    row('assistant','다음 단계\n- 윈도우 설치 복원을 검증해 주세요.\n- 아이폰 연결 유지를 확인해 주세요.'),
    ...Array.from({length:57},(_,i)=>({...row('system','공개 작업 설명 '+i),turnId:randomUUID(),progressCommentary:true})),
   ]});
+  const retained=await store.createSession(project.id,{title:'휴대폰 중계 교체 추천',messages:[
+   row('user','아이폰에서 QR 다시 안 찍고 연결이 유지되는지 확인해줘.'),
+   row('user','이전 빌드는 전부 정리해줘.'),
+   row('assistant','이전 설치본을 삭제했습니다. 직전 버전 복구본과 현재 휴대폰 중계가 사용하는 이전 빌드 실행 파일은 유지했습니다. 남은 작업은 없습니다.'),
+  ]});
   const handlers=new Map(),register=(name,fn)=>handlers.set(name,fn);let pending=[],locked=false;const delivered=[];
   controller=new Controller(store,{descriptor:{command:process.execPath,prefix:[path.join(__dirname,'backend-fake-codex.cjs')],label:'격리된 검증용 연결',node:false},canRun:()=>true,queueOwner:()=>0});await controller.connect();
   for(const [name,fn]of Object.entries({send:i=>controller.send(i),interrupt:id=>controller.interrupt(id),connect:()=>controller.connect(),saveSettings:(value,options)=>controller.saveSettings(value,options),listQueuedMessages:id=>controller.listQueuedMessages(id),securityPending:()=>[],readAccountUsage:()=>({checkedAt:Date.now(),allowed:true,credits:{hasCredits:false,unlimited:false},buckets:[]})}))register(name,fn);
@@ -176,6 +181,17 @@ async function main(){
    record.updatedAt=new Date(Date.now()+1_000).toISOString();
    await store.save();
   });
+  const retainedStarted=Date.now();
+  await page.getByRole('button',{name:new RegExp(retained.title)}).click();
+  const retainedPrompt='QR을 다시 찍지 않도록 기존 연결을 유지하면서 휴대폰 중계를 최신 버전으로 옮기고, 교체가 확인되면 직전 복구본만 남기고 나머지 이전 빌드를 정리해줘';
+  const retainedButton=page.locator('.mobile-followup').filter({hasText:retainedPrompt});
+  await retainedButton.waitFor({timeout:8000});
+  const retainedMs=Date.now()-retainedStarted;
+  assert(retainedMs<10000);
+  await retainedButton.click();
+  assert.equal(await page.getByRole('textbox',{name:'요청',exact:true}).inputValue(),retainedPrompt);
+  console.log('이전 중계가 남은 휴대폰 대화 추천 '+retainedMs+'ms / QR 보존과 교체 후 정리가 편집 가능한 초안에 반영');
+  await page.getByRole('button',{name:'프로젝트로',exact:true}).click();
   await page.getByRole('button',{name:/월별 매출 분석/}).click();
   await page.getByRole('region',{name:'보낸 질문 답변'}).waitFor();
   await page.locator('.citation-preview img').waitFor();

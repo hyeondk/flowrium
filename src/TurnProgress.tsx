@@ -1,10 +1,12 @@
 import {useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Ref} from 'react';
-import {Activity, ChevronDown, FileText, Globe, Pencil, Search, Terminal, UsersRound} from 'lucide-react';
+import {Activity, ChevronDown, CircleHelp, FileText, Globe, Pencil, Search, ShieldCheck, Terminal, UsersRound} from 'lucide-react';
 import type {Message, WorkStep} from '../shared/types';
 import {estimateAnswer, expectedAnswerPercent, observeAnswerWork} from '../shared/answer-progress';
 import {workDuration} from '../electron/mobile/work-time.js';
+import {activityText, agentActivityText, describeActivity, sameWorkActivity} from '../electron/mobile/work-activity.js';
 import {ChatAttachmentList} from './ChatAttachments';
 import MessageContent from './MessageContent';
+import {messagePreview} from './message-content';
 import codexAvatar from '../electron/mobile/chatgpt.svg?no-inline';
 
 type Record = {message:Message;step?:WorkStep} | {step:WorkStep;message?:Message};
@@ -102,11 +104,10 @@ export function workAnswerCompleted(messages:Message[], progress?:Progress) {
   return false;
 }
 
-const labels={running:'작업 중',completed:'완료',failed:'확인 필요',interrupted:'중단'};
-const agentEvent={running:'작업을 시작했습니다',completed:'작업을 마쳤습니다',failed:'확인할 사항이 있습니다',interrupted:'작업을 중단했습니다'};
-const icons={command:Terminal,file:Pencil,search:Search,agent:UsersRound,tool:Activity,image:FileText,context:FileText};
+const icons={command:Terminal,file:Pencil,search:Search,agent:UsersRound,tool:Activity,image:FileText,context:FileText,approval:ShieldCheck,question:CircleHelp};
 const stamp=(record:Record)=>record.step?.createdAt || record.message!.createdAt;
 const orderedRecords=(records:Record[])=>[...records].sort((a,b)=>Date.parse(stamp(a))-Date.parse(stamp(b)));
+const recordId=(record:Record)=>record.step ? 'step:'+record.step.id : record.message!.id;
 
 function agentsFor(records:Record[]) {
   const agents=new Map<string,{name:string;state:WorkStep['state']}>();
@@ -137,28 +138,31 @@ function WorkTimeline({records,live=false,listRef,onScroll}:{records:Record[];li
     });
     if (record.step?.agents?.length && !agentEvents?.length) continue;
     const last=entries.at(-1);
-    if (last && record.step?.kind==='search' && last.record.step?.kind==='search' && record.step.state===last.record.step.state && record.step.label===last.record.step.label) last.count++;
+    if (last && (live || !record.message && !last.record.message || record.step?.kind==='search') &&
+      sameWorkActivity(record.step,last.record.step)) last.count++;
     else entries.push({record,agentEvents,count:1});
   }
   return <ol aria-label={live?'실시간 작업 과정':'작업 과정'} className={live?'composer-work-timeline':'turn-progress-list'} ref={listRef} onScroll={onScroll} tabIndex={live?0:undefined}>
     {entries.map(({record,agentEvents,count})=>{
       const {step,message}=record;
-      const id=step ? 'step:'+step.id : message!.id;
-      if (message?.progressCommentary) return <li key={id} className="work-timeline-commentary">
+      const id=recordId(record);
+      if (message?.progressCommentary) return <li key={id} data-work-entry={id} className="work-timeline-commentary">
         <MessageContent role="assistant" text={message.text}/>
       </li>;
       const Icon=step?.kind ? icons[step.kind] : Activity;
-      const label=step?.label || logLabel(message!.text);
-      const detail=!live && message && message.text.trim()!==label && !/^(?:실행 도구 \/ 명령|파일 변경 기록|도구 실행 기록)(?:\n(?:진행 중|완료|확인 필요|거절|중단))?$/.test(message.text.trim());
-      return <li key={id} className="work-timeline-event" data-work-kind={step?.kind}>
+      const view=step ? describeActivity(step) : {label:logLabel(message!.text),target:undefined,result:undefined};
+      const target=view.target || (step?.files?.length===1 ? step.files[0].path.split(/[/\\]/).at(-1) : undefined);
+      const detail=!live && message && message.text.trim()!==(step?.label||view.label) && !/^(?:실행 도구 \/ 명령|파일 변경 기록|도구 실행 기록)(?:\n(?:진행 중|완료|실행 종료|확인 필요|거절|중단))?$/.test(message.text.trim());
+      return <li key={id} data-work-entry={id} className="work-timeline-event" data-work-kind={step?.kind}>
         <div className="turn-progress-line"><Icon size={13} aria-hidden="true"/>
           {agentEvents?.length ? <div className="work-timeline-agents">{agentEvents.map(agent=><span key={agent.id} data-step-state={agent.state}>
-            {aliases.get(agent.id)?.name}: {agentEvent[agent.state]}
+            {aliases.get(agent.id)?.name}: {agentActivityText[agent.state]}
           </span>)}</div> : <>
-            <span>{label}</span>{step && <small data-step-state={step.state}>{labels[step.state]}</small>}
+            <span data-step-state={step?.state}>{view.label}</span>
+            {target && <span className="work-timeline-file" title={step?.files?.length===1?step.files[0].path:undefined}>{target}</span>}
+            {view.result && <small>{view.result}</small>}
             {count>1 && <small aria-label={`${count}건`}>×{count}</small>}
-            {!live && step?.files?.length===1 && <span className="work-timeline-file" title={step.files[0].path}>{step.files[0].path.split(/[/\\]/).at(-1)}</span>}
-            {!live && Boolean(step?.files?.length && step.files.length>1) && <small>파일 {step!.files!.length}개</small>}
+            {Boolean(step?.files?.length && step.files.length>2) && <small>파일 {step!.files!.length}개</small>}
           </>}
         </div>
         {detail && <WorkOriginal text={message.text}/>}
@@ -194,20 +198,62 @@ export function TurnProgress({progress,active,checking}:{progress:Progress;activ
   </div>;
 }
 
+function currentWork(records:Record[]) {
+  const latest=records.reduce<Record|undefined>((previous,record)=>{
+    const time=(row:Record)=>Date.parse(row.step?.completedAt || stamp(row));
+    return !previous || time(record)>=time(previous) ? record : previous;
+  },undefined);
+  if(latest?.step?.agents?.length){
+    const aliases=agentsFor(records);
+    const agent=latest.step.agents[0];
+    return `${aliases.get(agent.id)?.name}: ${agentActivityText[agent.state]}`;
+  }
+  if(latest?.step)return activityText(latest.step);
+  if(latest?.message?.progressCommentary){
+    const first=messagePreview(latest.message.text,'assistant',2000).split(/(?<=[.!?。])\s/)[0];
+    return first && first.length<=140 ? first : '진행 설명이 업데이트됐습니다';
+  }
+  return '요청을 처리하고 있습니다';
+}
+
 export function LiveWorkTimeline({progress}:{progress?:Progress}) {
   const records=useMemo(()=>orderedRecords(progress?.records||[]),[progress]);
+  const [open,setOpen]=useState(false);
+  const historyId=useId();
   const list=useRef<HTMLOListElement>(null);
   const followLatest=useRef(true);
+  const anchor=useRef<{id:string;offset:number}|null>(null);
+  const current=useMemo(()=>currentWork(records),[records]);
   useLayoutEffect(()=>{
     const el=list.current;
-    if (el && followLatest.current) el.scrollTop=el.scrollHeight;
-  },[records]);
-  return <section className="composer-live-work" aria-label="실시간 작업 상태">
-    <div className="composer-live-work-heading"><span className="status-dot online" aria-hidden="true"/>실시간 작업 과정</div>
-    <WorkTimeline records={records} live listRef={list} onScroll={()=>{
-      const el=list.current;
-      if (el) followLatest.current=el.scrollHeight-el.clientHeight-el.scrollTop<=8;
-    }}/>
+    if(!el)return;
+    if(followLatest.current)el.scrollTop=el.scrollHeight;
+    else if(anchor.current){
+      const {id,offset}=anchor.current;
+      const entry=el.querySelector(`[data-work-entry="${CSS.escape(id)}"]`);
+      if(entry)el.scrollTop+=entry.getBoundingClientRect().top-el.getBoundingClientRect().top-offset;
+    }
+  },[open,records]);
+  return <section className="composer-live-work" aria-label="실시간 작업 상태" onKeyDown={event=>{
+    if(event.key==='Escape'&&open){event.stopPropagation();setOpen(false);event.currentTarget.querySelector('button')?.focus();}
+  }}>
+    <div className="composer-live-work-heading">
+      <span className="status-dot online" aria-hidden="true"/>
+      <span className="composer-current-work" data-work-current aria-live="polite">{current}</span>
+      <button type="button" aria-expanded={open} aria-controls={historyId} onClick={()=>setOpen(value=>!value)}>
+        작업 내역 <ChevronDown size={13} aria-hidden="true"/>
+      </button>
+    </div>
+    {open&&<div className="composer-live-work-history" id={historyId}>
+      <WorkTimeline records={records} live listRef={list} onScroll={()=>{
+        const el=list.current;
+        if(!el)return;
+        followLatest.current=el.scrollHeight-el.clientHeight-el.scrollTop<=8;
+        const top=el.getBoundingClientRect().top;
+        const entry=[...el.querySelectorAll<HTMLElement>('[data-work-entry]')].find(row=>row.getBoundingClientRect().bottom>top);
+        anchor.current=entry?.dataset.workEntry?{id:entry.dataset.workEntry,offset:entry.getBoundingClientRect().top-top}:null;
+      }}/>
+    </div>}
   </section>;
 }
 
@@ -284,7 +330,7 @@ export function WorkToolDetails({progress,messages,projectId}:{progress?:Progres
         {file.added!==undefined && file.removed!==undefined && <small><b className="work-added">+{file.added}</b> <b className="work-removed">−{file.removed}</b></small>}</li>)}</ul> : <p>기록된 파일 변경이 없습니다.</p>}
     </details>
     <details><summary><UsersRound size={14} aria-hidden="true"/><span>하위 에이전트</span><small>{agents.length}개</small></summary>
-      {agents.length ? <ul>{agents.map(([id,agent])=><li key={id}><span>{agent.name}</span><small>{labels[agent.state]}</small></li>)}</ul> : <p>기록된 하위 에이전트가 없습니다.</p>}
+      {agents.length ? <ul>{agents.map(([id,agent])=><li key={id}><span>{agent.name}</span><small>{agentActivityText[agent.state]}</small></li>)}</ul> : <p>기록된 하위 에이전트가 없습니다.</p>}
     </details>
     <details onToggle={event=>setSourcesOpen(event.currentTarget.open)}><summary><Globe size={14} aria-hidden="true"/><span>소스</span><small>{urls.length+attachments.length}개</small></summary>
       {sourcesOpen && (urls.length+attachments.length>0 ? <>

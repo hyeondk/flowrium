@@ -93,7 +93,10 @@ export interface WorkStep {
   label: string;
   state: "running" | "completed" | "failed" | "interrupted";
   createdAt: string;
-  kind?: 'command' | 'file' | 'search' | 'agent' | 'tool' | 'image' | 'context';
+  kind?: 'command' | 'file' | 'search' | 'agent' | 'tool' | 'image' | 'context' | 'approval' | 'question';
+  target?: string;
+  exitCode?: number;
+  outcome?: 'noMatches' | 'declined';
   agents?: {id:string;name?:string;state:WorkStep['state']}[];
   files?: {path:string;added?:number;removed?:number}[];
   sourceUrl?: string;

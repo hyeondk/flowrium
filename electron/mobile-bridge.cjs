@@ -56,7 +56,8 @@ function connectDesktop(lease, server, onClose){
     });
     control.req.end();
   });
-  return {ready,close(){closed=true;control.req.destroy();stream?.destroy();for(const s of sockets)s.destroy();}};
+  return {ready,isOpen:()=>Boolean(!closed&&stream&&!stream.destroyed),
+    close(){closed=true;control.req.destroy();stream?.destroy();for(const s of sockets)s.destroy();}};
 }
 async function stopBroker(lease){
   const {req,valid}=signedRequest(lease,'/stop','POST');

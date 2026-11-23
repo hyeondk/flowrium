@@ -7,8 +7,9 @@ export default function RemotePanel() {
   const [state, setState] = useState<RemoteAccess>({ enabled: false }),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState("");
-  const [qrVisible, setQrVisible] = useState(false);
-  useEffect(() => { setQrVisible(false); }, [state.url]);
+  const [qrUrl, setQrUrl] = useState<string>();
+  const [confirmRelayUpdate, setConfirmRelayUpdate] = useState(false);
+  const qrVisible = Boolean(state.url && state.url === qrUrl);
   const [push,setPush]=useState<WebPushState>();
   const currentPush = useRef<WebPushState | undefined>(undefined);
   const pushRevision = useRef(0);
@@ -45,11 +46,17 @@ export default function RemotePanel() {
     }
   }
   async function pushAction(action:()=>Promise<unknown>){setBusy(true);try{await action();await refreshPush()}catch(e){setMessage(e instanceof Error?e.message:String(e))}finally{setBusy(false)}}
-  async function perform(action: () => Promise<RemoteAccess>) {
+  async function perform(action: () => Promise<RemoteAccess>, showNewQR = false) {
     setBusy(true);
     setMessage("");
     try {
-      setState(await action());
+      const next = await action();
+      setState(next);
+      if (showNewQR) {
+        setQrUrl(next.url);
+        setConfirmRelayUpdate(false);
+        setMessage("새 중계를 연결했습니다. 새 QR 코드로 휴대폰을 다시 연결하세요.");
+      }
       await refreshPush();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
@@ -107,13 +114,15 @@ export default function RemotePanel() {
           상태 확인
         </button>
       </div>
+      {!state.enabled && <p>이전 중계가 종료된 경우에는 새 QR 코드로 연결하세요.</p>}
       {state.url && (
         <div className="mobile-connect-card">
+          {state.relay && <p>휴대폰 중계 {state.relay.version ?? '이전 설치 버전'}</p>}
           <label>휴대폰 연결 주소<input type="password" readOnly value={state.url} autoComplete="off" /></label>
           <p>이 주소와 QR 코드로 프로젝트에 접근할 수 있습니다. 연결을 종료한 뒤 다시 켜면 새 주소로 연결하세요.</p>
           <div className="settings-buttons">
             <button type="button" className={qrVisible ? 'popup-close-button' : 'button secondary'} aria-expanded={qrVisible}
-              onClick={() => setQrVisible(!qrVisible)}>{!qrVisible && <QrCode size={15}/>} {qrVisible ? 'QR 코드 닫기' : 'QR 코드 보기'}</button>
+              onClick={() => setQrUrl(qrVisible ? undefined : state.url)}>{!qrVisible && <QrCode size={15}/>} {qrVisible ? 'QR 코드 닫기' : 'QR 코드 보기'}</button>
             <button type="button" className="button subtle" onClick={async () => {
               try {
                 await api!.copyText(state.url!);
@@ -122,7 +131,18 @@ export default function RemotePanel() {
                 setMessage("주소를 복사하지 못했습니다. QR 코드로 연결해 주세요.");
               }
             }}><Copy size={14}/>연결 주소 복사</button>
+            {state.relay?.canUpdate && !confirmRelayUpdate && <button type="button" className="button secondary" disabled={busy}
+              onClick={() => setConfirmRelayUpdate(true)}><RefreshCw size={14}/>중계 업데이트</button>}
           </div>
+          {state.relay?.canUpdate && confirmRelayUpdate && <section className="settings-card" aria-label="휴대폰 중계 업데이트 확인">
+            <p>중계를 {state.relay.availableVersion} 버전으로 바꾸면 새 연결 주소가 생깁니다. 휴대폰에서 새 QR 코드를 한 번 스캔해 주세요.</p>
+            <div className="settings-buttons">
+              <button type="button" className="button secondary" disabled={busy} onClick={() => setConfirmRelayUpdate(false)}>취소</button>
+              <button type="button" className="button primary" disabled={busy} onClick={() => void perform(() => api!.updateRemoteRelay(), true)}>
+                <RefreshCw size={14}/>{busy ? '새 중계 연결 확인 중' : '업데이트하고 새 QR 코드 보기'}
+              </button>
+            </div>
+          </section>}
           {qrVisible && <figure><QRCodeSVG value={state.url} title="휴대폰 연결 QR 코드" size={204} level="M" marginSize={4}/>
             <figcaption>휴대폰 카메라로 스캔해 Flowrium을 여세요.</figcaption></figure>}
         </div>

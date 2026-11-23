@@ -5,6 +5,9 @@ const os=require('node:os');
 const path=require('node:path');
 const {_electron}=require('playwright');
 const {expect}=require('playwright/test');
+const {createElement}=require('react');
+const {renderToStaticMarkup}=require('react-dom/server');
+const {QRCodeSVG}=require('qrcode.react');
 const {Store}=require('../electron/store.cjs');
 
 function colorAlpha(value){
@@ -32,6 +35,68 @@ const voiceSettings=page=>page.evaluate(()=>window.flowrium.voicePreferences());
 const closeSettingsButton={name:'설정 닫기',exact:true};
 const diskSettings=async profile=>JSON.parse(await fs.readFile(path.join(profile,'workspace-v2.json'),'utf8')).settings;
 const accentButton=(dialog,name)=>dialog.getByRole('group',{name:'강조색'}).getByRole('button',{name,exact:true});
+
+async function verifyRelaySettings(app,page){
+ const oldUrl='https://test-old.trycloudflare.com/#key='+'a'.repeat(43);
+ const newUrl='https://test-new.trycloudflare.com/#key='+'b'.repeat(43);
+ await app.evaluate(({ipcMain},{oldUrl,newUrl})=>{
+  let replacement=false;
+  const state=()=>({enabled:true,url:replacement?newUrl:oldUrl,
+   relay:{version:replacement?'2026.11.1':undefined,availableVersion:'2026.11.1',canUpdate:!replacement}});
+  const gate={calls:0};
+  const paused=new Promise(resolve=>{gate.resume=resolve;});
+  globalThis.relaySettingsGate=gate;
+  for(const channel of ['remoteAccess','updateRemoteRelay'])ipcMain.removeHandler('flowrium:'+channel);
+  ipcMain.handle('flowrium:remoteAccess',state);
+  ipcMain.handle('flowrium:updateRemoteRelay',async()=>{gate.calls++;await paused;replacement=true;return state();});
+ },{oldUrl,newUrl});
+ const dialog=await openSettings(page,'휴대폰');
+ const address=dialog.getByLabel('휴대폰 연결 주소',{exact:true});
+ const update=dialog.getByRole('button',{name:'중계 업데이트',exact:true});
+ const confirmation=dialog.getByRole('region',{name:'휴대폰 중계 업데이트 확인'});
+ const currentQR=dialog.getByRole('img',{name:'휴대폰 연결 QR 코드'});
+ const expectedQR=url=>[...renderToStaticMarkup(createElement(QRCodeSVG,{value:url,size:204,level:'M',marginSize:4})).matchAll(/ d="([^"]+)"/g)].at(-1)[1];
+ try {
+  await expect(address).toHaveValue(oldUrl);
+  await dialog.getByRole('button',{name:'QR 코드 보기',exact:true}).click();
+  await expect(currentQR.locator('path').last()).toHaveAttribute('d',expectedQR(oldUrl));
+  await update.click();
+  await expect(confirmation).toContainText('새 연결 주소가 생깁니다.');
+  await confirmation.getByRole('button',{name:'취소',exact:true}).click();
+  await expect(confirmation).toHaveCount(0);
+  assert.equal(await app.evaluate(()=>globalThis.relaySettingsGate.calls),0);
+  await expect(address).toHaveValue(oldUrl);
+  await expect(currentQR.locator('path').last()).toHaveAttribute('d',expectedQR(oldUrl));
+  await update.click();
+  for(const [width,height] of [[1440,1000],[800,1000],[390,844],[320,844]]){
+   await page.setViewportSize({width,height});await settledLayout(dialog);
+   const fits=await confirmation.evaluate(element=>{
+    const form=element.getBoundingClientRect(),scroller=document.querySelector('.settings-content');
+    const viewport=scroller.getBoundingClientRect();
+    return scroller.scrollWidth<=scroller.clientWidth+1&&form.left>=viewport.left-1&&form.right<=viewport.right+1&&
+     [...element.querySelectorAll('button')].every(button=>{
+      const box=button.getBoundingClientRect();return box.left>=form.left-1&&box.right<=form.right+1&&button.scrollWidth<=button.clientWidth+1;
+     });
+   });
+   assert(fits,`${width}px 중계 업데이트 확인 카드와 버튼 가로 넘침 없음`);
+  }
+  await confirmation.getByRole('button',{name:'업데이트하고 새 QR 코드 보기',exact:true}).click();
+  await expect.poll(()=>app.evaluate(()=>globalThis.relaySettingsGate.calls)).toBe(1);
+  await expect(confirmation.getByRole('button',{name:'새 중계 연결 확인 중',exact:true})).toBeDisabled();
+  await expect(address).toHaveValue(oldUrl);
+  await app.evaluate(()=>globalThis.relaySettingsGate.resume());
+  await expect(address).toHaveValue(newUrl);
+  await expect(currentQR.locator('path').last()).toHaveAttribute('d',expectedQR(newUrl));
+  await expect(dialog.getByText('휴대폰 중계 2026.11.1',{exact:true})).toBeVisible();
+  await expect(dialog.getByRole('status').filter({hasText:'새 중계를 연결했습니다.'})).toBeVisible();
+  await expect(update).toHaveCount(0);
+  await expect(confirmation).toHaveCount(0);
+ }finally{await app.evaluate(()=>globalThis.relaySettingsGate.resume());}
+ await dialog.getByRole('button',closeSettingsButton).click();
+ await dialog.waitFor({state:'detached'});
+ await page.setViewportSize({width:1440,height:1000});
+ console.log('설정 휴대폰 중계 업데이트 / 확인 취소 시 기존 주소·QR 보존 / 준비 중 기존 QR / 완료 즉시 새 주소의 실제 QR·버전 / 1440·800·390·320폭 통과');
+}
 
 async function verifyFirstSaveDuringSync(page,profile,syncGate) {
  const ready=await openSettings(page,'화면');
@@ -137,13 +202,16 @@ async function run(){
  let app,page;const errors=[],measurements=[];
  try{
   const profile=path.join(temp,'profile'),store=new Store(profile);await store.load();await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
-  const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex'),FLOWRIUM_TEST_SETTINGS_SYNC_GATE:syncGate};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
+  const relayOnly=process.argv.includes('--relay-only');
+  const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex'),FLOWRIUM_TEST_SETTINGS_SYNC_GATE:syncGate};delete env.ELECTRON_RUN_AS_NODE;
+  if(!relayOnly)delete env.ELECTRON_RENDERER_URL;
   async function launch(){
    app=await _electron.launch({args:[root],env,timeout:45000});
    page=await app.firstWindow();page.setDefaultTimeout(20000);page.on('pageerror',error=>errors.push(error.message));
    await page.setViewportSize({width:1440,height:1000});
   }
   await launch();
+  if(relayOnly){await verifyRelaySettings(app,page);assert.deepEqual(errors,[]);return;}
   await verifyFirstSaveDuringSync(page,profile,syncGate);
   await app.close();app=null;page=null;
   await launch();
@@ -189,6 +257,8 @@ async function run(){
   await expect.poll(()=>voiceSettings(page)).toMatchObject(expected.voice);
   const restored=await openSettings(page,'음성');
   assert.equal(await restored.getByLabel('로컬 인식 서버 주소',{exact:true}).inputValue(),expected.voice.localWhisper);
+  await restored.getByRole('button',closeSettingsButton).click();await restored.waitFor({state:'detached'});
+  await verifyRelaySettings(app,page);
   assert.deepEqual(errors,[]);
   console.log('설정 자동 저장 / 응답 지연 뒤 여러 값과 같은 항목의 연속 변경 / 저장 오류와 키보드 재시도 / 닫기와 Escape / 음성 주소·시간·스위치와 Codex 경로 / 앱 재실행 복원 통과');
  }catch(error){if(page&&await page.locator('.settings-content').count())console.error('넘침 요소',JSON.stringify(await page.locator('.settings-content').evaluate(root=>[...root.querySelectorAll('*')].filter(e=>e.clientWidth>0&&e.scrollWidth>e.clientWidth+1).map(e=>({tag:e.tagName,class:e.className,client:e.clientWidth,scroll:e.scrollWidth,text:e.textContent?.slice(0,100)})).slice(0,35))));if(measurements.length)console.error('설정 배치 측정',JSON.stringify(measurements));if(page)console.error('화면 상태',(await page.locator('body').innerText()).slice(0,1200));throw error;}

@@ -53,6 +53,8 @@ async function verifyFollowupTiming() {
     const long = await add('길게 받은 답변','분류를 살펴봐줘','자료의 값입니다. '.repeat(2000)+'\n'+answer);
     const declined = await add('추천 거부','다음 단계는 제안하지 마세요.',answer);
     const finished = await add('완료한 결과','표를 확인해줘','판매표를 확인했습니다.');
+    const retained = await add('이전 중계가 남은 설치','기존 QR을 다시 안 찍어도 되도록 유지하고 이전 빌드 파일을 지워줘.',
+      '새 설치 파일은 공개했습니다. 직전 버전 복구본과 현재 아이폰 중계가 사용 중인 이전 빌드의 실행 파일은 유지했습니다. 추가 조치가 필요한 사항은 없습니다.');
     const waiting = await add('후속 작업 대기','기기 분류표의 누락을 살펴봐 주세요.','기기 분류표를 확인했습니다. 계속 진행할까요?');
     const contextual=await store.createSession(project.id,{title:'추천의 전체 맥락 갱신',messages:[
       {id:randomUUID(),role:'user',text:'아이폰 연결 유지를 먼저 확인해 주세요.',createdAt:new Date().toISOString()},
@@ -115,6 +117,15 @@ async function verifyFollowupTiming() {
     assert.equal(await accept.filter({hasText:'아이폰 연결 유지'}).count(),0);
     const contextMs=Date.now()-contextChangedAt;
     assert(contextMs<10000);
+    const retainedPrompt='QR을 다시 찍지 않도록 기존 연결을 유지하면서 아이폰 중계를 최신 버전으로 옮기고, 교체가 확인되면 직전 복구본만 남기고 나머지 이전 빌드를 정리해줘';
+    const retainedStarted=Date.now();
+    await openConversation(page,retained.title);
+    await accept.filter({hasText:retainedPrompt}).waitFor({timeout:10000});
+    const retainedMs=Date.now()-retainedStarted;
+    assert(retainedMs<10000);
+    await accept.click();
+    assert.equal(await input.inputValue(),retainedPrompt);
+    console.log('이전 중계가 남은 실제 대화 추천 '+retainedMs+'ms / QR 보존과 교체 후 정리가 편집 가능한 초안에 반영');
     for(const session of [declined,fresh]){
       await openConversation(page,session.title);
       assert.equal(await accept.count(),0);

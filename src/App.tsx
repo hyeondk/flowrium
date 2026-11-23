@@ -1507,6 +1507,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </div>
                 </div>
               )}
+              {workActive&&<LiveWorkTimeline key={draftKey} progress={workProgress}/>}
               <div className="composer-area">
                 {sessionApprovals.filter(event=>event.type!=="input" || !session).map(event=><DecisionRequestPanel key={event.requestId} event={event}/>)}
                 {draftError && <p role="alert" className="composer-draft-error">{draftError} <button onClick={retryDrafts}>초안 다시 불러오기</button></p>}
@@ -1523,7 +1524,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 </div>}
                 <AttachmentComposer key={voiceContinuity.current.generation} projectId={project?.id} items={attachments} onChange={setAttachments} disabled={security.state.locked} report={notify}>{attachmentControl=>(
                 <div className={`composer ${workActive ? "working" : ""}`}>
-                  {workActive && <LiveWorkTimeline progress={workProgress}/>}
                   {(!workActive || input) && <div className="composer-topline">
                     {!workActive && <span>
                       <span

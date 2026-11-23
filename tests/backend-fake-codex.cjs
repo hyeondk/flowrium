@@ -186,7 +186,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     }
     if (process.env.FLOWRIUM_TEST_STEP_GATE && prompt.includes('작업 단계 스트림 시험')) {
       const gate=process.env.FLOWRIUM_TEST_STEP_GATE, exists=require('node:fs').existsSync;
-      const item={id:turnId+'-tool',type:'commandExecution',status:'inProgress'};
+      const item={id:turnId+'-tool',type:'commandExecution',status:'inProgress',command:'node --version'};
       const child=turnId+'-child';
       const collaboration={type:'collabAgentToolCall',receiverThreadIds:[child],tool:'spawnAgent'};
       const progress='실시간 설명 맨 앞입니다.\n\n'+'긴 작업 설명 한글 문장을 전부 보여줘야 합니다. '.repeat(300)+'\n\n실시간 설명 맨 끝입니다.';
@@ -202,6 +202,12 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
         if(!addedSearches && exists(gate+'.search')){
           addedSearches=true;
           for(let index=0;index<6;index++)notify('item/completed',{threadId,turnId,item:{id:turnId+'-search-'+index,type:'webSearch',action:{type:'search'}}});
+          const events=[
+            {id:turnId+'-read',type:'commandExecution',status:'failed',exitCode:2,commandActions:[{type:'read',name:'중계 검사.txt',path:'/private/현장/중계 검사.txt'}]},
+            {id:turnId+'-empty-search',type:'commandExecution',status:'failed',exitCode:1,commandActions:[{type:'search',command:'rg 확인',path:'/private/현장'}]},
+            {id:turnId+'-mcp',type:'mcpToolCall',status:'completed',server:'자료 도구',tool:'list_documents',arguments:{secret:'도구 원문의 비공개 내용'}},
+          ];
+          for(const activity of events)notify('item/completed',{threadId,turnId,item:activity});
         }
         if(!answerStreamed && exists(gate+'.stream')){
           answerStreamed=true;

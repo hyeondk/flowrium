@@ -195,3 +195,44 @@ test('인라인 요약 제목을 추천에 붙이지 않고 서로 합의해 미
   messages[1].text='**검증 결과** 터미널 설치를 확인했습니다.\n**남은 사항** 아이폰 연결은 아직 확인하지 못했습니다.';
   assert.equal(originalAnswerFollowups({messages})[0]?.prompt,'아이폰 연결을 확인해줘');
 });
+
+test('이전 빌드 정리를 막은 실행 중 중계를 찾아 연결 보존부터 추천한다',async()=>{
+  const {originalAnswerFollowups,prepareAnswerFollowup}=await loaded;
+  const messages=[
+    {role:'user',text:'아이폰에서 QR 다시 안 찍어도 연결되는지 확인하고 맥과 윈도우에 배포해줘. 기존 휴대폰 연결은 유지해줘.'},
+    {role:'assistant',text:'기존 아이폰 연결이 유지됐습니다.'},
+    {role:'user',text:'그리고 캐시 파일과 기존 빌드 파일들 전부 다 지워줘.'},
+    {role:'assistant',text:[
+      '**Flowrium을 공개했습니다.** 두 설치 파일을 확인했습니다.',
+      '### 아이폰 연결',
+      '이 맥에서 Flowrium을 재시작한 뒤 기존 아이폰 홈 화면 앱이 **QR 재스캔 없이 바로 열리는 것**을 확인했습니다.',
+      '### 이전 빌드와 캐시 정리',
+      '미사용 이전 맥 설치본과 시험 캐시를 삭제했습니다. 직전 버전 복구본 1개와 현재 아이폰 중계가 사용 중인 실행 파일은 유지했습니다. 추가 조치가 필요한 사항은 없습니다.',
+    ].join('\n\n')},
+  ];
+  const expected='QR을 다시 찍지 않도록 기존 연결을 유지하면서 아이폰 중계를 최신 버전으로 옮기고, 교체가 확인되면 직전 복구본만 남기고 나머지 이전 빌드를 정리해줘';
+  assert.equal(originalAnswerFollowups({messages})[0]?.prompt,expected);
+  const start=performance.now();
+  assert.equal((await prepareAnswerFollowup({messages},()=>{}))?.prompt,expected);
+  assert(performance.now()-start<10000);
+  messages[2].text='직전 버전 복구본만 남겨두고 이전 빌드는 전부 지워 주세요.';
+  assert.match(originalAnswerFollowups({messages})[0]?.prompt||'',/나머지 이전 빌드를 정리해 주세요$/);
+  messages[2].text='캐시만 비우고 이전 빌드는 그대로 보존해줘.';
+  assert.deepEqual(originalAnswerFollowups({messages}),[]);
+  messages[2].text='이전 빌드를 정리해줘';
+  messages[3].text='이전 빌드를 모두 정리했습니다. 직전 버전 복구본은 보관했습니다. 아이폰 중계는 최신 빌드로 옮겼습니다. 남은 작업은 없습니다.';
+  assert.deepEqual(originalAnswerFollowups({messages}),[]);
+  messages[3].text='이전 빌드를 모두 정리했습니다. 현재 아이폰 중계가 사용 중인 최신 실행 파일은 유지했습니다. 남은 작업은 없습니다.';
+  assert.deepEqual(originalAnswerFollowups({messages}),[]);
+});
+
+test('검증 보고의 완료 문구보다 답변에서 명시한 미완료 조치를 따른다',async()=>{
+  const {originalAnswerFollowups}=await loaded;
+  const request={role:'user',text:'배포 안내를 확정하고 두 플랫폼에 적용해 주세요.'};
+  const answer={role:'assistant',text:'맥 설치와 사이트 안내를 검증했습니다. 윈도우의 설치 안내 반영이 아직 남았습니다.'};
+  assert.equal(originalAnswerFollowups({messages:[request,answer]})[0]?.prompt,'윈도우의 설치 안내 반영해 주세요');
+  answer.text='맥 배포를 완료했습니다. 윈도우 설치본은 아직 배포하지 못했습니다.';
+  assert.equal(originalAnswerFollowups({messages:[request,answer]})[0]?.prompt,'윈도우 설치본을 배포해 주세요');
+  answer.text='맥과 윈도우 설치와 사이트 안내를 검증했습니다. 남은 사항은 없습니다.';
+  assert.deepEqual(originalAnswerFollowups({messages:[request,answer]}),[]);
+});

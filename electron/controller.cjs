@@ -9,6 +9,7 @@ const { publicMessage, chatFailure } = require("./errors.cjs");
 const { HistoryImporter } = require("./history.cjs");
 const currentRequest = require("./scoped-request.cjs");
 const { projectWorkStep } = require('./work-step.cjs');
+const { activityText } = require('./mobile/work-activity.js');
 
 const MODE_INSTRUCTIONS = {
   plan: "계획을 세우고 설명해 주세요. 사용자가 수정을 요청하면 프로젝트 범위에서 반영하세요.",
@@ -629,7 +630,8 @@ class Controller extends EventEmitter {
     const previous = steps.find(step => step.id === key);
     if (previous?.state === state) return;
     const now = new Date().toISOString();
-    const step = {id:key, label, state, createdAt:previous?.createdAt || now, ...(state !== 'running' && {completedAt:now})};
+    const step = {id:key, label, state, kind:key.startsWith('approval:')?'approval':'question',
+      createdAt:previous?.createdAt || now, ...(state !== 'running' && {completedAt:now})};
     if (previous) Object.assign(previous,step);
     else steps.push(step);
     this.emitEvent({type:'status',sessionId:run.sessionId,status:'running',text:label,workProgress:{messageId:user.id,step}});
@@ -696,7 +698,9 @@ class Controller extends EventEmitter {
       for (const [key, request] of client.approvals)
         if (String(request.id) === String(params.requestId)) {
           client.approvals.delete(key);
-          this.emitEvent({type:'inputResolved',sessionId:this.findRun(request.params?.threadId)?.sessionId,requestId:key});
+          const run=this.findRun(request.params?.threadId);
+          if(run && !run.finalized)this.noteRequest(run,'approval:'+key,'실행 권한 요청이 종료됐습니다.','completed');
+          this.emitEvent({type:'inputResolved',sessionId:run?.sessionId,requestId:key});
         }
       return;
     }
@@ -801,7 +805,7 @@ class Controller extends EventEmitter {
             if (previous) Object.assign(previous,step);
             else (user.workSteps ||= []).push(step);
             this.emitEvent({type:'status',sessionId:run.sessionId,status:'running',
-              text:step.label+(step.state==='running'?' 중입니다.':step.state==='failed'?' 중 확인할 내용이 있습니다.':' 완료'),
+              text:activityText(step),
               workProgress:{messageId:user.id,step}});
           }
         }
@@ -871,7 +875,7 @@ class Controller extends EventEmitter {
     ]
       .filter(Boolean)
       .join("\n");
-    this.noteRequest(run,'approval:'+requestId,'실행 권한을 요청했어요');
+    this.noteRequest(run,'approval:'+requestId,'실행 권한 승인 대기');
     this.emitEvent({
       type: "approval",
       sessionId: run.sessionId,
@@ -925,7 +929,11 @@ class Controller extends EventEmitter {
     if (user?.workStartedAt) user.workCompletedAt = new Date().toISOString();
     for (const step of user?.workSteps || []) {
       if (step.state === 'running' && user?.workCompletedAt) step.completedAt = user.workCompletedAt;
-      if (step.state === 'running') step.state = status === 'completed' && !error ? 'completed' : status === 'failed' || error ? 'failed' : 'interrupted';
+      if (step.state !== 'running') continue;
+      if (step.kind === 'approval' || step.kind === 'question') {
+        step.state='interrupted';
+        step.label=step.kind==='approval'?'실행 권한 요청이 종료됐습니다.':'질문이 종료됐습니다.';
+      } else step.state = status === 'completed' && !error ? 'completed' : status === 'failed' || error ? 'failed' : 'interrupted';
     }
     if (status === "failed" || error)
       session.messages.push({

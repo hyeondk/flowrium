@@ -6,7 +6,14 @@ const {randomUUID, randomBytes} = require('node:crypto');
 const {_electron} = require('playwright');
 const {expect} = require('playwright/test');
 const {Store} = require('../electron/store.cjs');
-const {openConversation} = require('./shell-test-helpers.cjs');
+
+async function openConversation(page,title) {
+  const dock=page.getByRole('complementary',{name:'통합 / 프로젝트 / 일반 대화'});
+  if(!await dock.isVisible())await page.getByRole('button',{name:'대화 패널 펼치기',exact:true}).click();
+  await dock.getByRole('button',{name:'프로젝트',exact:true}).click();
+  await dock.locator('.dock-session').filter({has:page.getByText(title,{exact:true})}).click();
+  await page.getByRole('textbox',{name:'Codex에 보낼 작업 요청'}).waitFor();
+}
 
 async function checkQueuedOriginal(app,page,input,sessionId) {
   const button=name=>page.getByRole('button',{name,exact:true});
@@ -96,9 +103,16 @@ async function checkWorkProgress(page,input,popup,gate,title) {
   await input.press('Enter');
   const historyButton=page.locator('.turn-progress-trigger').last();
   await page.getByText('요청을 처리하고 있어요',{exact:true}).waitFor();
+  const current=page.locator('[data-work-current]');
+  await expect(current).toHaveText('명령을 실행하고 있습니다 / node');
+  await current.evaluate(element=>{window.firstWorkLine=element;});
+  const liveToggle=page.getByRole('button',{name:'작업 내역',exact:true});
   const live=page.getByRole('list',{name:'실시간 작업 과정',exact:true});
-  await live.getByText('명령 실행',{exact:true}).waitFor();
-  await live.getByText('작업 중',{exact:true}).waitFor();
+  await expect(live).toBeHidden();
+  const beforeOpen=await current.boundingBox();
+  await liveToggle.click();
+  await live.getByText('명령을 실행하고 있습니다',{exact:true}).waitFor();
+  await expect.poll(async()=>Math.abs((await current.boundingBox()).y-beforeOpen.y)).toBeLessThanOrEqual(1);
   await live.getByText('준비 작업: 작업을 시작했습니다',{exact:true}).waitFor();
   assert.equal(await live.getByText('실시간 설명 맨 앞입니다.',{exact:true}).count(),1);
   assert.equal(await live.getByText('실시간 설명 맨 끝입니다.',{exact:true}).count(),1);
@@ -106,6 +120,15 @@ async function checkWorkProgress(page,input,popup,gate,title) {
   await expect.poll(()=>live.evaluate(el=>el.scrollTop)).toBe(0);
   await fs.writeFile(gate+'.search','검색');
   await expect(live.getByText('×6',{exact:true})).toBeAttached();
+  await expect(current).toHaveText('연결 도구를 사용했습니다 / 자료 도구 / list_documents');
+  assert(await current.evaluate(element=>element===window.firstWorkLine),'현재 작업은 기존 줄에서 갱신');
+  await expect.poll(async()=>Math.abs((await current.boundingBox()).y-beforeOpen.y)).toBeLessThanOrEqual(1);
+  const read=live.locator('li').filter({hasText:'중계 검사.txt'});
+  await expect(read).toContainText('종료 코드 2');
+  await expect(live.getByText('일치 항목 없음',{exact:true})).toBeAttached();
+  await expect(live).not.toContainText('확인 필요');
+  await expect(live).not.toContainText('/private/현장');
+  await expect(live).not.toContainText('도구 원문의 비공개 내용');
   const scroll=await live.evaluate(el=>{
     const note=el.querySelector('.work-timeline-commentary'),first=note.querySelector('p');
     return {top:el.scrollTop,client:el.clientHeight,height:el.scrollHeight,width:el.clientWidth,contentWidth:el.scrollWidth,
@@ -181,6 +204,9 @@ async function checkWorkProgress(page,input,popup,gate,title) {
   await expect(finalAnswer).toContainText('답변 타이핑 끝 문장.');
   await historyButton.click();
   await popup.getByText('준비 작업: 작업을 마쳤습니다',{exact:true}).waitFor();
+  await expect(popup).toContainText('중계 검사.txt');
+  await expect(popup).toContainText('종료 코드 2');
+  await expect(popup).not.toContainText('확인 필요');
   assert.equal(await popup.getByText('실시간 설명 맨 앞입니다.',{exact:true}).count(),1);
   assert.equal(await popup.getByText('실시간 설명 맨 끝입니다.',{exact:true}).count(),1);
   assert(await popup.getByText(/^×[67]$/).count());

@@ -3,11 +3,13 @@ export interface RemoteAccess {
   url?: string;
   localUrl?: string;
   message?: string;
+  relay?: { version?: string; availableVersion: string; canUpdate: boolean };
 }
 export interface RemoteAPI extends WebPushAPI {
   remoteAccess(): Promise<RemoteAccess>;
   startRemoteAccess(): Promise<RemoteAccess>;
   stopRemoteAccess(): Promise<RemoteAccess>;
+  updateRemoteRelay(): Promise<RemoteAccess>;
 }
 export type PushKind="decision"|"done"|"error"|"report"|"reminder"|"message";
 export interface PushDevice {id:string;label:string;kinds:PushKind[];showConversationTitle?:boolean;createdAt:string;lastSentAt?:string;lastError?:string}

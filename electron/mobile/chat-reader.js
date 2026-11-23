@@ -1,4 +1,5 @@
 import {workDuration} from './work-time.js';
+import {activityText,agentActivityText,describeActivity,sameWorkActivity} from './work-activity.js';
 import MarkdownIt from './markdown-engine.js';
 import {parseQuestionReply} from './question-reply.js';
 
@@ -9,7 +10,6 @@ markdown.renderer.rules.link_open=(tokens,index,options,env,renderer)=>{
   tokens[index].attrSet('target','_blank');
   return renderer.renderToken(tokens,index,options);
 };
-const stepStates={running:'작업 중',completed:'완료',failed:'확인 필요',interrupted:'중단'};
 function element(tag,text) {
   const el=document.createElement(tag);
   if(text!==undefined)el.textContent=text;
@@ -78,7 +78,7 @@ export function groupMobileHistory(messages,session,running) {
       if(message.role!=='user')rows.push({message});
     }
   }
-  if(running && session.activity && !groups.get(owner)?.steps.some(step=>step.label===session.activity))
+  if(running && session.activity && !groups.get(owner)?.steps.some(step=>step.label===session.activity||activityText(step)===session.activity))
     add(owner,{label:session.activity,state:'running'});
   if(groups.has(owner))groups.get(owner).running=running;
   for(const group of groups.values())group.steps.sort((a,b)=>(Date.parse(a.createdAt)||Infinity)-(Date.parse(b.createdAt)||Infinity));
@@ -96,13 +96,28 @@ export function progressButton(group) {
   const entries=[];
   for(const step of group.steps){
     const previous=entries.at(-1);
-    if(previous&&step.kind==='search'&&previous.step.kind==='search'&&step.state===previous.step.state&&step.label===previous.step.label)previous.count++;
+    if(previous&&sameWorkActivity(step,previous.step))previous.count++;
     else entries.push({step,count:1});
   }
+  const agentNames=new Map(),agentStates=new Map();
   for(const {step,count} of entries){
     const item=element('li');
-    item.append(step.commentary?markdownBody(step.label):element('strong',step.label));
-    if(stepStates[step.state])item.append(element('span',stepStates[step.state]));
+    if(step.commentary)item.append(markdownBody(step.label));
+    else if(step.agents?.length){
+      for(const agent of step.agents){
+        const name=agent.name||agentNames.get(agent.id)||`하위 에이전트 ${agentNames.size+1}`;
+        agentNames.set(agent.id,name);
+        if(agentStates.get(agent.id)===agent.state)continue;
+        agentStates.set(agent.id,agent.state);
+        item.append(element('strong',`${name}: ${agentActivityText[agent.state]}`));
+      }
+      if(!item.hasChildNodes())continue;
+    }else {
+      const view=describeActivity(step);
+      item.append(element('strong',view.label));
+      if(view.target)item.append(element('span',view.target));
+      if(view.result)item.append(element('span',view.result));
+    }
     if(count>1)item.append(element('span','×'+count));
     if(Number.isFinite(Date.parse(step.createdAt))){
       const time=element('time',new Date(step.createdAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}));

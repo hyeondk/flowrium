@@ -41,7 +41,7 @@ function delegatedInput(item) {
  const match=/^<codex_delegation>\s*<source_thread_id>([\da-f-]+)<\/source_thread_id>\s*<input>([\s\S]*)<\/input>\s*<\/codex_delegation>$/.exec(item.output);
  if (match && require('./project-store.cjs').UUID.test(match[1])) return match[2];
 }
-const progressStates={inProgress:'진행 중',completed:'완료',failed:'확인 필요',declined:'거절',interrupted:'중단'};
+const progressStates={inProgress:'진행 중',completed:'완료',failed:'실행 종료',declined:'거절',interrupted:'중단'};
 function publicProgress(item){
  const label=item.type==='commandExecution'?'실행 도구 / 명령':item.type==='fileChange'?'파일 변경 기록':/ToolCall$/.test(item.type||'')?'도구 실행 기록':undefined;
  if(label)return Object.hasOwn(progressStates,item.status)?`${label}\n${progressStates[item.status]}`:label;

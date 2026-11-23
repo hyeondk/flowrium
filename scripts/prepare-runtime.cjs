@@ -7,16 +7,16 @@ const {pipeline} = require('node:stream/promises');
 const {execFile} = require('node:child_process');
 const run = require('node:util').promisify(execFile);
 
-const versions = {node:'24.22.3', npm:'11.19.1', gh:'2.103.3',cloudflared:'2026.11.0'};
+const versions = {node:'24.22.3', npm:'11.19.1', gh:'2.103.3',cloudflared:'2026.11.1'};
 const platforms = {
   'darwin-arm64':{node:'darwin-arm64.tar.gz',gh:'macOS_arm64.zip',cloud:'cloudflared-darwin-arm64.tgz',
-    cloudSha:'8c2f90277ef06a6080bb40b964d33f09f1188102f8798f2e344174b6cf41accf',
-    cloudBinary:'97e24268d9704a570fab276293028f3580ae2c7d5d2678621a4809e90f776a5e',
+    cloudSha:'02fe4bcf08f2c09699cff30658228a739a0c47fb75f3653d1b8772a27ade4462',
+    cloudBinary:'1cd7041838e5b0943378763ca86ddc0af896d1727875f36b29f5cc35eb2c4df7',
     nodeSha:'ff6e17d4874b76d272212b908cc020d6e815fba5a6c7eaaa06add725840307fd',
     ghSha:'d700207eae9ae98fe2b89535c2c087c07823d4628c56364695a5a07ef311c062'},
   'win32-x64':{node:'win-x64.zip',gh:'windows_amd64.zip',cloud:'cloudflared-windows-amd64.exe',
-    cloudSha:'d5c1d82031da6253dcdcff64c944cd0fe063016edeb2e4fd088075fc9bd52d0a',
-    cloudBinary:'d5c1d82031da6253dcdcff64c944cd0fe063016edeb2e4fd088075fc9bd52d0a',
+    cloudSha:'341deda3db5ec498a0482254d6c38c0b7cf01a30c37bb5dd95d2216d08955e35',
+    cloudBinary:'341deda3db5ec498a0482254d6c38c0b7cf01a30c37bb5dd95d2216d08955e35',
     nodeSha:'e612af99f626ab415ea225af6bce5c971feb448cb5cae250bb1c3fa50c5f7d9f',
     ghSha:'98d0cfa794721665d7973dd728c78aff7bd836d58f10f6d7a03568eccb0a22e0'},
 };

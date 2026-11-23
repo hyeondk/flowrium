@@ -146,6 +146,7 @@ contextBridge.exposeInMainWorld(
     remoteAccess: () => invoke("remoteAccess"),
     startRemoteAccess: () => invoke("startRemoteAccess"),
     stopRemoteAccess: () => invoke("stopRemoteAccess"),
+    updateRemoteRelay: () => invoke("updateRemoteRelay"),
     voiceStatus: () => invoke("voiceStatus"),
     voicePreferences: () => invoke('voicePreferences'),
     configureVoicePreferences: (input,accountRevision) => invoke('configureVoicePreferences',input,accountRevision),

@@ -93,8 +93,12 @@ function mobileMessages(s, params, revision) {
   while (start > 0 && end - start < limit) {
     const m = items[start - 1],
       visible = m.role === "assistant" || m.role === "user" || (progress && m.progressCommentary === true);
-    // 휴대폰에는 공개 설명과 단계 이름, 상태, 시각만 전달한다.
-    const workSteps=progress&&m.workSteps?.map(({id,label,state,kind,createdAt,completedAt})=>({id,label,state,createdAt,...(kind && {kind}),...(completedAt && {completedAt})}));
+    // 명령 원문, 전체 경로, 도구 출력은 휴대폰에 전달하지 않는다.
+    const workSteps=progress&&m.workSteps?.map(({id,label,state,kind,createdAt,completedAt,target,exitCode,outcome,agents})=>({
+      id,label,state,createdAt,...(kind && {kind}),...(completedAt && {completedAt}),...(target && {target}),
+      ...(exitCode!==undefined && {exitCode}),...(outcome && {outcome}),
+      ...(agents?.length && {agents:agents.map(agent=>({...agent,id:createHash('sha256').update(agent.id).digest('hex').slice(0,24)}))}),
+    }));
     const toolLabel=progress && m.role==='system' && (m.progressCommentary===true ? m.text :
       m.text.startsWith('실행 도구 / 명령') ? '명령 실행' :
       m.text.startsWith('파일 변경 기록') ? '파일 변경' :
@@ -319,7 +323,7 @@ function registerRemote(
     const result = await handler(...args);
     return method === "workflowAction" && result?.pending ? workflowView(result) : result;
   }
-  let pairedLink, startFlight, reconnectTimer, shuttingDown = false;
+  let pairedLink, startFlight, relayUpdateFlight, reconnectTimer, shuttingDown = false;
   let sequence = 0;
   let connectionOwner = "";
   let server,
@@ -336,6 +340,7 @@ function registerRemote(
       : undefined,
     url: publicOrigin ? publicOrigin + "/#key=" + key : undefined,
     message: status || undefined,
+    relay: pairedLink?.relay,
   });
   function update(event) {
     if (event.type === "status" && event.status === "connected") scheduleRestore();
@@ -667,6 +672,7 @@ function registerRemote(
       "/chat-clock.js": "chat-clock.js",
       "/question-reply.js": "question-reply.js",
       "/work-time.js": "work-time.js",
+      "/work-activity.js": "work-activity.js",
       "/project-mode.js": "project-mode.js",
       "/request-upload.js": "request-upload.js",
       "/large-draft-editor.js": "large-draft-editor.js",
@@ -779,11 +785,33 @@ function registerRemote(
     reconnectTimer.unref?.();
   }
   function begin(explicit) {
-    if (startFlight) return explicit ? startFlight.then(value=>value.enabled?value:begin(true)) : startFlight;
+    if (startFlight) return explicit ? startFlight.catch(()=>state()).then(value=>value.enabled?value:begin(true)) : startFlight;
     startFlight=start(explicit).finally(()=>{startFlight=undefined;});
     return startFlight;
   }
   register("startRemoteAccess", () => begin(true));
+  function pairedDisconnect(link,attempt){
+    const recover=()=>{
+      if(link && pairedLink===link && sequence===attempt)void stop(false).then(()=>scheduleRestore(2000));
+    };
+    if(relayUpdateFlight)void relayUpdateFlight.then(recover,recover);
+    else recover();
+  }
+  register("updateRemoteRelay", () => {
+    if(relayUpdateFlight)return relayUpdateFlight;
+    const previous=pairedLink,ownServer=server,attempt=sequence,owner=accountOwner(),revision=accountRevision();
+    let next;
+    const assertCurrent=()=>{
+      if(!ownServer?.listening||attempt!==sequence||pairedLink!==previous||owner!==accountOwner()||revision!==accountRevision()||isLocked()||shuttingDown)
+        throw Error('휴대폰 연결 상태가 바뀌어 중계 업데이트가 취소됐습니다.');
+    };
+    if(!pairing||!previous?.relay?.canUpdate)throw Error('설치된 중계를 이미 사용 중이거나 휴대폰 연결이 꺼져 있습니다.');
+    relayUpdateFlight=pairing.update(owner,ownServer,()=>pairedDisconnect(next,attempt),assertCurrent,link=>{
+      next=link;pairedLink=link;publicOrigin=link.origin;key=link.key;status='';
+      previous.close();handoffs.clear();
+    }).then(()=>{onContextChanged();return state();}).finally(()=>{relayUpdateFlight=undefined;});
+    return relayUpdateFlight;
+  });
   async function start(explicit) {
     const expectedOwner=accountOwner(), previousSequence=sequence;
     if(!explicit) {
@@ -816,8 +844,8 @@ function registerRemote(
       }
       for (const run of controller.runs.values()) running.add(run.sessionId);
       if (pairing) {
-        const onDisconnect=()=>{if(sequence===attempt)void stop(false).then(()=>scheduleRestore(2000));};
-        const link=await pairing.open(expectedOwner,ownServer,onDisconnect,explicit);
+        let link;
+        link=await pairing.open(expectedOwner,ownServer,()=>pairedDisconnect(link,attempt),explicit);
         if(!link || attempt!==sequence || expectedOwner!==accountOwner() || shuttingDown){link?.close();throw Error("휴대폰 연결이 취소됐습니다.");}
         pairedLink=link; publicOrigin=link.origin;key=link.key;status="";
         checkScope(scopeId(),connectionOwner);
