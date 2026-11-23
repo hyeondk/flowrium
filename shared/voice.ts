@@ -19,6 +19,7 @@ export interface VoiceAPI {
   allowVoiceCapture(): Promise<boolean>;
   voicePreferences(): Promise<VoicePreferences>;
   configureVoicePreferences(value: VoicePreferences): Promise<VoicePreferences>;
+  configureVoicePreferences(value: Partial<VoicePreferences>, accountRevision: number): Promise<VoicePreferences>;
   cancelVoiceCapture(): Promise<{ cancelled: boolean }>;
   transcribeVoice(input: { base64: string; mime: string; requestId?: string }): Promise<string>;
   speakVoice(input: { text: string; requestId?: string }): Promise<{ base64: string; mime: string }>;

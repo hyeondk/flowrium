@@ -16,9 +16,9 @@ function localEndpoint(value) {
   const url = new URL(value);
   return url.origin;
 }
-function validatePreferences(value) {
+function validatePreferences(value, current = DEFAULT_VOICE) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('음성 설정을 확인해 주세요.');
-  const out = { ...DEFAULT_VOICE, ...value };
+  const out = { ...current, ...value };
   for (const name of Object.keys(value)) if (!Object.hasOwn(DEFAULT_VOICE,name)) throw Error('지원하지 않는 음성 설정입니다.');
   if (!['api','local'].includes(out.provider) || !['system','local'].includes(out.tts)) throw Error('음성 처리 방식을 확인해 주세요.');
   out.localWhisper = localEndpoint(out.localWhisper); out.localTts = localEndpoint(out.localTts);
@@ -37,6 +37,7 @@ function registerVoice(register, options) {
   const {directory, secretStorage, allowCapture, fetchImpl = fetch, canRun = () => true, accountRevision = () => 0}=options;
   const servers=require('./voice-servers.cjs').registerVoiceServers(register,options);
   let queue = Promise.resolve(), epoch = 0, stopped = false;
+  let acceptingSettings = true;
   const active = new Set(), requests = new Map();
   const owner = () => String(accountRevision());
   function files(revision = owner()) {
@@ -75,11 +76,24 @@ function registerVoice(register, options) {
     return { configured: prefs.provider === 'local' || !!key };
   });
   register('voicePreferences', async () => { const revision=owner(); assertAllowed(revision); const prefs=await readPreferences(revision); assertAllowed(revision); return prefs; });
-  register('configureVoicePreferences', async value => {
-    const prefs = validatePreferences(value), revision = owner(); assertAllowed(revision); cancel();
-    return serial(async () => { assertAllowed(revision); await write(files(revision).prefs,JSON.stringify(prefs)); return prefs; });
+  register('configureVoicePreferences', async (value, accountRevision) => {
+    if (!acceptingSettings) throw Error('음성 설정 저장을 마치는 중입니다.');
+    const revision = owner();
+    const full = accountRevision === undefined ? validatePreferences(value) : null;
+    if (!full && (!Number.isSafeInteger(accountRevision) || String(accountRevision) !== revision))
+      throw Error('음성 설정을 저장할 계정이 바뀌었습니다.');
+    assertAllowed(revision);
+    return serial(async () => {
+      assertAllowed(revision);
+      const prefs = full ?? validatePreferences(value, await readPreferences(revision));
+      assertAllowed(revision);
+      cancel();
+      await write(files(revision).prefs,JSON.stringify(prefs));
+      return prefs;
+    });
   });
   register('configureVoice', async key => {
+    if (!acceptingSettings) throw Error('음성 설정 저장을 마치는 중입니다.');
     if (key !== null && (typeof key !== 'string' || !/^sk-[A-Za-z0-9_-]{15,300}$/.test(key))) throw Error('OpenAI API 키를 확인해 주세요.');
     const revision = owner(); assertAllowed(revision); cancel();
     return serial(async () => {
@@ -152,6 +166,17 @@ function registerVoice(register, options) {
     if(buffer.length<44||buffer.toString('ascii',0,4)!=='RIFF'||buffer.toString('ascii',8,12)!=='WAVE')throw Error('로컬 서버가 WAV 음성을 반환하지 않았습니다.');
     return {base64:buffer.toString('base64'),mime:'audio/wav'};
   }));
-  return { cancel(){cancel();return servers.invalidate();}, isBusy:()=>servers.isBusy(), async shutdown(){stopped=true;cancel();await servers.shutdown();} };
+  return {
+    cancel(){cancel();return servers.invalidate();},
+    isBusy:()=>servers.isBusy(),
+    async shutdown(){
+      acceptingSettings=false;
+      cancel();
+      await queue;
+      stopped=true;
+      cancel();
+      await servers.shutdown();
+    }
+  };
 }
 module.exports={registerVoice,DEFAULT_VOICE,validatePreferences,localEndpoint};

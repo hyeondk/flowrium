@@ -110,7 +110,7 @@ let photoObserver;
 let queueItems=[],workflowData,mobileSettings,usageData,pushData,extrasEpoch=0;
 const pendingExtras = new Map();
 const loadErrors = new Map();
-let settingsDraft;
+const preferenceWrites = new Map();
 let workflowTab='decisions',editingTeam=null;
 let teamDraft={name:'',roles:[{name:'',instruction:'',mode:'plan'},{name:'',instruction:'',mode:'review'}]};
 const pushLabels={decision:'결정 / 승인',done:'작업 완료',error:'오류',report:'보고서',reminder:'예약 알림',message:'업무 메시지'};
@@ -387,7 +387,8 @@ function clearPrivateState(nextGate) {
   questionDrafts.clear();
   selectedProposals.clear();
   attachedDrafts.clear();missingCitations.clear();attachmentPreviews.clear();attachmentFlights.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;chatModels=chatModelRequest=undefined;extrasEpoch++;
-  settingsDraft=undefined;
+  for (const write of preferenceWrites.values()) clearTimeout(write.timer);
+  preferenceWrites.clear();
   selectedSession = selectedProject = "";
   statusFilter = "running";
   chatOriginStatus = "";
@@ -517,7 +518,6 @@ function go(view, id, options={}) {
   if(view==='chat')chatOriginStatus=route==='status'?statusFilter:'';
   const previousRoute=route,previousSession=selectedSession;
   if (previousRoute==='assistant' && view!=='assistant') selectedProposals.clear();
-  if(previousRoute==='settings' && view!=='settings')settingsDraft=undefined;
   route = view;
   if(view==='status') statusFilter=id;
   resetHistory();
@@ -1652,6 +1652,50 @@ function teamControls(card,entry){
   const form=node('form'),role=select((d.nodes||[]).map(r=>[String(r.index),r.title||entry.roles[r.index]?.name||'역할 '+(r.index+1)]),'0'),text=bindDraft(node('textarea'),'teamInstruction/'+entry.id,'');text.required=true;
   form.append(label('지시할 역할',role),label('추가 지시 / 피드백',text));const send=node('button','역할에 지시 보내기');send.type='submit';send.disabled=busy;form.append(send);form.addEventListener('submit',e=>{e.preventDefault();void change({action:'instruct',index:Number(role.value),text:text.value})});card.append(form);
 }
+function optimisticPreferences(section, stored) {
+  const write = preferenceWrites.get(section);
+  return { ...stored, ...write?.sending, ...write?.pending };
+}
+function queuePreferenceWrite(section, changes, save, delay = 0) {
+  let write = preferenceWrites.get(section);
+  if (!write) {
+    write = { pending: {}, epoch: accessEpoch };
+    preferenceWrites.set(section, write);
+  }
+  Object.assign(write.pending, changes);
+  write.save = save;
+  clearTimeout(write.timer);
+  write.timer = setTimeout(() => {
+    write.timer = undefined;
+    void flushPreferenceWrite(section, write);
+  }, delay);
+}
+async function flushPreferenceWrite(section, write) {
+  if (write.sending || preferenceWrites.get(section) !== write) return;
+  if (!Object.keys(write.pending).length) {
+    preferenceWrites.delete(section);
+    return;
+  }
+  write.sending = write.pending;
+  write.pending = {};
+  let error;
+  try {
+    const apply = await write.save(write.sending);
+    if (write.epoch !== accessEpoch || preferenceWrites.get(section) !== write) return;
+    extrasEpoch++;
+    apply();
+  } catch (cause) {
+    if (write.epoch !== accessEpoch || preferenceWrites.get(section) !== write) return;
+    if (cause.gate) return clearPrivateState(cause.gate);
+    error = cause.message;
+  }
+  write.sending = undefined;
+  if (!write.timer) void flushPreferenceWrite(section, write);
+  if (route === (section === 'assistant' ? 'assistant' : 'settings')) {
+    render();
+    if (error) showNotice('설정을 저장하지 못했습니다. ' + error, 'error');
+  }
+}
 async function loadExtras(announce=true){
   const target=route, settingsRevision=extrasEpoch;
   if(gate||!['assistant','settings'].includes(target)||(!announce && pendingExtras.has(target)))return;
@@ -1659,7 +1703,7 @@ async function loadExtras(announce=true){
   const label=target==='assistant'?'비서 상태':'계정 설정';
   const epoch=accessEpoch, ticket=Symbol();
   pendingExtras.set(target,ticket);
-  const current=()=>epoch===accessEpoch && target===route && pendingExtras.get(target)===ticket;
+  const current=()=>epoch===accessEpoch && settingsRevision===extrasEpoch && target===route && pendingExtras.get(target)===ticket;
   if(announce && loadErrors.delete(label))render();
   try{
     if(target==='assistant'){
@@ -1667,7 +1711,7 @@ async function loadExtras(announce=true){
       if(loadErrors.delete(label)||JSON.stringify(result)!==JSON.stringify(workflowData)){workflowData=result;render()}
     }else{
       const [settings,usage,push]=await Promise.all([call('mobileSettings'),call('readAccountUsage').catch(()=>null),data.pushAvailable?call('webPushState').catch(()=>null):null]);
-      if(!current()||settingsRevision!==extrasEpoch)return;
+      if(!current())return;
       loadErrors.delete(label);mobileSettings=settings;usageData=usage;pushData=push;render();
     }
   }catch(error){
@@ -1691,14 +1735,20 @@ function reminderRepeat() {
   return group;
 }
 function assistantPreferences(root) {
-  const prefs=workflowData.preferences,form=node('form');
+  const prefs=optimisticPreferences('assistant', workflowData.preferences),form=node('form');
   const enabled=node('input'),report=node('input');
+  const save=async value=>{
+    const preferences=await call('workflowAction',{action:'preferences',value});
+    return ()=>{workflowData={...workflowData,preferences}};
+  };
   const prefKey=key=>'assistant/preferences/'+key;
   for(const [field,key] of [[enabled,'enabled'],[report,'aiReports']]){
-    field.checked=drafts.get(prefKey(key))??prefs[key];
-    field.addEventListener('change',()=>drafts.set(prefKey(key),field.checked));
+    field.checked=prefs[key];field.dataset.field=prefKey(key);
+    field.addEventListener('change',()=>queuePreferenceWrite('assistant',{[key]:field.checked},save));
   }
-  const interval=bindDraft(node('input'),prefKey('intervalMinutes'),String(prefs.intervalMinutes));
+  const interval=node('input'),intervalKey=prefKey('intervalMinutes');
+  interval.dataset.field=intervalKey;
+  interval.value=drafts.get(intervalKey)??String(prefs.intervalMinutes);
   interval.type='text';interval.inputMode='numeric';interval.pattern='[0-9]{1,4}';interval.required=true;
   interval.setAttribute('aria-label','확인 주기 (분)');
   const group=node('div',undefined,'mobile-stepper'),step=delta=>{
@@ -1710,23 +1760,38 @@ function assistantPreferences(root) {
     button.setAttribute('aria-label','확인 주기 5분 '+(delta>0?'늘리기':'줄이기'));return button;
   };
   const minus=step(-5),plus=step(5);
-  const validate=()=>{const n=Number(interval.value);interval.setCustomValidity(Number.isInteger(n)&&n>=5&&n<=1440?'':'5분부터 1,440분까지 숫자로 입력하세요.');minus.disabled=n<=5;plus.disabled=n>=1440;};
-  interval.addEventListener('input',validate);validate();
+  const validate=()=>{const n=Number(interval.value);interval.setCustomValidity(/^[0-9]{1,4}$/.test(interval.value)&&n>=5&&n<=1440?'':'5분부터 1,440분까지 숫자로 입력하세요.');minus.disabled=n<=5;plus.disabled=n>=1440;};
+  interval.addEventListener('input',()=>{
+    validate();
+    if (!interval.validity.valid) {
+      drafts.set(intervalKey,interval.value);
+      const pending=preferenceWrites.get('assistant')?.pending;
+      if(pending) delete pending.intervalMinutes;
+      return;
+    }
+    drafts.delete(intervalKey);
+    queuePreferenceWrite('assistant',{intervalMinutes:Number(interval.value)},save,320);
+  });
+  const restoreInvalid=()=>{
+    if (interval.validity.valid) return;
+    drafts.delete(intervalKey);
+    interval.value=optimisticPreferences('assistant',workflowData.preferences).intervalMinutes;
+    validate();
+  };
+  interval.addEventListener('blur',restoreInvalid);
+  form.addEventListener('submit',event=>{event.preventDefault();restoreInvalid()});
+  validate();
   group.append(minus,interval,plus);
   form.append(settingsSwitch('자동 비서 사용',enabled),settingsSwitch('ChatGPT로 보고 생성',report),node('strong','확인 주기 (분)'),group);
-  const hours={};
   for(const [key,name] of [['startHour','업무 시작 시간'],['endHour','업무 종료 시간']]){
     const slider=node('input');slider.type='range';slider.min='0';slider.max='23';slider.step='1';
-    bindDraft(slider,prefKey(key),String(prefs[key]));
+    slider.dataset.field=prefKey(key);slider.value=String(prefs[key]);
     const control=label(name,slider),value=node('output');control.className='mobile-hour-range';
     const update=()=>{value.textContent=slider.value+'시';slider.setAttribute('aria-valuetext',value.textContent);};
-    slider.addEventListener('input',update);update();control.append(value);form.append(control);hours[key]=slider;
+    slider.addEventListener('input',update);
+    slider.addEventListener('change',()=>queuePreferenceWrite('assistant',{[key]:Number(slider.value)},save));
+    update();control.append(value);form.append(control);
   }
-  const save=node('button','비서 설정 저장','main-action');save.type='submit';form.append(save);
-  form.addEventListener('submit',event=>{event.preventDefault();
-    const value={enabled:enabled.checked,aiReports:report.checked,intervalMinutes:Number(interval.value),startHour:Number(hours.startHour.value),endHour:Number(hours.endHour.value)};
-    void run(async()=>{await call('workflowAction',{action:'preferences',value});for(const key of Object.keys(value))drafts.delete(prefKey(key));await loadExtras();showNotice('반영했습니다.');});
-  });
   root.append(form);
 }
 function assistantPage(root){
@@ -1806,7 +1871,7 @@ function settingsPage(root){
     data, call, onError:clearPrivateState,
     refresh:()=>{if (route === 'settings' && data && !gate) render();},
     canReload:()=>route === 'settings' && !gate && !busy,
-    hasDrafts:()=>Boolean(settingsDraft || editingTeam || [...drafts.values()].some(Boolean) ||
+    hasDrafts:()=>Boolean(preferenceWrites.size || editingTeam || [...drafts.values()].some(Boolean) ||
       [...attachedDrafts.values()].some(items=>items.length) ||
       [...questionDrafts.values()].some(fields=>[...fields.values()].some(answer=>answer.text || answer.selection))),
   }));
@@ -1820,32 +1885,37 @@ function settingsPage(root){
   account.append(node('h2','계정과 모델'),accountLine);
   root.append(account);
   if(!mobileSettings){account.append(loadingRegion('계정 설정'));return}
-  const preferences=settingsDraft||mobileSettings;
-  const form=node('form'),models=mobileSettings.models||[],model=select([['','계정 기본 모델'],...models.map(m=>[m.id,modelDisplayName(m)])],preferences.model||''),effort=select([],''),answer=select([['short','짧게'],['normal','보통'],['detailed','자세히']],preferences.chatDefaults?.answerLength||'normal');
-  function refreshEfforts(preferred=''){
+  const preferences=optimisticPreferences('account',{...mobileSettings.chatDefaults,model:mobileSettings.model,effort:mobileSettings.effort});
+  const save=async ({model,effort,...chatDefaults})=>{
+    const input={};
+    if(model!==undefined)input.model=model;
+    if(effort!==undefined)input.effort=effort;
+    if(Object.keys(chatDefaults).length)input.chatDefaults=chatDefaults;
+    const saved=await call('saveMobileSettings',input);
+    return ()=>{mobileSettings={...mobileSettings,model:saved.model,effort:saved.effort,chatDefaults:saved.chatDefaults}};
+  };
+  const form=node('form'),models=mobileSettings.models||[],model=select([['','계정 기본 모델'],...models.map(m=>[m.id,modelDisplayName(m)])],preferences.model||''),effort=select([],''),answer=select([['short','짧게'],['normal','보통'],['detailed','자세히']],preferences.answerLength||'normal');
+  model.disabled=!models.length;
+  function refreshEfforts(preferred){
     const selected=models.find(m=>m.id===model.value)||(!model.value?models.find(m=>m.isDefault):undefined),available=reasoningEffortOptions(selected);
-    effort.replaceChildren(...[['','모델 기본값'],...available.map(row=>[row.reasoningEffort,effortDisplayName(row.reasoningEffort)])].map(([value,title])=>{const option=node('option',title);option.value=value;return option}));
-    effort.value=available.some(row=>row.reasoningEffort===preferred)?preferred:'';
+    const choices=available.length?available.map(row=>[row.reasoningEffort,effortDisplayName(row.reasoningEffort)]):[['','모델 기본값']];
+    effort.replaceChildren(...choices.map(([value,title])=>{const option=node('option',title);option.value=value;return option}));
+    const values=choices.map(([value])=>value);
+    effort.value=[preferred,selected?.defaultReasoningEffort,values[0]].find(value=>values.includes(value));
+    effort.disabled=!available.length;
   }
-  refreshEfforts(preferences.effort||'');model.addEventListener('change',()=>refreshEfforts());
-  const tests=node('input'),ask=node('input'),compact=node('input');tests.type=ask.type=compact.type='checkbox';tests.checked=preferences.chatDefaults?.testing!==false;ask.checked=preferences.chatDefaults?.askNext===true;compact.checked=preferences.chatDefaults?.autoCompact!==false;
+  refreshEfforts(preferences.effort);
+  model.addEventListener('change',()=>{
+    refreshEfforts(effort.value);
+    queuePreferenceWrite('account',{model:model.value,...(effort.value?{effort:effort.value}:{})},save);
+  });
+  const tests=node('input'),ask=node('input'),compact=node('input');
+  tests.checked=preferences.testing!==false;ask.checked=preferences.askNext===true;compact.checked=preferences.autoCompact!==false;
   form.append(label('기본 ChatGPT 모델',model),label('추론 수준',effort),label('답변 길이',answer),settingsSwitch('작업 후 검증',tests),settingsSwitch('필요한 다음 질문',ask),settingsSwitch('문맥 자동 압축',compact));
   for(const control of form.elements)control.dataset.field='setting/'+control.getAttribute('aria-label');
-  const readForm=()=>({model:model.value,...(effort.value?{effort:effort.value}:{}),chatDefaults:{answerLength:answer.value,testing:tests.checked,askNext:ask.checked,autoCompact:compact.checked}});
-  form.addEventListener('change',()=>{settingsDraft=readForm()});
-  const save=node('button','기본 설정 저장','main-action');save.type='submit';save.disabled=busy||!models.length;form.append(save);
-  form.addEventListener('submit',event=>{
-    event.preventDefault();
-    const value=settingsDraft||readForm(),epoch=accessEpoch;
-    void run(async()=>{
-      const saved=await call('saveMobileSettings',value);
-      if(epoch!==accessEpoch)return;
-      extrasEpoch++;
-      mobileSettings={...mobileSettings,...saved};
-      if(settingsDraft===value)settingsDraft=undefined;
-      if(route==='settings'){await loadExtras();showNotice('기본 설정을 저장했습니다.');}
-    });
-  });
+  for(const [control,key] of [[effort,'effort'],[answer,'answerLength'],[tests,'testing'],[ask,'askNext'],[compact,'autoCompact']]){
+    control.addEventListener('change',()=>queuePreferenceWrite('account',{[key]:control.type==='checkbox'?control.checked:control.value},save));
+  }
   account.append(form);
   const usage = node('section', undefined, 'box');
   usage.append(node('h2', '계정 사용량'));
@@ -1888,11 +1958,27 @@ function pushSettings(root){
       await loadExtras();showNotice('이 기기의 알림을 등록했습니다.');
     });});subscribe.disabled=busy||pushData?.available===false;box.append(subscribe);
   }else{
-    box.append(node('p',device.label));const chosen=new Set(device.kinds);
-    for(const [kind,title]of Object.entries(pushLabels)){const check=node('input');check.type='checkbox';check.checked=chosen.has(kind);check.addEventListener('change',()=>check.checked?chosen.add(kind):chosen.delete(kind));box.append(settingsSwitch(title,check))}
-    const showTitle=node('input');showTitle.type='checkbox';showTitle.checked=device.showConversationTitle===true;
+    const section='push/'+device.id,selected=optimisticPreferences(section,device),chosen=new Set(selected.kinds);
+    const save=async changes=>{
+      const current=pushData?.devices.find(d=>d.id===device.id)??device;
+      await call('webPushAction',{action:'preferences',id:device.id,kinds:current.kinds,...changes});
+      return ()=>{
+        if(pushData)pushData={...pushData,devices:pushData.devices.map(d=>d.id===device.id?{...d,...changes}:d)};
+      };
+    };
+    box.append(node('p',device.label));
+    for(const [kind,title]of Object.entries(pushLabels)){
+      const check=node('input');check.dataset.field=section+'/'+kind;check.checked=chosen.has(kind);
+      check.addEventListener('change',()=>{
+        if(check.checked)chosen.add(kind);else chosen.delete(kind);
+        queuePreferenceWrite(section,{kinds:[...chosen]},save);
+      });
+      box.append(settingsSwitch(title,check));
+    }
+    const showTitle=node('input');showTitle.dataset.field=section+'/title';showTitle.checked=selected.showConversationTitle===true;
+    showTitle.addEventListener('change',()=>queuePreferenceWrite(section,{showConversationTitle:showTitle.checked},save));
     box.append(settingsSwitch('이 기기 알림에 대화 이름 표시',showTitle));
-    box.append(action('알림 설정 저장',()=>run(async()=>{await call('webPushAction',{action:'preferences',id:device.id,kinds:[...chosen],showConversationTitle:showTitle.checked});await loadExtras()})),action('이 기기에 시험 알림 보내기',()=>run(async()=>{const result=await call('webPushAction',{action:'test',id:device.id});showNotice(result.sent?'시험 알림을 발송했습니다.':'시험 알림 발송을 확인하지 못했습니다.',result.sent?'info':'error');await loadExtras()})),confirmationButton('이 기기 알림 해제','push/'+device.id,'이 기기 알림을 해제할까요?','이 기기로 보내는 작업 알림이 중지됩니다.',()=>run(async()=>{await call('webPushAction',{action:'unsubscribe',id:device.id});const registration=await navigator.serviceWorker.ready;await(await registration.pushManager.getSubscription())?.unsubscribe();sessionStorage.removeItem('flowrium.mobile.pushId');await loadExtras();showNotice('기기 알림을 해제했습니다.')})));
+    box.append(action('이 기기에 시험 알림 보내기',()=>run(async()=>{const result=await call('webPushAction',{action:'test',id:device.id});showNotice(result.sent?'시험 알림을 발송했습니다.':'시험 알림 발송을 확인하지 못했습니다.',result.sent?'info':'error');await loadExtras()})),confirmationButton('이 기기 알림 해제',section,'이 기기 알림을 해제할까요?','이 기기로 보내는 작업 알림이 중지됩니다.',()=>run(async()=>{await call('webPushAction',{action:'unsubscribe',id:device.id});clearTimeout(preferenceWrites.get(section)?.timer);preferenceWrites.delete(section);const registration=await navigator.serviceWorker.ready;await(await registration.pushManager.getSubscription())?.unsubscribe();sessionStorage.removeItem('flowrium.mobile.pushId');await loadExtras();showNotice('기기 알림을 해제했습니다.')})));
     if(device.lastError)box.append(node('p',device.lastError,'hint'));
   }
   box.append(node('p','연결을 종료하거나 계정을 바꾸면 알림도 중지됩니다. 새 연결 주소에서는 기기를 다시 등록하세요.','hint'));root.append(box);

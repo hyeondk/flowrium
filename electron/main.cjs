@@ -424,7 +424,7 @@ async function launch() {
       migrationTransition=true;
       const results=await Promise.allSettled([externalRepositoryAccess?.shutdown(),dotsRuntime?.shutdown(),workflowRuntime.shutdown(),linkDelivery.shutdown(),webPush.shutdown(),voice.shutdown(),projectPorts.shutdown(),codexTransfer.shutdown(),remote.shutdown(),music.shutdown()]);
       const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
-      await drafts.queue;await store.queue;
+      await drafts.queue;await store.settingsQueue;await store.queue;
     },
     onImported:()=>{importRestartRequired=true;migrationTransition=false;},
     onRestart:()=>{app.relaunch();setImmediate(()=>app.quit());return{restarting:true};},
@@ -497,7 +497,7 @@ async function launch() {
   register("deleteSession", (id) =>
     controller.deleteSession(text(id, "대화 식별자", 100)),
   );
-  register("saveSettings", (input) => controller.saveSettings(input));
+  register("saveSettings", (input, options) => controller.saveSettings(input,{mergeChatDefaults:options?.mergeChatDefaults===true}));
   register("connectionStatus", () => controller.connectionStatus());
   register('readDesktopChatInstallation', () => require('./chat-connection.cjs').desktopAppInstalled());
   register('readChatConnection', async () => {
@@ -687,7 +687,7 @@ else {
     if (window && !window.isDestroyed()) window.setEnabled(false);
     Promise.allSettled([externalRepositoryAccess?.shutdown(),dotsRuntime?.shutdown(),workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.(), projectPorts?.shutdown(), codexTransfer?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
       .then(() => { lifecycleDiagnostic('quit-services-finished'); return teamRuntime?.flush(); })
-      .then(() => { lifecycleDiagnostic('quit-teams-finished'); return drafts.queue; })
+      .then(() => { lifecycleDiagnostic('quit-teams-finished'); return Promise.all([drafts.queue,controller.store.settingsQueue]); })
       .finally(() => {
         lifecycleDiagnostic('quit-finished');
         setImmediate(() => {

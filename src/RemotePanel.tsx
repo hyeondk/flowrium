@@ -1,5 +1,5 @@
 import { AnimatedSwitch } from './ui-motion';
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Smartphone, Copy, QrCode, RefreshCw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { RemoteAccess, WebPushState, PushKind } from "../shared/remote";
@@ -10,18 +10,41 @@ export default function RemotePanel() {
   const [qrVisible, setQrVisible] = useState(false);
   useEffect(() => { setQrVisible(false); }, [state.url]);
   const [push,setPush]=useState<WebPushState>();
-  const [deviceKinds,setDeviceKinds]=useState<Record<string,PushKind[]>>({});
-  const [showTitles,setShowTitles]=useState<Record<string,boolean>>({});
+  const currentPush = useRef<WebPushState | undefined>(undefined);
+  const pushRevision = useRef(0);
+  const pendingPreferences = useRef(0);
+  const api = window.flowrium;
   const pushLabels:Record<PushKind,string>={decision:"결정과 승인",done:"작업 완료",error:"오류",report:"보고서",reminder:"예약 알림",message:"업무 메시지"};
   async function refreshPush(){
+    const revision = pushRevision.current;
     const next=await api?.webPushState();
+    if (revision !== pushRevision.current || pendingPreferences.current) return;
+    currentPush.current = next;
     setPush(next);
-    const devices=next?.devices||[];
-    setDeviceKinds(Object.fromEntries(devices.map(d=>[d.id,d.kinds])));
-    setShowTitles(Object.fromEntries(devices.map(d=>[d.id,d.showConversationTitle===true])));
+  }
+  async function updateDevice(id:string,field:PushKind | 'showConversationTitle',checked:boolean) {
+    const previous = currentPush.current;
+    const device = previous?.devices.find(row=>row.id===id);
+    if (!api || !previous || !device) return;
+    const updated = field === 'showConversationTitle'
+      ? {...device,showConversationTitle:checked}
+      : {...device,kinds:checked ? [...new Set([...device.kinds,field])] : device.kinds.filter(kind=>kind!==field)};
+    const next = {...previous,devices:previous.devices.map(row=>row.id===id?updated:row)};
+    currentPush.current = next;
+    setPush(next);
+    pushRevision.current++;
+    pendingPreferences.current++;
+    setMessage('');
+    try {
+      await api.webPushAction({action:'preferences',id,kinds:updated.kinds,showConversationTitle:updated.showConversationTitle===true});
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      pendingPreferences.current--;
+      if (!pendingPreferences.current) void refreshPush().catch(()=>{});
+    }
   }
   async function pushAction(action:()=>Promise<unknown>){setBusy(true);try{await action();await refreshPush()}catch(e){setMessage(e instanceof Error?e.message:String(e))}finally{setBusy(false)}}
-  const api = window.flowrium;
   async function perform(action: () => Promise<RemoteAccess>) {
     setBusy(true);
     setMessage("");
@@ -111,10 +134,9 @@ export default function RemotePanel() {
         {!push?.devices.length&&<p>현재 연결에 등록된 기기가 없습니다.</p>}
         {push?.devices.map(device=><div key={device.id} className="settings-card">
           <strong>{device.label}</strong>
-          <div className="device-preferences">{(Object.keys(pushLabels) as PushKind[]).map(kind=><label key={kind}><AnimatedSwitch style={{width:"auto"}} checked={(deviceKinds[device.id]||[]).includes(kind)} onChange={event=>setDeviceKinds(old=>({...old,[device.id]:event.target.checked?[...(old[device.id]||[]),kind]:(old[device.id]||[]).filter(k=>k!==kind)}))}/>{pushLabels[kind]}</label>)}</div>
-          <div className="device-preferences"><label><AnimatedSwitch style={{width:"auto"}} checked={showTitles[device.id]===true} onChange={event=>setShowTitles(old=>({...old,[device.id]:event.target.checked}))}/>휴대폰 알림에 대화 이름 표시</label></div>
+          <div className="device-preferences">{(Object.keys(pushLabels) as PushKind[]).map(kind=><label key={kind}><AnimatedSwitch style={{width:"auto"}} disabled={busy} checked={device.kinds.includes(kind)} onChange={event=>void updateDevice(device.id,kind,event.target.checked)}/>{pushLabels[kind]}</label>)}</div>
+          <div className="device-preferences"><label><AnimatedSwitch style={{width:"auto"}} disabled={busy} checked={device.showConversationTitle===true} onChange={event=>void updateDevice(device.id,'showConversationTitle',event.target.checked)}/>휴대폰 알림에 대화 이름 표시</label></div>
           <div className="settings-buttons">
-            <button className="button secondary" disabled={busy} onClick={()=>void pushAction(()=>api!.webPushAction({action:"preferences",id:device.id,kinds:deviceKinds[device.id]||[],showConversationTitle:showTitles[device.id]===true}))}>알림 설정 저장</button>
             <button className="button secondary" disabled={busy} onClick={()=>void pushAction(async()=>{const result=await api!.webPushAction({action:"test",id:device.id});setMessage(result.sent?"알림 서버에 시험 알림을 보냈습니다.":"시험 알림 발송을 확인하지 못했습니다.");})}>기기에 시험 알림</button>
             <button className="button subtle" disabled={busy} onClick={()=>void pushAction(()=>api!.webPushAction({action:"unsubscribe",id:device.id}))}>기기 알림 해제</button>
           </div>

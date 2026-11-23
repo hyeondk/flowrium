@@ -118,7 +118,7 @@ async function main(){
   ]});
   const handlers=new Map(),register=(name,fn)=>handlers.set(name,fn);let pending=[],locked=false;const delivered=[];
   controller=new Controller(store,{descriptor:{command:process.execPath,prefix:[path.join(__dirname,'backend-fake-codex.cjs')],label:'격리된 검증용 연결',node:false},canRun:()=>true,queueOwner:()=>0});await controller.connect();
-  for(const [name,fn]of Object.entries({send:i=>controller.send(i),interrupt:id=>controller.interrupt(id),connect:()=>controller.connect(),saveSettings:v=>controller.saveSettings(v),listQueuedMessages:id=>controller.listQueuedMessages(id),securityPending:()=>[],readAccountUsage:()=>({checkedAt:Date.now(),allowed:true,credits:{hasCredits:false,unlimited:false},buckets:[]})}))register(name,fn);
+  for(const [name,fn]of Object.entries({send:i=>controller.send(i),interrupt:id=>controller.interrupt(id),connect:()=>controller.connect(),saveSettings:(value,options)=>controller.saveSettings(value,options),listQueuedMessages:id=>controller.listQueuedMessages(id),securityPending:()=>[],readAccountUsage:()=>({checkedAt:Date.now(),allowed:true,credits:{hasCredits:false,unlimited:false},buckets:[]})}))register(name,fn);
   register('securityPending',()=>pending);
   register('answerInput',async input=>{delivered.push(input);pending=pending.filter(entry=>entry.requestId!==input.requestId);});
   register('readChatCitation',(...args)=>require('../electron/chat-citations.cjs').readChatCitation(store,...args));
@@ -204,7 +204,7 @@ async function main(){
   await page.setViewportSize({width:390,height:844});await page.evaluate(()=>{document.activeElement?.blur();scrollTo(0,0)});await page.evaluate(()=>document.fonts.ready);
   await capture('mobile-chat.png');
   await page.getByRole('navigation',{name:'모바일 메뉴'}).getByRole('button',{name:'설정',exact:true}).click();
-  await page.getByRole('button',{name:'기본 설정 저장',exact:true}).waitFor();await page.evaluate(()=>scrollTo(0,0));
+  await page.getByLabel('답변 길이',{exact:true}).waitFor();await page.evaluate(()=>scrollTo(0,0));
   const settingsType=await typography(page,['#content h1','.settings-guides h2','.settings-guides button']);
   assert.deepEqual(settingsType.map(size=>size.font),[21.5,15,12]);assert(settingsType[2].height>=44);
   await page.getByRole('button',{name:'도움말',exact:true}).click();

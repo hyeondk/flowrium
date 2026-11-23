@@ -192,8 +192,10 @@ const switches = [
 ] as const;
 
 export function SecurityPanel({ security, accountUsage }: Props & {accountUsage: AccountUsage}) {
-  const { state } = security,
-    prefs = state.preferences;
+  const {state} = security;
+  const [pendingPreferences,setPendingPreferences] = useState<Partial<SecurityPreferences>>({});
+  const preferenceRequests = useRef<Partial<Record<keyof SecurityPreferences, object>>>({});
+  const prefs = state.preferences && {...state.preferences,...pendingPreferences};
   const [current, setCurrent] = useState(""),
     [next, setNext] = useState(""),
     [repeat, setRepeat] = useState("");
@@ -218,7 +220,17 @@ export function SecurityPanel({ security, accountUsage }: Props & {accountUsage:
     }
   }
   function change(input: Partial<SecurityPreferences>) {
-    void run(() => api!.setSecurityPreferences(input));
+    const keys = Object.keys(input) as (keyof SecurityPreferences)[];
+    for (const key of keys) preferenceRequests.current[key] = input;
+    setPendingPreferences(previous=>({...previous,...input}));
+    setError('');
+    void api!.setSecurityPreferences(input).catch(e=>setError(failure(e))).finally(()=>{
+      setPendingPreferences(previous=>{
+        const next = {...previous};
+        for (const key of keys) if (preferenceRequests.current[key] === input) delete next[key];
+        return next;
+      });
+    });
   }
   function clearPinInputs() {
     setCurrent("");

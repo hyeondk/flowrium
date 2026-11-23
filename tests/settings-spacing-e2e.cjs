@@ -23,6 +23,10 @@ async function run(){
   await page.locator('.workspace-side').getByRole('button',{name:'설정',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'설정',exact:true}),content=dialog.locator('.settings-content');
   await dialog.waitFor();
+  if(!baseline){
+   assert.equal(await dialog.getByRole('button',{name:'완료',exact:true}).count(),0);
+   assert.equal(await dialog.getByRole('button',{name:'설정 닫기',exact:true}).count(),1);
+  }
   const select=async id=>{const button=dialog.locator(`[data-settings-target=${id}]`);if(await button.getAttribute('aria-expanded')!=='true')await button.click();await page.waitForTimeout(220);await content.evaluate(node=>node.scrollTo({top:0,behavior:'instant'}));};
   const rows=[];
   for(const width of [1440,390]){
@@ -79,6 +83,35 @@ async function run(){
   await select('appearance');await select('categories');assert.equal(await draft.inputValue(),'보존 확인');
   await dialog.locator('[data-settings-target=categories]').click();await page.waitForTimeout(220);assert.equal(await dialog.locator('[data-settings-group=categories]').isVisible(),false);
   await select('categories');assert.equal(await draft.inputValue(),'보존 확인');
+  await dialog.getByRole('button',{name:'설정 닫기',exact:true}).click();
+  await dialog.waitFor({state:'detached'});
+  await page.setViewportSize({width:1440,height:940});
+  await app.evaluate(({ipcMain})=>{
+   let preferences={id:'synthetic-device',label:'시험 알림 기기',kinds:['done','decision'],showConversationTitle:false,createdAt:'2026-01-01'};
+   for(const name of ['remoteAccess','webPushState','webPushAction'])ipcMain.removeHandler('flowrium:'+name);
+   ipcMain.handle('flowrium:remoteAccess',()=>({enabled:true}));
+   ipcMain.handle('flowrium:webPushState',()=>({available:true,enabled:true,kinds:['done','decision'],devices:[preferences]}));
+   ipcMain.handle('flowrium:webPushAction',(_event,input)=>{
+    if(input.action!=='preferences'||input.id!==preferences.id)throw Error('시험 알림 기기의 설정 요청을 확인해 주세요.');
+    preferences={...preferences,kinds:input.kinds,showConversationTitle:input.showConversationTitle};
+    return {saved:true};
+   });
+  });
+  await page.locator('.workspace-side').getByRole('button',{name:'설정',exact:true}).click();
+  await select('remote');
+  const phone=dialog.locator('.mobile-device-settings');
+  await phone.getByText('시험 알림 기기',{exact:true}).waitFor();
+  assert.equal(await phone.getByRole('button',{name:'알림 설정 저장',exact:true}).count(),0);
+  await phone.getByRole('switch',{name:'작업 완료',exact:true}).uncheck();
+  await phone.getByRole('switch',{name:'휴대폰 알림에 대화 이름 표시',exact:true}).check();
+  await dialog.getByRole('button',{name:'설정 닫기',exact:true}).click();
+  await dialog.waitFor({state:'detached'});
+  await page.locator('.workspace-side').getByRole('button',{name:'설정',exact:true}).click();
+  await select('remote');
+  await phone.getByText('시험 알림 기기',{exact:true}).waitFor();
+  assert.equal(await phone.getByRole('switch',{name:'작업 완료',exact:true}).isChecked(),false);
+  assert.equal(await phone.getByRole('switch',{name:'휴대폰 알림에 대화 이름 표시',exact:true}).isChecked(),true);
+  assert.equal(await phone.getByRole('switch',{name:'결정과 승인',exact:true}).isChecked(),true);
   console.log(JSON.stringify({mode:baseline?'재현':'검증',rows,draftPreserved:true}));
  }finally{await app?.close();await fs.rm(temp,{recursive:true,force:true,maxRetries:4,retryDelay:100});}
 }

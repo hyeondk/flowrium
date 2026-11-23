@@ -8,7 +8,7 @@ type Props = {
   label: string;
   value: string;
   options: {value: string; label: string;leading?:ReactNode}[];
-  onChange(value: string): void;
+  onChange(value: string, composing?: boolean): void;
   disabled?: boolean;
   editable?: boolean;
   placeholder?: string;
@@ -19,9 +19,10 @@ type Props = {
   placement?:'auto'|'up'|'down';
   onOpen?():void;
   onFocus?():void;
+  onCommit?(value: string): void;
 };
 
-export default function ChoicePicker({label,value,options,onChange,disabled,editable,placeholder,maxLength,className,placement='auto',onOpen,onFocus,triggerLabel,menuMinWidth=0}: Props) {
+export default function ChoicePicker({label,value,options,onChange,disabled,editable,placeholder,maxLength,className,placement='auto',onOpen,onFocus,onCommit,triggerLabel,menuMinWidth=0}: Props) {
   const id = useId();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -52,6 +53,7 @@ export default function ChoicePicker({label,value,options,onChange,disabled,edit
     if (!item || disabled) return;
     restoreFocus.current = {previous:document.activeElement};
     onChange(item.value);
+    onCommit?.(item.value);
     setOpen(false);
   }
   function onKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -71,6 +73,9 @@ export default function ChoicePicker({label,value,options,onChange,disabled,edit
     } else if (expanded && (event.key==='Enter' || (!editable && event.key===' '))) {
       event.preventDefault();
       choose(cursor);
+    } else if (editable && event.key==='Enter' && onCommit) {
+      event.preventDefault();
+      onCommit(value);
     }
   }
   useEffect(()=>{
@@ -183,11 +188,16 @@ export default function ChoicePicker({label,value,options,onChange,disabled,edit
     </button>)}
   </div>;
   return <div ref={root} className={'choice-picker'+(className?' '+className:'')}
-    onBlur={event=>{if (!outsidePointer.current && !inside(event.relatedTarget)) setOpen(false);}}>
+    onBlur={event=>{
+      if (inside(event.relatedTarget)) return;
+      onCommit?.(value);
+      if (!outsidePointer.current) setOpen(false);
+    }}>
     {editable
       ? <div className="choice-edit" data-expanded={expanded}>
           <input {...combobox} ref={input} aria-autocomplete="list" value={value} placeholder={placeholder} maxLength={maxLength}
-            onChange={event=>{const text=event.target.value;onChange(text);setFilter(text);setCursor(0);setOpen(true);}} />
+            onCompositionEnd={onCommit ? event=>onChange(event.currentTarget.value,false) : undefined}
+            onChange={event=>{const text=event.target.value;onChange(text,(event.nativeEvent as InputEvent).isComposing);setFilter(text);setCursor(0);setOpen(true);}} />
           <button type="button" className="choice-chevron" aria-label={label+' 선택 목록'} disabled={disabled}
             onMouseDown={event=>event.preventDefault()} onClick={()=>{input.current?.focus();if(expanded)setOpen(false);else show();}}>
             <ChevronDown size={16}/>

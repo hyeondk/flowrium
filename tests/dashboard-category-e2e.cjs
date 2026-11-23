@@ -142,9 +142,8 @@ async function main() {
     await page.getByRole('menuitem',{name:'카테고리 관리'}).click();
     const editor = page.getByRole('region',{name:'프로젝트 카테고리 관리'});
     const input = editor.getByRole('combobox',{name:'카테고리 이름',exact:true});
+    assert.equal(await editor.getByRole('button',{name:'저장',exact:true}).count(),0);
     await input.fill('현장 조사');
-    await editor.getByRole('button',{name:'저장',exact:true}).click();
-    await editor.getByText('저장했습니다.').waitFor();
     await page.getByRole('button',{name:'설정 닫기',exact:true}).click();
     await card.locator('.pf-category').filter({hasText:'현장 조사'}).waitFor();
     await page.reload();await card.locator('.pf-category').filter({hasText:'현장 조사'}).waitFor();
@@ -177,24 +176,6 @@ async function main() {
     await input.press('Escape');assert.equal(await categoryOptions.count(),0);assert(await input.evaluate(node=>node===document.activeElement));
     await input.press('ArrowDown');await categoryOptions.waitFor();
     await input.press('Tab');assert.equal(await categoryOptions.count(),0);
-    await input.focus();await input.press('ArrowDown');await categoryOptions.waitFor();
-    await editor.evaluate(node=>{
-      window.__categorySaveEvents=[];
-      for(const type of ['pointerdown','mousedown','mouseup','click','submit','focusout'])document.addEventListener(type,event=>{
-        if(window.__categorySaveEvents.length>=20)return;
-        const save=node.querySelector('button[type=submit],button.primary'),rect=save.getBoundingClientRect();
-        window.__categorySaveEvents.push({type,target:event.target.tagName,text:event.target.textContent.slice(0,24),saveTop:rect.top,saveBottom:rect.bottom,y:event.clientY});
-      },true);
-    });
-    await editor.getByRole('button',{name:'저장',exact:true}).click();
-    await editor.getByText('저장했습니다.').waitFor().catch(async error=>{
-      const status=await editor.locator('[role=status]').allTextContents();
-      const events=await page.evaluate(()=>window.__categorySaveEvents);
-      throw new Error('카테고리를 비워 저장한 뒤 응답: '+JSON.stringify({status,events}),{cause:error});
-    });
-    const saveEvents=await page.evaluate(()=>window.__categorySaveEvents);
-    assert.equal(saveEvents.filter(event=>event.type==='submit').length,1,'바깥 저장 버튼 한 번 클릭으로 한 번 제출');
-    assert(saveEvents.filter(event=>['pointerdown','mouseup','click'].includes(event.type)).every(event=>event.target==='BUTTON'&&event.text==='저장'),JSON.stringify(saveEvents));
     await page.getByRole('button',{name:'설정 닫기',exact:true}).click();
     await page.getByRole('button',{name:/미분류 \/ 카테고리 관리/}).waitFor();
     console.log('대시보드 실제 앱 확인 / 한 줄 요약 '+summaryGeometry.height+'px / 프로젝트 3열 / 최근 업무 2열 테두리 '+recentGeometry[0].height+'px / 검색 외곽선과 초점 및 필터 / 앞쪽 카테고리 배지 / 좁은 화면 넘침 없음 / 우클릭 분류 저장 / 재실행 보존 / 프로젝트 설정에서 미분류 복귀 통과');

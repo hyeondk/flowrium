@@ -377,3 +377,35 @@ test("기존 외관의 파란 기본값, 강조색 독립 저장과 저장 실�
     assert.equal(old.state.settings.model,"demo-model");
   }
 });
+
+test("동시 자동 저장이 순서를 지키고 실패한 값을 다음 설정에 섞지 않는다", async t => {
+  const {store,root}=await fixture(t);
+  await store.saveSettings({theme:'light',chatDefaults:{approval:'on-request',compactAt:73}});
+  const save=store.save.bind(store);
+  const started=Promise.withResolvers(),finish=Promise.withResolvers();
+  let failOnce=true;
+  store.save=async(...args)=>{
+    if(failOnce){
+      failOnce=false;
+      started.resolve();
+      await finish.promise;
+      throw Error('첫 자동 저장 실패');
+    }
+    return save(...args);
+  };
+  const rejected=assert.rejects(store.saveSettings({theme:'dark'}),/첫 자동 저장 실패/);
+  await started.promise;
+  await store.save();
+  assert.equal(JSON.parse(await fs.readFile(store.file,'utf8')).settings.theme,'light');
+  const next=store.saveSettings({accentColor:'purple',chatDefaults:{askNext:true}},{mergeChatDefaults:true});
+  const last=store.saveSettings({chatDefaults:{answerLength:'short'}},{mergeChatDefaults:true});
+  finish.resolve();
+  await rejected;
+  assert.equal((await next).theme,'light');
+  assert.deepEqual((await last).chatDefaults,{approval:'on-request',compactAt:73,askNext:true,answerLength:'short'});
+  const reopened=new Store(path.join(root,'컴퓨터A 설정'));
+  await reopened.load();
+  assert.equal(reopened.state.settings.accentColor,'purple');
+  assert.equal(reopened.state.settings.theme,'light');
+  assert.deepEqual(reopened.state.settings.chatDefaults,(await last).chatDefaults);
+});

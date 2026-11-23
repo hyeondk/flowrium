@@ -25,6 +25,32 @@ test('로컬 음성 설정은 기기 내부 주소만 허용하고 자동 전송
   assert.throws(()=>validatePreferences({...DEFAULT_VOICE,silenceMs:1}));
   const saved=await api.configureVoicePreferences({...DEFAULT_VOICE,continuous:true,autoSubmit:true});assert.equal(saved.autoSubmit,true);
 });
+test('음성 설정의 부분 저장은 이전 저장값을 보존하고 다른 계정과 실패한 값을 섞지 않는다',async t=>{
+  const {api,revision}=await fixture(t);
+  await api.configureVoicePreferences({...DEFAULT_VOICE,ttsSpeed:1.5});
+  const invalid=assert.rejects(api.configureVoicePreferences({silenceMs:90},0),/속도 범위/);
+  await api.configureVoicePreferences({maxSpeechSeconds:60},0);
+  await invalid;
+  const saved=await api.voicePreferences();
+  assert.equal(saved.silenceMs,900);
+  assert.equal(saved.maxSpeechSeconds,60);
+  assert.equal(saved.ttsSpeed,1.5);
+  revision(1);
+  await assert.rejects(api.configureVoicePreferences({maxSpeechSeconds:90},0),/계정이 바뀌었습니다/);
+  assert.equal((await api.voicePreferences()).maxSpeechSeconds,45);
+  revision(0);
+  assert.equal((await api.voicePreferences()).maxSpeechSeconds,60);
+});
+test('종료할 때 접수한 음성 설정은 디스크 쓰기가 끝날 때까지 기다린다',async t=>{
+  const {api,runtime,directory}=await fixture(t);
+  const time=api.configureVoicePreferences({silenceMs:1200},0);
+  const length=api.configureVoicePreferences({maxSpeechSeconds:60},0);
+  await runtime.shutdown();
+  await Promise.all([time,length]);
+  const stored=JSON.parse(await fs.readFile(path.join(directory,'voice-0.json'),'utf8'));
+  assert.equal(stored.silenceMs,1200);
+  assert.equal(stored.maxSpeechSeconds,60);
+});
 test('실제 로컬 HTTP 서버에 WAV를 한 번만 보내며 키 없이 인식하고 설정 재시작과 계정 분리를 유지한다',async t=>{
   const audio=await wav();let calls=0,received;
   const url=await server(t,async(req,res)=>{calls++;received={url:req.url,headers:req.headers,body:await body(req)};res.setHeader('Content-Type','application/json');res.end(JSON.stringify({text:'검증한 로컬 음성 요청'}));});

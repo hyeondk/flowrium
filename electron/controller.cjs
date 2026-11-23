@@ -221,15 +221,15 @@ class Controller extends EventEmitter {
     this.loginId = result.loginId || null;
     return { authUrl: result.authUrl };
   }
-  async saveSettings(input) {
+  async saveSettings(input, {mergeChatDefaults=false}={}) {
     if (!input || typeof input !== "object" || Array.isArray(input))
       throw new Error("설정 형식이 올바르지 않습니다.");
-    const changedPath =
-      Object.hasOwn(input, "codexPath") &&
-      input.codexPath !== this.store.state.settings.codexPath;
-    if (changedPath && this.runs.size)
-      throw new Error("실행 중인 작업을 종료한 뒤 경로를 변경해 주세요.");
-    const next = await this.store.saveSettings(input);
+    let changedPath=false;
+    const next=await this.store.saveSettings(input,{mergeChatDefaults,beforeSave:previous=>{
+      changedPath=Object.hasOwn(input,"codexPath") && (input.codexPath||undefined)!==previous.codexPath;
+      if(changedPath && this.runs.size)
+        throw new Error("실행 중인 작업을 종료한 뒤 경로를 변경해 주세요.");
+    }});
     if (changedPath) {
       this.client.close();
       for(const entry of this.scopeClients?.values()||[])entry.client?.close();

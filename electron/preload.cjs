@@ -148,7 +148,7 @@ contextBridge.exposeInMainWorld(
     stopRemoteAccess: () => invoke("stopRemoteAccess"),
     voiceStatus: () => invoke("voiceStatus"),
     voicePreferences: () => invoke('voicePreferences'),
-    configureVoicePreferences: input => invoke('configureVoicePreferences',input),
+    configureVoicePreferences: (input,accountRevision) => invoke('configureVoicePreferences',input,accountRevision),
     cancelVoiceCapture: () => invoke('cancelVoiceCapture'),
     speakVoice: input => invoke('speakVoice',input),
     configureVoice: key => invoke("configureVoice", key),

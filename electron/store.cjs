@@ -85,6 +85,7 @@ class Store {
       settings: { ...DEFAULT_SETTINGS },
     };
     this.queue = Promise.resolve();
+    this.settingsQueue = Promise.resolve();
     this.repositories = new Map();
     this.projectTrust = new (require('./project-trust.cjs').ProjectTrust)(directory,
       id => this.state.projects.find(project => project.id === id), projectTrustOwner);
@@ -238,7 +239,7 @@ class Store {
   peekSession(id){return this.state.sessions.find(s=>s.id===id)||this.conversations.peekSession(id);}
   isCurrentConversation(id){return this.conversations.isCurrent(id);}
   syncConversationOwner(){return this.conversations.sync();}
-  save() {
+  save({nextSettings}={}) {
     const snapshot = structuredClone(this.state),conversationSnapshots=this.conversations.snapshots();
     const write = async () => {
       const localThreads = {};
@@ -266,7 +267,7 @@ class Store {
         {
           version: 2,
           projects: snapshot.projects,
-          settings: snapshot.settings,
+          settings: nextSettings ?? this.state.settings,
           localThreads,
         },
         null,
@@ -278,6 +279,7 @@ class Store {
       try {
         await fs.writeFile(temp, data, { mode: 0o600 });
         await fs.rename(temp, this.file);
+        if(nextSettings)this.state.settings=nextSettings;
       } finally {
         await fs.rm(temp, { force: true });
       }
@@ -446,17 +448,19 @@ class Store {
     this.repositories.delete(id);
     return structuredClone(project);
   }
-  async saveSettings(input) {
-    const previous = this.state.settings;
-    const next = settings(input, previous);
-    this.state.settings = next;
-    try {
-      await this.save();
-    } catch (error) {
-      if (this.state.settings === next) this.state.settings = previous;
-      throw error;
-    }
-    return { ...this.state.settings };
+  saveSettings(input, {mergeChatDefaults=false,beforeSave}={}) {
+    const operation=this.settingsQueue.then(async()=>{
+      const previous=this.state.settings;
+      beforeSave?.(previous);
+      const changes=mergeChatDefaults && input.chatDefaults
+        ? {...input,chatDefaults:{...previous.chatDefaults,...input.chatDefaults}}
+        : input;
+      const next=settings(changes,previous);
+      await this.save({nextSettings:next});
+      return {...next};
+    });
+    this.settingsQueue=operation.catch(()=>{});
+    return operation;
   }
 }
 module.exports = { Store, settings, text };

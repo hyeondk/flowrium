@@ -1,8 +1,9 @@
 import {projectCategory} from "../shared/project-details";
-import {useEffect, useState, type FormEvent} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import type {Project} from '../shared/types';
 import ChoicePicker from './ChoicePicker';
 import ProjectCategoryLabel from './ProjectCategoryLabel';
+import {useDebouncedSetting} from './useDebouncedSetting';
 
 interface Props {
   projects: Project[];
@@ -19,40 +20,66 @@ function CategoryForm({project, current, options, onSaved}: {
 }) {
   const [value, setValue] = useState(current);
   const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
-  useEffect(() => setValue(current), [current]);
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    if (busy || !window.flowrium) return;
-    setBusy(true);
-    setMessage('');
-    try {
-      const latest = await window.flowrium.readProjectDetails(project.id);
-      if ((projectCategory(latest) || '') !== current) {
-        onSaved(project.id, projectCategory(latest) || '');
-        setMessage('다른 창에서 변경한 카테고리를 확인한 뒤 다시 저장하세요.');
-        return;
-      }
-      const next = await window.flowrium.updateProjectDetails(project.id, latest.revision, {
-        action: 'category', category: value.trim(),
-      });
-      onSaved(project.id, projectCategory(next) || '');
-      setMessage('저장했습니다.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : '카테고리를 저장할 수 없습니다.');
-    } finally {
-      setBusy(false);
+  const persisted = useRef(current);
+  const pending = useRef<{category: string} | undefined>(undefined);
+  const latestInput = useRef(current);
+  const writes = useRef(Promise.resolve());
+  const {schedule, cancel} = useDebouncedSetting();
+
+  useEffect(() => {
+    if (!pending.current && latestInput.current === persisted.current) {
+      latestInput.current = current;
+      setValue(current);
+      persisted.current = current;
     }
+  }, [current]);
+
+  function commit(text: string) {
+    cancel();
+    const category = text.trim();
+    const api = window.flowrium;
+    if (!api || category === (pending.current?.category ?? persisted.current)) return;
+    const write = {category};
+    pending.current = write;
+    writes.current = writes.current.then(async () => {
+      try {
+        const latest = await api.readProjectDetails(project.id);
+        const external = projectCategory(latest) || '';
+        if (external !== persisted.current) {
+          persisted.current = external;
+          onSaved(project.id, external);
+          setMessage('다른 창에서 바꾼 카테고리가 있습니다. 확인 후 다시 입력해 주세요.');
+          return;
+        }
+        const next = await api.updateProjectDetails(project.id, latest.revision, {action: 'category', category});
+        const saved = projectCategory(next) || '';
+        persisted.current = saved;
+        onSaved(project.id, saved);
+        if (pending.current === write) setMessage('자동 저장했습니다.');
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : '카테고리를 저장할 수 없습니다.');
+      } finally {
+        if (pending.current === write) pending.current = undefined;
+      }
+    });
   }
-  return <form className="category-edit-form" onSubmit={save}>
+
+  function change(text: string, composing = false) {
+    latestInput.current = text;
+    setValue(text);
+    setMessage('');
+    cancel();
+    if (!composing && text.trim()) schedule(() => commit(text));
+  }
+
+  return <div className="category-edit-form">
     <div className="category-choice-field"><span>카테고리 이름</span>
-      <ChoicePicker label="카테고리 이름" editable disabled={busy} maxLength={80} value={value}
+      <ChoicePicker label="카테고리 이름" editable maxLength={80} value={value}
         options={options.map(name=>({value:name,label:name}))}
-        onChange={text=>{setValue(text);setMessage('');}} placeholder="미분류"/>
+        onChange={change} onCommit={commit} placeholder="미분류"/>
     </div>
-    <button className="button primary" disabled={busy || value.trim() === current}>저장</button>
     {message && <small role="status">{message}</small>}
-  </form>;
+  </div>;
 }
 
 export function ProjectCategorySettings({projects,categories,initialProject,onSaved}: Props) {

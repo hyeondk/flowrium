@@ -353,6 +353,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   currentDraftKey.current = draftKey;
   const submittingRef = useRef(false);
   const settingsDialog = useRef<HTMLElement>(null);
+  const settingsRequests = useRef<Partial<Record<keyof Bootstrap["settings"], number>>>({});
+  const nextSettingsRequest = useRef(0);
+  const settingsSaveQueue = useRef(Promise.resolve());
+  const persistedSettings = useRef<Partial<Bootstrap["settings"]>>({});
+  const voiceSettingsSaveQueue = useRef(Promise.resolve());
   const historyDialog = useRef<HTMLElement>(null);
   const historyRequest = useRef(0);
   const historyImporting = useRef(false);
@@ -706,7 +711,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const onKey = (e: KeyboardEvent) => {
       if (isImeKey(e)) return;
       if (e.key === "Escape") {
-        setSettingsOpen(false);
+        closeSettings();
         setSidebarOpen(false);
         closeCodexHistory();
       }
@@ -1156,17 +1161,37 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       fail(error);
     }
   }
+  function closeSettings() {
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && settingsDialog.current?.contains(focused))
+      focused.blur();
+    setSettingsOpen(false);
+  }
   async function saveSettings(patch: Partial<Bootstrap["settings"]>) {
-    try {
-      const settings = api
-        ? await api.saveSettings(patch)
-        : { ...data.settings, ...patch };
-      setData((prev) => ({ ...prev, settings }));
-      return true;
-    } catch (error) {
-      fail(error);
-      return false;
+    const request = ++nextSettingsRequest.current;
+    const keys = Object.keys(patch) as (keyof Bootstrap["settings"])[];
+    for (const key of keys) settingsRequests.current[key] = request;
+    function applySavedSettings() {
+      setData((previous) => {
+        const changed = Object.fromEntries(keys.filter(key => settingsRequests.current[key] === request && Object.hasOwn(persistedSettings.current,key))
+          .map(key => [key, persistedSettings.current[key]]));
+        return { ...previous, settings: { ...previous.settings, ...changed } };
+      });
     }
+    const saving = settingsSaveQueue.current.then(async () => {
+      try {
+        const saved = api ? await api.saveSettings(patch) : patch;
+        Object.assign(persistedSettings.current,Object.fromEntries(keys.map(key=>[key,saved[key]])));
+        applySavedSettings();
+        return true;
+      } catch (error) {
+        applySavedSettings();
+        fail(error);
+        return false;
+      }
+    });
+    settingsSaveQueue.current = saving.then(()=>{});
+    return saving;
   }
   async function decide(event: FlowriumEvent, decision: "accept" | "decline") {
     if (!api || !event.requestId || decisionFlights.current.has(event.requestId)) return;
@@ -2086,7 +2111,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         <ModalPortal><div
           className="modal-backdrop motion-overlay" data-phase={settingsPresence.phase}
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setSettingsOpen(false);
+            if (e.target === e.currentTarget) closeSettings();
           }}
         >
           <section
@@ -2099,17 +2124,17 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           >
             <div className="modal-header">
               <div>
-                <span className="eyebrow">Flowrium</span>
+                <span className="eyebrow">Flowrium {data.version}</span>
                 <h2 id="settings-title">설정</h2>
               </div>
-              <CloseButton aria-label="설정 닫기" onClick={() => setSettingsOpen(false)}/>
+              <CloseButton aria-label="설정 닫기" onClick={closeSettings}/>
             </div>
             <SettingsLayout key={settingsNavigation} initialGroup={categoryTarget ? "categories" : "general"}>
               <SettingsGroup id="general"><UpdatePanel settings state={update} fail={fail}/></SettingsGroup>
               <SettingsGroup id="categories"><ProjectCategorySettings key={categoryTarget} projects={data.projects} categories={categories} initialProject={categoryTarget || projectId} onSaved={(id,category)=>{setCategories(previous=>({...previous,[id]:category}));setCategoryRevision(value=>value+1);}}/></SettingsGroup>
               <SettingsGroup id="security"><SecurityPanel security={security} accountUsage={accountUsage}/></SettingsGroup>
               <SettingsGroup id="remote"><RemotePanel/></SettingsGroup>
-              <SettingsGroup id="voice"><VoiceSettings/></SettingsGroup>
+              <SettingsGroup id="voice"><VoiceSettings accountRevision={security.state.accountRevision} saveQueue={voiceSettingsSaveQueue}/></SettingsGroup>
               <SettingsGroup id="account"><div className="settings-section">
                 <h3>
                   <Terminal size={17} />
@@ -2162,8 +2187,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     className="text-input"
                     placeholder="자동 검색 (앱에 포함된 Codex 사용)"
                     defaultValue={data.settings.codexPath || ""}
+                    onKeyDown={e => {
+                      if (e.key === "Enter" && !isImeKey(e.nativeEvent)) e.currentTarget.blur();
+                    }}
                     onBlur={async (e) => {
-                      const value = e.target.value;
+                      const value = e.currentTarget.value.trim();
                       if (
                         value !== (data.settings.codexPath || "") &&
                         (await saveSettings({ codexPath: value }))
@@ -2273,16 +2301,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 <ExternalLink size={13} />
               </button></SettingsGroup>
             </SettingsLayout>
-            <div className="modal-footer">
-              <span>Flowrium</span><span>{data.version}</span>
-              <button
-                className="button secondary"
-                onClick={() => setSettingsOpen(false)}
-              >
-                완료
-                <Check size={14} />
-              </button>
-            </div>
           </section>
         </div></ModalPortal>
       )}

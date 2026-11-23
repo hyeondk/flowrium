@@ -28,13 +28,46 @@ async function main(createNew=false){
       const NativeAudio=window.Audio;window.Audio=function(...arguments_){const player=new NativeAudio(...arguments_);player.muted=true;const play=player.play.bind(player),pause=player.pause.bind(player);player.play=async()=>{await play();window.voiceTest.plays++;};player.pause=()=>{pause();window.voiceTest.paused++;};return player;};
       window.voiceTest.segment=()=>{const context=window.voiceTest.contexts.at(-1),send=level=>{context.processor.onaudioprocess?.({inputBuffer:{getChannelData:()=>new Float32Array(2048).fill(level)}});};for(let i=0;i<2;i++)send(.001);for(let i=0;i<4;i++)send(.12);for(let i=0;i<9;i++)send(.001);};
     });
-    await button('설정').click();await page.locator('[data-settings-target=voice]').click();await page.getByLabel('음성 인식 방식').selectOption('local');await page.getByLabel('로컬 인식 서버 주소').fill(endpoint);await page.getByLabel('연속 듣기 사용',{exact:true}).check();assert.equal(await page.getByLabel('호출어 뒤 요청을 ChatGPT에 바로 전송',{exact:true}).isChecked(),false);await button('음성 설정 저장').click();await page.getByRole('status').filter({hasText:'음성 설정을 저장'}).waitFor();await closeSettings(page);
+    await button('설정').click();await page.locator('[data-settings-target=voice]').click();
+    assert.equal(await button('음성 설정 저장').count(),0);
+    if (!createNew) {
+      await app.evaluate(({ipcMain})=>{
+        const channel='flowrium:configureVoicePreferences',save=ipcMain._invokeHandlers.get(channel);
+        globalThis.voiceSaveTest={requests:[]};
+        const wait=new Promise(resolve=>{globalThis.voiceSaveTest.release=resolve;});
+        ipcMain.removeHandler(channel);
+        ipcMain.handle(channel,async(event,patch,accountRevision)=>{
+          globalThis.voiceSaveTest.requests.push(patch);
+          if(patch.silenceMs===1200){await wait;throw Error('시험 음성 설정 저장 실패');}
+          return save(event,patch,accountRevision);
+        });
+      });
+      try {
+        await page.getByLabel('말끝 무음 시간',{exact:true}).selectOption('1200');
+        await page.waitForFunction(()=>document.querySelector('[aria-label="말끝 무음 시간"]').value==='1200');
+        await page.getByLabel('음성 구간 최대 길이',{exact:true}).selectOption('60');
+      } finally {
+        await app.evaluate(()=>globalThis.voiceSaveTest.release());
+      }
+      await page.waitForFunction(async()=>{
+        const saved=await window.flowrium.voicePreferences();
+        return saved.silenceMs===900&&saved.maxSpeechSeconds===60;
+      });
+      await page.getByRole('status').filter({hasText:'시험 음성 설정 저장 실패'}).waitFor();
+      const writes=await app.evaluate(()=>globalThis.voiceSaveTest.requests);
+      assert.deepEqual(writes,[{silenceMs:1200},{maxSpeechSeconds:60}]);
+    }
+    await page.getByLabel('음성 인식 방식').selectOption('local');await page.getByLabel('로컬 인식 서버 주소').fill(endpoint);await page.getByLabel('연속 듣기 사용',{exact:true}).check();assert.equal(await page.getByLabel('호출어 뒤 요청을 ChatGPT에 바로 전송',{exact:true}).isChecked(),false);await closeSettings(page);
     await button('음성으로 입력').click();await button('녹음 끝내기').waitFor();await page.evaluate(()=>{window.voiceTest.segment();window.voiceTest.segment();});
     await page.waitForFunction(()=>document.querySelector('[aria-label="Codex에 보낼 작업 요청"]').value.includes('다음 검토할 요청'));
     assert.equal(await composer().inputValue(),'먼저 검토할 요청\n다음 검토할 요청');let state=await page.evaluate(()=>window.flowrium.bootstrap());assert.equal(state.sessions.every(session=>session.messages.length===0),true);assert.equal(calls,2);
     await page.evaluate(()=>window.voiceTest.segment());await page.getByRole('status').filter({hasText:'호출어를 기다리는 중'}).waitFor();assert.equal(await composer().inputValue(),'먼저 검토할 요청\n다음 검토할 요청');
     const before=await page.evaluate(()=>window.voiceTest.stopped);await button('설정').click();await page.locator('[data-settings-target=voice]').click();await page.waitForFunction(value=>window.voiceTest.stopped>value,before);
-    await page.getByLabel('호출어 뒤 요청을 ChatGPT에 바로 전송',{exact:true}).check();await page.getByLabel('답변 읽기 방식').selectOption('local');await page.getByLabel('로컬 읽기 서버 주소').fill(endpoint);await page.getByLabel('기준 음성 경로').fill('/test/server/reference.wav');await button('음성 설정 저장').click();await page.getByRole('status').filter({hasText:'음성 설정을 저장'}).waitFor();await closeSettings(page);
+    await page.getByLabel('호출어 뒤 요청을 ChatGPT에 바로 전송',{exact:true}).check();await page.getByLabel('답변 읽기 방식').selectOption('local');await page.getByLabel('로컬 읽기 서버 주소').fill(endpoint);await page.getByLabel('기준 음성 경로').fill('/test/server/reference.wav');await closeSettings(page);
+    await page.waitForFunction(async({endpoint})=>{
+      const prefs=await window.flowrium.voicePreferences();
+      return prefs.continuous&&prefs.autoSubmit&&prefs.provider==='local'&&prefs.tts==='local'&&prefs.localWhisper===endpoint&&prefs.localTts===endpoint&&prefs.ttsReferencePath==='/test/server/reference.wav';
+    },{endpoint});
     await composer().fill('');await button('음성으로 입력').click();await button('녹음 끝내기').waitFor();await page.evaluate(()=>window.voiceTest.segment());
     await page.waitForFunction(async()=>{const state=await window.flowrium.bootstrap();return state.sessions.some(session=>session.messages.some(message=>message.role==='user'&&message.text==='자동 전송 검증 요청'));});
     await page.getByText('확인한 결과입니다.',{exact:false}).first().waitFor();await button('녹음 끝내기').waitFor();

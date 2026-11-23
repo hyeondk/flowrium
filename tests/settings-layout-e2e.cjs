@@ -4,6 +4,7 @@ const fs=require('node:fs/promises');
 const os=require('node:os');
 const path=require('node:path');
 const {_electron}=require('playwright');
+const {expect}=require('playwright/test');
 const {Store}=require('../electron/store.cjs');
 
 function colorAlpha(value){
@@ -16,6 +17,95 @@ function checkTransparentColors(){
  for(const color of ['rgba(0, 0, 0, 1)','rgba(229, 239, 247, 0.001)','rgb(0, 0, 0)','#000000','white'])assert.notEqual(colorAlpha(color),0,'불투명하거나 일부 보이는 색은 투명으로 통과하지 않음');
 }
 
+async function openSettings(page,group) {
+ await page.locator('.workspace-side').hover();
+ await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');
+ await page.getByRole('button',{name:'설정',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'설정',exact:true});
+ await dialog.waitFor();
+ if(group)await dialog.getByRole('button',{name:group,exact:true}).click();
+ return dialog;
+}
+
+const generalSettings=page=>page.evaluate(async()=>(await window.flowrium.bootstrap()).settings);
+const voiceSettings=page=>page.evaluate(()=>window.flowrium.voicePreferences());
+
+async function verifyAutomaticSave(app,page,codexPath) {
+ const closeName={name:'설정 닫기',exact:true};
+ const ready=await openSettings(page,'화면');
+ assert.equal(await ready.getByRole('button',{name:'완료',exact:true}).count(),0,'설정은 별도 완료 버튼 없이 닫기에서 마칩니다.');
+ await app.evaluate(({ipcMain})=>{
+  const channel='flowrium:saveSettings',save=ipcMain._invokeHandlers.get(channel);
+  if(!save)throw Error('설정 저장 시험 경로를 찾을 수 없습니다.');
+  const state={started:[],finished:[],failGreen:true};
+  const hold=new Promise(resolve=>{state.release=resolve;});
+  globalThis.settingsSaveTest=state;
+  ipcMain.removeHandler(channel);
+  ipcMain.handle(channel,async(event,patch)=>{
+   state.started.push(patch);
+   try {
+    if(patch.accentColor==='green'&&state.failGreen){
+     state.failGreen=false;
+     throw Error('시험용 설정 쓰기 실패');
+    }
+    const result=await save(event,patch);
+    if(patch.theme==='dark')await hold;
+    return result;
+   }finally{state.finished.push(patch);}
+  });
+ });
+ const appearance=ready.getByRole('group',{name:'강조색'});
+ try {
+  await ready.getByRole('button',{name:'어둡게',exact:true}).click();
+  await expect.poll(()=>app.evaluate(()=>globalThis.settingsSaveTest.started.some(patch=>patch.theme==='dark'))).toBe(true);
+  await appearance.getByRole('button',{name:'보라',exact:true}).click();
+  await ready.getByRole('button',{name:'밝게',exact:true}).click();
+  await ready.getByRole('button',closeName).click();
+ }finally{await app.evaluate(()=>globalThis.settingsSaveTest.release());}
+ await ready.waitFor({state:'detached'});
+ await expect.poll(()=>generalSettings(page)).toMatchObject({theme:'light',accentColor:'purple'});
+ await expect.poll(()=>app.evaluate(()=>{
+  const {finished}=globalThis.settingsSaveTest;
+  return ['dark','light'].every(theme=>finished.some(patch=>patch.theme===theme))&&finished.some(patch=>patch.accentColor==='purple');
+ })).toBe(true);
+ await expect.poll(()=>generalSettings(page)).toMatchObject({theme:'light',accentColor:'purple'});
+ await expect.poll(()=>page.evaluate(()=>[document.documentElement.dataset.theme,document.documentElement.dataset.accent])).toEqual(['light','purple']);
+
+ const retry=await openSettings(page,'화면');
+ const green=retry.getByRole('group',{name:'강조색'}).getByRole('button',{name:'초록',exact:true});
+ await green.click();
+ await page.getByRole('alert').filter({hasText:'시험용 설정 쓰기 실패'}).waitFor();
+ assert.equal((await generalSettings(page)).accentColor,'purple','저장이 실패한 값은 저장된 값에 섞이지 않아야 합니다.');
+ await green.focus();
+ await page.keyboard.press('Enter');
+ await expect.poll(()=>generalSettings(page)).toMatchObject({theme:'light',accentColor:'green'});
+ await page.keyboard.press('Escape');
+ await retry.waitFor({state:'detached'});
+ assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'설정','Escape로 닫은 뒤 처음 연 버튼으로 초점 복귀');
+
+ const voice=await openSettings(page,'음성');
+ const nextVoice={provider:'local',continuous:true,silenceMs:1200,localWhisper:'http://127.0.0.1:9913'};
+ await voice.getByLabel('음성 인식 방식',{exact:true}).selectOption(nextVoice.provider);
+ await voice.getByLabel('연속 듣기 사용',{exact:true}).check();
+ await voice.getByLabel('말끝 무음 시간',{exact:true}).selectOption(String(nextVoice.silenceMs));
+ const address=voice.getByLabel('로컬 인식 서버 주소',{exact:true});
+ await address.fill(nextVoice.localWhisper);
+ await address.focus();
+ assert.equal(await voice.getByRole('button',{name:'음성 설정 저장',exact:true}).count(),0);
+ await page.keyboard.press('Escape');
+ await voice.waitFor({state:'detached'});
+ await expect.poll(()=>voiceSettings(page)).toMatchObject(nextVoice);
+
+ const account=await openSettings(page,'계정과 모델');
+ const pathInput=account.getByLabel(/Codex 실행 파일 경로/);
+ await pathInput.fill(codexPath);
+ await pathInput.focus();
+ await page.keyboard.press('Escape');
+ await account.waitFor({state:'detached'});
+ await expect.poll(()=>generalSettings(page)).toMatchObject({codexPath});
+ return {settings:{theme:'light',accentColor:'green',codexPath},voice:nextVoice};
+}
+
 async function run(){
  checkTransparentColors();
  const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-settings-layout-')));
@@ -23,9 +113,13 @@ async function run(){
  try{
   const profile=path.join(temp,'profile'),store=new Store(profile);await store.load();await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
-  app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(20000);page.on('pageerror',error=>errors.push(error.message));
-  await page.setViewportSize({width:1440,height:1000});await page.locator('.workspace-side').hover();await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');await page.getByRole('button',{name:'설정',exact:true}).click();
-  const dialog=page.getByRole('dialog',{name:'설정',exact:true});await dialog.waitFor();await settledLayout(dialog);
+  async function launch(){
+   app=await _electron.launch({args:[root],env,timeout:45000});
+   page=await app.firstWindow();page.setDefaultTimeout(20000);page.on('pageerror',error=>errors.push(error.message));
+   await page.setViewportSize({width:1440,height:1000});
+  }
+  await launch();
+  const dialog=await openSettings(page);await settledLayout(dialog);
   for(const [width,height]of [[1440,1000],[800,1000],[390,844],[320,844]]){
    await page.setViewportSize({width,height});const securityTab=page.locator('.settings-nav-item[data-settings-target="security"]');if(await securityTab.getAttribute('aria-expanded')!=='true')await securityTab.click();
    await page.waitForFunction(()=>{const panel=document.querySelector('.security-panel'),content=document.querySelector('.settings-content');if(!panel||!content)return false;const p=panel.getBoundingClientRect(),c=content.getBoundingClientRect();return p.top>=c.top-1&&p.top<c.top+70;});await settledLayout(dialog);
@@ -50,8 +144,20 @@ async function run(){
   const controls=page.getByRole('region',{name:'보안과 계정',exact:true});await page.locator('.settings-nav-item[data-settings-target="security"]').click();const pin=controls.getByLabel('새 잠금 번호',{exact:true});await pin.fill('1234');await pin.focus();await pin.hover();await page.mouse.wheel(0,80);assert.equal(await pin.inputValue(),'1234','스크롤로 숫자 입력 변경 없음');assert.equal(await pin.evaluate(e=>e===document.activeElement),true,'스크롤 뒤 입력 초점 유지');
   await pin.fill('');await settledLayout(dialog);
   if(process.env.FLOWRIUM_SETTINGS_LAYOUT_DIR){const output=path.resolve(process.env.FLOWRIUM_SETTINGS_LAYOUT_DIR);await fs.mkdir(output,{recursive:true});await fs.writeFile(path.join(output,'settings-layout.json'),JSON.stringify({result:'passed',measurements:measurements.map(m=>({width:m.width,height:m.height,padding:m.padding,controlHeights:[...new Set(m.controls.map(c=>c.height))],rowHeights:m.rows.map(r=>r.height),modal:m.modal,bodyOverflow:m.content.scroll-m.content.client,documentOverflow:m.document.scroll-m.document.client,ghost:m.ghost})),update},null,2));await page.screenshot({path:path.join(output,'settings-layout.png'),animations:'disabled'});}
-  await page.keyboard.press('Escape');await dialog.waitFor({state:'detached'});assert.deepEqual(errors,[]);console.log('설정 실제 앱 배치 / 가로16px·세로14px 표면 여백 / 목적별 탐색 / 1440·800·390·320폭 / 입력·행·행동 정렬 / 한글 어절 줄바꿈 / 가로 넘침 없음 / 배율을 반영한 중앙 팝업 / 투명한 보조 메뉴 / 숫자 스크롤·초점 보존 통과');
- }catch(error){if(page)console.error('넘침 요소',JSON.stringify(await page.locator('.settings-content').evaluate(root=>[...root.querySelectorAll('*')].filter(e=>e.clientWidth>0&&e.scrollWidth>e.clientWidth+1).map(e=>({tag:e.tagName,class:e.className,client:e.clientWidth,scroll:e.scrollWidth,text:e.textContent?.slice(0,100)})).slice(0,35))));if(measurements.length)console.error('설정 배치 측정',JSON.stringify(measurements));if(page)console.error('화면 상태',(await page.locator('body').innerText()).slice(0,1200));throw error;}
+  await page.keyboard.press('Escape');await dialog.waitFor({state:'detached'});
+  console.log('설정 실제 앱 배치 / 가로16px·세로14px 표면 여백 / 목적별 탐색 / 1440·800·390·320폭 / 입력·행·행동 정렬 / 한글 어절 줄바꿈 / 가로 넘침 없음 / 배율을 반영한 중앙 팝업 / 투명한 보조 메뉴 / 숫자 스크롤·초점 보존 통과');
+  const nextBackend=path.join(temp,'settings-test-codex.cjs');
+  await fs.copyFile(path.join(__dirname,'backend-fake-codex.cjs'),nextBackend);
+  const expected=await verifyAutomaticSave(app,page,nextBackend);
+  await app.close();app=null;page=null;
+  await launch();
+  await expect.poll(()=>generalSettings(page)).toMatchObject(expected.settings);
+  await expect.poll(()=>voiceSettings(page)).toMatchObject(expected.voice);
+  const restored=await openSettings(page,'음성');
+  assert.equal(await restored.getByLabel('로컬 인식 서버 주소',{exact:true}).inputValue(),expected.voice.localWhisper);
+  assert.deepEqual(errors,[]);
+  console.log('설정 자동 저장 / 응답 지연 뒤 여러 값과 같은 항목의 연속 변경 / 저장 오류와 키보드 재시도 / 닫기와 Escape / 음성 주소·시간·스위치와 Codex 경로 / 앱 재실행 복원 통과');
+ }catch(error){if(page&&await page.locator('.settings-content').count())console.error('넘침 요소',JSON.stringify(await page.locator('.settings-content').evaluate(root=>[...root.querySelectorAll('*')].filter(e=>e.clientWidth>0&&e.scrollWidth>e.clientWidth+1).map(e=>({tag:e.tagName,class:e.className,client:e.clientWidth,scroll:e.scrollWidth,text:e.textContent?.slice(0,100)})).slice(0,35))));if(measurements.length)console.error('설정 배치 측정',JSON.stringify(measurements));if(page)console.error('화면 상태',(await page.locator('body').innerText()).slice(0,1200));throw error;}
  finally{if(app)await app.close().catch(()=>{});await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});}
 }
 async function baseline(){
