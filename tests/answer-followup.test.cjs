@@ -32,7 +32,7 @@ test('최신 답변에 제안하고 거부, 중복, 대기 완료, 빈 대화를
     {messages:[user,answer],completedContinuationId:'last'},
   ]) assert.deepEqual(originalAnswerFollowups(session), []);
   const duplicate={messages:[{...user,text:'판매표의 누락 행을 확인해줘'},answer]};
-  assert.notEqual(originalAnswerFollowups(duplicate)[0].prompt,duplicate.messages[0].text);
+  assert.deepEqual(originalAnswerFollowups(duplicate),[]);
   const session = {messages:[user,{...answer,text:'긴 본문 '.repeat(20000)+'\n'+answer.text}]};
   const before = JSON.stringify(session);
   const suggestions = originalAnswerFollowups(session);
@@ -64,8 +64,8 @@ test('다음이라는 접두어가 없어도 구체적인 산출 제안과 공�
   assert.equal(followupFromAnswer('갈림길과 쉬어 갈 곳을 표로 정리할 수 있어요.').prompt,'갈림길과 쉬어 갈 곳을 표로 정리해줘');
   const make=text=>({messages:[{role:'user',text:'차이를 자세히 설명해줘'},{role:'assistant',text}]});
   assert.equal(originalAnswerFollowups(make('세 가지 비교 기준입니다.\n- 비용은 A가 낮습니다.\n- 처리 시간은 B가 짧습니다.\n- 지원 범위는 C가 넓습니다.'))[0].prompt,'답변에 나온 비교 기준과 차이를 한 표로 정리해줘');
-  assert.equal(originalAnswerFollowups(make('연결 방법은 다음 순서입니다.\n1. 실행 환경을 확인합니다.\n2. 연결 주소를 설정합니다.\n3. 다시 연결해 동작을 확인합니다.'))[0].prompt,'안내한 작업 순서를 실행할 수 있는 체크리스트로 정리해줘');
-  assert.match(originalAnswerFollowups(make('완료 항목입니다.\n- 문서를 작성했습니다.\n- 폴더를 정리했습니다.\n- 파일을 저장했습니다.'))[0].prompt,/문서.*핵심 결론/);
+  assert.deepEqual(originalAnswerFollowups(make('연결 방법은 다음 순서입니다.\n1. 실행 환경을 확인합니다.\n2. 연결 주소를 설정합니다.\n3. 다시 연결해 동작을 확인합니다.')),[]);
+  assert.deepEqual(originalAnswerFollowups(make('완료 항목입니다.\n- 문서를 작성했습니다.\n- 폴더를 정리했습니다.\n- 파일을 저장했습니다.')),[]);
 });
 
 test('명시 제안 없는 분석 완료에서도 문맥에 맞는 후속 작업을 찾고 이미 한 요청은 반복하지 않는다',async()=>{
@@ -75,7 +75,7 @@ test('명시 제안 없는 분석 완료에서도 문맥에 맞는 후속 작업
   const session={workflow:{status:'done'},messages:[user,answer]},before=JSON.stringify(session);
   assert.equal(originalAnswerFollowups(session)[0].prompt,'매출 변화에 가장 크게 영향을 준 요인을 분석해줘');
   assert.equal(JSON.stringify(session),before);
-  assert.match(originalAnswerFollowups({messages:[user,{...answer,text:'확인한 결과입니다.'} ]})[0].prompt,/온라인 스토어의 월별 매출/);
+  assert.deepEqual(originalAnswerFollowups({messages:[user,{...answer,text:'확인한 결과입니다.'}]}),[]);
   assert.deepEqual(originalAnswerFollowups({messages:[{role:'user',text:'후속 작업은 추천하지 마'},answer]}),[]);
   const repeated={messages:[{role:'user',text:'채널별 매출을 비교해줘'},{role:'assistant',text:'다음 단계\n- 채널별 매출을 비교해 주세요.\n- 분류되지 않은 주문을 확인해 주세요.'}]};
   assert.equal(originalAnswerFollowups(repeated)[0].prompt,'분류되지 않은 주문을 확인해줘');
@@ -103,7 +103,7 @@ test('미검증 결과와 최신 요청의 우선순위로 다음 작업을 고�
   assert.equal(followupFromAnswer('다음에는 실제 기기에서 알림을 검증해야 합니다.').prompt,'실제 기기에서 알림을 검증해줘');
   const completed = session('일정이 있는지 알려줘','그날은 일정이 없습니다.');
   assert.equal(canOfferFollowup(completed),true);
-  assert.match(originalAnswerFollowups(completed)[0].prompt,/일정.*확인한 기간/);
+  assert.deepEqual(originalAnswerFollowups(completed),[]);
   assert.equal(canOfferFollowup({...completed,completedContinuationId:'latest'}),false);
   assert.equal(canOfferFollowup(session('다음 단계는 제안하지 마세요.',answer)),false);
 });
@@ -111,10 +111,10 @@ test('미검증 결과와 최신 요청의 우선순위로 다음 작업을 고�
 test('명시적인 후속 작업이 없을 때도 직전 답변에 맞춘 초안을 찾고 실제 처리 단계를 알린다',async()=>{
   const {originalAnswerFollowups,prepareAnswerFollowup}=await loaded;
   const session=(text,request='표를 확인해줘')=>({messages:[{role:'user',text:request},{role:'assistant',text}]});
-  const completed=session('판매표를 확인했습니다.');
+  const completed=session('맥과 윈도우 새 버전을 배포했고 설치 버튼을 눌러 내려받았습니다.','새 버전을 배포해줘');
   const stages=[],start=performance.now();
   const result=await prepareAnswerFollowup(completed,percent=>stages.push(percent.toFixed(1)));
-  assert.match(result.prompt,/판매표.*확인한 범위/);
+  assert.equal(result.prompt,'공식 홈페이지의 맥·윈도우 설치 버튼이 공개 최신 태그와 같은 버전을 가리키는지 자동으로 검사해줘');
   assert.deepEqual(stages,['0.0','25.0','50.0','75.0','100.0']);
   assert(performance.now()-start<10000);
   assert.equal(result.prompt,originalAnswerFollowups(completed)[0].prompt);
@@ -134,7 +134,35 @@ test('긴 요청의 원문 보관 표기를 추천 주제로 쓰지 않는다',a
   ];
   assert.deepEqual(originalAnswerFollowups({messages}),[]);
   messages.at(-1).text='판매표를 확인했습니다.';
-  assert.match(originalAnswerFollowups({messages})[0].prompt,/판매표.*확인한 범위/);
+  assert.deepEqual(originalAnswerFollowups({messages}),[]);
+  messages.at(-1).text='월별 매출 분석을 완료했습니다. 온라인 스토어의 주문 데이터를 확인했습니다.';
+  assert.equal(originalAnswerFollowups({messages})[0].prompt,'매출 변화에 가장 크게 영향을 준 요인을 분석해줘');
+});
+
+test('배포 보고에 나온 고정 작업 줄과 스크롤을 실제로 검증하는 명령을 제안한다',async()=>{
+  const {originalAnswerFollowups,prepareAnswerFollowup}=await loaded;
+  const messages=[
+    {role:'user',text:'작업 내역에서 이전 기록이 위로 밀려 잘려 나가요. 현재 작업은 한 줄에서 갱신하고 위쪽을 읽을 수 있게 해줘.'},
+    {role:'assistant',text:'### 실시간 작업 과정\n입력창 위의 현재 작업은 같은 자리에서 갱신됩니다. 이전 과정은 작업 내역에서 펼쳐 볼 수 있고, 위쪽 기록을 읽는 중에 새 작업이 들어와도 스크롤 위치가 유지됩니다.\n\n### 검증과 정리\n맥 설치 파일을 새 버전으로 배포했습니다.'},
+  ];
+  const command='작업 내역 위쪽을 읽는 중에 테스트용 작업 이벤트를 연속으로 넣고, 현재 작업 줄과 읽던 위치가 밀리지 않는지 확인하는 회귀 테스트를 추가해줘';
+  assert.equal(originalAnswerFollowups({messages})[0]?.prompt,command);
+  assert.equal((await prepareAnswerFollowup({messages},()=>{}))?.prompt,command);
+  messages[1].text+='\n\n**다음 단계**\n- 적용할 때 필요한 순서와 확인 방법을 정리해 주세요.';
+  assert.equal(originalAnswerFollowups({messages})[0]?.prompt,command);
+});
+
+test('완료 사실만으로 절차 안내를 만들거나 관련 없는 이전 주제를 꺼내지 않는다',async()=>{
+  const {originalAnswerFollowups,followupFromAnswer}=await loaded;
+  const messages=[
+    {role:'user',text:'아이폰을 다시 열면 QR 없이 접속되는지 확인해줘'},
+    {role:'assistant',text:'맥을 재시작한 뒤 아이폰이 저장한 연결 주소로 재접속했습니다.'},
+  ];
+  assert.equal(originalAnswerFollowups({messages})[0]?.prompt,'시험 중계에 잠깐 응답 지연을 넣고 휴대폰이 저장된 연결 주소로 자동 복구되는지 검증해줘');
+  messages.push({role:'user',text:'문서의 문단 여백을 고쳐줘'},{role:'assistant',text:'문서의 문단 여백을 수정해 저장했습니다.'});
+  assert.deepEqual(originalAnswerFollowups({messages}),[]);
+  assert.equal(followupFromAnswer('**다음 단계**\n- 설정에 적용할 때 필요한 순서와 확인 방법을 정리해 주세요.'),undefined);
+  assert.equal(followupFromAnswer('**다음 단계**\n- 실패한 요청을 재전송하는 테스트를 추가해 주세요.').prompt,'실패한 요청을 재전송하는 테스트를 추가해줘');
 });
 
 test('인사나 반복 채팅 수신 확인에 후속 과제를 만들어 넣지 않는다',async()=>{

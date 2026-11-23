@@ -39,6 +39,8 @@ async function verifyFollowupTiming() {
   const trace = path.join(dir,'합성 전송 기록');
   const expected = '분류표의 누락 기기를 원본 목록과 대조해줘';
   const answer = '기기별 분류를 끝냈습니다.\n다음 단계: 분류표의 누락 기기를 원본 목록과 대조해 주세요.';
+  const fixedCommand='작업 내역 위쪽을 읽는 중에 테스트용 작업 이벤트를 연속으로 넣고, 현재 작업 줄과 읽던 위치가 밀리지 않는지 확인하는 회귀 테스트를 추가해줘';
+  const modelCommand={prompt:'반품과 쿠폰을 주문 단위로 다시 묶고, 결제 수수료가 비어 있는 주문 번호만 새 표로 저장해줘',evidence:'결제 수수료가 빠진 주문'};
   let app;
   try {
     const projectDir = path.join(dir,'합성 프로젝트');
@@ -52,10 +54,15 @@ async function verifyFollowupTiming() {
     ]});
     const long = await add('길게 받은 답변','분류를 살펴봐줘','자료의 값입니다. '.repeat(2000)+'\n'+answer);
     const declined = await add('추천 거부','다음 단계는 제안하지 마세요.',answer);
-    const finished = await add('완료한 결과','표를 확인해줘','판매표를 확인했습니다.');
+    const finished = await add('고정 작업 줄의 배포 결과','작업 과정은 같은 한 줄에서 계속 수정해서 보여줘.',
+      '입력창 위의 현재 작업은 같은 자리에서 갱신됩니다. 이전 과정은 작업 내역에서 펼쳐 볼 수 있고, 위쪽 기록을 읽는 중에 새 작업이 들어와도 스크롤 위치가 유지됩니다.\n맥 설치 파일을 새 버전으로 배포했습니다.');
+    const lowSignal = await add('완료 사실만 있는 답변','표를 확인해줘','판매표를 확인했습니다.');
+    const model = await add('주문 정산에서 찾은 다음 작업','정산표 항목에 맞게 검토해줘',
+      '반품과 쿠폰은 서로 다른 열로 들어 있습니다. 결제 수수료가 빠진 주문도 있었습니다.');
     const retained = await add('이전 중계가 남은 설치','기존 QR을 다시 안 찍어도 되도록 유지하고 이전 빌드 파일을 지워줘.',
       '새 설치 파일은 공개했습니다. 직전 버전 복구본과 현재 아이폰 중계가 사용 중인 이전 빌드의 실행 파일은 유지했습니다. 추가 조치가 필요한 사항은 없습니다.');
-    const waiting = await add('후속 작업 대기','기기 분류표의 누락을 살펴봐 주세요.','기기 분류표를 확인했습니다. 계속 진행할까요?');
+    const waiting = await add('후속 작업 대기','기기 분류표의 누락을 살펴봐 주세요.',
+      '기기 분류표를 확인했습니다. 시험 기기 번호를 원본 목록과 대조할까요? 계속 진행할까요?');
     const contextual=await store.createSession(project.id,{title:'추천의 전체 맥락 갱신',messages:[
       {id:randomUUID(),role:'user',text:'아이폰 연결 유지를 먼저 확인해 주세요.',createdAt:new Date().toISOString()},
       {id:randomUUID(),role:'user',text:'같은 조건으로 계속',createdAt:new Date().toISOString()},
@@ -65,6 +72,7 @@ async function verifyFollowupTiming() {
     await store.saveSettings({codexPath:path.join(__dirname,'continuation-fake-codex.cjs'),model:'test-model'});
     await fs.writeFile(trace,'');
     const env = {...process.env, FLOWRIUM_TEST_FOLLOWUP_TRACE:trace, FLOWRIUM_TEST_FOLLOWUP_ANSWER:answer,
+      FLOWRIUM_TEST_FOLLOWUP_MODEL:JSON.stringify(modelCommand),
       FLOWRIUM_USER_DATA:path.join(dir,'profile'), CODEX_HOME:path.join(dir,'codex')};
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.ELECTRON_RENDERER_URL;
@@ -105,8 +113,18 @@ async function verifyFollowupTiming() {
     await accept.click();
     assert.equal(await input.inputValue(),'직접 작성한 초안\n\n'+expected);
     await openConversation(page,finished.title);
-    await accept.filter({hasText:/판매표.*확인한 범위/}).waitFor({timeout:10000});
+    await accept.filter({hasText:fixedCommand}).waitFor({timeout:10000});
+    assert.doesNotMatch(await accept.innerText(),/필요한 순서|확인 방법/);
     assert.equal(await input.inputValue(),'');
+    await input.press('Tab');
+    assert.equal(await input.inputValue(),fixedCommand);
+    await input.fill('읽던 기록을 유지하는지 확인하는 테스트를 추가해줘');
+    const finishedState=await page.evaluate(sessionId=>window.flowrium.bootstrap().then(s=>s.sessions.find(v=>v.id===sessionId)),finished.id);
+    assert.equal(finishedState.messages.length,2,'추천을 골라 편집해도 대화에 전송하지 않는다');
+    await openConversation(page,lowSignal.title);
+    await page.locator('.messages').getByText('판매표를 확인했습니다.',{exact:true}).waitFor();
+    await page.getByRole('progressbar',{name:'작업 추천 중'}).waitFor({state:'hidden'});
+    assert.equal(await accept.count(),0,'구체적 근거가 없는 완료 문구로 순서 안내를 만들지 않는다');
     await openConversation(page,contextual.title);
     await accept.filter({hasText:'아이폰 연결 유지를 확인해 주세요'}).waitFor({timeout:10000});
     const contextChangedAt=Date.now();
@@ -155,6 +173,27 @@ async function verifyFollowupTiming() {
     const state = await page.evaluate(sessionId=>window.flowrium.bootstrap().then(s=>s.sessions.find(v=>v.id===sessionId)),fresh.id);
     assert.deepEqual(state.messages.filter(m=>m.role==='user').map(m=>m.text),['분류표를 확인해줘']);
     assert.equal(await fs.readFile(trace,'utf8'),'전송\n','실제 사용자 턴 이외의 요청이 없어 추가 토큰을 사용하지 않음');
+    await openConversation(page,model.title);
+    await page.locator('.messages').getByText('반품과 쿠폰은 서로 다른 열로 들어 있습니다. 결제 수수료가 빠진 주문도 있었습니다.',{exact:true}).waitFor();
+    await page.getByRole('progressbar',{name:'작업 추천 중'}).waitFor({state:'hidden'});
+    assert.equal(await accept.count(),0);
+    await page.locator('.workspace-side').hover();
+    await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='true');
+    await page.getByRole('button',{name:'설정',exact:true}).click();
+    const settings=page.getByRole('dialog',{name:'설정',exact:true});
+    await settings.getByRole('button',{name:'계정과 모델',exact:true}).click();
+    await settings.getByRole('switch',{name:'모델로 다음 작업 추천',exact:true}).click();
+    await settings.getByRole('button',{name:'설정 닫기',exact:true}).click();
+    const modelStarted=Date.now();
+    await accept.filter({hasText:modelCommand.prompt}).waitFor({timeout:10000});
+    assert(Date.now()-modelStarted<10000);
+    await accept.click();
+    assert.equal(await input.inputValue(),modelCommand.prompt);
+    await input.fill('정산표에서 결제 수수료 누락분만 별도 표로 저장해줘');
+    const modelState=await page.evaluate(sessionId=>window.flowrium.bootstrap().then(s=>s.sessions.find(v=>v.id===sessionId)),model.id);
+    assert.equal(modelState.messages.length,2);
+    assert.equal(await fs.readFile(trace,'utf8'),'전송\n분석\n','활성화한 뒤 격리된 추천 요청 한 건만 실행하고 초안은 전송하지 않는다');
+    console.log('데스크톱 화면 / 안내 문구 대신 작업 줄의 회귀 검사 초안 / 근거 없는 완료 보고는 숨김 / 모델 추천 활성화 뒤 실제 로컬 IPC와 격리 분석 RPC를 경유해 편집 가능한 초안 생성');
     console.log('무초점 답변 후 추천 '+Math.round(metrics.delay)+'ms / 추가 모델 호출 0 / 클릭과 Tab은 편집 가능한 초안만 생성 / 명시 후속 없는 답변·거부·빈 대화·긴 답변 통과');
     console.log('데스크톱: 같은 답변의 앞선 대화 수정 뒤 추천 갱신 '+contextMs+'ms');
     console.log('320·390·960·1440px / 소수 첫째 자리 진행률과 진행·완료가 같은 줄 / 결과 뒤에는 전체 너비 추천과 아래 줄의 진행·완료');

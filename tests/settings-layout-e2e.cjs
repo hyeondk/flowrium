@@ -185,14 +185,21 @@ async function verifyAutomaticSave(app,page,codexPath) {
  await voice.waitFor({state:'detached'});
  await expect.poll(()=>voiceSettings(page)).toMatchObject(nextVoice);
 
+ await page.locator('.side-usage[data-connected=true]').waitFor();
  const account=await openSettings(page,'계정과 모델');
+ const followups=account.getByRole('switch',{name:'모델로 다음 작업 추천',exact:true});
+ await expect(followups).not.toBeChecked();
+ await expect(followups).toHaveAccessibleDescription(/현재 대화의 일부.*사용량이나 크레딧/);
+ await assert.rejects(page.evaluate(()=>window.flowrium.saveSettings({aiFollowups:'true'})),/모델 추천 설정/);
+ await followups.click();
+ await expect.poll(()=>generalSettings(page)).toMatchObject({aiFollowups:true});
  const pathInput=account.getByLabel(/Codex 실행 파일 경로/);
  await pathInput.fill(codexPath);
  await pathInput.focus();
  await page.keyboard.press('Escape');
  await account.waitFor({state:'detached'});
  await expect.poll(()=>generalSettings(page)).toMatchObject({codexPath});
- return {settings:{theme:'light',accentColor:'green',codexPath},voice:nextVoice};
+ return {settings:{theme:'light',accentColor:'green',aiFollowups:true,codexPath},voice:nextVoice};
 }
 
 async function run(){
@@ -255,12 +262,20 @@ async function run(){
   await launch();
   await expect.poll(()=>generalSettings(page)).toMatchObject(expected.settings);
   await expect.poll(()=>voiceSettings(page)).toMatchObject(expected.voice);
+  await page.locator('.side-usage[data-connected=true]').waitFor();
+  const modelSettings=await openSettings(page,'계정과 모델');
+  const followups=modelSettings.getByRole('switch',{name:'모델로 다음 작업 추천',exact:true});
+  await expect(followups).toBeChecked();
+  await followups.click();
+  await expect.poll(async()=>JSON.parse(await fs.readFile(path.join(profile,'followup-preference-v1.json'),'utf8'))).toEqual({version:1,accountKey:null});
+  assert.equal(Object.hasOwn(await diskSettings(profile),'aiFollowups'),false,'동의 저장이 이전 앱이 읽는 작업 공간 설정을 바꾸지 않음');
+  await modelSettings.getByRole('button',closeSettingsButton).click();await modelSettings.waitFor({state:'detached'});
   const restored=await openSettings(page,'음성');
   assert.equal(await restored.getByLabel('로컬 인식 서버 주소',{exact:true}).inputValue(),expected.voice.localWhisper);
   await restored.getByRole('button',closeSettingsButton).click();await restored.waitFor({state:'detached'});
   await verifyRelaySettings(app,page);
   assert.deepEqual(errors,[]);
-  console.log('설정 자동 저장 / 응답 지연 뒤 여러 값과 같은 항목의 연속 변경 / 저장 오류와 키보드 재시도 / 닫기와 Escape / 음성 주소·시간·스위치와 Codex 경로 / 앱 재실행 복원 통과');
+  console.log('설정 자동 저장 / 응답 지연 뒤 여러 값과 같은 항목의 연속 변경 / 저장 오류와 키보드 재시도 / 닫기와 Escape / 음성 주소·시간·스위치와 Codex 경로 / 모델 추천 기본 해제·선택 저장·재실행 복원 통과');
  }catch(error){if(page&&await page.locator('.settings-content').count())console.error('넘침 요소',JSON.stringify(await page.locator('.settings-content').evaluate(root=>[...root.querySelectorAll('*')].filter(e=>e.clientWidth>0&&e.scrollWidth>e.clientWidth+1).map(e=>({tag:e.tagName,class:e.className,client:e.clientWidth,scroll:e.scrollWidth,text:e.textContent?.slice(0,100)})).slice(0,35))));if(measurements.length)console.error('설정 배치 측정',JSON.stringify(measurements));if(page)console.error('화면 상태',(await page.locator('body').innerText()).slice(0,1200));throw error;}
  finally{await fs.writeFile(syncGate+'.release','').catch(()=>{});if(app)await app.close().catch(()=>{});await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});}
 }

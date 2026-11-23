@@ -1,7 +1,11 @@
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path');
-const {randomUUID}=require('node:crypto'),{EventEmitter}=require('node:events'),{_electron}=require('playwright');
+const {createHash,randomUUID}=require('node:crypto'),{spawn}=require('node:child_process');
+const {EventEmitter}=require('node:events'),{_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs'),{Controller}=require('../electron/controller.cjs');
+const {CodexClient}=require('../electron/codex.cjs');
 const {registerRemote}=require('../electron/remote.cjs');
+const {createFollowupGenerator}=require('../electron/followup-generator.cjs');
+const {backendFixtureAccount}=require('./project-trust-fixture.cjs');
 
 async function typography(page,selectors) {
  return page.evaluate(selectors=>selectors.map(selector=>{
@@ -90,11 +94,66 @@ async function verifyRecommendationFreshness(page,chat,expected,whenChanged) {
  }
 }
 
+async function verifyCommandDrafts(page,store,finished,model,modelCommand,trace,changeModelPreference) {
+ const list=page.getByRole('button',{name:'프로젝트로',exact:true});
+ const input=page.getByRole('textbox',{name:'요청',exact:true});
+ const candidate=page.locator('.mobile-followup');
+ const expected='작업 내역 위쪽을 읽는 중에 테스트용 작업 이벤트를 연속으로 넣고, 현재 작업 줄과 읽던 위치가 밀리지 않는지 확인하는 회귀 테스트를 추가해줘';
+ const writes=[];
+ const record=req=>{
+  if(req.url().endsWith('/api/mobile/call')) {
+   const method=req.postDataJSON()?.method;
+   if(method==='send'||method==='workflowAction')writes.push(method);
+  }
+ };
+ const setModelEnabled=async enabled=>{
+  changeModelPreference(enabled);
+  const refreshed=page.waitForResponse(response=>response.url().endsWith('/api/mobile/state')&&response.ok());
+  await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+  assert.equal((await (await refreshed).json()).settings.aiFollowups,enabled);
+ };
+ page.on('request',record);
+ try {
+  await page.getByRole('button',{name:new RegExp(finished.title)}).click();
+  await candidate.filter({hasText:expected}).waitFor({timeout:8000});
+  assert.doesNotMatch(await candidate.innerText(),/필요한 순서|확인 방법/);
+  await candidate.click();
+  assert.equal(await input.inputValue(),expected);
+  await input.fill('읽던 기록을 유지하는지 확인하는 테스트를 추가해줘');
+  await input.press('Tab');
+  assert.equal(await input.inputValue(),'읽던 기록을 유지하는지 확인하는 테스트를 추가해줘');
+  assert.equal(store.session(finished.id).messages.length,2);
+  assert.equal(await fs.readFile(trace,'utf8'),'','기기 내 추천이 모델을 호출하지 않는다');
+  await list.click();
+  await setModelEnabled(true);
+  const answerId=model.messages.at(-1).id;
+  const reply=page.waitForResponse(response=>response.url().endsWith('/api/mobile/call')&&
+    response.request().postDataJSON()?.method==='readChatRecommendation'&&response.ok());
+  const started=Date.now();
+  await page.getByRole('button',{name:new RegExp(model.title)}).click();
+  const response=await reply;
+  assert.deepEqual(response.request().postDataJSON().args,[model.id,answerId]);
+  assert.equal((await response.json()).result.prompt,modelCommand.prompt);
+  await candidate.filter({hasText:modelCommand.prompt}).waitFor({timeout:8000});
+  const elapsed=Date.now()-started;
+  assert(elapsed<10000);
+  await input.focus();await input.press('Tab');
+  assert.equal(await input.inputValue(),modelCommand.prompt);
+  await input.fill('정산표에서 결제 수수료 누락분만 별도 표로 저장해줘');
+  assert.equal(store.session(model.id).messages.length,2);
+  assert.deepEqual(writes,[]);
+  assert.equal(await fs.readFile(trace,'utf8'),'분석\n','허용한 모델 추천만 독립 분석으로 한 건 요청한다');
+  await list.click();
+  await setModelEnabled(false);
+  console.log('휴대폰 화면 / 안내 문구 대신 고정 작업 줄 검증 초안 / 합성 모델의 새 명령 '+elapsed+'ms / 클릭과 Tab 뒤 편집 / 자동 전송 없음');
+ } finally {page.off('request',record);}
+}
+
 async function main(){
  const root=path.resolve(__dirname,'..'),scratch=path.join(root,'.flowrium-tmp');await fs.mkdir(scratch,{recursive:true});
  const temp=await fs.mkdtemp(path.join(scratch,'mobile-density-'));
  const output=process.env.FLOWRIUM_CAPTURE_DIR && path.resolve(process.env.FLOWRIUM_CAPTURE_DIR);
- let app,controller,remote,workflow;
+ let app,controller,remote,workflow,generator;
  try{
   const projectDir=path.join(temp,'온라인 스토어 분석');await fs.mkdir(path.join(projectDir,'docs'),{recursive:true});
   const store=new Store(path.join(temp,'profile'));await store.load();const project=await store.addProject(projectDir);
@@ -121,8 +180,26 @@ async function main(){
    row('user','이전 빌드는 전부 정리해줘.'),
    row('assistant','이전 설치본을 삭제했습니다. 직전 버전 복구본과 현재 휴대폰 중계가 사용하는 이전 빌드 실행 파일은 유지했습니다. 남은 작업은 없습니다.'),
   ]});
-  const handlers=new Map(),register=(name,fn)=>handlers.set(name,fn);let pending=[],locked=false;const delivered=[];
-  controller=new Controller(store,{descriptor:{command:process.execPath,prefix:[path.join(__dirname,'backend-fake-codex.cjs')],label:'격리된 검증용 연결',node:false},canRun:()=>true,queueOwner:()=>0});await controller.connect();
+  const finished=await store.createSession(project.id,{title:'고정 작업 줄의 배포 결과',messages:[
+   row('user','작업 과정은 같은 한 줄에서 계속 수정해서 보여줘.'),
+   row('assistant','입력창 위의 현재 작업은 같은 자리에서 갱신됩니다. 이전 과정은 작업 내역에서 펼쳐 볼 수 있고, 위쪽 기록을 읽는 중에 새 작업이 들어와도 스크롤 위치가 유지됩니다.\n맥 설치 파일을 새 버전으로 배포했습니다.'),
+  ]});
+  const model=await store.createSession(project.id,{title:'주문 정산에서 찾은 다음 작업',messages:[
+   row('user','정산표 항목에 맞게 검토해줘'),
+   row('assistant','반품과 쿠폰은 서로 다른 열로 들어 있습니다. 결제 수수료가 빠진 주문도 있었습니다.'),
+  ]});
+  const modelCommand={prompt:'반품과 쿠폰을 주문 단위로 다시 묶고, 결제 수수료가 비어 있는 주문 번호만 새 표로 저장해줘',evidence:'결제 수수료가 빠진 주문'};
+  const trace=path.join(temp,'추천 합성 전송 기록');await fs.writeFile(trace,'');
+  const accountOwner=createHash('sha256').update('flowrium-account:'+backendFixtureAccount.toLowerCase()).digest('hex');
+  const client=new CodexClient({descriptor:{command:process.execPath,prefix:[path.join(__dirname,'continuation-fake-codex.cjs')],label:'격리된 검증용 연결',node:false},
+   spawn:(command,args,options)=>spawn(command,args,{...options,env:{...options.env,CODEX_HOME:path.join(temp,'codex'),
+    FLOWRIUM_TEST_FOLLOWUP_TRACE:trace,FLOWRIUM_TEST_FOLLOWUP_MODEL:JSON.stringify(modelCommand)}}),
+  });
+  const handlers=new Map(),register=(name,fn)=>handlers.set(name,fn);
+  let pending=[],locked=false,modelEnabled=false;const delivered=[];
+  controller=new Controller(store,{client,canRun:()=>true,queueOwner:()=>0,modelAccount:()=>accountOwner});await controller.connect();
+  generator=createFollowupGenerator(controller,{canRun:()=>modelEnabled});
+  register('readChatRecommendation',(sessionId,answerId)=>generator.recommend(sessionId,answerId));
   for(const [name,fn]of Object.entries({send:i=>controller.send(i),interrupt:id=>controller.interrupt(id),connect:()=>controller.connect(),saveSettings:(value,options)=>controller.saveSettings(value,options),listQueuedMessages:id=>controller.listQueuedMessages(id),securityPending:()=>[],readAccountUsage:()=>({checkedAt:Date.now(),allowed:true,credits:{hasCredits:false,unlimited:false},buckets:[]})}))register(name,fn);
   register('securityPending',()=>pending);
   register('answerInput',async input=>{delivered.push(input);pending=pending.filter(entry=>entry.requestId!==input.requestId);});
@@ -130,7 +207,8 @@ async function main(){
   require('../electron/chat-attachments.cjs').registerChatAttachments(register,store);
   require('../electron/conversation-tools.cjs').registerConversationTools(register,controller);
   workflow=require('../electron/workflow.cjs').registerWorkflow(register,store,controller,{canRun:()=>true,accountRevision:()=>0,intervalMs:3600000});
-  remote=registerRemote(register,{store,controller,handlers,isLocked:()=>locked,accountRevision:()=>0,version:'261118_02',tunnelFactory:()=>{
+  remote=registerRemote(register,{store,controller,handlers,isLocked:()=>locked,accountRevision:()=>0,canUseFollowupModel:()=>modelEnabled,
+   version:'261118_02',tunnelFactory:()=>{
    const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.exitCode=child.signalCode=null;
    child.kill=()=>{child.exitCode=0;child.emit('exit',0)};
    setTimeout(()=>child.stderr.emit('data',Buffer.from('https://density-fixture.trycloudflare.com Registered tunnel connection')),5);return child;
@@ -192,6 +270,7 @@ async function main(){
   assert.equal(await page.getByRole('textbox',{name:'요청',exact:true}).inputValue(),retainedPrompt);
   console.log('이전 중계가 남은 휴대폰 대화 추천 '+retainedMs+'ms / QR 보존과 교체 후 정리가 편집 가능한 초안에 반영');
   await page.getByRole('button',{name:'프로젝트로',exact:true}).click();
+  await verifyCommandDrafts(page,store,finished,model,modelCommand,trace,value=>{modelEnabled=value;});
   await page.getByRole('button',{name:/월별 매출 분석/}).click();
   await page.getByRole('region',{name:'보낸 질문 답변'}).waitFor();
   await page.locator('.citation-preview img').waitFor();
@@ -278,6 +357,7 @@ async function main(){
   console.log('모바일 응답 요약 / 원시 태그 비노출 / 로컬 추천 / Tab 초안 / IME / 전송 없음 / 네 화면 크기 통과 '+JSON.stringify(metrics));
   if(output) console.log('최종 캡처 '+output);
  } finally {
+  generator?.invalidate();
   if(app)await app.close();if(remote)await remote.shutdown();if(workflow)await workflow.shutdown();if(controller)await controller.shutdown();
   await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:150});
  }

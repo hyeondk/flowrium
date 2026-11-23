@@ -133,6 +133,7 @@ export interface CodexHistoryEntry {
 }
 export interface Settings {
   chatDefaults?: ChatPreferences;
+  aiFollowups?: boolean;
   codexPath?: string;
   model?: string;
   effort: Effort;
@@ -228,6 +229,7 @@ export interface FlowriumAPI
   readRequestSource(sessionId:string,messageId:string,offset:number|"full"):Promise<{text:string;next:number|null}>;
   copyRequestSource(sessionId:string,messageId:string):Promise<void>;
   readChatCitation(session:string,message:string,index:number,action:'preview'|'download'|'reveal'):Promise<{name:string;dataUrl?:string}>;
+  readChatRecommendation(sessionId:string,answerId:string):Promise<import('../electron/mobile/answer-followup.js').LocalFollowup|null>;
   readChatAttachment(projectId:string,id:string):Promise<{attachment:ChatAttachment;dataUrl?:string}>;
   listQueuedMessages(sessionId:string):Promise<QueuedMessage[]>;
   cancelQueuedMessage(sessionId:string,id:string):Promise<void>;

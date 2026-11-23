@@ -23,7 +23,7 @@ import ProjectCategoryLabel from "./ProjectCategoryLabel";
 import {ExecutionSummary} from "./ExecutionStatus";
 import {QUESTION_DECISION_NOTICE,sessionExecution,visibleProposals,type ExecutionActivity,type ExecutionState} from "../shared/execution-state";
 import type {WorkflowNotification,WorkflowProposal,WorkflowState} from "../shared/workflow";
-import {usePresence,MotionOverlay,ModalPortal,Toast,AnimatedCheckbox,LikeButton,CloseButton} from "./ui-motion";
+import {usePresence,MotionOverlay,ModalPortal,Toast,AnimatedCheckbox,AnimatedSwitch,LikeButton,CloseButton} from "./ui-motion";
 import PortfolioReports from "./PortfolioReports";
 import WorkActionPopup,{type PopupWorkKind} from "./WorkActionPopup";
 import MusicPanel from "./MusicPanel";
@@ -1212,13 +1212,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       });
     }
   }
-  async function continueWaitingSession(messageId:string){
+  async function continueWaitingSession(messageId:string,suggested?:string){
     if(!api||!session||submittingRef.current||workActive||modelSaves.current.has(draftKey))return;
-    const originKey=draftKey,originalInput=input,originalAttachments=attachments;
+    const originKey=draftKey,originalInput=input,originalAttachments=attachments,request=input.trim()?input:suggested||input;
     submittingRef.current=true;setSubmitting(true);
     try{
       if (!await confirmChatFolders(session.projectId,session)) return;
-      await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,...longSubmission(originKey,originalInput),text:originalInput,attachments:originalAttachments.map(a=>a.id),mode,model:data.settings.model||undefined,effort:data.settings.effort});
+      await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,...longSubmission(originKey,request),text:request,attachments:originalAttachments.map(a=>a.id),mode,model:data.settings.model||undefined,effort:data.settings.effort});
       submissionReceipts.current.delete(originKey);
       setDrafts(previous=>{const draft=previous[originKey];return {...previous,[originKey]:{...draft,mode:draft?.mode||mode,text:draft?.text===originalInput?'':draft?.text||'',attachments:(draft?.attachments||[]).filter(item=>!originalAttachments.some(sent=>sent.id===item.id))}}});
       stickToBottom.current=true;
@@ -1542,7 +1542,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     )}
                   </div>}
                   <ChatContinuation key={draftKey} session={session} running={workActive || Boolean(activity?.unsettled) || sessionApprovals.length > 0 || Boolean(session && visibleProposals(proposals).some(p=>p.sourceId===session.id || p.targetId===session.id))}
-                    authenticated={connection.authenticated} busy={submitting || !!modelPreview} draft={input} textareaRef={composer}
+                    authenticated={connection.authenticated} aiFollowups={data.settings.aiFollowups===true} busy={submitting || !!modelPreview} draft={input} textareaRef={composer}
                     active={chatActive && dockOpen && !settingsOpen && !attentionOpen}
                     placeholder={project ? "어떤 작업을 함께 해볼까요?" : "만들고 싶은 것, 풀고 싶은 문제를 적어 주세요."}
                     onChange={setInput} onSend={() => void send()} onContinue={continueWaitingSession}
@@ -2258,6 +2258,18 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     {effortOptions(models.find(row=>row.id===data.settings.model)||(!data.settings.model?models.find(row=>row.isDefault):undefined)).map(row=><option key={row.reasoningEffort} value={row.reasoningEffort}>{effortLabels[row.reasoningEffort]}</option>)}
                   </select>
                 </label>
+                <label>
+                  모델로 다음 작업 추천
+                  <AnimatedSwitch
+                    checked={data.settings.aiFollowups === true}
+                    disabled={!connection.authenticated}
+                    aria-describedby="model-followups-description"
+                    onChange={(event) => void saveSettings({ aiFollowups: event.target.checked })}
+                  />
+                </label>
+                <p className="field-hint" id="model-followups-description">
+                  켜면 현재 대화의 일부를 연결한 ChatGPT 계정에 보내 명령 초안을 만듭니다. 계정 사용량이나 크레딧이 차감될 수 있습니다.
+                </p>
               </div>
               </SettingsGroup><SettingsGroup id="appearance"><div className="settings-section appearance">
                 <div>

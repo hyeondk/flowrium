@@ -9,8 +9,12 @@ const postponed = /(?:나중에|이따(?:가)?|잠시\s*뒤에?)\s*(?:부탁|진
 const actionVerb = '정리|비교|검토|작성|검증|분류|분석|확인|점검|시험|검사|수정|추가|변환|요약|제작|구현|적용|진행|실행|대조|측정|반영|조사|계산|선정|생성|설계|수집|기록|준비|조정|개선|보완';
 const actionNoun = new RegExp('(?:'+actionVerb+')$');
 const suggestedAction = new RegExp('^(.*?)('+actionVerb+')(?:(?:할|해\\s*볼)\\s*수\\s*(?:있습니다|있어요|있다)|해야\\s*(?:합니다|해요)|할\\s*필요가\\s*(?:있습니다|있어요)|하는\\s*(?:편이|것이|게)\\s*좋(?:습니다|아요|겠습니다))$');
+const advicePrompt = /(?:필요한\s*(?:순서|절차|조건|확인 방법)|먼저\s*확인할\s*조건|(?:순서|절차)(?:와|과)\s*(?:확인\s*)?방법|(?:설치|연결|사용|적용|확인|진행|검증)\s*방법)(?:을|를)?\s*(?:정리해|설명해|알려|안내해)(?:\s*(?:줘|주세요)|$)/;
+export function isAdvisoryFollowup(text) {
+  return /필요한\s*순서(?:와|과|\s*및)\s*확인\s*방법/.test(text) || advicePrompt.test(text);
+}
 function suggestion(text, reason='직전 답변의 다음 작업') {
-  if (text.length < 6 || text.length > 190 || /https?:|[`<>\[\]{}"“”]|(?:어떤|무엇|어떻게|어느|아니면|또는)\s/.test(text)) return;
+  if (text.length < 6 || text.length > 190 || isAdvisoryFollowup(text) || /https?:|[`<>\[\]{}"“”]|(?:어떤|무엇|어떻게|어느|아니면|또는)\s/.test(text)) return;
   if (text.split(/\s+/).length < 2 || /^(?:(?:이대로|그대로|계속|이어서|다음\s*단계(?:를|로)?)\s*)*(?:이어서\s*)?(?:진행|계속|시작)해줘$/.test(text)) return;
   return {source:'conversation', title:text, prompt:text, reason};
 }
@@ -113,9 +117,22 @@ function answerCandidates(lines) {
 export function followupFromAnswer(text) {
   return answerCandidates(publicLines(text||'').filter(line=>!riskyLine.test(line)))[0];
 }
-// 명시적인 다음 행동 다음으로, 답변에 실제로 나온 결과의 활용 방법을 찾는다.
+// 명시된 다음 작업이 없으면 최신 답변에 나온 기능이나 산출물에 적용할 후속 작업을 찾는다.
 function contextualCandidates(body,request) {
   const context=body+'\n'+request,result=[];
+  if (/(?:현재|실시간)\s*작업|작업\s*내역/.test(body) && /스크롤/.test(body)
+      && /고정|갱신|같은\s*(?:자리|줄|위치)/.test(body) && /새\s*(?:작업|기록|이벤트)|업데이트/.test(context)
+      && !/연속\s*(?:입력|갱신|이벤트).*회귀|회귀\s*테스트.*스크롤/.test(body)) {
+    result.push(suggestion('작업 내역 위쪽을 읽는 중에 테스트용 작업 이벤트를 연속으로 넣고, 현재 작업 줄과 읽던 위치가 밀리지 않는지 확인하는 회귀 테스트를 추가해줘','최신 답변의 실시간 작업 표시와 스크롤 유지 검증'));
+  }
+  if (/휴대폰|아이폰/.test(body) && /중계|QR|연결\s*주소/.test(body) && /재시작|다시\s*열/.test(body)
+      && /재연결|재접속|유지|QR\s*없이/.test(body) && !/잠시\s*끊|중단.*자동\s*복구|일시\s*장애/.test(body)) {
+    result.push(suggestion('시험 중계에 잠깐 응답 지연을 넣고 휴대폰이 저장된 연결 주소로 자동 복구되는지 검증해줘','최신 답변의 휴대폰 재접속에 일시 장애 조건 추가'));
+  }
+  if (/다운로드\s*버튼|설치\s*버튼/.test(body) && /맥|Mac/i.test(body) && /윈도우|Windows/i.test(body)
+      && /최신\s*(?:버전|판)|새\s*(?:버전|설치본)|배포/.test(body) && !/이전\s*(?:버전|판)\s*링크|버전\s*갱신\s*회귀/.test(body)) {
+    result.push(suggestion('공식 홈페이지의 맥·윈도우 설치 버튼이 공개 최신 태그와 같은 버전을 가리키는지 자동으로 검사해줘','최신 답변의 두 플랫폼 다운로드 링크 교차 검사'));
+  }
   if (/매출/.test(body) && /월별|채널별|기간별|주문|온라인|스토어|쇼핑몰|판매/.test(context)
       && /(?:분석|집계|비교|정리)[^.!?\n]{0,30}(?:마쳤|완료|했습니다|했어요|끝냈)/.test(body)) {
     if (!/원인|요인|기여|영향/.test(context)) result.push(suggestion('매출 변화에 가장 크게 영향을 준 요인을 분석해줘','매출 분석 결과의 후속 확인'));
@@ -129,14 +146,6 @@ function contextualCandidates(body,request) {
   if (items.length>=3 && /비교|차이|장점|단점/.test(body) && /기준|비용|시간|성능|범위|조건/.test(body)
       && !/비교표|표로|표로는|\|.*\|/.test(context)) {
     result.push(suggestion('답변에 나온 비교 기준과 차이를 한 표로 정리해줘','답변에 있는 비교 항목 정리'));
-  }
-  if (items.length>=3 && /순서|절차|단계|방법/.test(body) && /확인|검증|연결|설정|준비|실행|설치|작성/.test(body)
-      && !/체크리스트|\[[ xX]\]/.test(context)) {
-    result.push(suggestion('안내한 작업 순서를 실행할 수 있는 체크리스트로 정리해줘','답변에 있는 작업 순서 정리'));
-  }
-  if (/코드|구현|함수|동작|처리 로직/.test(request) && /수정했|해결했|반영했|구현했/.test(body)
-      && !/회귀|검증|테스트|시험|검사|통과/.test(body)) {
-    result.push(suggestion('이번에 수정한 동작의 주요 경로를 회귀 검사해줘','직전 수정 결과의 실제 동작 확인'));
   }
   return result.filter(Boolean);
 }
@@ -170,36 +179,10 @@ function rank(row,requestTerms,historyTerms) {
   return (priority?40:0)+Math.min(direct,4)*8+Math.min(related,28);
 }
 
-const topicLead = /^(?:(?:다만|우선|먼저|이어서|따라서|실제로|현재|이번(?:에|에는|의)?|최종적으로|다시|추가로|결과적으로)\s*[,，]?\s+)+/;
-const genericTopic = /^(?:(?:이|그|해당|직전|이전|이번|같은|모든|다른)\s+)*(?:내용|요청|작업|동작|상태|결과|확인한\s*결과|필요한\s*자료|핵심|요약|응답|답변|메시지|모두|문제|각각|방법|항목|다음\s*단계|관련\s*내용|테스트|확인|그날|내일|오늘|어제|이번엔)(?:의\s*내용)?$/;
-const topicPrefix = /^(?:(?:결과|요약|현재\s*상태|확인\s*결과|검증\s*결과|완료\s*항목|남은\s*(?:작업|사항|검증)|다음\s*(?:작업|단계)|후속\s*작업)\s*[:：]\s*)|^(?:[-*+]\s+|\d+[.)]\s+)(?:\[[ xX]\]\s*)?/;
-const topicContent = /^[가-힣\p{L}\p{N}][가-힣\p{L}\p{N} .,_()-]*$/u;
 const quietIntro = /^(?:예상\s*소요\s*시간|안녕하세요|감사합니다|도움이\s*되|요청을\s*확인|무엇을\s*도와)/;
-function findTopic(lines,terms) {
-  let best,score=-1;
-  for (const line of [...lines.slice(0,12),...lines.slice(-32)]) {
-    const sentences=line.replace(topicPrefix,'').split(/(?<=[.!?。])\s+/).slice(0,6);
-    for (const sentence of sentences) {
-      const clean=sentence.trim().replace(topicLead,'').replace(/[.!?。]+$/,'');
-      if (clean.length<2 || quietIntro.test(clean) || /https?:|[\\/@{}<>\[\]`"“”]|\d{6,}|(?:비밀번호|승인번호|인증번호|계좌번호|인증\s*토큰)\s*[\w-]+/.test(clean)) continue;
-      const keyword=/^(.{2,42}?)(?:에서는|에도|에서|은|는|이|가|을|를|으로)(?:\s|$)/.exec(clean)?.[1];
-      const inner=Array.from(clean.slice(0,160).matchAll(/(?:^|\s)([가-힣]{2,18}?)(?:은|는|이|가|을|를|에서)(?=\s)/g),match=>match[1]);
-      for(const term of [keyword,...inner,clean].filter(Boolean)) {
-        const topic=term.replace(/^(?:해당|관련된|다른|지금의|이전의)\s+/, '').trim();
-        if (topic.length>42 || !topicContent.test(topic) || genericTopic.test(topic)
-            || /(?:합니다|입니다|습니다|어요|해요|할까요|해줘|해줘요|주세요)$/.test(topic)) continue;
-        const relevant=[...relevanceTerms(topic)].filter(word=>terms.has(word)).length;
-        const value=relevant*5+(term===clean?0:4)+Math.min(topic.split(/\s+/).length,3);
-        if(value>score){best=topic;score=value;}
-      }
-    }
-  }
-  return best;
-}
 const riskyLine = /https?:|[\u0000-\u0008]|[\\@{}<>]|(?:^|[\s'"`])\/[\w.가-힣][^\s]*\/|(?:비밀번호|승인번호|인증번호|계좌번호|인증\s*토큰|비밀\s*키)[^\n]{0,25}[0-9A-Za-z_-]{4,}|(?:^|\s)\d{6,}(?:\s|$)/;
 const pingRequest = /^(?:(?:그냥|다시|한\s*번\s*더|재차|이번(?:에도|엔))\s+)*(?:(?:(?:채팅|응답|답변|전송|메시지|대화|연결)\s*(?:을|를)?\s*)?(?:테스트|확인|시험)|(?:안녕(?:하세요)?|고마워(?:요)?|감사합니다)|(?:ping|test|hello|hi|thanks))(?:\s*(?:만|해\s*줘요?|해\s*주세요|입니다|예요|할게요))?[.!?！?…\s]*$/i;
 const pingReply = /^(?:안녕|반갑|천만에|별말씀|감사)|(?:메시지|채팅|답변|응답|테스트)[^.!?\n]{0,45}(?:잘\s*받|보이면|주고받|수신했)|(?:pong|test\s*(?:passed|received)|message\s*received)/i;
-const topicAction = /(?:확인|비교|검토|조사|분석|작성|검증|테스트|수정|설정|설치|개발|구현|배포|결제|예약|일정|공정|오류|장애|수리|작성)/;
 const shallowRequest = /^(?:(?:그(?:대|렇)로|앞서|같은|이어서|계속|다시|추가로|한\s*번\s*더|해당|지금|좋아|네|응|그럼|위와|동일한|조건(?:으로)?)\s*[,，]?\s*)+(?:진행|설명|계속|수정|해|정리|확인)?(?:해\s*)?(?:주세요|줘요?|줄래요?|주실래요)?[.!?。？\s]*$/i;
 
 function plainHistoryLines(text) {
@@ -302,26 +285,6 @@ function activeBuildFollowup(lines,history) {
   return suggestion(preserveConnection+device+' 중계를 최신 버전으로 옮기고, '+cleanup,'이전 빌드 정리를 막은 실행 중 의존성');
 }
 
-function contextualFallback(lines,history) {
-  const {requestLines,requestTerms,usableRequest,previous,prior}=history;
-  const answer=lines.join('\n');
-  if (noOpenWork.test(answer) || (postponed.test(requestLines.join('\n')) && postponed.test(answer))) return;
-  const requestTopic=usableRequest && findTopic(requestLines,requestTerms);
-  const evidence=new Set([...requestTerms,...relevanceTerms(answer)]);
-  const carriesPrior=!usableRequest && requestLines.some(line=>shallowRequest.test(line));
-  const previousTopic=carriesPrior && prior.map(turn=>findTopic(turn.lines,evidence)).find(Boolean);
-  const topic=findTopic(lines,evidence) || requestTopic || previousTopic;
-  if (!topic) return;
-  const state=answer+'\n'+requestLines.join('\n');
-  let prompt;
-  if (/일정|예약|마감|기한/.test(state)) prompt=topic+' 중 확인한 기간과 가능한 다음 일정을 정리해줘';
-  else if (/설치|설정|연결|사용\s*방법|단계|절차/.test(state)) prompt=topic+objectParticle(topic)+' 실제로 적용할 때 필요한 순서와 확인 방법을 정리해줘';
-  else if (/검증|점검|검사|시험|테스트|확인했/.test(answer)) prompt=topic+'에서 확인한 범위와 아직 판단하기 어려운 항목을 정리해줘';
-  else if (/문서|보고서|초안|문구|작성|정리|비교|분석/.test(answer)) prompt=topic+'의 핵심 결론과 바로 활용할 수 있는 다음 단계 한 가지를 정리해줘';
-  else if (carriesPrior || topicAction.test(requestLines.join(' '))) prompt=topic+objectParticle(topic)+' 진행하려면 먼저 확인할 조건을 알려줘';
-  if (prompt && !previous.has(normalized(prompt))) return suggestion(prompt,'대화 맥락과 직전 답변의 후속 활용');
-}
-
 // 단계마다 계산 범위가 달라 진행률은 완료한 처리 단계의 비율을 표시한다.
 function *followupSteps(session) {
   const context=followupContext(session);
@@ -344,10 +307,12 @@ function *followupSteps(session) {
     return candidate;
   };
   const dependency=ping?undefined:activeBuildFollowup(lines,history);
+  const request=history.requestLines.join('\n');
+  const canInferNext=!ping&&!noOpenWork.test(answer)&&!(postponed.test(request)&&postponed.test(answer));
   const candidate=dependency&&!history.previous.has(normalized(dependency.prompt)) ? dependency
-    : best(candidates)||(!ping&&!noOpenWork.test(answer)?best(contextualCandidates(answer,history.requestLines.join('\n'))):undefined);
+    : best(candidates)||(canInferNext?best(contextualCandidates(answer,request)):undefined);
   yield 75;
-  const result=ping?undefined:applyStyle(specifyScope(candidate,history)||contextualFallback(lines,history),history.style);
+  const result=applyStyle(specifyScope(candidate,history),history.style);
   yield 100;
   return result?[result]:[];
 }

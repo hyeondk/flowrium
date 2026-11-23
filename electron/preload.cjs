@@ -173,6 +173,7 @@ contextBridge.exposeInMainWorld(
     connect: () => invoke("connect"),
     readDesktopChatInstallation: () => invoke('readDesktopChatInstallation'),
     readChatConnection: () => invoke('readChatConnection'),
+    readChatRecommendation: (sessionId,answerId) => invoke('readChatRecommendation',sessionId,answerId),
     listAvailableModels: () => invoke("listAvailableModels"),
     login: () => invoke("login"),
     send: (input) => invoke("send", input),

@@ -46,6 +46,8 @@ let foregroundOperations=0;
 const apiHandlers = new Map();
 let window;
 let controller;
+let followupGenerator;
+let followupSettingsQueue=Promise.resolve();
 let quitting = false;
 let launchComplete = false;
 let windowRequestPending = false;
@@ -78,6 +80,11 @@ function validateSender(event) {
 }
 async function invokeRegistered(name,handler,args){
   if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity','hideDotsView','readDotsState'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
+  // A recommendation is background work. It must never hold up an update, logout or send.
+  if(name==='readChatRecommendation')return security.guard(name,()=>handler(...args));
+  if(['send','startWork','logoutSecurity','installUpdate','lockSecurity'].includes(name)||
+    (name==='workflowAction'&&args[0]?.action==='continueConversation')||
+    (name==='saveSettings'&&(args[0]?.aiFollowups===false||Object.hasOwn(args[0]??{},'codexPath'))))followupGenerator?.invalidate();
   const independent=/^(read|list)/.test(name)||['bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name);
   const query=args[0];
   // 실행 파일과 프로젝트를 바꾸는 작업은 기존 동기화를 기다린다.
@@ -266,6 +273,18 @@ async function launch() {
     callApplicationTool: async input => externalTools?.handles(input.name)
       ? externalTools.call(input) : projectTools?.handles(input.name) ? projectTools.call(input) : workflowRuntime?.callTool(input),
   });
+  const {FollowupPreference}=require('./followup-preference.cjs');
+  const followupPreference=new FollowupPreference(app.getPath('userData'));
+  await followupPreference.load();
+  const followupAccount=()=>security.accountRevision+':'+security.data.accountOwner;
+  const canUseFollowupModel=()=>followupPreference.enabled(followupAccount());
+  const visibleChatSettings=value=>({...value,aiFollowups:canUseFollowupModel()});
+  followupGenerator=require('./followup-generator.cjs').createFollowupGenerator(controller,{
+    accountRevision:()=>security.accountRevision,stateEpoch:()=>security.epoch,
+    canRun:()=>canUseFollowupModel()&&!quitting&&!migrationTransition&&!importRestartRequired&&
+      !security.locked&&!security.loggingOut&&!updater?.isInstalling()&&!controller.trashRuntime?.isBusy(),
+  });
+  register('readChatRecommendation',(sessionId,answerId)=>followupGenerator.recommend(sessionId,answerId));
   require("./chat-attachments.cjs").registerChatAttachments(register, store);
   register('readChatCitation',(sessionId,messageId,index,action)=>require('./chat-citations.cjs').readChatCitation(store,sessionId,messageId,index,action,file=>shell.showItemInFolder(file)));
   register("listQueuedMessages", id => controller.listQueuedMessages(id));
@@ -369,6 +388,7 @@ async function launch() {
   await require("./chat-request-source.cjs").cleanupMobileRequestStages(store).catch(error=>console.warn("휴대폰 임시 원문 정리",error.code || error.name));
   const remote = require("./remote.cjs").registerRemote(register, {
     accountOwner:()=>security.data.accountOwner==='signed-out'?'':security.data.accountOwner,
+    canUseFollowupModel,
     pairing:new (require('./mobile-pairing.cjs').MobilePairing)(app.getPath('userData'),require('electron').safeStorage),
     mobileUpdateDirectory:app.getPath('userData'), mobileUpdateStorage:require('electron').safeStorage,
     store, controller, handlers: apiHandlers, isLocked: () => security.locked || security.loggingOut,
@@ -430,15 +450,17 @@ async function launch() {
       migrationTransition=true;
       const results=await Promise.allSettled([externalRepositoryAccess?.shutdown(),dotsRuntime?.shutdown(),workflowRuntime.shutdown(),linkDelivery.shutdown(),webPush.shutdown(),voice.shutdown(),projectPorts.shutdown(),codexTransfer.shutdown(),remote.shutdown(),music.shutdown()]);
       const failed=results.find(result=>result.status==='rejected');if(failed)throw failed.reason;
-      await drafts.queue;await store.settingsQueue;await store.queue;
+      await drafts.queue;await store.settingsQueue;await store.queue;await followupSettingsQueue;
     },
     onImported:()=>{importRestartRequired=true;migrationTransition=false;},
     onRestart:()=>{app.relaunch();setImmediate(()=>app.quit());return{restarting:true};},
   });
   let remoteAccountRevision = security.accountRevision;
-  security.on("state", state => { if (state.accountRevision !== remoteAccountRevision) { remoteAccountRevision = state.accountRevision; macPim.invalidate(); linkDelivery.invalidate(); webPush.invalidate(); voice?.cancel?.(); dotsRuntime?.invalidate(); void remote.stopAccess(); } });
+  let followupEpoch = security.epoch;
+  security.on("state", state => { if (state.accountRevision !== remoteAccountRevision) { remoteAccountRevision = state.accountRevision; followupGenerator?.invalidate(); macPim.invalidate(); linkDelivery.invalidate(); webPush.invalidate(); voice?.cancel?.(); dotsRuntime?.invalidate(); void remote.stopAccess(); } });
   app.on("will-quit", () => { void remote.shutdown(); });
   security.on("state", (state) => {
+    if (followupEpoch!==security.epoch) {followupEpoch=security.epoch;followupGenerator?.invalidate();}
     if (!state.locked) remote.restore();
     if (state.locked) { microphoneUntil = 0; voice?.cancel?.(); webPush.invalidate(); dotsRuntime?.hide(); }
     if (window && !window.isDestroyed()) window.webContents.send("flowrium:security", state);
@@ -450,6 +472,7 @@ async function launch() {
   register("bootstrap", async () => {
     await store.syncConversationOwner?.();
     const snapshot = { ...store.snapshot(), version: displayVersion(app.getVersion()), platform: process.platform, externalActivity:{} };
+    snapshot.settings=visibleChatSettings(snapshot.settings);
     await Promise.all(snapshot.projects.map(async project => {
       project.trustedForFileAccess = await store.isProjectTrusted(project.id);
     }));
@@ -503,7 +526,23 @@ async function launch() {
   register("deleteSession", (id) =>
     controller.deleteSession(text(id, "대화 식별자", 100)),
   );
-  register("saveSettings", (input, options) => controller.saveSettings(input,{mergeChatDefaults:options?.mergeChatDefaults===true}));
+  register("saveSettings", async (input, options) => {
+    const behavior={mergeChatDefaults:options?.mergeChatDefaults===true};
+    if(!Object.hasOwn(input??{},'aiFollowups'))return visibleChatSettings(await controller.saveSettings(input,behavior));
+    if(!input||typeof input!=='object'||Array.isArray(input)||typeof input.aiFollowups!=='boolean')throw Error('모델 추천 설정을 확인해 주세요.');
+    if(!controller.status.authenticated||!/^[\da-f]{64}$/.test(security.data.accountOwner??''))
+      throw Error('ChatGPT 계정을 연결한 뒤 모델 추천을 바꿔 주세요.');
+    const account=followupAccount(),{aiFollowups,...rest}=input;
+    const saving=followupSettingsQueue.then(async()=>{
+      if(account!==followupAccount())throw Error('연결 계정이 바뀌었습니다. 다시 설정해 주세요.');
+      if(Object.keys(rest).length)await controller.saveSettings(rest,behavior);
+      if(account!==followupAccount())throw Error('연결 계정이 바뀌었습니다. 다시 설정해 주세요.');
+      await followupPreference.set(account,aiFollowups);
+      return visibleChatSettings(store.state.settings);
+    });
+    followupSettingsQueue=saving.catch(()=>{});
+    return saving;
+  });
   register("connectionStatus", () => controller.connectionStatus());
   register('readDesktopChatInstallation', () => require('./chat-connection.cjs').desktopAppInstalled());
   register('readChatConnection', async () => {
@@ -689,11 +728,12 @@ else {
     if (quitting || !controller) return;
     event.preventDefault();
     quitting = true;
+    followupGenerator?.invalidate();
     lifecycleDiagnostic('quit-start');
     if (window && !window.isDestroyed()) window.setEnabled(false);
     Promise.allSettled([externalRepositoryAccess?.shutdown(),dotsRuntime?.shutdown(),workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.({finishPendingSettings:true}), projectPorts?.shutdown(), codexTransfer?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
       .then(() => { lifecycleDiagnostic('quit-services-finished'); return teamRuntime?.flush(); })
-      .then(() => { lifecycleDiagnostic('quit-teams-finished'); return Promise.all([drafts.queue,controller.store.settingsQueue]); })
+      .then(() => { lifecycleDiagnostic('quit-teams-finished'); return Promise.all([drafts.queue,controller.store.settingsQueue,followupSettingsQueue]); })
       .finally(() => {
         lifecycleDiagnostic('quit-finished');
         setImmediate(() => {

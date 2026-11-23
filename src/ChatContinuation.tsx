@@ -10,6 +10,7 @@ type Props = {
   session?: Session;
   running: boolean;
   authenticated: boolean;
+  aiFollowups: boolean;
   busy: boolean;
   active: boolean;
   draft: string;
@@ -18,7 +19,7 @@ type Props = {
   onChange(text: string): void;
   onSend(): void;
   onChoose(prompt: string): void;
-  onContinue(messageId: string): Promise<void>;
+  onContinue(messageId: string, suggested?: string): Promise<void>;
 };
 
 function errorText(error: unknown) {
@@ -28,7 +29,7 @@ function errorText(error: unknown) {
 }
 
 export default function ChatContinuation({
-  session, running, authenticated, busy, active, draft, placeholder, textareaRef,
+  session, running, authenticated, aiFollowups, busy, active, draft, placeholder, textareaRef,
   onChange, onSend, onChoose, onContinue,
 }: Props) {
   const last = latestFollowupAnswer(session);
@@ -39,11 +40,14 @@ export default function ChatContinuation({
   const waiting = eligible && Boolean(session && awaitsContinuation(session));
   const messageId = waiting && session ? continuationAnswer(session)?.id : last?.id;
   const key = messageId && sessionId ? sessionId + ':' + messageId : '';
+  const answerId = last?.id;
+  const requestModel = aiFollowups && authenticated && Boolean(window.flowrium?.readChatRecommendation);
   const [action, setAction] = useState<'continue'|'complete'|null>(null);
   const [error, setError] = useState('');
   const [accepted, setAccepted] = useState('');
   const [generation, setGeneration] = useState<{
     key: string;
+    model: boolean;
     messages: Session['messages'];
     percent: number;
     done?: true;
@@ -62,22 +66,28 @@ export default function ChatContinuation({
   const messages = session?.messages;
   useEffect(() => {
     if (!canShowRecommendation || !active || !messages || !key) return;
-    if (finished.current?.key === key && finished.current.messages === messages) {
+    if (finished.current?.key === key && finished.current.messages === messages && finished.current.model === requestModel) {
       setGeneration(finished.current);
       return;
     }
     const controller = new AbortController();
-    void prepareAnswerFollowup(session, percent => setGeneration({key,messages,percent}), controller.signal)
-      .then(result => {
+    const local = prepareAnswerFollowup(session, percent => setGeneration({key,messages,model:requestModel,percent:requestModel ? percent / 2 : percent}), controller.signal);
+    const generated = requestModel && sessionId && answerId
+      ? window.flowrium!.readChatRecommendation(sessionId, answerId).catch(() => null)
+      : null;
+    if(requestModel)void local.then(result=>{
+      if(result&&!controller.signal.aborted)setGeneration({key,messages,model:requestModel,percent:50,result});
+    });
+    void Promise.all([local, generated]).then(([localResult, modelResult]) => {
         if (controller.signal.aborted) return;
-        const state = {key, messages, percent: 100, result, done: true as const};
+        const state = {key, messages, model:requestModel, percent: 100, result:modelResult ?? localResult, done: true as const};
         finished.current = state;
         setGeneration(state);
       });
     return () => controller.abort();
     // 같은 답변이라도 동기화된 이전 요청이 바뀌면 전체 맥락을 다시 읽는다.
-  }, [canShowRecommendation, active, key, messages]);
-  const current = active && canShowRecommendation && generation?.key === key && generation.messages === messages ? generation : undefined;
+  }, [canShowRecommendation, active, key, messages, requestModel, sessionId, answerId]);
+  const current = active && canShowRecommendation && generation?.key === key && generation.messages === messages && generation.model === requestModel ? generation : undefined;
   const suggestion = current?.result;
   const candidate = suggestion && (!draft || key !== accepted) ? suggestion : undefined;
   const preview = candidate && !draft && !busy ? candidate.prompt : undefined;
@@ -94,7 +104,7 @@ export default function ChatContinuation({
     const current = revision.current;
     setAction(choice); setError('');
     try {
-      if (choice==='continue') await onContinue(messageId);
+      if (choice==='continue') await onContinue(messageId, preview);
       else await window.flowrium!.workflowAction({action:'completeContinuation', sessionId, messageId});
     }
     catch (error) { if (current === revision.current) setError(errorText(error)); }

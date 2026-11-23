@@ -4,7 +4,7 @@ const fs = require("node:fs/promises"),
   { spawn } = require("node:child_process"),
   { randomBytes, timingSafeEqual, createHash } = require("node:crypto");
 const {continuationAnswer,executionFor} = require('./execution-state.js');
-const {latestFollowupAnswer,originalAnswerFollowups}=require('./mobile/answer-followup.js');
+const {canOfferFollowup,latestFollowupAnswer,originalAnswerFollowups}=require('./mobile/answer-followup.js');
 const {attachmentDisplayText}=require('./mobile/attachment-text.js');
 const {MobileUpdater} = require('./mobile-updater.cjs');
 const {MobileRequestUploads,chunkBytes,singleUploadBytes} = require('./mobile-request-uploads.cjs');
@@ -20,7 +20,7 @@ const allowed = new Set([
   "readWorkbench",
   "readWorkArtifact",
   "saveTeam", "directTeam", "changeTeamRun", "workflowAction", "mobileWorkflowState",
-  "mobileSettings", "saveMobileSettings", "setMobileChatModel", "readAccountUsage", "readChatAttachment", "readChatCitation", "readRequestSource",
+  "mobileSettings", "saveMobileSettings", "setMobileChatModel", "readAccountUsage", "readChatAttachment", "readChatCitation", "readChatRecommendation", "readRequestSource",
   "listQueuedMessages", "cancelQueuedMessage", "resumeQueuedMessages", "sendQueuedToCodex", "clearUnconfirmedCodexQueue", "webPushState", "webPushAction",
   "checkMobileUpdate", "applyMobileUpdate",
 ]);
@@ -126,7 +126,8 @@ function mobileMessages(s, params, revision) {
       bytes += size;
     }
   }
-  const suggestion=progress && !params.has('before') && originalAnswerFollowups(s)[0];
+  const recommendationPage=progress && !params.has('before');
+  const suggestion=recommendationPage && originalAnswerFollowups(s)[0];
   return {
     code: 200,
     value: {
@@ -139,7 +140,8 @@ function mobileMessages(s, params, revision) {
       updatedAt: s.updatedAt,
       lastMessageId: items.at(-1)?.id,
       before: start > 0 ? start + ":" + items[start].id : null,
-      ...(progress && !params.has('before') && {recommendation:suggestion ? {...suggestion,answerId:latestFollowupAnswer(s).id} : null}),
+      ...(recommendationPage && {recommendation:suggestion ? {...suggestion,answerId:latestFollowupAnswer(s).id} : null,
+        recommendationEligible:canOfferFollowup(s)}),
     },
   };
 }
@@ -187,6 +189,7 @@ function registerRemote(
     tunnelFactory = spawn,
     accountRevision = () => 0,
     accountOwner = () => "",
+    canUseFollowupModel = () => false,
     pairing = null,
     onContextChanged = () => {},
     now = Date.now,
@@ -259,6 +262,11 @@ function registerRemote(
       throw Error('모바일 업데이트 요청을 확인해 주세요.');
     }
     if(method==='readRequestSource' && (args.length!==3 || !Number.isSafeInteger(args[2]) || args[2]<0 || !store.state.sessions.some(s=>s.id===args[0])))throw Error('프로젝트 채팅 원문 위치를 확인해 주세요.');
+    if (method === 'readChatRecommendation') {
+      const [sessionId,answerId]=args;
+      if(args.length!==2||typeof sessionId!=='string'||!uuid.test(sessionId)||typeof answerId!=='string'||!uuid.test(answerId)||
+        !store.state.sessions.some(row=>row.id===sessionId)) return null;
+    }
     if (method === "setMobileChatModel") {
       const [id,model]=args;
       const session=store.state.sessions.find(s=>s.id===id&&!s.scope);
@@ -285,17 +293,18 @@ function registerRemote(
     }
     if (method === "mobileSettings") {
       const connection = await handlers.get("connect")?.();
-      return {model:store.state.settings.model,effort:store.state.settings.effort,chatDefaults:store.state.settings.chatDefaults,
+      return {model:store.state.settings.model,effort:store.state.settings.effort,chatDefaults:store.state.settings.chatDefaults,aiFollowups:canUseFollowupModel(),
         models:(connection?.models || []).map(({id,displayName,isDefault,supportedReasoningEfforts,defaultReasoningEffort}) => ({id,displayName,isDefault,supportedReasoningEfforts,defaultReasoningEffort}))};
     }
     if (method === "saveMobileSettings") {
       const input = args[0];
-      if (args.length !== 1 || !input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["model","effort","chatDefaults"].includes(k)))
+      if (args.length !== 1 || !input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["model","effort","chatDefaults","aiFollowups"].includes(k)) ||
+        (Object.hasOwn(input,'aiFollowups') && typeof input.aiFollowups!=='boolean'))
         throw Error("모바일에서 바꿀 수 없는 설정입니다.");
       if (input.chatDefaults && (typeof input.chatDefaults !== "object" || Array.isArray(input.chatDefaults) || Object.keys(input.chatDefaults).some(k => !["answerLength","testing","askNext","autoCompact","compactAt"].includes(k))))
         throw Error("실행 권한은 데스크톱에서 바꿔 주세요.");
       const result = await handlers.get("saveSettings")(input,{mergeChatDefaults:true});
-      return {model:result.model,effort:result.effort,chatDefaults:result.chatDefaults};
+      return {model:result.model,effort:result.effort,chatDefaults:result.chatDefaults,aiFollowups:canUseFollowupModel()};
     }
     if (method === "mobileWorkflowState") return workflowView(await handlers.get("workflowState")());
     if (method === "workflowAction") {
@@ -522,6 +531,7 @@ function registerRemote(
                 sandbox: snapshot.settings.chatDefaults?.sandbox,
                 model: snapshot.settings.chatDefaults?.model || snapshot.settings.model,
                 effort: snapshot.settings.chatDefaults?.effort || snapshot.settings.effort,
+                aiFollowups: canUseFollowupModel(),
               },
               version,
               mobileVersion:mobileUpdater.version,

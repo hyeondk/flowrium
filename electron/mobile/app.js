@@ -305,7 +305,7 @@ function row(title, description, callback, badge) {
   if (badge) item.append(node("i", badge));
   return item;
 }
-async function request(path, body) {
+async function request(path, body, timeout = 18000) {
   const headers = { Authorization: "Bearer " + key };
   if (body) headers["Content-Type"] = "application/json";
   const response = await fetch(path, {
@@ -315,7 +315,7 @@ async function request(path, body) {
     credentials: "omit",
     cache: "no-store",
     referrerPolicy: "no-referrer",
-    signal: AbortSignal.timeout(18000),
+    signal: AbortSignal.timeout(timeout),
   });
   const value = await response.json();
   if (!response.ok) {
@@ -1345,16 +1345,18 @@ function chat(root) {
   }));
   uploadStatus.hidden=!textUploads.has(s.id);
   uploadLabel.textContent=textUploads.get(s.id)?.label||'';form.append(uploadStatus);
+  let nextCommand;
   if(historyIsCurrent(s,historyPage) && s.executionState !== 'decision' && !running(s.id) && !pending.length && !busy) {
     const history={...s,messages:historyPage.messages};
     const serverRecommendation=Object.hasOwn(historyPage,'recommendation');
     const suggestedByDesktop=historyPage.recommendation;
     const answer=serverRecommendation && Object.hasOwn(s,'recommendationMessageId') ? undefined : latestFollowupAnswer(history);
     const answerId=Object.hasOwn(s,'recommendationMessageId') ? s.recommendationMessageId : answer?.id;
+    const model=serverRecommendation && historyPage.recommendationEligible===true && data.settings.aiFollowups===true && data.connection?.authenticated;
     // The server reads the complete conversation even when the page omits its last answer.
     const hasRecommendation=serverRecommendation ? suggestedByDesktop?.answerId===answerId
       : answer?.id===answerId && canOfferFollowup(history);
-    if(answerId && hasRecommendation){
+    if(answerId && (hasRecommendation || model)){
       const recommendation=node('div',undefined,'mobile-followup-progress');
       recommendation.setAttribute('role','progressbar');
       recommendation.setAttribute('aria-label','작업 추천 중');
@@ -1363,14 +1365,19 @@ function chat(root) {
         recommendation.textContent='작업 추천 중 ('+percent.toFixed(1)+'%)';
         recommendation.setAttribute('aria-valuenow',String(percent));
       };
+      let suggestionButton,suggestionLabel;
       const show=suggested=>{
+        nextCommand=suggested.prompt;
+        if(suggestionButton){suggestionLabel.textContent=suggested.title;return;}
         const accept=()=>{
           if(fullText() || composingField || busy)return;
-          text.value=suggested.prompt;text.dispatchEvent(new Event('input',{bubbles:true}));
+          text.value=nextCommand;text.dispatchEvent(new Event('input',{bubbles:true}));
           text.focus({preventScroll:true});text.setSelectionRange(text.value.length,text.value.length);
         };
         const button=action('',accept,'mobile-followup');
-        button.append(node('small','다음 작업 추천'),node('span',suggested.title),node('kbd','Tab'));
+        suggestionButton=button;
+        suggestionLabel=node('span',suggested.title);
+        button.append(node('small','다음 작업 추천'),suggestionLabel,node('kbd','Tab'));
         const sync=()=>{button.hidden=!!fullText() || !!composingField;};
         sync();
         text.addEventListener('input',sync,listener);text.addEventListener('compositionstart',()=>button.hidden=true,listener);text.addEventListener('compositionend',()=>queueMicrotask(sync),listener);
@@ -1382,7 +1389,23 @@ function chat(root) {
         recommendation.replaceWith(button);
       };
       form.append(recommendation);
-      if(serverRecommendation)
+      if(model){
+        const cached=mobileRecommendation?.id===s.id && mobileRecommendation.answerId===answerId &&
+          mobileRecommendation.messages===historyPage.messages && mobileRecommendation.model===true;
+        if(!cached){
+          const work=request('/api/mobile/call',{method:'readChatRecommendation',args:[s.id,answerId]},21000)
+            .then(response=>response.result).catch(()=>null);
+          mobileRecommendation={id:s.id,answerId,messages:historyPage.messages,model:true,work};
+        }
+        if(hasRecommendation) show(suggestedByDesktop);
+        else progress(50);
+        void mobileRecommendation.work.then(suggested=>{
+          if(listener.signal.aborted)return;
+          if(suggested)show(suggested);
+          else if(!hasRecommendation)recommendation.remove();
+        });
+      }
+      else if(serverRecommendation)
         show(suggestedByDesktop);
       else if(mobileRecommendation?.id===s.id && mobileRecommendation.messages===historyPage.messages){
         if(mobileRecommendation.suggested)show(mobileRecommendation.suggested);
@@ -1408,7 +1431,7 @@ function chat(root) {
     const proceed=action('진행하기',()=>{if(!s.scope&&!mayStartProjectWork(s.projectId))return;return run(async()=>{
       const attachments=attachedDrafts.get(s.id)||[];
       const value=fullText();
-      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:continuationMessageId,...await mobileChatInput(s,value),attachments:attachments.map(a=>a.id),mode});
+      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:continuationMessageId,...await mobileChatInput(s,value.trim()?value:nextCommand||value),attachments:attachments.map(a=>a.id),mode});
       clearSentDraft(s.id,value,attachments);
     });});
     const complete=action('완료',()=>run(async()=>{
@@ -1885,14 +1908,18 @@ function settingsPage(root){
   account.append(node('h2','계정과 모델'),accountLine);
   root.append(account);
   if(!mobileSettings){account.append(loadingRegion('계정 설정'));return}
-  const preferences=optimisticPreferences('account',{...mobileSettings.chatDefaults,model:mobileSettings.model,effort:mobileSettings.effort});
-  const save=async ({model,effort,...chatDefaults})=>{
+  const preferences=optimisticPreferences('account',{...mobileSettings.chatDefaults,model:mobileSettings.model,effort:mobileSettings.effort,aiFollowups:mobileSettings.aiFollowups});
+  const save=async ({model,effort,aiFollowups,...chatDefaults})=>{
     const input={};
     if(model!==undefined)input.model=model;
     if(effort!==undefined)input.effort=effort;
+    if(aiFollowups!==undefined)input.aiFollowups=aiFollowups;
     if(Object.keys(chatDefaults).length)input.chatDefaults=chatDefaults;
     const saved=await call('saveMobileSettings',input);
-    return ()=>{mobileSettings={...mobileSettings,model:saved.model,effort:saved.effort,chatDefaults:saved.chatDefaults}};
+    return ()=>{
+      mobileSettings={...mobileSettings,model:saved.model,effort:saved.effort,aiFollowups:saved.aiFollowups,chatDefaults:saved.chatDefaults};
+      if(data?.settings && typeof saved.aiFollowups==='boolean')data.settings.aiFollowups=saved.aiFollowups;
+    };
   };
   const form=node('form'),models=mobileSettings.models||[],model=select([['','계정 기본 모델'],...models.map(m=>[m.id,modelDisplayName(m)])],preferences.model||''),effort=select([],''),answer=select([['short','짧게'],['normal','보통'],['detailed','자세히']],preferences.answerLength||'normal');
   model.disabled=!models.length;
@@ -1912,6 +1939,14 @@ function settingsPage(root){
   const tests=node('input'),ask=node('input'),compact=node('input');
   tests.checked=preferences.testing!==false;ask.checked=preferences.askNext===true;compact.checked=preferences.autoCompact!==false;
   form.append(label('기본 ChatGPT 모델',model),label('추론 수준',effort),label('답변 길이',answer),settingsSwitch('작업 후 검증',tests),settingsSwitch('필요한 다음 질문',ask),settingsSwitch('문맥 자동 압축',compact));
+  if(typeof mobileSettings.aiFollowups==='boolean'){
+    const followups=node('input');followups.checked=preferences.aiFollowups===true;
+    const hint=node('p','켜면 현재 대화의 일부를 연결한 ChatGPT 계정에 보내 명령 초안을 만듭니다. 계정 사용량이나 크레딧이 차감될 수 있습니다.','hint');
+    hint.id='mobile-model-followups-description';
+    followups.setAttribute('aria-describedby',hint.id);
+    form.append(settingsSwitch('모델로 다음 작업 추천',followups),hint);
+    followups.addEventListener('change',()=>queuePreferenceWrite('account',{aiFollowups:followups.checked},save));
+  }
   for(const control of form.elements)control.dataset.field='setting/'+control.getAttribute('aria-label');
   for(const [control,key] of [[effort,'effort'],[answer,'answerLength'],[tests,'testing'],[ask,'askNext'],[compact,'autoCompact']]){
     control.addEventListener('change',()=>queuePreferenceWrite('account',{[key]:control.type==='checkbox'?control.checked:control.value},save));
