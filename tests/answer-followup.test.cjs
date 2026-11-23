@@ -165,6 +165,29 @@ test('완료 사실만으로 절차 안내를 만들거나 관련 없는 이전 
   assert.equal(followupFromAnswer('**다음 단계**\n- 실패한 요청을 재전송하는 테스트를 추가해 주세요.').prompt,'실패한 요청을 재전송하는 테스트를 추가해줘');
 });
 
+test('답변에 직접 적힌 순서·절차 안내도 걸러내고 실제 변경·검증은 추천한다',async()=>{
+  const {followupFromAnswer}=await loaded;
+  const {isAdvisoryFollowup}=await import('../electron/mobile/answer-followup.js');
+  for(const advice of [
+    '프로젝트 전환 순서를 정리해줘',
+    '재현 절차를 알려줘',
+    '휴대폰 연결 방법을 번호로 안내해 주세요.',
+    '적용할 때 필요한 순서와 확인 방법을 설명해 줄래요?',
+  ]){
+    assert.equal(isAdvisoryFollowup(advice),true,advice);
+    assert.equal(followupFromAnswer('다음 작업: '+advice),undefined,advice);
+  }
+  for(const command of [
+    '프로젝트 전환 순서를 바꾼 뒤 스크롤 위치를 검증해줘',
+    '방법별 결과를 비교해줘',
+    '사용자가 입력한 프로젝트 번호를 설정에 저장해줘',
+    '설치 방법을 검증하고 도움말에 수정 사항을 반영해줘',
+  ]){
+    assert.equal(isAdvisoryFollowup(command),false,command);
+    assert.equal(followupFromAnswer('다음 작업: '+command)?.prompt,command);
+  }
+});
+
 test('인사나 반복 채팅 수신 확인에 후속 과제를 만들어 넣지 않는다',async()=>{
   const {canOfferFollowup,originalAnswerFollowups}=await loaded;
   const session={messages:[
@@ -263,4 +286,16 @@ test('검증 보고의 완료 문구보다 답변에서 명시한 미완료 조�
   assert.equal(originalAnswerFollowups({messages:[request,answer]})[0]?.prompt,'윈도우 설치본을 배포해 주세요');
   answer.text='맥과 윈도우 설치와 사이트 안내를 검증했습니다. 남은 사항은 없습니다.';
   assert.deepEqual(originalAnswerFollowups({messages:[request,answer]}),[]);
+});
+
+test('마지막 답변의 매출 수치를 바탕으로 두 요인의 기여액 계산을 권한다',async()=>{
+  const {originalAnswerFollowups}=await loaded;
+  const request={role:'user',text:'가상 스토어의 월별 매출 흐름을 분석해줘.'};
+  const answer={role:'assistant',text:'월별 매출 분석을 마쳤습니다. 10월 매출은 전월 대비 14.3% 올랐고 주문 수와 평균 주문 금액이 함께 늘었습니다.'};
+  const session={messages:[request,answer]};
+  assert.match(originalAnswerFollowups(session)[0]?.prompt||'',/주문 수와 평균 주문 금액의 기여액으로 나누고/);
+  answer.text+=' 두 요인의 기여액을 이미 계산했습니다.';
+  assert.doesNotMatch(originalAnswerFollowups(session)[0]?.prompt||'',/기여액으로 나누고/);
+  answer.text='월별 매출 분석을 마쳤습니다. 10월 매출은 전월 대비 14.3% 올랐습니다.';
+  assert.doesNotMatch(originalAnswerFollowups(session)[0]?.prompt||'',/기여액으로 나누고/);
 });

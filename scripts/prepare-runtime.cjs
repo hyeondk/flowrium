@@ -4,6 +4,7 @@ const os = require('node:os');
 const {createHash,randomUUID} = require('node:crypto');
 const {createReadStream,createWriteStream} = require('node:fs');
 const {pipeline} = require('node:stream/promises');
+const {setTimeout: delay} = require('node:timers/promises');
 const {execFile} = require('node:child_process');
 const run = require('node:util').promisify(execFile);
 
@@ -56,6 +57,18 @@ async function verifyRuntime(root) {
     throw new Error('번들에 포함할 개발 도구의 버전이 다릅니다.');
   console.log('번들 실행 확인 / Node '+versions.node+' / npm '+versions.npm+' / GitHub CLI '+versions.gh+' / cloudflared '+versions.cloudflared);
 }
+async function renameRuntime(from, to) {
+  // A Windows scanner can keep an executable open after the version check exits.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fs.rename(from, to);
+      return;
+    } catch (error) {
+      if (process.platform !== 'win32' || attempt === 7 || !['EPERM','EBUSY','EACCES'].includes(error.code)) throw error;
+      await delay(Math.min(100 * 2 ** attempt, 1000));
+    }
+  }
+}
 async function prepareRuntime(projectRoot = path.resolve(__dirname,'..')) {
   const key=process.platform+'-'+process.arch, target=platforms[key];
   if(!target) throw new Error('Mac Apple Silicon 또는 Windows x64에서 준비해 주세요.');
@@ -106,12 +119,12 @@ async function prepareRuntime(projectRoot = path.resolve(__dirname,'..')) {
     try {
       const existing=JSON.parse(await fs.readFile(path.join(final,'flowrium-runtime.json'),'utf8'));
       if(!existing.key||!existing.nodeSha||!existing.ghSha) throw new Error('기존 도구 폴더를 확인해 주세요.');
-      await fs.rename(final,backup); moved=true;
+      await renameRuntime(final,backup); moved=true;
     } catch(e){if(e.code!=='ENOENT')throw e;}
-    await fs.rename(stage,final);
-    if(moved) await fs.rm(backup,{recursive:true,force:true});
+    await renameRuntime(stage,final);
+    if(moved) await fs.rm(backup,{recursive:true,force:true,maxRetries:4,retryDelay:100});
   } catch(e){
-    if(moved) await fs.rename(backup,final).catch(()=>{});
+    if(moved) await renameRuntime(backup,final).catch(()=>{});
     throw e;
   } finally {
     await fs.rm(downloads,{recursive:true,force:true,maxRetries:4,retryDelay:100});

@@ -9,9 +9,9 @@ const postponed = /(?:나중에|이따(?:가)?|잠시\s*뒤에?)\s*(?:부탁|진
 const actionVerb = '정리|비교|검토|작성|검증|분류|분석|확인|점검|시험|검사|수정|추가|변환|요약|제작|구현|적용|진행|실행|대조|측정|반영|조사|계산|선정|생성|설계|수집|기록|준비|조정|개선|보완';
 const actionNoun = new RegExp('(?:'+actionVerb+')$');
 const suggestedAction = new RegExp('^(.*?)('+actionVerb+')(?:(?:할|해\\s*볼)\\s*수\\s*(?:있습니다|있어요|있다)|해야\\s*(?:합니다|해요)|할\\s*필요가\\s*(?:있습니다|있어요)|하는\\s*(?:편이|것이|게)\\s*좋(?:습니다|아요|겠습니다))$');
-const advicePrompt = /(?:필요한\s*(?:순서|절차|조건|확인 방법)|먼저\s*확인할\s*조건|(?:순서|절차)(?:와|과)\s*(?:확인\s*)?방법|(?:설치|연결|사용|적용|확인|진행|검증)\s*방법)(?:을|를)?\s*(?:정리해|설명해|알려|안내해)(?:\s*(?:줘|주세요)|$)/;
+const advicePrompt = /(?:순서|절차|방법|(?:필요한|먼저\s*확인할)\s*조건)(?:을|를|만|도)?\s*(?:(?:간단히|자세히|차근차근|먼저|번호로|표로|목록으로|체크리스트로)\s+){0,2}(?:정리해|요약해|설명해|알려|안내해)(?:\s*(?:줘요?|주세요|줄래요?|주실래요|주실\s*수\s*있나요))?[.!?。？\s]*$/;
 export function isAdvisoryFollowup(text) {
-  return /필요한\s*순서(?:와|과|\s*및)\s*확인\s*방법/.test(text) || advicePrompt.test(text);
+  return advicePrompt.test(text);
 }
 function suggestion(text, reason='직전 답변의 다음 작업') {
   if (text.length < 6 || text.length > 190 || isAdvisoryFollowup(text) || /https?:|[`<>\[\]{}"“”]|(?:어떤|무엇|어떻게|어느|아니면|또는)\s/.test(text)) return;
@@ -135,7 +135,11 @@ function contextualCandidates(body,request) {
   }
   if (/매출/.test(body) && /월별|채널별|기간별|주문|온라인|스토어|쇼핑몰|판매/.test(context)
       && /(?:분석|집계|비교|정리)[^.!?\n]{0,30}(?:마쳤|완료|했습니다|했어요|끝냈)/.test(body)) {
-    if (!/원인|요인|기여|영향/.test(context)) result.push(suggestion('매출 변화에 가장 크게 영향을 준 요인을 분석해줘','매출 분석 결과의 후속 확인'));
+    const canCompareOrders = /(?:전월|지난달)\s*대비[^\n]{0,20}\d+(?:\.\d+)?\s*%/.test(body)
+      && /주문\s*(?:수|건수)/.test(body) && /평균\s*주문\s*(?:금액|액)|객단가/.test(body)
+      && !/기여액|기여\s*금액|요인별\s*(?:금액|기여)/.test(context);
+    if (canCompareOrders) result.push(suggestion('원자료에서 전월과 이번 달 수치를 대조해 매출 증감액을 주문 수와 평균 주문 금액의 기여액으로 나누고, 각각의 금액을 비교표로 보여줘','최신 답변의 두 매출 지표가 증가분에 기여한 금액 계산'));
+    else if (!/원인|요인|기여|영향/.test(context)) result.push(suggestion('매출 변화에 가장 크게 영향을 준 요인을 분석해줘','매출 분석 결과의 후속 확인'));
     else if (!/개선안|실행안|개선\s*과제|실행\s*계획/.test(context)) result.push(suggestion('매출 분석을 바탕으로 우선 실행할 개선안을 정리해줘','매출 분석 결과의 다음 활용'));
   }
   if (/발표자료|슬라이드/.test(body) && /완료|마쳤|작성했습니다|정리했습니다/.test(body)
