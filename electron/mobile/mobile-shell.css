@@ -452,9 +452,9 @@ html[data-mobile-keyboard] #content[data-view=chat] {
   --compact-nav-height:max(54px,calc(1.1rem + 36px));
 }
 [data-workspace-layout=compact] body {font-size:max(13px,.8125rem);line-height:1.5}
-[data-workspace-layout=compact] #home {gap:8px;font-size:max(16px,1rem)}
+[data-workspace-layout=compact] #home {gap:8px;font-size:max(15px,.9375rem)}
 [data-workspace-layout=compact] #home img {width:24px;height:24px}
-[data-workspace-layout=compact] #status {padding:5px 9px;font-size:max(11.5px,.72rem)}
+[data-workspace-layout=compact] #status {padding:5px 9px;font-size:max(11px,.6875rem)}
 [data-workspace-layout=compact] #content:where(:not([data-view=chat])) {
   padding-bottom:calc(var(--compact-nav-height) + var(--nav-floor) + 15px);
 }
@@ -468,7 +468,7 @@ html[data-mobile-keyboard] #content[data-view=chat] {
 [data-workspace-layout=compact] #content h2 {font-size:max(16px,1rem)}
 [data-workspace-layout=compact] #content .mobile-chat-heading h1 {margin:0;font-size:max(15px,.9375rem)}
 [data-workspace-layout=compact] #content[data-view=projects] {--dashboard-pad:clamp(12px,3.15vw,14.5px);--dashboard-gap:10px}
-[data-workspace-layout=compact] #content .workspace-overview .page-heading h1 {margin-bottom:0;font-size:1.375rem}
+[data-workspace-layout=compact] #content .workspace-overview .page-heading h1 {margin-bottom:0;font-size:1.28125rem}
 [data-workspace-layout=compact] #content .workspace-overview .page-heading {margin-bottom:10px}
 [data-workspace-layout=compact] #content .workspace-overview .mobile-execution button {min-height:55px}
 [data-workspace-layout=compact] #content .mobile-dashboard-panel>.row {padding-block:6px}
@@ -488,8 +488,41 @@ html[data-mobile-keyboard] #content[data-view=chat] {
   --nav-pad:4px;--nav-side:max(15px,var(--safe-left),var(--safe-right));
   width:min(456px,calc(100% - 2 * var(--nav-side)));height:var(--compact-nav-height);
 }
-[data-workspace-layout=compact] #nav button {gap:2px;font-size:max(11px,.6875rem)}
+[data-workspace-layout=compact] #nav button {gap:2px;font-size:max(10.5px,.65625rem)}
 [data-workspace-layout=compact] #nav svg {width:17px;height:17px}
+
+/* Reduce compact navigation and dashboard type without scaling the chat or its controls. */
+[data-workspace-layout=compact] :is(#content:not([data-view=chat]),#install-guide,#confirmation-sheet,#notice) {
+  font-size:max(12px,.75rem);
+}
+[data-workspace-layout=compact] #content:not([data-view=chat]) h1 {font-size:clamp(1.34375rem,5vw,1.65625rem)}
+[data-workspace-layout=compact] #content:not([data-view=chat]) h2 {font-size:max(15px,.9375rem)}
+[data-workspace-layout=compact] #content:not([data-view=chat]) :is(.mobile-execution button span,.activity-chart small,.page-heading time) {
+  font-size:max(11.5px,.71875rem);
+}
+[data-workspace-layout=compact] #content:not([data-view=chat]) .mobile-execution strong {font-size:1.03125rem}
+[data-workspace-layout=compact] #content:not([data-view=chat]) :is(.row small,.row i,.settings-guides button>small) {
+  font-size:max(11px,.6875rem);
+}
+[data-workspace-layout=compact] #content:not([data-view=chat]) :is(.hint,small,.actions button,.tabs button,form button,.settings-account-line>button) {
+  font-size:max(12px,.75rem);
+}
+[data-workspace-layout=compact] #content:not([data-view=chat]) > button:not(.row) {font-size:max(12px,.75rem)}
+[data-workspace-layout=compact] #content:not([data-view=chat]) .mobile-stepper button {font-size:1.25rem}
+[data-workspace-layout=compact] :is(#install-guide .hint,.mobile-notification-card>small,.mobile-notification-heading>small) {
+  font-size:max(11px,.6875rem);
+}
+[data-workspace-layout=compact] #install-guide h2 {font-size:max(16px,1rem)}
+[data-workspace-layout=compact] #install-guide h3 {font-size:max(13px,.8125rem)}
+[data-workspace-layout=compact] #confirmation-sheet h2 {font-size:max(18px,1.125rem)}
+[data-workspace-layout=compact] .mobile-notification-title {font-size:max(15px,.9375rem)}
+[data-workspace-layout=compact] .mobile-notification-card :is(.mobile-notification-summary,.mobile-notification-action) {
+  font-size:max(12px,.75rem);
+}
+@supports (appearance:base-select) {
+  [data-workspace-layout=compact] #content:not([data-view=chat]) select {font-size:max(15px,.9375rem)}
+  [data-workspace-layout=compact] #content:not([data-view=chat]) select::picker(select) {font-size:max(13px,.8125rem)}
+}
 
 :root[data-workspace-layout=wide] {
   --workspace-width:1240px;

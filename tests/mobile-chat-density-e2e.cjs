@@ -3,6 +3,13 @@ const {randomUUID}=require('node:crypto'),{EventEmitter}=require('node:events'),
 const {Store}=require('../electron/store.cjs'),{Controller}=require('../electron/controller.cjs');
 const {registerRemote}=require('../electron/remote.cjs');
 
+async function typography(page,selectors) {
+ return page.evaluate(selectors=>selectors.map(selector=>{
+   const element=document.querySelector(selector), style=getComputedStyle(element);
+   return {font:Number.parseFloat(style.fontSize),height:element.getBoundingClientRect().height};
+ }),selectors);
+}
+
 async function main(){
  const root=path.resolve(__dirname,'..'),scratch=path.join(root,'.flowrium-tmp');await fs.mkdir(scratch,{recursive:true});
  const temp=await fs.mkdtemp(path.join(scratch,'mobile-density-'));
@@ -44,6 +51,23 @@ async function main(){
   const failures=[];page.on('pageerror',error=>failures.push(error.message));
   await page.goto(access.localUrl);await page.getByRole('button',{name:/온라인 스토어 분석.*업무/}).waitFor();
   await page.evaluate(()=>document.fonts.ready);
+  const dashboard=['.workspace-overview h1','[aria-label="프로젝트 현황"] .row strong','#nav button'];
+  for (const width of [320,390]) {
+    await page.setViewportSize({width,height:844});
+    const sizes=await typography(page,dashboard);
+    assert.deepEqual(sizes.map(size=>size.font),[20.5,12,10.5],JSON.stringify(sizes));
+    assert(sizes[2].height>=44,JSON.stringify(sizes));
+  }
+  await page.setViewportSize({width:810,height:1080});
+  await page.evaluate(()=>{
+    Object.defineProperties(screen,{width:{configurable:true,value:810},height:{configurable:true,value:1080}});
+    dispatchEvent(new Event('resize'));
+  });
+  await page.waitForFunction(()=>document.documentElement.dataset.workspaceLayout==='wide');
+  assert.deepEqual((await typography(page,dashboard.slice(0,2))).map(size=>size.font),[24,14]);
+  await page.setViewportSize({width:390,height:844});
+  await page.evaluate(()=>{delete screen.width;delete screen.height;dispatchEvent(new Event('resize'));});
+  await page.waitForFunction(()=>document.documentElement.dataset.workspaceLayout==='compact');
   const chart=await page.evaluate(()=>{
    const canvas=document.createElement('canvas');canvas.width=620;canvas.height=260;const c=canvas.getContext('2d');
    c.fillStyle='#ffffff';c.fillRect(0,0,620,260);c.font='700 22px NanumSquareRound';c.fillStyle='#263d54';c.fillText('월별 매출',28,36);
@@ -77,11 +101,22 @@ async function main(){
    await page.setViewportSize({width,height});await page.evaluate(()=>scrollTo(0,0));
    const m=await page.evaluate(()=>({width:innerWidth,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,heading:document.querySelector('.mobile-chat-heading').getBoundingClientRect().height,composer:document.querySelector('.chat-compose').getBoundingClientRect().height,zoom:getComputedStyle(document.querySelector('.mobile-timeline')).zoom}));
    assert.equal(m.overflow,0,JSON.stringify(m));assert(m.heading<=48,JSON.stringify(m));assert(m.composer<=175,JSON.stringify(m));assert.equal(Number(m.zoom),.9);metrics.push(m);
+   const chatType=await typography(page,['.mobile-markdown','.chat-compose textarea','.mobile-chat-heading h1']);
+   assert.deepEqual(chatType.map(size=>size.font),[15.04,16,15]);
+   assert(chatType[1].height>=44,JSON.stringify(chatType));
   }
   await page.setViewportSize({width:390,height:844});await page.evaluate(()=>{document.activeElement?.blur();scrollTo(0,0)});await page.evaluate(()=>document.fonts.ready);
   await fs.mkdir(output,{recursive:true});await page.screenshot({path:path.join(output,'mobile-chat.png'),animations:'disabled'});
   await page.getByRole('navigation',{name:'모바일 메뉴'}).getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('button',{name:'기본 설정 저장',exact:true}).waitFor();await page.evaluate(()=>scrollTo(0,0));
+  const settingsType=await typography(page,['#content h1','.settings-guides h2','.settings-guides button']);
+  assert.deepEqual(settingsType.map(size=>size.font),[21.5,15,12]);assert(settingsType[2].height>=44);
+  await page.getByRole('button',{name:'도움말',exact:true}).click();
+  const guide=page.getByRole('dialog',{name:'도움말'});
+  await guide.waitFor();
+  assert.deepEqual((await typography(page,['#install-guide h2','#install-guide h3','#install-guide [data-help] p'])).map(size=>size.font),[16,13,12]);
+  await guide.getByRole('button',{name:'도움말 닫기'}).click();
+  await guide.waitFor({state:'hidden'});
   await page.screenshot({path:path.join(output,'mobile-settings.png'),animations:'disabled'});
   const picker=page.locator('select').first();await picker.scrollIntoViewIfNeeded();await picker.click();
   await page.waitForFunction(()=>document.querySelector('select')?.matches(':open'));
