@@ -181,7 +181,14 @@ async function run() {
     await page.getByRole("button", {name: "맥 설치 명령 복사"}).click();
     await page.getByRole("status").filter({hasText:"선택한 명령을 키보드로 복사"}).waitFor();
     assert.equal(await page.evaluate(()=>window.getSelection().toString()),"bash Flowrium-install.sh");
+    await page.evaluate(() => {
+      window.addEventListener("click", () => {
+        window.securityHelpOpenedBeforeNavigation = document.getElementById("security-help").open;
+      }, {once:true});
+    });
     await page.getByRole("link", {name:"운영체제별 안내"}).click();
+    assert.equal(await page.evaluate(()=>window.securityHelpOpenedBeforeNavigation),false,
+      "새 도움말 링크는 주소가 바뀌는 이벤트에서 한 번만 엽니다.");
     assert.equal(new URL(page.url()).hash, "#security-help");
     await page.locator("#security-help .help-answer").waitFor();
     await page.locator("#security-help summary").press("Enter");

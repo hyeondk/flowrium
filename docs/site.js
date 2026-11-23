@@ -77,7 +77,8 @@ window.addEventListener("hashchange", () => revealHelpItem());
 document.addEventListener("click", event => {
   if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
   const link = event.target.closest('a[href^="#"]');
-  if (link) revealHelpItem(link.hash);
+  // 같은 주소를 다시 누르면 hashchange가 발생하지 않습니다.
+  if (link?.hash === location.hash) revealHelpItem();
 });
 revealHelpItem();
 
