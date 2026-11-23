@@ -5,6 +5,7 @@ const path=require('node:path');
 const {_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs');
 const {updateDetails}=require('../electron/project-details.cjs');
+const {settledLayout}=require('./shell-test-helpers.cjs');
 
 async function run(){
  const root=path.resolve(__dirname,'..'),temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-choice-overlay-'));
@@ -19,9 +20,14 @@ async function run(){
   const dialog=page.getByRole('dialog',{name:'설정',exact:true});await dialog.locator('[data-settings-target=categories]').click();
   const editor=dialog.getByRole('region',{name:'프로젝트 카테고리 관리'}),choice=editor.getByRole('combobox',{name:'프로젝트',exact:true}),list=editor.getByRole('listbox',{name:'프로젝트',exact:true});
   await choice.locator('.project-category-label').waitFor();
+  const category=editor.getByRole('combobox',{name:'카테고리 이름',exact:true});
+  const editorLayout=()=>category.evaluate(node=>({
+   height:node.closest('[role=dialog]').getBoundingClientRect().height,
+   categoryTop:node.getBoundingClientRect().top,
+  }));
   const rows=[];
   const measure=async(label)=>{
-   await page.waitForTimeout(230);
+   await settledLayout(list);
    const row=await choice.evaluate((node,label)=>{
     const trigger=node.getBoundingClientRect(),list=document.getElementById(node.getAttribute('aria-controls')),box=list.getBoundingClientRect(),modal=node.closest('[role=dialog]').getBoundingClientRect();
     const sampleX=Math.max(box.left+10,Math.min(box.right-10,box.left+box.width/2)),sampleY=box.top+Math.min(20,box.height/2);
@@ -34,10 +40,11 @@ async function run(){
   };
   for(const [width,height] of [[1440,900],[1440,420],[390,600]]){
    await page.setViewportSize({width,height});await choice.scrollIntoViewIfNeeded();
-   const before=await editor.evaluate(node=>({height:node.closest('[role=dialog]').getBoundingClientRect().height,save:node.querySelector('.category-edit-form>button').getBoundingClientRect().top}));
+   await settledLayout(dialog.locator('.settings-content'));
+   const before=await editorLayout();
    await choice.click();await list.waitFor();await measure(width+'×'+height);
-   const after=await editor.evaluate(node=>({height:node.closest('[role=dialog]').getBoundingClientRect().height,save:node.querySelector('.category-edit-form>button').getBoundingClientRect().top}));
-   assert(Math.abs(before.height-after.height)<1&&Math.abs(before.save-after.save)<1,JSON.stringify({before,after}));
+   const after=await editorLayout();
+   assert(Math.abs(before.height-after.height)<1&&Math.abs(before.categoryTop-after.categoryTop)<1,JSON.stringify({before,after}));
    assert.equal(await list.locator('.project-category-label').count(),16);
    await choice.press('End');await choice.press('Enter');assert.equal(await choice.getAttribute('aria-expanded'),'false');assert(await choice.evaluate(node=>node===document.activeElement));
   }
@@ -51,7 +58,7 @@ async function run(){
   await dialog.locator('.settings-content').evaluate(node=>node.scrollBy({top:16,behavior:'instant'}));
   if(await list.count())await measure('본문 스크롤 추적');
   await choice.press('Tab');assert.equal(await list.count(),0);
-  if(process.env.FLOWRIUM_CHOICE_SCREENSHOT){await page.setViewportSize({width:1440,height:900});await choice.click();await list.waitFor();await page.waitForTimeout(230);const png=await app.evaluate(async({BrowserWindow})=>(await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'));await fs.writeFile(process.env.FLOWRIUM_CHOICE_SCREENSHOT,Buffer.from(png,'base64'));}
+  if(process.env.FLOWRIUM_CHOICE_SCREENSHOT){await page.setViewportSize({width:1440,height:900});await choice.click();await settledLayout(list);const png=await app.evaluate(async({BrowserWindow})=>(await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'));await fs.writeFile(process.env.FLOWRIUM_CHOICE_SCREENSHOT,Buffer.from(png,'base64'));}
   console.log(JSON.stringify({flowUnchanged:true,categoryLabels:16,rows}));
  }finally{await app?.close();await fs.rm(temp,{recursive:true,force:true,maxRetries:4,retryDelay:100});}
 }
