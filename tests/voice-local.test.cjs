@@ -42,14 +42,33 @@ test('음성 설정의 부분 저장은 이전 저장값을 보존하고 다른 
   assert.equal((await api.voicePreferences()).maxSpeechSeconds,60);
 });
 test('종료할 때 접수한 음성 설정은 디스크 쓰기가 끝날 때까지 기다린다',async t=>{
-  const {api,runtime,directory}=await fixture(t);
+  const {api,runtime,directory,allowed}=await fixture(t,{canFinishSettings:()=>true});
   const time=api.configureVoicePreferences({silenceMs:1200},0);
   const length=api.configureVoicePreferences({maxSpeechSeconds:60},0);
-  await runtime.shutdown();
+  allowed(false);
+  const closing=runtime.shutdown({finishPendingSettings:true});
+  await assert.rejects(api.configureVoicePreferences({maxSpeechSeconds:90},0),/마치는 중/);
+  await closing;
   await Promise.all([time,length]);
   const stored=JSON.parse(await fs.readFile(path.join(directory,'voice-0.json'),'utf8'));
   assert.equal(stored.silenceMs,1200);
   assert.equal(stored.maxSpeechSeconds,60);
+});
+test('음성 종료 중에도 잠금과 다른 계정의 쓰기를 차단하고 실패 뒤 서버를 닫는다',async t=>{
+  for(const condition of ['잠금','계정 변경','자료 이관']) await t.test(condition,async t=>{
+    let mayFinish=true;
+    const {api,runtime,directory,allowed,revision}=await fixture(t,{canFinishSettings:()=>mayFinish});
+    const pending=assert.rejects(api.configureVoicePreferences({silenceMs:1200},0),/취소/);
+    allowed(false);
+    if(condition==='잠금')mayFinish=false;
+    if(condition==='계정 변경')revision(1);
+    await runtime.shutdown({finishPendingSettings:condition!=='자료 이관'});
+    await pending;
+    await assert.rejects(fs.access(path.join(directory,'voice-0.json')),{code:'ENOENT'});
+    await assert.rejects(fs.access(path.join(directory,'voice-1.json')),{code:'ENOENT'});
+    allowed(true);
+    await assert.rejects(api.voiceServersState());
+  });
 });
 test('실제 로컬 HTTP 서버에 WAV를 한 번만 보내며 키 없이 인식하고 설정 재시작과 계정 분리를 유지한다',async t=>{
   const audio=await wav();let calls=0,received;

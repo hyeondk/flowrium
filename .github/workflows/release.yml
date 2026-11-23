@@ -199,6 +199,7 @@ jobs:
       - name: 패키지 내장 터미널 검증
         run: node tests/terminal-packaged-e2e.cjs
       - name: 배포 앱의 프로젝트·일반·통합 대화 송수신 검증
+        timeout-minutes: 4
         run: node tests/packaged-chat-e2e.cjs
       - name: 실제 앱에서 업무 대화 검증
         id: verify_1

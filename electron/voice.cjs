@@ -34,18 +34,22 @@ function validatePreferences(value, current = DEFAULT_VOICE) {
   return out;
 }
 function registerVoice(register, options) {
-  const {directory, secretStorage, allowCapture, fetchImpl = fetch, canRun = () => true, accountRevision = () => 0}=options;
+  const {directory, secretStorage, allowCapture, fetchImpl = fetch, canRun = () => true,
+    canFinishSettings = canRun, accountRevision = () => 0}=options;
   const servers=require('./voice-servers.cjs').registerVoiceServers(register,options);
   let queue = Promise.resolve(), epoch = 0, stopped = false;
-  let acceptingSettings = true;
+  let finishingSettings = false, closing;
   const active = new Set(), requests = new Map();
   const owner = () => String(accountRevision());
   function files(revision = owner()) {
     if (!/^[0-9]+$/.test(revision)) throw Error('음성 계정 상태를 확인해 주세요.');
     return { key: path.join(directory, revision === '0' ? 'voice.enc' : `voice-${revision}.enc`), prefs: path.join(directory, `voice-${revision}.json`) };
   }
-  function assertAllowed(revision, token) {
-    if (stopped || !canRun() || revision !== owner() || (token !== undefined && token !== epoch)) throw Error('음성 처리가 취소되었습니다. 다시 시작해 주세요.');
+  function assertAllowed(revision, token, allowed = canRun) {
+    if (stopped || !allowed() || revision !== owner() || (token !== undefined && token !== epoch)) throw Error('음성 처리가 취소되었습니다. 다시 시작해 주세요.');
+  }
+  function assertSettingsWrite(revision) {
+    assertAllowed(revision, undefined, finishingSettings ? canFinishSettings : canRun);
   }
   function cancel() { epoch++; for (const request of active) request.abort(); active.clear(); requests.clear(); }
   async function readKey(revision = owner()) {
@@ -64,12 +68,20 @@ function registerVoice(register, options) {
       return validatePreferences(JSON.parse(await fs.readFile(file,'utf8')));
     } catch (e) { if (e.code === 'ENOENT') return { ...DEFAULT_VOICE }; throw e; }
   }
-  async function write(file, data) {
-    await fs.mkdir(directory,{recursive:true}); const temp = `${file}.${randomUUID()}.tmp`;
-    try { await fs.writeFile(temp,data,{flag:'wx',mode:0o600}); await fs.rename(temp,file); }
-    finally { await fs.rm(temp,{force:true}); }
+  async function write(revision, file, data) {
+    await fs.mkdir(directory,{recursive:true});
+    const temp = `${file}.${randomUUID()}.tmp`;
+    try {
+      await fs.writeFile(temp,data,{flag:'wx',mode:0o600});
+      assertSettingsWrite(revision);
+      await fs.rename(temp,file);
+    } finally { await fs.rm(temp,{force:true}); }
   }
-  function serial(callback) { const task = queue.catch(()=>{}).then(callback); queue = task; return task; }
+  function serial(callback) {
+    const task = queue.then(callback);
+    queue = task.catch(()=>{});
+    return task;
+  }
   register('voiceStatus', async () => {
     const revision = owner(); assertAllowed(revision);
     const prefs = await readPreferences(revision), key = prefs.provider==='api'?await readKey(revision):''; assertAllowed(revision);
@@ -77,30 +89,30 @@ function registerVoice(register, options) {
   });
   register('voicePreferences', async () => { const revision=owner(); assertAllowed(revision); const prefs=await readPreferences(revision); assertAllowed(revision); return prefs; });
   register('configureVoicePreferences', async (value, accountRevision) => {
-    if (!acceptingSettings) throw Error('음성 설정 저장을 마치는 중입니다.');
+    if (closing) throw Error('음성 설정 저장을 마치는 중입니다.');
     const revision = owner();
     const full = accountRevision === undefined ? validatePreferences(value) : null;
     if (!full && (!Number.isSafeInteger(accountRevision) || String(accountRevision) !== revision))
       throw Error('음성 설정을 저장할 계정이 바뀌었습니다.');
     assertAllowed(revision);
     return serial(async () => {
-      assertAllowed(revision);
+      assertSettingsWrite(revision);
       const prefs = full ?? validatePreferences(value, await readPreferences(revision));
-      assertAllowed(revision);
+      assertSettingsWrite(revision);
       cancel();
-      await write(files(revision).prefs,JSON.stringify(prefs));
+      await write(revision,files(revision).prefs,JSON.stringify(prefs));
       return prefs;
     });
   });
   register('configureVoice', async key => {
-    if (!acceptingSettings) throw Error('음성 설정 저장을 마치는 중입니다.');
+    if (closing) throw Error('음성 설정 저장을 마치는 중입니다.');
     if (key !== null && (typeof key !== 'string' || !/^sk-[A-Za-z0-9_-]{15,300}$/.test(key))) throw Error('OpenAI API 키를 확인해 주세요.');
     const revision = owner(); assertAllowed(revision); cancel();
     return serial(async () => {
-      assertAllowed(revision);
+      assertSettingsWrite(revision);
       if (key === null) return fs.rm(files(revision).key,{force:true});
       if (!secretStorage.isEncryptionAvailable()) throw Error('운영체제의 보안 저장소를 사용할 수 없습니다.');
-      await write(files(revision).key,secretStorage.encryptString(key));
+      await write(revision,files(revision).key,secretStorage.encryptString(key));
     });
   });
   register('allowVoiceCapture', async () => {
@@ -169,13 +181,16 @@ function registerVoice(register, options) {
   return {
     cancel(){cancel();return servers.invalidate();},
     isBusy:()=>servers.isBusy(),
-    async shutdown(){
-      acceptingSettings=false;
+    shutdown({finishPendingSettings=false}={}) {
+      if (closing) return closing;
+      finishingSettings=finishPendingSettings;
       cancel();
-      await queue;
-      stopped=true;
-      cancel();
-      await servers.shutdown();
+      closing=queue.then(async()=>{
+        stopped=true;
+        cancel();
+        await servers.shutdown();
+      });
+      return closing;
     }
   };
 }

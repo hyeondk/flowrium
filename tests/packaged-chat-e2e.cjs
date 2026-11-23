@@ -35,6 +35,7 @@ async function run() {
   const {_electron}=require('playwright');
   const {Store}=require('../electron/store.cjs');
   const {composer,dockHome,openConversation,newProjectConversation}=require('./shell-test-helpers.cjs');
+  const {closeInstalledApp,within}=require('./update-installed-ui.cjs');
   const windows=process.platform==='win32';
   assert(windows || process.platform==='darwin');
   const input=process.argv[2]||(windows?'release/win-unpacked/Flowrium.exe':'release/mac-arm64/Flowrium.app');
@@ -143,7 +144,9 @@ async function run() {
     assert.equal(prompts.length,3);
     for(const [index,project] of [projects[0],projects[0],projects[1]].entries())
       assert(prompts[index].includes(await fs.realpath(project.path)),'권한 확인창에 실제 프로젝트 경로 표시');
-    await app.close();app=undefined;
+    phase='첫 대화 검증 뒤 배포 앱 종료';
+    await closeInstalledApp(app,phase);app=undefined;
+    phase='재시작 뒤 기존 대화 열기';
     await launch();await openConversation(page,first.title);
     const resumed=await send('시험요청5',undefined,projects[0].id);
     assert.equal(resumed.id,first.id);assert.equal(resumed.threadId,first.threadId);
@@ -151,16 +154,20 @@ async function run() {
     assert.deepEqual(inputs,['시험요청1','시험요청2','시험요청3','시험요청4','시험요청5']);
     assert.deepEqual(await app.evaluate(()=>globalThis.flowriumTrustPrompts),[],'재시작 뒤 신뢰 유지');
     assert.deepEqual(errors,[]);assert.ifError(serviceError);
+    phase='다시 시작한 배포 앱 종료';
+    await closeInstalledApp(app,phase);app=undefined;
     console.log('설치형 앱과 내장 Codex / 두 프로젝트의 새 대화 / 일반 대화 / 통합 대화 / 재시작 후 원래 대화에 이어 보내기 / 입력과 모델 응답 표시 통과');
   }catch(error){
     if(serviceError)console.error(serviceError);
     console.error('검증 위치',phase,'실제 응답 수',inputs.length);
-    if(page&&!page.isClosed())console.error('표시된 알림',await page.locator('[role="alert"],.toast,.snackbar').allTextContents().catch(()=>[]));
+    if(page&&!page.isClosed())console.error('표시된 알림',await within(page.locator('[role="alert"],.toast,.snackbar').allTextContents(),3000,'검증 화면 알림 읽기').catch(()=>[]));
     throw error;
   }finally{
-    if(app)await app.close();
-    if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}
-    await fs.rm(temp,{recursive:true,force:true,maxRetries:8,retryDelay:200});
+    try { if(app)await closeInstalledApp(app,'실패한 배포 앱 검사 정리'); }
+    finally {
+      if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}
+      await fs.rm(temp,{recursive:true,force:true,maxRetries:8,retryDelay:200});
+    }
   }
 }
 if(process.argv[2]==='app-server')serveCodex();else run().catch(error=>{console.error(error);process.exitCode=1;});

@@ -234,9 +234,11 @@ async function launch() {
     canShow:()=>controller?.client.ready===true&&controller.status.dotsEligible===true&&!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling()&&!migration?.busy&&!codexTransfer?.isBusy()&&!controller?.trashRuntime?.isBusy(),
     openExternal:url=>shell.openExternal(url),
   });
+  const canFinishVoiceSettings=()=>!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling();
   voice = require("./voice.cjs").registerVoice(register, {
     directory: app.getPath("userData"), secretStorage: require("electron").safeStorage,
-    canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater?.isInstalling(),
+    canRun:()=>!quitting&&canFinishVoiceSettings(),
+    canFinishSettings:canFinishVoiceSettings,
     accountRevision:()=>security.accountRevision,
     accountOwner:()=>security.data.accountOwner || 'unverified:'+security.accountRevision,
     chooseServerPath:async kind=>{const result=await dialog.showOpenDialog(window,{title:kind==='directory'?'음성 서버 작업 폴더 선택':'음성 서버 실행 파일 선택',properties:kind==='directory'?['openDirectory']:['openFile']});return result.canceled?null:result.filePaths[0]||null;},
@@ -685,7 +687,7 @@ else {
     quitting = true;
     lifecycleDiagnostic('quit-start');
     if (window && !window.isDestroyed()) window.setEnabled(false);
-    Promise.allSettled([externalRepositoryAccess?.shutdown(),dotsRuntime?.shutdown(),workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.(), projectPorts?.shutdown(), codexTransfer?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
+    Promise.allSettled([externalRepositoryAccess?.shutdown(),dotsRuntime?.shutdown(),workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.({finishPendingSettings:true}), projectPorts?.shutdown(), codexTransfer?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
       .then(() => { lifecycleDiagnostic('quit-services-finished'); return teamRuntime?.flush(); })
       .then(() => { lifecycleDiagnostic('quit-teams-finished'); return Promise.all([drafts.queue,controller.store.settingsQueue]); })
       .finally(() => {
