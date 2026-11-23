@@ -53,7 +53,7 @@ async function verifyFollowupTiming() {
     const long = await add('길게 받은 답변','분류를 살펴봐줘','자료의 값입니다. '.repeat(2000)+'\n'+answer);
     const declined = await add('추천 거부','다음 단계는 제안하지 마세요.',answer);
     const finished = await add('완료한 결과','표를 확인해줘','판매표를 확인했습니다.');
-    const waiting = await add('후속 작업 대기','결과를 살펴봐 주세요.','결과를 확인했습니다. 계속 진행할까요?');
+    const waiting = await add('후속 작업 대기','기기 분류표의 누락을 살펴봐 주세요.','기기 분류표를 확인했습니다. 계속 진행할까요?');
     const fresh = await store.createSession(project.id,{title:'새 작업'});
     await store.saveSettings({codexPath:path.join(__dirname,'continuation-fake-codex.cjs'),model:'test-model'});
     await fs.writeFile(trace,'');

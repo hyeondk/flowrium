@@ -41,7 +41,7 @@ async function main(){
    await page.setViewportSize({width,height:900});await settledLayout(dock);
    const metrics=await assistant.evaluate(row=>{
     const center=r=>(r.top+r.bottom)/2,box=e=>e.getBoundingClientRect();
-    const avatar=box(row.querySelector('.message-avatar')),icon=box(row.querySelector('.chatgpt-avatar'));
+    const avatar=box(row.querySelector('.message-avatar')),icon=box(row.querySelector('.codex-avatar'));
     const author=row.querySelector('.message-meta strong'),label=box(author),font=getComputedStyle(author);
     const canvas=document.createElement('canvas').getContext('2d');
     canvas.font=font.font;

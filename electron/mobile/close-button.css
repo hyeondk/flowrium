@@ -1,0 +1,79 @@
+:root {
+  --close-surface: #fff3f2;
+  --close-hover: #ffe7e6;
+  --close-line: #f0d6d6;
+  --close-ink: #873d45;
+}
+
+:root[data-theme="dark"] {
+  --close-surface: #362429;
+  --close-hover: #482e35;
+  --close-line: #68424b;
+  --close-ink: #ffc4cb;
+}
+
+button.popup-close-button.popup-close-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: .35em;
+  width: auto;
+  min-width: 0;
+  height: auto;
+  min-height: 34px;
+  padding: .35rem .65rem;
+  border: 1px solid var(--close-line);
+  border-radius: .55rem;
+  background: var(--close-surface);
+  color: var(--close-ink);
+  font-size: .8125rem;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+button.popup-close-button.popup-close-button::before {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 4l8 8m0-8-8 8' stroke='black' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  content: "";
+}
+
+button.popup-close-button.popup-close-button:hover:enabled {
+  background: var(--close-hover);
+  color: var(--close-ink);
+  border-color: var(--close-line);
+}
+
+button.popup-close-button:focus-visible {
+  outline: 2px solid var(--accent, #2168b4);
+  outline-offset: 2px;
+}
+
+button.popup-close-button:disabled {
+  cursor: default;
+}
+
+@media (min-width: 900px) {
+  button.popup-close-button.dock-close-small { display: none; }
+}
+
+@media (max-width: 899px) {
+  .conversation-dock .dock-heading-actions .dock-fold { display: none; }
+}
+
+@media (max-width: 760px) {
+  .workspace-side.is-open .side-brand-row { min-height: 44px; }
+}
+
+@media (pointer: coarse) {
+  button.popup-close-button.popup-close-button { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button.popup-close-button.popup-close-button { transition: none; }
+}

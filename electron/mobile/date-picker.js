@@ -91,7 +91,9 @@ export function installDatePicker() {
     todayButton.disabled=today<lower||today>upper;
     bottom.append(todayButton);
     if (!field.required) bottom.append(button('지우기','날짜 지우기',()=>finish('')));
-    bottom.append(button('닫기','날짜 선택 닫기',()=>finish()));
+    const dismiss = button('닫기','날짜 선택 닫기',()=>finish());
+    dismiss.classList.add('popup-close-button');
+    bottom.append(dismiss);
     if (timeSave) bottom.append(timeSave);
     dialog.append(bottom);
     function render(focus) {

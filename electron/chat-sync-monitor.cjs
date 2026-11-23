@@ -83,7 +83,8 @@ async function poll(runtime,watch){
     if(!s)continue;
     const stamp=JSON.stringify([row.updatedAt,row.status?.type,row.name]);
     const previous=watch.stamps.get(s.id);
-    if(D.active(row)||(previous!==undefined?previous!==stamp:D.at(row.updatedAt)>=(s.codexLink?.sourceUpdatedAt||s.updatedAt)))watch.priority.add(s.id);
+    const renamed=!s.pendingThreadName&&typeof row.name==='string'&&row.name.trim()&&row.name.trim().slice(0,300)!==s.title;
+    if(renamed||D.active(row)||(previous!==undefined?previous!==stamp:D.at(row.updatedAt)>=(s.codexLink?.sourceUpdatedAt||s.updatedAt)))watch.priority.add(s.id);
     watch.stamps.set(s.id,stamp);
   }
   const live=new Set(sessions.map(s=>s.id));

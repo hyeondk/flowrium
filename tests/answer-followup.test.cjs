@@ -22,7 +22,7 @@ test('완료 보고, 열린 질문, 인용, 작성물, 코드 예시를 새 작�
   ]) assert.equal(followupFromAnswer(text), undefined, text);
 });
 
-test('마지막 답변만 읽고 거부, 중복, 대기 완료, 빈 대화를 존중한다', async () => {
+test('최신 답변에 제안하고 거부, 중복, 대기 완료, 빈 대화를 존중한다', async () => {
   const {originalAnswerFollowups} = await loaded;
   const user = {role:'user', text:'최근 응답을 검토해줘'};
   const answer = {id:'last', role:'assistant', text:'다음 작업: 판매표의 누락 행을 확인해 주세요.'};
@@ -85,7 +85,7 @@ test('코드와 작성물 속 분석 결과로 추천을 만들지 않으며 긴
   const {originalAnswerFollowups}=await loaded;
   const answer='월별 매출 분석을 완료했습니다. 최근 주문 데이터를 정리했습니다.';
   for(const text of ['```text\n'+answer+'\n```',':::writing\n'+answer+'\n:::','> '+answer]) {
-    assert.doesNotMatch(originalAnswerFollowups({messages:[{role:'user',text:'예시를 읽어줘'},{role:'assistant',text} ]})[0].prompt,/매출|주문/);
+    assert.deepEqual(originalAnswerFollowups({messages:[{role:'user',text:'예시를 읽어줘'},{role:'assistant',text} ]}), []);
   }
   const session={messages:[{role:'user',text:'스토어 매출을 분석해줘'},{role:'assistant',text:'자료 설명 '.repeat(20000)+'\n'+answer}]};
   const start=performance.now();
@@ -119,7 +119,7 @@ test('명시적인 후속 작업이 없을 때도 직전 답변에 맞춘 초안
   assert(performance.now()-start<10000);
   assert.equal(result.prompt,originalAnswerFollowups(completed)[0].prompt);
   assert.equal(originalAnswerFollowups(session('아이콘 정렬만 추가 조정이 필요합니다.'))[0].prompt,'아이콘 정렬만 추가 조정해줘');
-  assert.doesNotMatch(originalAnswerFollowups(session('승인번호 98352를 확인했습니다.'))[0].prompt,/98352/);
+  assert.deepEqual(originalAnswerFollowups(session('승인번호 98352를 확인했습니다.')),[]);
   const abort=new AbortController();
   assert.equal(await prepareAnswerFollowup(completed,()=>abort.abort(),abort.signal),undefined);
 });
@@ -132,7 +132,52 @@ test('긴 요청의 원문 보관 표기를 추천 주제로 쓰지 않는다',a
     {role:'user',text:'긴 요청 원문 (3.98MB)',sourceOnly:true},
     {role:'assistant',text:'확인한 결과입니다.'},
   ];
-  assert.match(originalAnswerFollowups({messages})[0].prompt,/^직전 답변을 바탕으로/);
+  assert.deepEqual(originalAnswerFollowups({messages}),[]);
   messages.at(-1).text='판매표를 확인했습니다.';
   assert.match(originalAnswerFollowups({messages})[0].prompt,/판매표.*확인한 범위/);
+});
+
+test('인사나 반복 채팅 수신 확인에 후속 과제를 만들어 넣지 않는다',async()=>{
+  const {canOfferFollowup,originalAnswerFollowups}=await loaded;
+  const session={messages:[
+    {role:'user',text:'채팅 테스트'},
+    {role:'assistant',text:'예상 소요 시간: 몇 초 이내예요.\n채팅 테스트 메시지 잘 받았어요! 이 답변이 보이면 메시지를 주고받는 데 성공한 거예요.'},
+    {role:'user',text:'다시 채팅 테스트'},
+    {role:'assistant',text:'예상 소요 시간: 몇 초 이내예요.\n이번 테스트 메시지도 잘 받았어요!'},
+  ]};
+  assert.equal(canOfferFollowup(session),false);
+  assert.deepEqual(originalAnswerFollowups(session),[]);
+});
+
+test('오래된 작업 목적과 말투를 적용하되 마지막 답변에 남은 과제를 고른다',async()=>{
+  const {originalAnswerFollowups}=await loaded;
+  const rest=Array.from({length:80},()=>({role:'system',text:'내부 검증 로그만 표시합니다.'}));
+  const messages=[
+    {role:'user',text:'권한 설정은 확인했으니 아이폰에서 기존 연결이 유지되는지 끝까지 확인해 줄래요?'},
+    {role:'assistant',text:'맥을 재시작한 뒤 접속했습니다.'},
+    ...rest,
+    {role:'user',text:'같은 조건으로 계속'},
+    {role:'assistant',text:'다음 단계\n- 관리자 화면 알림 색상을 검토해 주세요.\n- 아이폰에서 앱을 재실행하고 접속을 확인해 주세요.'},
+  ];
+  const before=JSON.stringify(messages);
+  assert.equal(originalAnswerFollowups({messages})[0]?.prompt,'아이폰에서 앱을 재실행하고 접속을 확인해 줄래요?');
+  assert.equal(JSON.stringify(messages),before);
+  messages[0].text='관리자 화면 알림의 색상부터 검토해줘';
+  assert.equal(originalAnswerFollowups({messages})[0]?.prompt,'관리자 화면 알림 색상을 검토해줘');
+});
+
+test('최신 과제에 필요한 앞선 대상과 검증 범위를 담고 이미 요청한 과제를 반복하지 않는다',async()=>{
+  const {originalAnswerFollowups}=await loaded;
+  const messages=[
+    {role:'user',text:'내 맥에서 시험 채팅을 만들어서 ChatGPT 앱의 Codex 목록에 바로 뜨는지 확인해줘. 제목 변경이랑 삭제도 양쪽에서 실제로 반영되는지 보고, 끝나면 시험 채팅만 정리해줘.'},
+    {role:'assistant',text:'첫 메시지를 보냈고 목록에 나타난 걸 확인했습니다. 제목 변경과 삭제는 아직 확인하지 않았습니다.'},
+  ];
+  assert.equal(originalAnswerFollowups({messages})[0]?.prompt,'시험 채팅의 제목 변경과 삭제가 양쪽 앱에 반영되는지 확인해줘');
+  const history={messages:[
+    {role:'user',text:'메뉴 아이콘 정렬을 검증해 주세요.'},
+    {role:'assistant',text:'메뉴 아이콘은 가운데에 있습니다.'},
+    ...Array.from({length:20},()=>({role:'user',text:'좋습니다.'})),
+    {role:'assistant',text:'다음 단계\n- 메뉴 아이콘 정렬을 검증해 주세요.\n- 도움말의 밝은 모드 대비를 점검해 주세요.'},
+  ]};
+  assert.equal(originalAnswerFollowups(history)[0]?.prompt,'도움말의 밝은 모드 대비를 점검해 주세요');
 });

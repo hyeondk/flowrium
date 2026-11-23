@@ -6,6 +6,7 @@ const {createHash}=require('node:crypto');
 const {createLargeRequest}=require('./large-request-fixture.cjs');
 const {readRequestSource}=require('../electron/chat-long-request.cjs');
 const {itemPages}=require('../electron/codex-transfer-data.cjs');
+const {CodexTransfer}=require('../electron/codex-transfer.cjs');
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const readerName='flowrium_read_current_request';
 function longRequest(scope){
@@ -61,7 +62,7 @@ function modelReadsRequest(body,itemId,probe){
 function done(c,id){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{c.off('event',handler);reject(Error('대화 완료 대기 시간 초과'));},20000);function handler(e){if(e.type==='done'&&e.sessionId===id){clearTimeout(timer);c.off('event',handler);if(e.status==='completed')resolve(e);else reject(Error(e.text));}}c.on('event',handler);});}
 async function main(){
  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-native-hub-')),folder=path.join(temp,'project'),profile=path.join(temp,'codex');
- let server,controller,client,failure;const bodies=[];let delegated=0,projectId,patchAttempted=false,longProbe;
+ let server,controller,client,desktop,runtime,failure;const bodies=[];let delegated=0,projectId,patchAttempted=false,longProbe;
  try{
   await fs.mkdir(folder);await fs.mkdir(profile);await fs.writeFile(path.join(folder,'protected.txt'),'원본 보존');
   server=http.createServer(async(req,res)=>{try{
@@ -88,6 +89,8 @@ async function main(){
   client.request=(method,params,...rest)=>method==='account/read'?Promise.resolve({account:{type:'chatgpt',planType:'test'}}):nativeRequest(method,params,...rest);
   const store=new Store(path.join(temp,'app'));await store.load();const project=await require('./project-trust-fixture.cjs').addTrustedFixtureProject(store,folder);projectId=project.id;await store.createSession(project.id,{title:'실제 프로젝트 업무'});await store.saveSettings({model:'gpt-5.5'});
   controller=new Controller(store,{client,canRun:()=>true,queueOwner:()=>0,applicationTools:()=>{throw Error('제한 대화에서 프로젝트 도구를 가져오면 안 됩니다.');}});
+  desktop=new CodexClient(client.options);
+  runtime=new CodexTransfer(store,controller,{readClient:client,codexHome:profile,accountOwner:()=>0,canRun:()=>true});
   controller.on('event',event=>{if(event.type==='error')console.error(event.text);});
   const handlers=new Map(),register=(name,fn)=>handlers.set(name,fn);registerConversationScopes(register,store,controller,{accountRevision:()=>0,workflowAction:async input=>{assert.equal(input.action,'request');assert.equal(input.projectId,project.id);delegated++;return{id:'test-proposal',status:'pending'};}});registerConversationTools(register,controller);
   const general=await handlers.get('createHubConversation')({scope:'general'}),hub=await handlers.get('createHubConversation')({scope:'integrated'}),edit=handlers.get('editConversation');
@@ -104,6 +107,17 @@ async function main(){
   const privateClient=await controller.conversationClient(store.session(general.id));assert.equal((await threadTurns(privateClient,original)).length,2,'원본 실행 기록을 보존해야 합니다.');
   await send(hub.id,'모든 프로젝트 현황을 보고 업무를 제안해 줘');assert.equal(bodies.at(-1).model,'gpt-5.5');assert.equal(delegated,1);assert.equal(store.state.sessions.length,1,'승인 전에 프로젝트 업무 대화를 만들지 않습니다.');
   const integrated=bodies.filter(b=>JSON.stringify(b).includes('flowrium_hub_snapshot'));assert(integrated.some(b=>JSON.stringify(b.input).includes('실제 프로젝트 업무')));assert(integrated.some(b=>b.input.some(i=>i.type==='function_call_output'&&JSON.stringify(i.output).includes('결정함'))));
+  await desktop.start();
+  for(const session of [general,hub]){
+   const stored=store.session(session.id),threadId=stored.threadId;
+   await edit(session.id,{action:'rename',title:'Flowrium에서 저장한 '+stored.scope+' 제목'});
+   assert.equal((await desktop.request('thread/read',{threadId,includeTurns:false})).thread.name,stored.title);
+   const incoming='원본에서 저장한 '+stored.scope+' 제목';
+   await desktop.request('thread/name/set',{threadId,name:incoming});
+   await runtime.action({action:'sync',sessionId:session.id});
+   assert.equal(stored.title,incoming);
+  }
+  console.log('일반·통합 대화에서 독립된 실제 서버와 제목이 양방향 반영됨');
   const guarded=await handlers.get('createHubConversation')({scope:'general'});await send(guarded.id,'차단시도 / 프로젝트 파일을 변경해 줘');assert(patchAttempted);assert.equal(await fs.readFile(path.join(folder,'protected.txt'),'utf8'),'원본 보존');
   const patchOutputs=[...new Set(bodies.flatMap(body=>body.input||[]).filter(item=>['custom_tool_call_output','function_call_output'].includes(item.type)&&item.call_id==='blocked-patch').map(item=>JSON.stringify({type:item.type,call_id:item.call_id,output:item.output})))];
   const patchDiagnostic=(patchOutputs.length?patchOutputs.join('\n'):'blocked-patch의 도구 반환 항목을 찾지 못했습니다.').slice(0,2000);
@@ -162,7 +176,7 @@ async function main(){
   assert.equal(digest((await readRequestSource(restored,reopened.id,user[0].id,'full')).text),large.sha256);
   console.log('번들 Codex 실제 RPC 통과 / 일반 대화의 프로젝트 격리 / 외부 실행 도구 미노출 / 위험 설정 강제 제한과 실제 파일 변경 시도 차단 / 첨부 텍스트와 이미지 모델 입력 / 실제 분기와 되감기 / 통합 현황 조회와 승인 대기 제안 / 모델 재지정·상속 실제 전송 / 재시작 영속 저장');
  }finally{
-  await controller?.shutdown();client?.close();if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});
+  await controller?.shutdown();await runtime?.shutdown();client?.close();desktop?.close();if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});
  }
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

@@ -1,6 +1,6 @@
-import { AnimatedCheckbox, AnimatedSwitch, ModalPortal, usePresence } from './ui-motion';
+import { CloseButton, AnimatedCheckbox, AnimatedSwitch, ModalPortal, usePresence } from './ui-motion';
 import { useEffect, useRef, useState } from "react";
-import { BookMarked, MessagesSquare, RotateCcw, X } from "lucide-react";
+import { BookMarked, MessagesSquare, RotateCcw } from "lucide-react";
 import type { MemoryImportPlan, MemoryNote, MemoryScope } from "../shared/memory";
 import type { Project, Session } from "../shared/types";
 import "./memory.css";
@@ -194,14 +194,11 @@ export function ProjectMemory({ projectId }: { projectId: string }) {
                   ? "메모 편집"
                   : "새 메모"}
             </h3>
-            <button
-              type="button"
+            <CloseButton
               aria-label="메모 편집 닫기"
               disabled={busy}
               onClick={() => setEditing(null)}
-            >
-              <X size={15} />
-            </button>
+            />
           </div>
           <label>
             보관 범위
@@ -460,7 +457,7 @@ export function AssistantShortcut({
           )}
           {error && <p role="alert">{error}</p>}
           <div className="pf-actions">
-            <button onClick={() => setOpen(false)}>닫기</button>
+            <CloseButton onClick={() => setOpen(false)}/>
             {projects.length ? (
               <button
                 disabled={!project || busy}

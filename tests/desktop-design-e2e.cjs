@@ -554,10 +554,22 @@ async function run(){
       results.themes.push(await page.evaluate(()=>{
         const computed=getComputedStyle(document.documentElement),channels=key=>{const hex=computed.getPropertyValue(key).trim().replace('#','');return (hex.length===3?hex.split('').map(c=>c+c):hex.match(/../g)).map(s=>parseInt(s,16)/255).map(v=>v<=.04045?v/12.92:((v+.055)/1.055)**2.4)};
         const lum=key=>channels(key).reduce((acc,v,i)=>acc+v*[.2126,.7152,.0722][i],0),ratio=(a,b)=>(Math.max(lum(a),lum(b))+.05)/(Math.min(lum(a),lum(b))+.05);
-        return {theme:document.documentElement.dataset.theme,accent:document.documentElement.dataset.accent,label:ratio('--muted','--panel'),selected:ratio('--accent-ink','--accent-soft'),primary:ratio('--on-primary','--accent-fill')};
+        const shell=getComputedStyle(document.querySelector('.app-shell'));
+        const tabs=document.querySelector('.dock-scope-tabs');
+        const selection=tabs?.querySelector('[aria-pressed=true]');
+        return {theme:document.documentElement.dataset.theme,accent:document.documentElement.dataset.accent,label:ratio('--muted','--panel'),selected:ratio('--accent-ink','--accent-soft'),primary:ratio('--on-primary','--accent-fill'),
+          surfaces:['--bg','--sidebar','--panel','--panel-alt','--input'].map(key=>computed.getPropertyValue(key)).concat(shell.backgroundColor,shell.backgroundImage),
+          scope:selection?getComputedStyle(selection).backgroundColor:null,track:tabs?getComputedStyle(tabs).backgroundColor:null};
       }));
     }
     assert(results.themes.every(row=>Math.min(row.label,row.selected,row.primary)>=4.5),JSON.stringify(results.themes));assert.deepEqual(results.errors,[]);
+    const darkThemes=results.themes.filter(row=>row.theme==='dark');
+    assert(darkThemes.every(row=>JSON.stringify(row.surfaces)===JSON.stringify(darkThemes[0].surfaces)));
+    for (const mode of ['light','dark']) {
+      const variants=results.themes.filter(row=>row.theme===mode);
+      assert(variants.every(row=>row.scope&&row.scope!==row.track));
+      assert.equal(new Set(variants.map(row=>row.scope)).size,3);
+    }
     if(screenshots)await fs.writeFile(path.join(screenshots,'desktop-verification.json'),JSON.stringify(results,null,2));
     console.log('데스크톱 실제 창 / 글꼴 / 3열 치수 / 전체 앱87% / 메뉴·입력·본문 실측 / 대비 6조합 / 인라인 잠금 목록 / 일반 개인 비서',JSON.stringify(results));
   }finally{if(app)await app.close();await fs.rm(temp,{recursive:true,force:true,maxRetries:5,retryDelay:100});}

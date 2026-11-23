@@ -16,8 +16,50 @@ async function editorDigest(input) {
 }
 
 async function checkInlineDraft(page,input,draft) {
-  await input.fill(draft);
+  const toolbar=page.getByRole('group',{name:'입력 서식'});
+  const shortcut=process.platform==='darwin'?'Meta':'Control';
   const ink=input.locator('..').locator('.markdown-input-ink');
+  await input.fill('현장 자료');
+  await input.evaluate(el=>el.select());
+  await toolbar.getByRole('button',{name:'굵게',exact:true}).click();
+  assert.equal(await input.inputValue(),'**현장 자료**');
+  assert.equal(await ink.locator('.md-strong').textContent(),'현장 자료');
+  await input.press(shortcut+'+i');
+  assert.equal(await input.inputValue(),'***현장 자료***');
+  assert.equal(await ink.locator('.md-em .md-strong').textContent(),'현장 자료');
+  await input.press(shortcut+'+i');
+  assert.equal(await input.inputValue(),'**현장 자료**','겹쳐 적용한 기울임만 해제');
+  await input.fill('현장 자료');
+  await input.evaluate(el=>el.select());
+  await toolbar.getByRole('button',{name:'굵게',exact:true}).click();
+  await input.press(shortcut+'+z');
+  assert.equal(await input.inputValue(),'현장 자료','도구를 사용한 편집도 기본 실행 취소로 복구');
+  await input.evaluate(el=>el.select());
+  await input.press(shortcut+'+i');
+  assert.equal(await ink.locator('.md-em').textContent(),'현장 자료');
+  await input.press(shortcut+'+i');
+  assert.equal(await input.inputValue(),'현장 자료','같은 서식 단축키로 선택한 영역의 서식 해제');
+
+  await input.fill('첫 항목\n둘째 항목');
+  await input.evaluate(el=>el.select());
+  await toolbar.getByRole('button',{name:'글머리표',exact:true}).click();
+  assert.equal(await input.inputValue(),'- 첫 항목\n- 둘째 항목');
+  assert.equal(await ink.locator('.md-bullet[data-unordered]').count(),2);
+  assert.match(await ink.locator('.md-bullet[data-unordered]').first().evaluate(el=>getComputedStyle(el,'::before').content),/•/);
+  await toolbar.getByRole('button',{name:'번호 목록',exact:true}).click();
+  assert.equal(await input.inputValue(),'1. 첫 항목\n2. 둘째 항목');
+  await input.evaluate(el=>el.setSelectionRange(el.value.length,el.value.length));
+  await input.press('Shift+Enter');
+  assert.equal(await input.inputValue(),'1. 첫 항목\n2. 둘째 항목\n3. ');
+  await input.press('Shift+Enter');
+  assert.equal(await input.inputValue(),'1. 첫 항목\n2. 둘째 항목\n','내용 없는 항목에서 줄을 바꾸면 번호 목록 종료');
+
+  await input.fill('');
+  await toolbar.getByRole('button',{name:'굵게',exact:true}).click();
+  await page.keyboard.insertText('굵게 입력');
+  assert.equal(await input.inputValue(),'**굵게 입력**');
+  assert.equal(await ink.locator('.md-strong').textContent(),'굵게 입력');
+  await input.fill(draft);
   await ink.waitFor();
   assert.equal(await page.getByText('서식 미리보기',{exact:true}).count(),0);
   assert.equal(await ink.locator('.md-heading').textContent(),draft.split('\n')[0].slice(2));

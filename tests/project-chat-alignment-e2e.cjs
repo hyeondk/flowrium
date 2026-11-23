@@ -68,7 +68,20 @@ async function run() {
     await page.locator('.message.user .message-time').waitFor();
     const logo=message.locator('.message-avatar img');
     await logo.waitFor();
-    assert(await logo.evaluate(img=>img.complete && img.naturalWidth>0 && /\/chatgpt(?:-[\w-]+)?\.svg$/.test(img.src)), '오프라인 번들 아이콘이 원래 비율로 열림');
+    assert(await logo.evaluate(async img=>{
+      await img.decode();
+      const canvas=document.createElement('canvas');
+      canvas.width=canvas.height=32;
+      const context=canvas.getContext('2d');
+      context.drawImage(img,0,0,32,32);
+      const pixels=context.getImageData(0,0,32,32).data;
+      let yellow=0;
+      for(let index=0;index<pixels.length;index+=4){
+        const [r,g,b,a]=pixels.subarray(index,index+4);
+        if(r>190 && g>145 && r>b+75 && g>b+50 && a>200) yellow++;
+      }
+      return img.naturalWidth===img.naturalHeight && yellow>50 && pixels[3]===0;
+    }), '번들에 포함된 투명 배경 노란 삼각형 아바타가 실제 렌더링됨');
     const like = message.getByRole('button', { name: '좋아요', exact: true });
     await like.waitFor();
     const capture = process.argv.indexOf('--screenshot');
@@ -99,6 +112,20 @@ async function run() {
     }
     await like.click();
     await message.getByRole('button', { name: '좋아요 취소' }).waitFor();
+    await page.getByRole('button',{name:'대화 관리',exact:true}).click();
+    const management=page.getByRole('dialog',{name:'대화 관리'});
+    const titleInput=management.getByLabel('대화 이름',{exact:true});
+    for (const width of [320,390,1024]) {
+      await page.setViewportSize({width,height:900});
+      await titleInput.focus();
+      const bounds=await titleInput.evaluate(input=>{
+        const group=input.closest('fieldset'),control=input.getBoundingClientRect(),frame=group.getBoundingClientRect();
+        const style=getComputedStyle(input);
+        return {left:control.left-frame.left,right:frame.right-control.right,width:control.width,outline:parseFloat(style.outlineWidth),offset:parseFloat(style.outlineOffset)};
+      });
+      assert(bounds.width>100&&bounds.left>=-1&&bounds.right>=-1,`대화 제목 입력이 팝업 안에 표시됨 ${width}`);
+      assert(bounds.outline>0&&bounds.offset<0,`대화 제목 포커스 테두리가 안쪽에서 그려짐 ${width}`);
+    }
     assert.deepEqual(errors, []);
     console.log(JSON.stringify({ projectMetrics, chatMetrics }));
     for (const m of projectMetrics) {

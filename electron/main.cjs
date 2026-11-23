@@ -499,6 +499,7 @@ async function launch() {
   );
   register("saveSettings", (input) => controller.saveSettings(input));
   register("connectionStatus", () => controller.connectionStatus());
+  register('readDesktopChatInstallation', () => require('./chat-connection.cjs').desktopAppInstalled());
   register('readChatConnection', async () => {
     const {desktopAppInstalled,verifyChatConnection} = require('./chat-connection.cjs');
     const status = await verifyChatConnection(controller);

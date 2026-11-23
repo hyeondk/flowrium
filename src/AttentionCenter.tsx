@@ -1,9 +1,9 @@
 import {useEffect,useRef,useState} from 'react';
-import {ArrowRight,Bell,Check,CheckCheck,ChevronRight,MessageSquareText,Trash2,X} from 'lucide-react';
+import {ArrowRight,Bell,Check,CheckCheck,ChevronRight,MessageSquareText,Trash2} from 'lucide-react';
 import type {WorkflowNotification,WorkflowState} from '../shared/workflow';
 import type {FlowriumEvent,Session} from '../shared/types';
 import {visibleProposals} from '../shared/execution-state';
-import {AnimatedCheckbox,MotionOverlay,toastLifetime,usePresence} from './ui-motion';
+import { CloseButton, AnimatedCheckbox,MotionOverlay,toastLifetime,usePresence } from './ui-motion';
 import DecisionRequestPanel from './DecisionRequestPanel';
 import './chat-continuation.css';
 import './notification-design.css';
@@ -84,7 +84,7 @@ export default function AttentionCenter({open,onClose,data,sessions,requests,onO
   if(session){onOpen(session);onClose();}
  }
  return <MotionOverlay open={open} onClose={onClose} label="알림" className="attention-popup">
-  <header className="utility-popup-heading"><div><Bell size={19}/><h2>알림</h2><span>{unread.length>0?`읽지 않음 ${unread.length}건`:'모두 확인했습니다'}</span></div><button className="icon-button" aria-label="알림 닫기" onClick={onClose}><X size={18}/></button></header>
+  <header className="utility-popup-heading"><div><Bell size={19}/><h2>알림</h2><span>{unread.length>0?`읽지 않음 ${unread.length}건`:'모두 확인했습니다'}</span></div><CloseButton aria-label="알림 닫기" onClick={onClose}/></header>
   {requests.length>0&&<div className="attention-decision-cards" aria-label="지금 응답할 요청">{requests.map(event=><DecisionRequestPanel key={event.requestId} event={event} title={sessions.find(s=>s.id===event.sessionId)?.title} onResolved={()=>void onRefresh().catch(()=>{})} onOpen={()=>openRequest(event)}/>)}</div>}
   <div className="attention-toolbar">
    <button aria-pressed={unreadOnly} onClick={()=>{setUnreadOnly(!unreadOnly);setSelected([]);}}>{unreadOnly?'전체 알림 보기':'읽지 않은 알림'}</button>

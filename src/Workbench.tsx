@@ -1,9 +1,9 @@
 import LoadingProgress from './LoadingProgress';
 import {modelDisplayName} from '../shared/model-display';
-import { AnimatedCheckbox } from './ui-motion';
+import { CloseButton, AnimatedCheckbox } from './ui-motion';
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import ArtifactViewer from "./ArtifactViewer";
-import { ArrowLeft, ArrowRight, BookOpen, Check, CheckCheck, ChevronRight, ClipboardList, FileText, FolderOpen, GitBranch, GitCommitHorizontal, Hand, ListChecks, LoaderCircle, MessageSquare, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Check, CheckCheck, ChevronRight, ClipboardList, FileText, FolderOpen, GitBranch, GitCommitHorizontal, Hand, ListChecks, LoaderCircle, MessageSquare, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import type { Mode, Project, Session, Model } from "../shared/types";
 import { statusLabels, workKinds, type Artifact, type WorkInput, type WorkFormat, type WorkKind, type WorkOverview, type WorkStatus, type WorkUpdate } from "../shared/workbench";
 import "./workbench.css";
@@ -272,6 +272,6 @@ function SessionTools({ session, onSessionChange, running }: { session: Session;
         {w.completion.commits.map((c) => <small key={c.hash}>{c.hash} ({c.subject})</small>)}</div>}
     </div>}
     {error && <p className="wb-error" role="alert">{error}</p>}
-    {notice && <div className="wb-notice" role="status"><span className="wb-path">{notice}</span><button aria-label="저장 안내 닫기" onClick={() => setNotice("")}><X size={13}/></button></div>}
+    {notice && <div className="wb-notice" role="status"><span className="wb-path">{notice}</span><CloseButton aria-label="저장 안내 닫기" onClick={() => setNotice("")}/></div>}
   </section>;
 }

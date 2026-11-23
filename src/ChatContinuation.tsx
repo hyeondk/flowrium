@@ -46,6 +46,7 @@ export default function ChatContinuation({
     key: string;
     answer: string;
     percent: number;
+    done?: true;
     result?: NonNullable<Awaited<ReturnType<typeof prepareAnswerFollowup>>>;
   }>();
   const finished = useRef<typeof generation>(undefined);
@@ -65,8 +66,8 @@ export default function ChatContinuation({
     const controller = new AbortController();
     void prepareAnswerFollowup(session, percent => setGeneration({key,answer:answerText,percent}), controller.signal)
       .then(result => {
-        if (controller.signal.aborted || !result) return;
-        const state = {key, answer: answerText, percent: 100, result};
+        if (controller.signal.aborted) return;
+        const state = {key, answer: answerText, percent: 100, result, done: true as const};
         finished.current = state;
         setGeneration(state);
       });
@@ -77,7 +78,7 @@ export default function ChatContinuation({
   const suggestion = current?.result;
   const candidate = suggestion && (!draft || key !== accepted) ? suggestion : undefined;
   const preview = candidate && !draft && !busy ? candidate.prompt : undefined;
-  const preparing = canShowRecommendation && active && key !== accepted && !suggestion;
+  const preparing = canShowRecommendation && active && key !== accepted && !current?.done;
   const percent = current?.percent ?? 0;
   function accept() {
     if (candidate && !composing.current && !busy && (draft || !textareaRef.current?.value)) {

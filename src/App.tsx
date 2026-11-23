@@ -5,7 +5,7 @@ import {RequestSource} from './RequestSource';
 import {maxChatInput, nativeQueueNotice} from '../electron/mobile/chat-input.js';
 import {projectMode} from '../electron/mobile/project-mode.js';
 import {useModelCatalog} from './useModelCatalog';
-import chatgptAvatar from "../electron/mobile/chatgpt.svg?no-inline";
+import codexAvatar from "../electron/mobile/chatgpt.svg?no-inline";
 import WorkflowHub from "./WorkflowHub";
 import CommandCenter, {openCommandCenter} from "./CommandCenter";
 import {isImeKey} from "./ime";
@@ -23,7 +23,7 @@ import ProjectCategoryLabel from "./ProjectCategoryLabel";
 import {ExecutionSummary} from "./ExecutionStatus";
 import {QUESTION_DECISION_NOTICE,sessionExecution,visibleProposals,type ExecutionActivity,type ExecutionState} from "../shared/execution-state";
 import type {WorkflowNotification,WorkflowProposal,WorkflowState} from "../shared/workflow";
-import {usePresence,MotionOverlay,ModalPortal,Toast,AnimatedCheckbox,LikeButton} from "./ui-motion";
+import {usePresence,MotionOverlay,ModalPortal,Toast,AnimatedCheckbox,LikeButton,CloseButton} from "./ui-motion";
 import PortfolioReports from "./PortfolioReports";
 import WorkActionPopup,{type PopupWorkKind} from "./WorkActionPopup";
 import MusicPanel from "./MusicPanel";
@@ -306,6 +306,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [connecting, setConnecting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [chatWebFallback,setChatWebFallback]=useState<{key:string;message:string;canLogin:boolean;showInstall:boolean}>();
+  const [desktopChatInstalled,setDesktopChatInstalled]=useState<boolean|null>(null);
   const webInstallNotice=useRef(false);
   const modelSaves = useRef(new Map<string,{next?:ChatModelSelection}>());
   const [modelPreviews,setModelPreviews]=useState(()=>new Map<string,ChatModelSelection>());
@@ -382,7 +383,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const pendingMessage=outgoing?.sessionId===session?.id?outgoing?.message:undefined;
   const pendingRecorded=Boolean(pendingMessage&&session?.messages.some(message=>message.id===pendingMessage.id));
   const streamingMessage=activity?.streamingMessage;
-  const typingId=running?streamingMessage?.id:activity?.source==='external'&&workProgress?.turnId
+  const typingId=answerCompleted?undefined:running?streamingMessage?.id:activity?.source==='external'&&workProgress?.turnId
     ? findLatestMessage(session?.messages,message=>message.role==='assistant'&&message.turnId===workProgress.turnId)?.id : undefined;
   const displayMessages=useMemo(()=>{
     let visible=session?.messages||[];
@@ -393,6 +394,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     }
     return pendingMessage&&!pendingRecorded?[...visible,pendingMessage]:visible;
   },[session?.messages,pendingMessage,pendingRecorded,running,streamingMessage,activity?.text]);
+  const streamedLength=typingId?findLatestMessage(displayMessages,message=>message.id===typingId)?.text.length??0:undefined;
   useEffect(()=>{
     if(!pendingRecorded||!pendingMessage)return;
     const timer=window.setTimeout(()=>setOutgoing(current=>current?.message.id===pendingMessage.id?undefined:current),360);
@@ -414,6 +416,23 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     });
     return () => cancelAnimationFrame(frame);
   }, [focusQuestion, dockOpen, chatActive, sessionId, approvals]);
+
+  useEffect(() => {
+    if (!api || !dockOpen || !chatActive || security.state.locked) return;
+    let latestCheck = 0;
+    const refreshInstallation = () => {
+      const check = ++latestCheck;
+      void api.readDesktopChatInstallation().then(installed => {
+        if (check === latestCheck) setDesktopChatInstalled(installed);
+      }).catch(() => {});
+    };
+    refreshInstallation();
+    window.addEventListener('focus',refreshInstallation);
+    return () => {
+      latestCheck++;
+      window.removeEventListener('focus',refreshInstallation);
+    };
+  },[dockOpen,chatActive,security.state.locked]);
 
   const notify = useCallback((message: string) => setToast(old=>({message,tone:'info',revision:old.revision+1})), []);
   const accountUsage=useAccountUsage(Boolean(connection.authenticated));
@@ -500,6 +519,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           if(previous[id]?.source!=='external'&&!previous[id]?.unsettled)return previous;
           const next={...previous};delete next[id];return next;
         });
+      }
+      if(event.type==='sessionTitle'&&event.sessionId&&event.title){
+        const title=event.title;
+        setData(previous=>({...previous,sessions:previous.sessions.map(session=>session.id===event.sessionId?{...session,title}:session)}));
       }
       if(event.type==='sessionList'){
         const removed=new Set(event.removedSessionIds||[]);
@@ -1344,7 +1367,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                           {(message.role!=="user"||message.delegated)&&<div className="message-meta">
                         <span className={`message-avatar ${message.role}`}>
                           {message.role === "assistant" ? (
-                            <img className="chatgpt-avatar" src={chatgptAvatar} width="24" height="24" alt="" draggable={false}/>
+                            <img className="codex-avatar" src={codexAvatar} width="24" height="24" alt="" draggable={false}/>
                           ) : message.role === "user" ? (
                             <UserRound size={16} aria-hidden="true" />
                           ) : (
@@ -1410,7 +1433,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         </div>
                       </article>
                     )}/>
-                    <AnswerProgress key={session.id} active={workActive} progress={workProgress} finished={answerCompleted}/>
+                    <AnswerProgress key={session.id+':'+(workProgress?.key||'')} active={workActive} progress={workProgress}
+                      finished={answerCompleted} messages={session.messages} streamedLength={streamedLength} paused={sessionApprovals.length>0}/>
                     {activity?.error && (
                       <div className="inline-error">{activity.error}</div>
                     )}
@@ -1461,14 +1485,17 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               <div className="composer-area">
                 {sessionApprovals.filter(event=>event.type!=="input" || !session).map(event=><DecisionRequestPanel key={event.requestId} event={event}/>)}
                 {draftError && <p role="alert" className="composer-draft-error">{draftError} <button onClick={retryDrafts}>초안 다시 불러오기</button></p>}
-                {!connection.authenticated && chatWebFallback?.key===draftKey && <section className="composer-web-fallback" aria-label="브라우저에서 대화 이어가기">
+                {!connection.authenticated && chatWebFallback?.key===draftKey ? <section className="composer-web-fallback" aria-label="브라우저에서 대화 이어가기">
                   <p role="status">{chatWebFallback.message}{!conversationProject?.conversationScope&&!session?.preferences?.chatGptUrl&&' 웹에서 코딩 작업을 하려면 작업 위치로 클라우드를 선택하세요.'}{attachments.length>0&&' 웹에서는 첨부 파일을 다시 선택해 주세요.'}</p>
                   <div>
                     {chatWebFallback.showInstall&&<button type="button" className="button subtle" onClick={()=>void api?.openExternal('chatgpt-desktop').catch(fail)}><Download size={14} aria-hidden="true"/>데스크톱 앱 설치</button>}
                     {chatWebFallback.canLogin&&<button type="button" className="button subtle" disabled={connecting} onClick={()=>void login()}><LogIn size={14} aria-hidden="true"/>Flowrium에서 로그인</button>}
                     <button type="button" className="button secondary" onClick={()=>void openChatWeb()}><ExternalLink size={14} aria-hidden="true"/>{/\S/.test(input)?'초안 복사하고 웹 열기':'웹에서 이어가기'}</button>
                   </div>
-                </section>}
+                </section>:desktopChatInstalled===false&&!workActive&&<div className="composer-web-options" role="group" aria-label="데스크톱 앱과 브라우저 선택">
+                  <button type="button" className="button subtle" title="데스크톱 앱을 설치하면 같은 기기의 Codex 대화를 Flowrium과 이어갈 수 있어요." onClick={()=>void api?.openExternal('chatgpt-desktop').catch(fail)}><Download size={14} aria-hidden="true"/>데스크톱 앱 설치</button>
+                  <button type="button" className="button subtle" onClick={()=>void openChatWeb()}><ExternalLink size={14} aria-hidden="true"/>{/\S/.test(input)?'초안 복사하고 웹 열기':'웹에서 이어가기'}</button>
+                </div>}
                 <AttachmentComposer key={voiceContinuity.current.generation} projectId={project?.id} items={attachments} onChange={setAttachments} disabled={security.state.locked} report={notify}>{attachmentControl=>(
                 <div className={`composer ${workActive ? "working" : ""}`}>
                   {workActive && <LiveWorkTimeline progress={workProgress}/>}
@@ -1604,12 +1631,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       {sidebarPresence.present && (
         <button
           className="sidebar-backdrop" data-phase={sidebarPresence.phase}
-          aria-label="메뉴 닫기"
+          aria-hidden="true" tabIndex={-1} type="button"
           onClick={() => setSidebarOpen(false)}
         />
       )}
       <CommandCenter projects={data.projects} sessions={data.sessions} onProject={selectProject} onSession={selectSession} onView={value=>{if(value==="settings")setSettingsOpen(true);else if(value==="music")setMusicOpen(true);else setView(value as View);}} onNew={()=>{void newSession();}}/>
-      <WorkspaceSidebar categories={categories} current={reportDialog||view} mobileOpen={sidebarOpen} projects={panelProjects} onProjectMove={navigation.move}
+      <WorkspaceSidebar categories={categories} current={reportDialog||view} mobileOpen={sidebarOpen} onClose={()=>setSidebarOpen(false)} projects={panelProjects} onProjectMove={navigation.move}
         selected={["overview","home","workspace","terminal"].includes(view)?projectId:undefined}
         onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} counts={projectCounts} accountUsage={accountUsage}
         onGo={value=>{if(value==='weekly'||value==='pause')setReportDialog(value);else setView(value);setSidebarOpen(false);}} onProject={selectProject}
@@ -1851,7 +1878,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       <ItemDeleteDialog target={deletionTarget} onClose={()=>setDeletionTarget(null)} onDeleted={reloadItems}/>
       <TrashPanel open={trashOpen} onClose={()=>setTrashOpen(false)} onRestored={reloadItems}/>
 
-      <MotionOverlay open={musicOpen} persist onClose={()=>setMusicOpen(false)} label="뮤직" className="music-popup"><header className="utility-popup-heading"><div><Music2 size={20}/><h2>뮤직</h2></div><button className="icon-button" aria-label="뮤직 닫기" onClick={()=>setMusicOpen(false)}><X size={18}/></button></header><MusicPanel visible={musicPresence.present} locked={security.state.locked}/></MotionOverlay>
+      <MotionOverlay open={musicOpen} persist onClose={()=>setMusicOpen(false)} label="뮤직" className="music-popup"><header className="utility-popup-heading"><div><Music2 size={20}/><h2>뮤직</h2></div><CloseButton aria-label="뮤직 닫기" onClick={()=>setMusicOpen(false)}/></header><MusicPanel visible={musicPresence.present} locked={security.state.locked}/></MotionOverlay>
       <AttentionCenter open={attentionOpen} onClose={()=>setAttentionOpen(false)} data={attentionState} sessions={data.sessions} requests={approvals} onOpen={selectSession} onQuestion={openQuestion} onDecisions={()=>{setAttentionOpen(false);setView(visibleProposals(proposals).length?'workflow':'inbox')}} onUpdate={openUpdateSettings} onRefresh={refreshAttention}/>
       {!dockPresence.present && <button type="button" className="dock-reopen-tab"
         aria-label="대화 패널 펼치기" aria-expanded={false} title="대화 패널 펼치기"
@@ -1910,14 +1937,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 </span>
                 <h2 id="codex-history-title">Codex 기록 가져오기</h2>
               </div>
-              <button
-                className="icon-button"
-                aria-label="Codex 기록 가져오기 닫기"
-                onClick={closeCodexHistory}
-                disabled={historySaving}
-              >
-                <X size={20} />
-              </button>
+              <CloseButton aria-label="Codex 기록 가져오기 닫기" onClick={closeCodexHistory} disabled={historySaving}/>
             </div>
             <div className="modal-content">
               <p className="page-description" id="codex-history-description">
@@ -2082,13 +2102,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 <span className="eyebrow">Flowrium</span>
                 <h2 id="settings-title">설정</h2>
               </div>
-              <button
-                className="icon-button"
-                aria-label="설정 닫기"
-                onClick={() => setSettingsOpen(false)}
-              >
-                <X size={20} />
-              </button>
+              <CloseButton aria-label="설정 닫기" onClick={() => setSettingsOpen(false)}/>
             </div>
             <SettingsLayout key={settingsNavigation} initialGroup={categoryTarget ? "categories" : "general"}>
               <SettingsGroup id="general"><UpdatePanel settings state={update} fail={fail}/></SettingsGroup>

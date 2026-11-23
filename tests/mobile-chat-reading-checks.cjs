@@ -9,6 +9,8 @@ async function addReadingFixture(store,projectId){
   const progress=()=>({...message('system','작업 설명을 한 번만 표시합니다.',initial),progressCommentary:true});
   const search=()=>({...message('system','웹 검색',initial),workSteps:[{id:randomUUID(),label:'웹 검색',state:'completed',kind:'search',createdAt:new Date().toISOString()}]});
   return store.createSession(projectId,{title:'휴대폰 읽기 확인',messages:[
+    message('user','인터뷰 질문을 검토해 주세요.'),
+    ...Array.from({length:55},()=>message('system','내부 계산 로그')),
     {...message('user',photoHeader+'첫 요청',initial),workStartedAt:'2026-10-05T01:00:00Z',workCompletedAt:'2026-10-05T01:03:26Z'},message('system','실행 도구 / 명령\n시험용 출력 원문',initial),
     message('assistant','**진행**',initial),message('system','파일 변경 기록\n시험용 출력 원문',initial),progress(),progress(),search(),search(),search(),
     message('user','다음 요청',second),message('system','도구 실행 기록\n시험용 출력 원문',second),
@@ -22,6 +24,8 @@ async function checkReading(page,chat,origin,key,folder) {
   const old=await read(''),expanded=await read('?progress=1');
   assert(!JSON.stringify(expanded).includes('codex-clipboard-abcd') && !JSON.stringify(old).includes('codex-clipboard-abcd'));
   assert.equal(old.messages.filter(m=>m.role==='system').length,0);
+  assert(!expanded.messages.some(message=>message.text.includes('인터뷰 질문을 검토해 주세요')));
+  assert.equal(expanded.recommendation.prompt,'인터뷰 질문을 한 쪽으로 정리해 주세요');
   assert(!JSON.stringify(expanded).includes('시험용 출력 원문'));
   await page.getByRole('button',{name:/휴대폰 읽기 확인/}).click();
   const first=page.getByRole('button',{name:'3분 26초 동안 작업',exact:true}).first();
@@ -32,7 +36,8 @@ async function checkReading(page,chat,origin,key,folder) {
   assert.equal(await popup.getByText('작업 설명을 한 번만 표시합니다.',{exact:true}).count(),1);
   assert.equal(await popup.getByText('×3',{exact:true}).count(),1);
   await first.click();assert.equal(await first.getAttribute('aria-expanded'),'false');
-  const user=page.locator('article[data-role=user]').first(),assistant=page.locator('article[data-role=assistant]').first();
+  const requestId=chat.messages.find(message=>message.role==='user'&&message.text.endsWith('첫 요청')).id;
+  const user=page.locator(`article[data-message-id="${requestId}"]`),assistant=page.locator('article[data-role=assistant]').first();
   assert.equal(await user.locator('.mobile-markdown').textContent().then(s=>s.trim()),'첫 요청');
   assert.match(await user.locator('time span').first().textContent(),/^\d{2}\.\d{2}\.\d{2}\.$/);
   assert((await user.boundingBox()).x>(await assistant.boundingBox()).x+20);
@@ -40,7 +45,7 @@ async function checkReading(page,chat,origin,key,folder) {
   const field=page.getByRole('textbox',{name:'요청',exact:true});
   const candidate=page.locator('button.mobile-followup');
   const started=Date.now();await candidate.waitFor();
-  const prompt=await candidate.locator('span').innerText();assert.equal(prompt,'인터뷰 질문을 한 쪽으로 정리해줘');
+  const prompt=await candidate.locator('span').innerText();assert.equal(prompt,'인터뷰 질문을 한 쪽으로 정리해 주세요');
   assert(Date.now()-started<10000);assert.equal(await page.getByLabel('작업 모드',{exact:true}).count(),0);
   const actionTypes=[];
   const watch=request=>{if(request.url().endsWith('/api/mobile/call'))actionTypes.push(request.postDataJSON()?.method);};
@@ -87,13 +92,14 @@ async function checkReading(page,chat,origin,key,folder) {
   await page.getByRole('button',{name:'프로젝트로',exact:true}).click();
   // 기존 데스크톱 형식은 추가 필드와 공개 작업 단계를 제공하지 않는다.
   const legacy=structuredClone(old);
-  const firstUser=legacy.messages.find(message=>message.role==='user');
+  legacy.before=null;
+  const firstUser=legacy.messages.find(message=>message.id===requestId);
   firstUser.text=photoHeader+firstUser.text;delete firstUser.attachmentHeaderRemoved;
   await page.route(url+'?**',route=>route.fulfill({json:legacy}));
   try{
     await page.getByRole('button',{name:/휴대폰 읽기 확인/}).click();
     await page.locator('article .mobile-markdown').getByText('마지막 응답',{exact:true}).waitFor();
-    assert.equal(await page.locator('article[data-role=user] .mobile-markdown').first().textContent().then(s=>s.trim()),'첫 요청');
+    assert.equal(await user.locator('.mobile-markdown').textContent().then(s=>s.trim()),'첫 요청');
     assert.equal(await page.locator('[data-work-group]').count(),0);
     await page.getByRole('button',{name:'프로젝트로',exact:true}).click();
   }finally{await page.unroute(url+'?**');}

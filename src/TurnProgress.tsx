@@ -1,10 +1,11 @@
 import {useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Ref} from 'react';
 import {Activity, ChevronDown, FileText, Globe, Pencil, Search, Terminal, UsersRound} from 'lucide-react';
 import type {Message, WorkStep} from '../shared/types';
+import {estimateAnswer, expectedAnswerPercent, observeAnswerWork} from '../shared/answer-progress';
 import {workDuration} from '../electron/mobile/work-time.js';
 import {ChatAttachmentList} from './ChatAttachments';
 import MessageContent from './MessageContent';
-import chatgptAvatar from '../electron/mobile/chatgpt.svg?no-inline';
+import codexAvatar from '../electron/mobile/chatgpt.svg?no-inline';
 
 type Record = {message:Message;step?:WorkStep} | {step:WorkStep;message?:Message};
 type Progress = {key:string; records:Record[]; turnId?:string; startedAt?:string; endedAt?:string};
@@ -210,48 +211,56 @@ export function LiveWorkTimeline({progress}:{progress?:Progress}) {
   </section>;
 }
 
-export function AnswerProgress({active,progress,finished}:{active:boolean;progress?:Progress;finished:boolean}) {
+export function AnswerProgress({active,progress,finished,messages,streamedLength,paused}:{
+  active:boolean; progress?:Progress; finished:boolean; messages:Message[]; streamedLength?:number; paused:boolean;
+}) {
   const [percent,setPercent]=useState(0);
-  const [showDone,setShowDone]=useState(false);
-  const wasActive=useRef(false);
-  const started=useRef<{key?:string;at:number} | undefined>(undefined);
-  useEffect(()=>{
-    if (!active) {
-      if (wasActive.current && finished) setShowDone(true);
-      wasActive.current=false;
-      started.current=undefined;
+  const [observed,setObserved]=useState(false);
+  const [dismissed,setDismissed]=useState(false);
+  const clock=useRef({started:0,pausedAt:0,pausedFor:0,streamedAt:0});
+  const estimate=useMemo(()=>estimateAnswer(messages,progress?.key),[messages,progress?.key]);
+  const work=useMemo(()=>observeAnswerWork(progress?.records.flatMap(record=>record.step?[record.step]:[])||[]),[progress]);
+  const completing=finished&&!dismissed&&(active||observed);
+  useLayoutEffect(()=>{
+    if(!active || finished)return;
+    setObserved(true);
+    const time=clock.current, now=Date.now(), start=Date.parse(progress?.startedAt||'');
+    time.started=Math.min(time.started||now,Number.isFinite(start)?start:now);
+    if(paused){
+      time.pausedAt ||= now;
       return;
     }
-    setShowDone(false);
-    wasActive.current=true;
-    if (!started.current || started.current.key!==progress?.key) {
-      const reported=Date.parse(progress?.startedAt||'');
-      started.current={key:progress?.key,at:Number.isFinite(reported)?reported:Date.now()};
+    if(time.pausedAt){
+      time.pausedFor+=now-time.pausedAt;
+      if(time.streamedAt)time.streamedAt+=now-time.pausedAt;
+      time.pausedAt=0;
     }
+    const streaming=streamedLength!==undefined;
+    if(streaming)time.streamedAt ||= now;
     const update=()=>{
-      const age=Math.max(0,Date.now()-started.current!.at);
-      setPercent(Math.min(99.9,Math.floor(1000*(1-Math.exp(-age/65_000)))/10));
+      const now=Date.now(), age=now-(streaming?time.streamedAt:time.started+time.pausedFor);
+      setPercent(current=>Math.max(current,expectedAnswerPercent(estimate,age,work,streamedLength,now)));
     };
     update();
-    const timer=window.setInterval(update,150);
+    const timer=window.setInterval(update,100);
     return ()=>window.clearInterval(timer);
-  },[active,progress?.key,progress?.startedAt,finished]);
+  },[active,progress?.startedAt,estimate,work,finished,paused,streamedLength]);
   useEffect(()=>{
-    if (!showDone) return;
-    const timer=window.setTimeout(()=>setShowDone(false),650);
+    if(!completing)return;
+    const timer=window.setTimeout(()=>setDismissed(true),850);
     return ()=>window.clearTimeout(timer);
-  },[showDone]);
-  if (!active && !showDone) return null;
-  const shown=active?percent:100;
+  },[completing]);
+  if ((!active || finished) && !completing) return null;
+  const shown=completing?100:percent;
   return <article className="message assistant chat-live-response"><div className="message-body">
-    {active && <div className="message-meta"><span className="message-avatar assistant">
-      <img className="chatgpt-avatar" src={chatgptAvatar} width="24" height="24" alt="" draggable={false}/>
+    {!completing && <div className="message-meta"><span className="message-avatar assistant">
+      <img className="codex-avatar" src={codexAvatar} width="24" height="24" alt="" draggable={false}/>
     </span><strong>Codex</strong></div>}
     <div className="message-bubble">
-      <div className="answer-progress" aria-label={active?'답변 작성 중 / 예상 진행률':'답변 작성 완료'}>
+      <div className="answer-progress" aria-label={completing?'답변 작성 완료':'답변 작성 중 / 예상 진행률'} data-complete={completing}>
         <span className="status-dot online" aria-hidden="true"/>
-        <span>{active?'답변 작성 중입니다.':'답변 작성 완료'} ({shown.toFixed(1)}%)</span>
-        {active && <small title="작업 시간을 바탕으로 예상한 값입니다.">예상</small>}
+        <span>{completing?'답변 작성 완료':paused?'확인을 기다리고 있습니다.':'답변 작성 중입니다.'} ({shown.toFixed(1)}%)</span>
+        {!completing && <small title="이 대화의 처리 시간과 작업 단계를 바탕으로 예상한 값입니다.">예상</small>}
       </div>
     </div>
   </div></article>;

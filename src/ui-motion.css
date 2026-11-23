@@ -75,8 +75,6 @@ dialog[data-phase=exit]::backdrop{animation:ui-fade-out var(--motion-duration) v
 .ui-notice-indicator{display:grid;place-items:center;flex:0 0 24px;width:24px;height:24px;border-radius:50%;background:var(--accent-bg);color:var(--accent);font-weight:800}
 [data-tone=error] .ui-notice-indicator{color:var(--danger)}
 .ui-notice-message{word-break:keep-all;overflow-wrap:normal}
-.ui-notice-close{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;min-height:32px;padding:0;border-radius:8px;font-size:22px;line-height:32px}
-.ui-notice-close:hover{background:var(--panel-alt)}
 
 :is(.app-shell,body) .ui-checkbox-control{position:relative;display:inline-grid;place-items:center;flex:0 0 20px;width:20px;height:20px;vertical-align:middle;line-height:0}
 .ui-checkbox-control>input[type=checkbox]{position:absolute;inset:0;z-index:1;appearance:none;opacity:0;width:20px!important;height:20px!important;min-height:20px!important;margin:0;padding:0;cursor:pointer}
@@ -120,9 +118,14 @@ dialog[data-phase=exit]::backdrop{animation:ui-fade-out var(--motion-duration) v
 .ui-notification .ui-notification-surface {background:var(--notice-fill);color:var(--notice-ink);border-color:var(--notice-line)}
 .ui-notification[data-tone=error] .ui-notification-surface {background:var(--notice-alert-fill);color:var(--notice-alert-ink);border-color:var(--notice-alert-line)}
 .ui-notification .ui-notice-indicator {background:color-mix(in srgb,currentColor 12%,transparent);color:inherit}
-.ui-notification .ui-notice-close {color:inherit}
 @keyframes ui-toast-rise {from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
 @keyframes ui-toast-fall {from{opacity:1;transform:none}to{opacity:0;transform:translateY(12px)}}
 .ui-notification [data-motion=toast][data-phase=enter]{animation:ui-toast-rise 240ms var(--ease-enter) both}
 .ui-notification [data-motion=toast][data-phase=exit]{animation:ui-toast-fall 220ms var(--ease-exit) both}
 @media(prefers-reduced-motion:reduce){.ui-notification [data-motion]{animation-duration:1ms!important;transform:none!important}}
+.command-dialog-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}

@@ -10,6 +10,7 @@ const { registerRemote } = require("../electron/remote.cjs");
 const { registerWorkbench } = require("../electron/workbench.cjs");
 const {verifyDashboardLoading, verifyChatLoading, verifyRefreshingChat} = require('./mobile-loading-checks.cjs');
 const {verifyStopSheet, observeToast, verifyToast} = require('./mobile-feedback-checks.cjs');
+const {settledLayout} = require('./shell-test-helpers.cjs');
 
 async function run() {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "flowrium-mobile-e2e-"));
@@ -189,6 +190,30 @@ async function run() {
       assert.equal(regions.length,5);
       assert(regions.every(r=>Math.abs(r.left-regions[0].left)<1&&Math.abs(r.right-regions[0].right)<1&&r.padding>=12&&r.overflow<=1),JSON.stringify({width,regions}));
     }
+    await page.setViewportSize({width:390,height:844});
+    const settingsTab=page.locator('#nav [data-view=settings]');
+    await settingsTab.click();
+    await page.setViewportSize({width:320,height:844});
+    const cdp=await page.context().newCDPSession(page);
+    try {
+      await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:true});
+      for(const [kind,label] of [['help','도움말 닫기'],['install','설치 안내 닫기']]){
+        const toggle=page.locator('[data-settings-guide='+kind+']');
+        await toggle.click();
+        const close=btn(label);
+        const box=await settledLayout(close);
+        assert.equal(await close.textContent(),'닫기');
+        assert.match(await close.evaluate(button=>getComputedStyle(button,'::before').maskImage),/svg/);
+        assert.equal(await close.evaluate(button=>getComputedStyle(button).backgroundColor),'rgb(255, 243, 242)');
+        assert.ok(box.height>=44 && box.x+box.width<=320,JSON.stringify(box));
+        await close.click();
+        await close.waitFor({state:'hidden'});
+      }
+    } finally {
+      await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:false});
+      await cdp.detach();
+    }
+    await page.locator('#nav [data-view=projects]').click();
     await page.setViewportSize({width:390,height:844});
     const refreshed=page.waitForResponse(response=>new URL(response.url()).pathname==='/api/mobile/dashboard'&&response.ok());
     await btn('새로고침').click();

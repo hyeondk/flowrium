@@ -151,6 +151,52 @@ async function run() {
     await page.keyboard.press('Enter');
     assert.equal(await page.locator(':focus').getAttribute('id'),'main');
     assert.match(await page.locator('.getting-started .section-intro').textContent(),/첫 작업.*폴더를 신뢰/);
+    const downloadOrigin = new URL(page.url()).origin;
+    for (const [label, fragment, region, command] of [
+      ["터미널로 설치", "#mac-terminal", "Mac 터미널", "bash Flowrium-install.sh"],
+      ["PowerShell로 설치", "#windows-terminal", "Windows PowerShell", "& '.\\Flowrium-install.ps1'"],
+    ]) {
+      await page.getByRole("link", {name: label, exact: true}).click();
+      assert.equal(new URL(page.url()).origin, downloadOrigin);
+      assert.equal(new URL(page.url()).hash, fragment);
+      const instructions=page.getByRole("article", {name: region});
+      assert.ok(await instructions.getByText(command, {exact: true}).isVisible());
+      const download=await instructions.locator("pre code").first().textContent();
+      assert.match(download, /https:\/\/github\.com\/hyeondk\/flowrium\/releases\/latest\/download\/install\.(sh|ps1)/);
+      assert.doesNotMatch(download, /\|\s*(bash|sh|powershell)|Invoke-Expression|ExecutionPolicy/);
+    }
+    await page.evaluate(()=>{
+      Object.defineProperty(navigator, "clipboard", {configurable:true, value:{
+        writeText(value) {
+          if (window.rejectClipboard) return Promise.reject(Error("clipboard unavailable"));
+          window.copiedCommand=value;
+          return Promise.resolve();
+        },
+      }});
+    });
+    await page.getByRole("button", {name: "윈도우 내려받기 명령 복사"}).click();
+    await page.getByRole("status").filter({hasText:"명령을 클립보드에 복사했습니다"}).waitFor();
+    assert.equal(await page.evaluate(()=>window.copiedCommand),await page.locator("#win-download-command").textContent());
+    await page.evaluate(()=>window.rejectClipboard=true);
+    await page.getByRole("button", {name: "맥 설치 명령 복사"}).click();
+    await page.getByRole("status").filter({hasText:"선택한 명령을 키보드로 복사"}).waitFor();
+    assert.equal(await page.evaluate(()=>window.getSelection().toString()),"bash Flowrium-install.sh");
+    await page.getByRole("link", {name:"운영체제별 안내"}).click();
+    assert.equal(new URL(page.url()).hash, "#security-help");
+    await page.locator("#security-help .help-answer").waitFor();
+    await page.locator("#security-help summary").press("Enter");
+    await page.locator("#security-help .help-answer").waitFor({state:"hidden"});
+    await page.getByRole("link", {name:"운영체제별 안내"}).click();
+    await page.locator("#security-help .help-answer").waitFor();
+    await page.getByRole("link", {name:"기존 앱 업데이트"}).click();
+    assert.equal(new URL(page.url()).hash, "#update-help");
+    await page.locator("#update-help .help-answer").waitFor();
+    await page.getByRole("link", {name:"설치 후 시작하기"}).click();
+    assert.equal(new URL(page.url()).hash, "#start");
+    assert.equal(await page.locator(".start-steps li").count(),3);
+    const detachedDocs = await page.locator('a[href*="/blob/"][href$=".md"]').evaluateAll(links =>
+      links.every(link => link.closest(".guide-links,.help-answer")));
+    assert.equal(detachedDocs,true,"일반 안내의 이동은 홈페이지 안에서 완료");
     await page.setViewportSize({width:1440,height:900});
     imageGate = Promise.withResolvers();
     try {
@@ -169,6 +215,8 @@ async function run() {
       await page.evaluate(()=>{ document.documentElement.style.scrollBehavior='auto'; window.scrollTo(0,0); });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),'다운로드 가로폭 '+width);
       assert.equal(await page.locator('.hero-copy > p').evaluate(e=>getComputedStyle(e).wordBreak),'keep-all');
+      const commandFits = await page.locator('.command-block pre').evaluateAll(blocks=>blocks.every(block=>block.scrollWidth<=block.clientWidth+1));
+      assert.ok(commandFits,'설치 명령 가로폭 '+width);
       assert.deepEqual(await page.locator('.sales-bars data').allTextContents(), monthlySales.map(amount));
       const heights = await page.locator('.sales-bars i').evaluateAll(nodes=>nodes.map(e=>e.getBoundingClientRect().height));
       assert(heights[2] < heights[1] && heights[5] > heights[4], '3월의 하락과 6월의 최고 매출');
@@ -179,7 +227,12 @@ async function run() {
       assert.equal(await dialog.locator('[data-sales-summary]').textContent(),salesAnswer);
       assert.deepEqual(await dialog.locator('tbody td').allTextContents(),monthlySales.map(amount));
       await assertExampleImage(page,width<=620?'/workspace-sales-chat.png':'/workspace-sales.png');
-      await page.keyboard.press('Escape');
+      const close = dialog.getByRole('button',{name:'예시 화면 닫기'});
+      assert.equal(await close.textContent(),'닫기');
+      const closeBox = await close.boundingBox();
+      assert.ok(closeBox.height>=44 && closeBox.x+closeBox.width<=width);
+      assert.equal(await close.locator('svg[aria-hidden="true"]').count(),1);
+      await close.click();
       await dialog.waitFor({state:'hidden'});
       assert.equal(await page.locator(':focus').getAttribute('id'),'example-open');
       await page.locator('.hero-actions a[href="#workspace"]').click();
@@ -235,7 +288,7 @@ async function run() {
     await page.getByRole("status").filter({ hasText: "2개 플랫폼" }).waitFor();
     assert.deepEqual(pageErrors,[]);
     console.log(
-      "공개 페이지 실제 브라우저 / 렌더링된 로컬 웹폰트 / 매출 표와 그래프 / 확대·초점·키보드 / 네 화면 폭·큰 글씨 / 실제 앱 사진 / 다운로드 상태와 재시도",
+      "공개 페이지 실제 브라우저 / 로컬 웹폰트와 매출 그래프 / 네 화면 폭과 글씨 확대 / 설치 명령 복사와 홈페이지 도움말 / 키보드 / 실제 앱 사진 / 다운로드 상태와 재시도",
     );
   } catch(error){
     console.error('다운로드 페이지 진단',JSON.stringify({pending:[...pending].map(request=>request.url()),requestFailures,pageErrors,serverRequests:serverRequests.slice(-80),readyState:page&&!page.isClosed()?await page.evaluate(()=>document.readyState).catch(()=>null):null}));

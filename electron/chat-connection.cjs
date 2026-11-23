@@ -10,16 +10,17 @@ const run = promisify(execFile);
 async function desktopAppInstalled(platform = process.platform) {
   if (platform === 'darwin') {
     const applications = ['/Applications',path.join(os.homedir(),'Applications')];
+    let unknown = false;
     for (const directory of applications) {
       for (const name of ['ChatGPT.app','Codex.app']) {
         try {
           if ((await fs.stat(path.join(directory,name,'Contents','Info.plist'))).isFile()) return true;
         } catch (error) {
-          if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') return null;
+          if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') unknown = true;
         }
       }
     }
-    return false;
+    return unknown ? null : false;
   }
   if (platform !== 'win32' || !process.env.SystemRoot) return null;
   try {

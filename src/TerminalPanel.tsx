@@ -100,8 +100,8 @@ export default function TerminalPanel({ projectId }: { projectId: string }) {
         aria-pressed={s.id === selected} onClick={() => setSelected(s.id)}>{s.title}{s.closed ? " (종료)" : ""}</button>)}</nav>
       {active && <><div key={active.id} className="terminal-shell" ref={host} aria-busy="true" aria-label="셸 입력과 출력"/>
         <footer><span>{active.closed ? "종료 코드 " + active.exitCode : active.startDir}</span>
-          <button type="button" disabled={busy} onClick={() => void action(async () => {
+          <button type="button" className={active.closed ? 'popup-close-button' : undefined} disabled={busy} onClick={() => void action(async () => {
             await api!.terminalClose(projectId, active.id); await refresh();
-          })}><X size={14}/>{active.closed ? "탭 닫기" : "터미널 종료"}</button></footer></>}</>}
+          })}>{!active.closed && <X size={14}/>} {active.closed ? "탭 닫기" : "터미널 종료"}</button></footer></>}</>}
   </section>;
 }

@@ -4,7 +4,7 @@ const fs = require("node:fs/promises"),
   { spawn } = require("node:child_process"),
   { randomBytes, timingSafeEqual, createHash } = require("node:crypto");
 const {continuationAnswer,executionFor} = require('./execution-state.js');
-const {latestFollowupAnswer}=require('./mobile/answer-followup.js');
+const {latestFollowupAnswer,originalAnswerFollowups}=require('./mobile/answer-followup.js');
 const {attachmentDisplayText}=require('./mobile/attachment-text.js');
 const {MobileUpdater} = require('./mobile-updater.cjs');
 const {MobileRequestUploads,chunkBytes,singleUploadBytes} = require('./mobile-request-uploads.cjs');
@@ -122,6 +122,7 @@ function mobileMessages(s, params, revision) {
       bytes += size;
     }
   }
+  const suggestion=progress && !params.has('before') && originalAnswerFollowups(s)[0];
   return {
     code: 200,
     value: {
@@ -134,6 +135,7 @@ function mobileMessages(s, params, revision) {
       updatedAt: s.updatedAt,
       lastMessageId: items.at(-1)?.id,
       before: start > 0 ? start + ":" + items[start].id : null,
+      ...(progress && !params.has('before') && {recommendation:suggestion ? {...suggestion,answerId:latestFollowupAnswer(s).id} : null}),
     },
   };
 }
@@ -680,6 +682,7 @@ function registerRemote(
       "/navigation.js": "navigation.js",
       "/date-picker.js": "date-picker.js",
       "/date-picker.css": "date-picker.css",
+      "/close-button.css": "close-button.css",
       "/confirmation.js": "confirmation.js",
       "/decision-notice.js": "decision-notice.js",
       "/chatgpt.svg": "chatgpt.svg",

@@ -143,7 +143,7 @@ function renderQuestionArrival(){
   const card=node('aside',undefined,'mobile-notification-card mobile-response-notice'),header=node('div',undefined,'mobile-notification-heading');
   card.dataset.requestId=entry.requestId;card.setAttribute('role','status');card.setAttribute('aria-live','polite');
   header.append(node('small','Flowrium / 응답 요청'));
-  const dismiss=action('×',()=>{arrivedQuestions.delete(entry.requestId);renderQuestionArrival();},'mobile-notification-close');dismiss.setAttribute('aria-label','응답 요청 알림 닫기');header.append(dismiss);
+  const dismiss=action('닫기',()=>{arrivedQuestions.delete(entry.requestId);renderQuestionArrival();},'popup-close-button');dismiss.setAttribute('aria-label','응답 요청 알림 닫기');header.append(dismiss);
   card.append(header,node('strong',QUESTION_DECISION_NOTICE,'mobile-notification-title'));
   const conversation=session(entry.sessionId);
   if(conversation)card.append(node('p',conversation.title,'mobile-notification-summary'));
@@ -1300,7 +1300,7 @@ function chat(root) {
   const ink=node('span',undefined,'markdown-input-ink');ink.setAttribute('aria-hidden','true');
   text.replaceWith(editor);editor.append(text,ink);
   text.rows=1;text.placeholder='이어서 요청하세요';textLabel.firstChild.remove();
-  form.append(textLabel);
+  form.append(textLabel,node('div',undefined,'composer-format-tools'));
   const pages=node('div',undefined,'mobile-draft-pages');
   const previousPage=action('이전',()=>mobileDraftEditor.go(pageNumber-1));
   const nextPage=action('다음',()=>mobileDraftEditor.go(pageNumber+1));
@@ -1348,7 +1348,10 @@ function chat(root) {
   if(historyPage && s.executionState !== 'decision' && !running(s.id) && !pending.length && !busy) {
     const history={...s,messages:historyPage.messages};
     const answer=latestFollowupAnswer(history);
-    if(answer && (!Object.hasOwn(s,'recommendationMessageId')||s.recommendationMessageId===answer.id) && canOfferFollowup(history)){
+    const serverRecommendation=Object.hasOwn(historyPage,'recommendation');
+    const suggestedByDesktop=historyPage.recommendation;
+    if(answer && (!Object.hasOwn(s,'recommendationMessageId')||s.recommendationMessageId===answer.id)
+      && (serverRecommendation ? suggestedByDesktop?.answerId===answer.id : canOfferFollowup(history))){
       const recommendation=node('div',undefined,'mobile-followup-progress');
       recommendation.setAttribute('role','progressbar');
       recommendation.setAttribute('aria-label','작업 추천 중');
@@ -1376,12 +1379,17 @@ function chat(root) {
         recommendation.replaceWith(button);
       };
       form.append(recommendation);
-      if(mobileRecommendation?.id===s.id && mobileRecommendation.answerId===answer.id && mobileRecommendation.text===answer.text)
-        show(mobileRecommendation.suggested);
+      if(serverRecommendation)
+        show(suggestedByDesktop);
+      else if(mobileRecommendation?.id===s.id && mobileRecommendation.answerId===answer.id && mobileRecommendation.text===answer.text){
+        if(mobileRecommendation.suggested)show(mobileRecommendation.suggested);
+        else recommendation.remove();
+      }
       else void prepareAnswerFollowup(history,progress,listener.signal).then(suggested=>{
-        if(listener.signal.aborted||!suggested)return;
+        if(listener.signal.aborted)return;
         mobileRecommendation={id:s.id,answerId:answer.id,text:answer.text,suggested};
-        show(suggested);
+        if(suggested)show(suggested);
+        else recommendation.remove();
       });
     }
   }
@@ -1494,7 +1502,7 @@ function citationCard(session,message,group) {
       if(!readable()||!image.src)return;
       const dialog=node('dialog',undefined,'citation-zoom');dialog.setAttribute('aria-label',picture.name+' 확대');
       const full=node('img');full.src=image.src;full.alt=picture.name;
-      dialog.append(full,action('닫기',()=>dialog.close()));
+      dialog.append(full,action('닫기',()=>dialog.close(),'popup-close-button'));
       dialog.addEventListener('close',()=>{dialog.remove();preview.focus({preventScroll:true});},{once:true});
       document.body.append(dialog);dialog.showModal();
     });
@@ -1613,7 +1621,7 @@ function teamEditor(root){
   });
   const save=node('button','팀 저장','main-action');save.type='submit';save.disabled=busy;
   const add=action('역할 추가',()=>{teamDraft.roles.push({name:'',instruction:'',mode:'plan'});render()});add.disabled=teamDraft.roles.length>=8;
-  form.append(add,save,action('팀 편집 닫기',()=>{editingTeam=null;render()}));form.addEventListener('submit',e=>{e.preventDefault();const value=structuredClone(teamDraft);void run(async()=>{await call('saveTeam',selectedProject,value);editingTeam=null;await loadAssets();showNotice('팀을 저장했습니다.')})});root.append(form);
+  form.append(add,save,action('팀 편집 닫기',()=>{editingTeam=null;render()},'popup-close-button'));form.addEventListener('submit',e=>{e.preventDefault();const value=structuredClone(teamDraft);void run(async()=>{await call('saveTeam',selectedProject,value);editingTeam=null;await loadAssets();showNotice('팀을 저장했습니다.')})});root.append(form);
 }
 function teamControls(card,entry){
   const d=entry.directed,buttons=node('div',undefined,'actions');
@@ -1996,7 +2004,8 @@ function render() {
   const composingInput=content.querySelector('.markdown-input > textarea');
   if(composingInput){
     if(composerHistory?.id!==selectedSession)composerHistory={id:selectedSession};
-    mobileEditor=attachComposerMarkdown(composingInput,composingInput.nextElementSibling,composerHistory);
+    mobileEditor=attachComposerMarkdown(composingInput,composingInput.nextElementSibling,composerHistory,
+      composingInput.closest('.chat-compose').querySelector('.composer-format-tools'));
   }else{
     composerHistory=undefined;mobileDraftEditor?.dispose();mobileDraftEditor=undefined;mobileDraftSurface=undefined;
   }

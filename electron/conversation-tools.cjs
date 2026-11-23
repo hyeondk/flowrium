@@ -27,7 +27,9 @@ async function prepare(controller,session) {
   await client.start(controller.store.state.settings.codexPath);
   if(!controller.loadedThreads.has(session.threadId)){
     const params=await controller.conversationThreadParams?.(session)||{};
-    const resumed=await client.request('thread/resume',{threadId:session.threadId,...params,excludeTurns:true});
+    const resumed=await require('./codex-transfer-client.cjs').resumeClosingThread(client,{threadId:session.threadId,...params,excludeTurns:true},()=>{
+      if(controller.options?.canRun?.()===false || controller.store.session(session.id)!==session)throw Error('계정이나 잠금 상태가 바뀌었습니다.');
+    });
     if(session.scope&&resumed.activePermissionProfile?.id!==params.permissions)throw Error('대화의 파일 접근 제한을 확인하지 못했습니다.');
     controller.loadedThreads.add(session.threadId);
   }

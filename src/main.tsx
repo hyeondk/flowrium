@@ -12,6 +12,7 @@ import "./surface-polish.css";
 import "./workspace-layout.css";
 import "./compact-density.css";
 import "./composer-layout.css";
+import "../electron/mobile/close-button.css";
 
 installDatePicker();
 

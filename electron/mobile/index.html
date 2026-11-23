@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="/date-picker.css" />
     <link rel="stylesheet" href="/mobile-shell.css" />
     <link rel="stylesheet" href="/composer-markdown.css" />
+    <link rel="stylesheet" href="/close-button.css" />
     <script type="module" src="/navigation.js"></script>
     <script type="module" src="/app.js"></script>
   </head>
@@ -28,7 +29,7 @@
       ><span id="status" role="status">연결 중</span>
     </header>
     <dialog id="install-guide" aria-labelledby="guide-title">
-      <header><h2 id="guide-title">도움말</h2><button type="button" data-close aria-label="안내 닫기">닫기</button></header>
+      <header><h2 id="guide-title">도움말</h2><button type="button" class="popup-close-button" data-close aria-label="안내 닫기">닫기</button></header>
       <div data-help hidden>
         <h3>처음 연결하기</h3>
         <p>컴퓨터의 Flowrium 설정에서 ‘휴대폰 연결 켜기’를 누른 뒤 휴대폰 카메라로 QR 코드를 읽으세요. 연결하는 동안 컴퓨터와 Flowrium을 켜 두세요.</p>

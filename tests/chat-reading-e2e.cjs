@@ -159,8 +159,21 @@ async function checkWorkProgress(page,input,popup,gate,title) {
   assert.deepEqual(await typed.evaluate(renderedSize),stableSize);
   await expect(typed).toContainText('답변 타이핑 끝 문장.');
   const answerId=await typed.evaluate(el=>el.closest('[data-message-id]').dataset.messageId);
+  await page.evaluate(id=>{
+    const history=document.querySelector('.messages');
+    window.firstCompletedAnswer=null;
+    const watch=new MutationObserver(()=>{
+      const row=history.querySelector('[data-message-id="'+CSS.escape(id)+'"]');
+      if(!row?.querySelector('.message-prose p')?.textContent.endsWith('답변 타이핑 끝 문장.') ||
+          row.querySelector('.chat-message-typing'))return;
+      window.firstCompletedAnswer=history.querySelector('.chat-live-response .answer-progress')?.textContent||'';
+      watch.disconnect();
+    });
+    watch.observe(history,{childList:true,subtree:true,characterData:true});
+  },answerId);
   await fs.writeFile(gate,'완료');
   await expect(answer).toContainText('답변 작성 완료 (100.0%)');
+  assert.match(await page.evaluate(()=>window.firstCompletedAnswer),/100\.0%/);
   await live.waitFor({state:'hidden'});
   const finalAnswer=page.locator('[data-message-id="'+answerId+'"] .message-prose p');
   assert.equal(await finalAnswer.count(),1);

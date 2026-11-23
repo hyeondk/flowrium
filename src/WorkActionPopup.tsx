@@ -1,11 +1,11 @@
 import {NumericStepper} from './NumericStepper';
 import {modelDisplayName, effortDisplayName} from '../shared/model-display';
 import {useEffect,useRef,useState} from 'react';
-import {LoaderCircle,X} from 'lucide-react';
+import {LoaderCircle} from 'lucide-react';
 import type {Effort,Model,Project,Session} from '../shared/types';
 import {effortOptions} from '../shared/model-options';
 import {workKinds,type WorkInput} from '../shared/workbench';
-import {AnimatedCheckbox,MotionOverlay} from './ui-motion';
+import { CloseButton, AnimatedCheckbox,MotionOverlay } from './ui-motion';
 export type PopupWorkKind='research'|'briefing'|'document';
 export default function WorkActionPopup({kind,projects,initialProject,onClose,onStart,onOpen}:{kind:PopupWorkKind|null;projects:Project[];initialProject?:string;onClose():void;onStart(s:Session,text:string,options:{model?:string;effort?:Effort}):Promise<void>;onOpen(s:Session):void}){
  const [picked,setPicked]=useState<string[]>([]),[destination,setDestination]=useState(''),[title,setTitle]=useState(''),[brief,setBrief]=useState(''),[model,setModel]=useState(''),[effort,setEffort]=useState<Effort|''>(''),[models,setModels]=useState<Model[]>([]),[ready,setReady]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[created,setCreated]=useState<Session[]>([]),[depth,setDepth]=useState<'quick'|'standard'|'deep'>('standard'),[format,setFormat]=useState<'report'|'slides'>('report'),[slides,setSlides]=useState('12');
@@ -27,7 +27,7 @@ export default function WorkActionPopup({kind,projects,initialProject,onClose,on
   for(const project of destinations){if(complete.has(project.id))continue;try{const seed:WorkInput={kind,projectId:project.id,title:title.trim(),brief,role:workKinds[kind].role,audience:'프로젝트 사용자',from:'',to:'',...(model?{model}:{}),...(effort?{effort}:{}),...(kind==='briefing'?{reportProjects:selected.map(p=>p.id)}:{}),...(kind==='research'?{searchMode:'live',researchDepth:depth}:{}),...(kind==='document'?{documentKind:format,slideCount:Number(slides)}:{})};const session=pending.current.get(project.id)||await window.flowrium.startWork(seed);pending.current.set(project.id,session);await onStart(session,[seed.title,brief,`선택한 프로젝트 자료를 확인하고 ${label} 결과를 완성해 주세요.`].filter(Boolean).join('\n\n'),{model:model||undefined,effort:effort||undefined});pending.current.delete(project.id);results.push(session)}catch(e){errors.push(project.name+': '+(e instanceof Error?e.message:String(e)))}}
   if(epoch.current!==generation)return;setCreated(old=>[...old,...results]);setBusy(false);if(errors.length)setError(errors.join('\n'));else if(results.length){onOpen(results[0]);onClose()}
  }
- return <MotionOverlay open={Boolean(kind)} onClose={()=>{if(!busy)onClose()}} label={label} className="work-action-popup"><header className="utility-popup-heading"><div><h2>{label}</h2><span>{kind==='briefing'?'선택한 프로젝트를 하나의 대화에서 종합합니다.':'프로젝트마다 독립된 AI 대화를 시작합니다.'}</span></div><button className="icon-button" aria-label="AI 업무 닫기" disabled={busy} onClick={onClose}><X size={18}/></button></header>
+ return <MotionOverlay open={Boolean(kind)} onClose={()=>{if(!busy)onClose()}} label={label} className="work-action-popup"><header className="utility-popup-heading"><div><h2>{label}</h2><span>{kind==='briefing'?'선택한 프로젝트를 하나의 대화에서 종합합니다.':'프로젝트마다 독립된 AI 대화를 시작합니다.'}</span></div><CloseButton aria-label="AI 업무 닫기" disabled={busy} onClick={onClose}/></header>
  <form onSubmit={e=>{e.preventDefault();void start()}}><fieldset disabled={busy} className="work-action-fields"><div className="work-popup-projects"><header><strong>대상 프로젝트 ({selected.length}개)</strong><button type="button" onClick={()=>setPicked(projects.map(p=>p.id))}>전체 선택</button></header><div>{projects.map(p=><label key={p.id}><AnimatedCheckbox checked={picked.includes(p.id)} onChange={e=>setPicked(old=>e.target.checked?[...old,p.id]:old.filter(id=>id!==p.id))}/>{p.name}</label>)}</div></div>
  {kind==='briefing'&&<label>결과를 보관할 프로젝트<select value={output?.id||''} onChange={e=>setDestination(e.target.value)}>{selected.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label>}
  <label>{label} 제목<input autoFocus required maxLength={240} value={title} onChange={e=>setTitle(e.target.value)}/></label><label>추가 요청<textarea rows={3} maxLength={10000} value={brief} placeholder="확인할 자료와 원하는 결과를 알려주세요." onChange={e=>setBrief(e.target.value)}/></label>

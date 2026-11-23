@@ -19,8 +19,9 @@ async function run() {
       import {createRoot} from 'react-dom/client';
       import {MotionOverlay, Snackbar, Toast, AnimatedCheckbox, AnimatedSwitch, LikeButton} from '/src/ui-motion.tsx';
       import CommandCenter, {openCommandCenter} from '/src/CommandCenter.tsx';
+      import {ConversationTools} from '/src/ConversationTools.tsx';
       import {AssistantShortcut} from '/src/ProjectMemory.tsx';
-      import '/src/styles.css'; import '/src/ui-motion.css'; import '/src/shell.css'; import '/src/design-system.css';
+      import '/src/styles.css'; import '/src/ui-motion.css'; import '/src/shell.css'; import '/src/design-system.css'; import '/electron/mobile/close-button.css';
       window.flowrium = {portfolioAction: async()=>({shortcuts:{search:'mod+k'}}),assistantHome:async()=>({connected:false})};
       function Fixture(){
         const [popup,setPopup]=useState(false),[sheet,setSheet]=useState(false),[toast,setToast]=useState(''),[snack,setSnack]=useState(''),[checked,setChecked]=useState(false),[enabled,setEnabled]=useState(false),[liked,setLiked]=useState(false);
@@ -39,6 +40,7 @@ async function run() {
           <div data-motion="loading" aria-label="로딩" style={{width:20,height:20}}>◌</div>
           <button type="button" onClick={openCommandCenter}>프로젝트와 화면 찾기</button>
           <CommandCenter projects={[]} sessions={[]} onProject={()=>{}} onSession={()=>{}} onView={()=>{}} onNew={()=>{}}/>
+          <ConversationTools session={{id:'fixture',title:'검증 대화',messages:[]}} models={[]} running={false} onOpen={()=>{}} onChange={()=>{}} notify={()=>{}} fail={console.error}/>
           <AssistantShortcut projects={[]} onOpen={()=>{}}/>
           <MotionOverlay open={popup} onClose={()=>setPopup(false)} label={popup?"검증 팝업":"닫힘"}>{popup && <><h2>검증 팝업</h2><button>첫 버튼</button><button>끝 버튼</button></>}</MotionOverlay>
           <MotionOverlay open={sheet} onClose={()=>setSheet(false)} label="검증 시트" kind="sheet"><h2>검증 시트</h2><button onClick={()=>setSheet(false)}>시트 닫기</button></MotionOverlay>
@@ -110,6 +112,38 @@ async function run() {
     assert.equal(await page.locator('.motion-overlay').evaluate(e=>getComputedStyle(e).animationName),'ui-fade-in');
     await page.getByRole('button',{name:'시트 닫기'}).click();assert.equal(await sheet.evaluate(e=>getComputedStyle(e).animationName),'ui-sheet-out');await sheet.waitFor({state:'detached'});
     await page.setViewportSize({width:1000,height:950});await page.getByRole('button',{name:'프로젝트와 화면 찾기'}).click();const command=page.locator('.command-scrim [role=dialog]');await command.waitFor();const cb=await settledLayout(command);assert.ok(Math.abs(cb.y+cb.height/2-475)<2,'검색 팝업 세로 중앙');await page.getByRole('textbox',{name:'전체 검색어'}).fill('검증');await page.keyboard.press('Escape');assert.equal(await page.locator('.command-scrim').getAttribute('data-phase'),'exit');await command.waitFor({state:'detached'});
+    await page.setViewportSize({width:320,height:844});
+    for (const [theme,base,hover] of [['light','rgb(255, 243, 242)','rgb(255, 231, 230)'],['dark','rgb(54, 36, 41)','rgb(72, 46, 53)']]) {
+      await page.evaluate(theme=>document.documentElement.dataset.theme=theme,theme);
+      await page.getByRole('button',{name:'프로젝트와 화면 찾기'}).click();
+      await settledLayout(command);
+      const close=command.getByRole('button',{name:'닫기',exact:true});
+      assert.equal(await close.textContent(),'닫기');
+      const bounds=await close.evaluate(button=>{
+        const {left,right,height}=button.getBoundingClientRect();
+        return {left,right,height,heading:button.previousElementSibling.getBoundingClientRect().right,icon:getComputedStyle(button,'::before').maskImage,background:getComputedStyle(button).backgroundColor};
+      });
+      assert.equal(bounds.background,base);
+      assert.match(bounds.icon,/svg/);
+      assert.ok(bounds.left>=bounds.heading && bounds.right<=320 && bounds.height>=34);
+      await close.hover();
+      await page.waitForFunction(hover=>getComputedStyle(document.querySelector('.command-dialog-heading button')).backgroundColor===hover,hover);
+      await close.press('Enter');
+      await command.waitFor({state:'detached'});
+      assert.equal(await page.getByRole('button',{name:'프로젝트와 화면 찾기'}).evaluate(e=>e===document.activeElement),true);
+      const manage=page.getByRole('button',{name:'대화 관리',exact:true});
+      await manage.click();
+      const management=page.getByRole('dialog',{name:'대화 관리',exact:true});
+      await settledLayout(management);
+      const dismiss=management.getByRole('button',{name:'닫기',exact:true});
+      const position=await dismiss.boundingBox();
+      assert.ok(position.x+position.width<=320 && position.height>=34);
+      assert.equal(await dismiss.evaluate(button=>getComputedStyle(button).backgroundColor),base);
+      await dismiss.click();
+      await management.waitFor({state:'detached'});
+    }
+    await page.evaluate(()=>document.documentElement.dataset.theme='light');
+    await page.setViewportSize({width:1000,height:950});
     await page.getByRole('button',{name:'개인 비서',exact:true}).click();const assistant=page.locator('dialog[aria-label="개인 비서 연결"]');await assistant.waitFor();assert.equal(await assistant.evaluate(e=>e.open),true);await page.keyboard.press('Escape');assert.equal(await assistant.getAttribute('data-phase'),'exit');assert.equal(await assistant.evaluate(e=>e.open),true,'기본 Escape 닫힘을 지연하여 종료 애니메이션 보장');await assistant.waitFor({state:'detached'});
     await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>window.motion.setPopup(true));await popup.waitFor();assert.equal(await popup.evaluate(e=>getComputedStyle(e).transform),'none');await page.evaluate(()=>window.motion.setPopup(false));await popup.waitFor({state:'detached'});
     assert.deepEqual(errors,[]);

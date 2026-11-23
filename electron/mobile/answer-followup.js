@@ -102,7 +102,7 @@ function answerCandidates(lines) {
   return explicit.concat(unfinished);
 }
 export function followupFromAnswer(text) {
-  return answerCandidates(publicLines(text||''))[0];
+  return answerCandidates(publicLines(text||'').filter(line=>!riskyLine.test(line)))[0];
 }
 // 명시적인 다음 행동 다음으로, 답변에 실제로 나온 결과의 활용 방법을 찾는다.
 function contextualCandidates(body,request) {
@@ -132,7 +132,7 @@ function contextualCandidates(body,request) {
   return result.filter(Boolean);
 }
 function normalized(text) {
-  return text.normalize('NFC').replace(/(?:해주세요|해\s*주세요|해줘요?|부탁해요?)[.!\s]*$/,'').replace(/[\s\p{P}]/gu,'');
+  return text.normalize('NFC').replace(/(?:\s*(?:줘요?|주세요|줄래요?|주실래요|주실\s*수\s*있나요)|\s*부탁해요?)[.!?？\s]*$/,'').replace(/[\s\p{P}]/gu,'');
 }
 export function latestFollowupAnswer(session) {
   const messages = session?.messages || [];
@@ -147,22 +147,22 @@ function followupContext(session) {
   const request = latestRequest?.sourceOnly ? '' : latestRequest?.text || '';
   if (!decline.test(request)) return {answer, request};
 }
-export function canOfferFollowup(session) {
-  return Boolean(followupContext(session));
+const stopWords = /^(?:다음|작업|요청|한국어|이어서|계속|진행|추가|현재|지금|여기|앞서|직전|결과|대상|항목|부분|답변|내용|방법|가장|해당|같은|다시|그대로|제발|한번|완료|필요|확인|때문|해\s*(?:주세요|줘요?)|(?:있|없|됐|하)(?:어요|습니다)|(?:알려|확인해|진행해|봐|해)\S*(?:줘|줄래|주세요|주실래요)|a|an|the|this|that|some|any|also|all|please|can|could|would|let|make|done)$/i;
+function relevanceTerms(text) {
+  return new Set((text.toLowerCase().match(/[가-힣]{2,}|[a-z][\w-]{2,}/g)||[])
+    .map(word=>word.replace(/(?:에서는|에서도|에서|하고|까지|부터|까지도|마다|만큼|으로|로|을|를|은|는|의|에|도|이|가)$/, ''))
+    .filter(word=>word.length>=2 && word.length<=36 && !stopWords.test(word)));
 }
-function relevanceTerms(request) {
-  return new Set((request.match(/[가-힣]{2,}|[\w-]{3,}/g)||[])
-    .map(word=>word.toLowerCase().replace(/(?:을|를|은|는|의|에서|하고|까지|부터)$/,''))
-    .filter(word=>word.length>=2 && !/^(?:다음|작업|요청|한국어|해주세요|해줘|이어서|진행|추가)$/.test(word)));
-}
-function rank(row,terms) {
-  const relevant=[...relevanceTerms(row.prompt)].filter(term=>terms.has(term)).length;
+function rank(row,requestTerms,historyTerms) {
+  const terms=[...relevanceTerms(row.prompt)];
+  const direct=terms.filter(term=>requestTerms.has(term)).length;
+  const related=terms.reduce((total,term)=>total+(historyTerms.get(term)||0),0);
   const priority=/(?:^|\s)(?:우선|먼저|선행|필수)(?:$|\s)/.test(row.prompt);
-  return (priority?40:0)+Math.min(relevant,4)*4;
+  return (priority?40:0)+Math.min(direct,4)*8+Math.min(related,28);
 }
 
 const topicLead = /^(?:(?:다만|우선|먼저|이어서|따라서|실제로|현재|이번(?:에|에는|의)?|최종적으로|다시|추가로|결과적으로)\s*[,，]?\s+)+/;
-const genericTopic = /^(?:내용|요청|작업|이\s*작업|상태|이\s*상태|결과|확인한\s*결과|핵심|요약|응답|답변|모두|문제|각각|방법|항목|다음\s*단계|관련\s*내용|테스트|확인|그날|내일|오늘|어제|이번엔)(?:의\s*내용)?$/;
+const genericTopic = /^(?:(?:이|그|해당|직전|이전|이번|같은|모든|다른)\s+)*(?:내용|요청|작업|동작|상태|결과|확인한\s*결과|필요한\s*자료|핵심|요약|응답|답변|메시지|모두|문제|각각|방법|항목|다음\s*단계|관련\s*내용|테스트|확인|그날|내일|오늘|어제|이번엔)(?:의\s*내용)?$/;
 const topicPrefix = /^(?:(?:결과|요약|현재\s*상태|확인\s*결과|검증\s*결과|완료\s*항목)\s*[:：]\s*)|^(?:[-*+]\s+|\d+[.)]\s+)(?:\[[ xX]\]\s*)?/;
 const topicContent = /^[가-힣\p{L}\p{N}][가-힣\p{L}\p{N} .,_()-]*$/u;
 const quietIntro = /^(?:예상\s*소요\s*시간|안녕하세요|감사합니다|도움이\s*되|요청을\s*확인|무엇을\s*도와)/;
@@ -187,23 +187,94 @@ function findTopic(lines,terms) {
   }
   return best;
 }
-function contextualFallback(lines,request,terms,previous) {
-  const topic=findTopic(lines,terms) || findTopic(request.split('\n'),terms);
+const riskyLine = /https?:|[\u0000-\u0008]|[\\@{}<>]|(?:^|[\s'"`])\/[\w.가-힣][^\s]*\/|(?:비밀번호|승인번호|인증번호|계좌번호|인증\s*토큰|비밀\s*키)[^\n]{0,25}[0-9A-Za-z_-]{4,}|(?:^|\s)\d{6,}(?:\s|$)/;
+const pingRequest = /^(?:(?:그냥|다시|한\s*번\s*더|재차|이번(?:에도|엔))\s+)*(?:(?:(?:채팅|응답|답변|전송|메시지|대화|연결)\s*(?:을|를)?\s*)?(?:테스트|확인|시험)|(?:안녕(?:하세요)?|고마워(?:요)?|감사합니다)|(?:ping|test|hello|hi|thanks))(?:\s*(?:만|해\s*줘요?|해\s*주세요|입니다|예요|할게요))?[.!?！?…\s]*$/i;
+const pingReply = /^(?:안녕|반갑|천만에|별말씀|감사)|(?:메시지|채팅|답변|응답|테스트)[^.!?\n]{0,45}(?:잘\s*받|보이면|주고받|수신했)|(?:pong|test\s*(?:passed|received)|message\s*received)/i;
+const topicAction = /(?:확인|비교|검토|조사|분석|작성|검증|테스트|수정|설정|설치|개발|구현|배포|결제|예약|일정|공정|오류|장애|수리|작성)/;
+const shallowRequest = /^(?:(?:그(?:대|렇)로|앞서|같은|이어서|계속|다시|추가로|한\s*번\s*더|해당|지금|좋아|네|응|그럼|위와|동일한|조건(?:으로)?)\s*[,，]?\s*)+(?:진행|설명|계속|수정|해|정리|확인)?(?:해\s*)?(?:주세요|줘요?|줄래요?|주실래요)?[.!?。？\s]*$/i;
+
+function plainHistoryLines(text) {
+  return publicLines(attachmentDisplayText(text)).filter(line=>line && !quietIntro.test(line) && !riskyLine.test(line));
+}
+function requestStyle(lines) {
+  const ending=lines.join('\n').match(/(?:해|봐|려|어|아|여|내|써|서|둬|줘|쳐|켜|와|돼)(\s*(?:주실\s*수\s*있나요|주실래요|주세요|줄래요|줘요|줄래|줘))(?=[\s.!?。？！…]*(?:\n|$))/g)?.at(-1);
+  if (!ending) return;
+  const match=/(\s*(?:주실\s*수\s*있나요|주실래요|주세요|줄래요|줘요|줄래|줘))$/.exec(ending);
+  return match?.[1]+(/(?:나요|래요?|래)$/.test(match?.[1]||'')?'?':'');
+}
+function applyStyle(candidate,ending) {
+  if (!candidate || !ending || ending==='줘') return candidate;
+  const text=candidate.prompt.replace(/줘$/,ending);
+  return {...candidate,title:text,prompt:text};
+}
+function historyContext(session,answer,request) {
+  const terms=new Map(),previous=new Set(),styles=new Map(),prior=[];
+  const requestLines=plainHistoryLines(request),requestTerms=relevanceTerms(requestLines.join(' '));
+  const usableRequest=requestLines.length && !requestLines.every(line=>pingRequest.test(line)||shallowRequest.test(line));
+  let latestStyle,seen=0;
+  for (let index=session.messages.lastIndexOf(answer)-1;index>=0;index--) {
+    const row=session.messages[index];
+    if (!row.text || row.sourceOnly || row.progressCommentary || !['user','assistant'].includes(row.role)) continue;
+    seen++;
+    // Long records contribute both their purpose and latest conclusions. Keep
+    // indexing bounded per message while visiting older turns as evidence.
+    const input=row.text.length>6000 ? row.text.slice(0,3000)+'\n'+row.text.slice(-3000) : row.text;
+    const lines=plainHistoryLines(input);
+    if (!lines.length) continue;
+    if (row.role==='user') {
+      const style=requestStyle(lines);
+      if(style){
+        latestStyle ||= style;
+        styles.set(style,(styles.get(style)||0)+1+4/Math.sqrt(seen));
+      }
+      if (lines.length<7 && input.length<600) previous.add(normalized(lines.join(' ')));
+    }
+    const meaningful=lines.filter(line=>!pingRequest.test(line) && !shallowRequest.test(line) && !pingReply.test(line));
+    if (!meaningful.length) continue;
+    const importance=(row.role==='user'?1.5:1)*(1+4/Math.sqrt(seen));
+    for (const term of relevanceTerms(meaningful.join(' '))) {
+      const priorWeight=terms.get(term)||0;
+      terms.set(term,Math.min(12,Math.max(priorWeight,importance)+Math.min(priorWeight,importance)*.1));
+    }
+    if (prior.length<14) prior.push({lines:meaningful,user:row.role==='user'});
+  }
+  const frequent=[...styles].sort((a,b)=>b[1]-a[1])[0]?.[0];
+  return {terms,previous,prior,requestLines,requestTerms,usableRequest,style:requestStyle(requestLines)||frequent||latestStyle};
+}
+function isPing(lines,requestLines) {
+  if (!requestLines.length || !requestLines.every(line=>pingRequest.test(line))) return false;
+  const prose=lines.filter(line=>line && !quietIntro.test(line));
+  return !prose.length || prose.every(line=>pingReply.test(line)) && !answerCandidates(prose).length;
+}
+function specifyScope(candidate,history) {
+  if (!candidate || /대화|채팅/.test(candidate.prompt)) return candidate;
+  const context=history.requestLines.join(' ')+' '+history.prior.filter(turn=>turn.user).slice(0,3).flatMap(turn=>turn.lines).join(' ');
+  // The last answer can refer to the conversation only by an operation. Reuse
+  // the named test conversation and destination the user actually mentioned.
+  const target=/(?:시험|임시|합성|테스트)\s+(?:채팅|대화)/.exec(context)?.[0];
+  const action=/^(?:(?:먼저|우선)\s+)?(제목 변경|이름 변경|삭제)(와 삭제|과 삭제|과 제목 변경|와 이름 변경)?(?:을|를)?\s*(?:검증|확인|시험)해줘$/.exec(candidate.prompt);
+  if (!target || !action) return candidate;
+  const place=/양쪽|두\s*(?:쪽|앱)|양방향/.test(context) ? '양쪽 앱에 ' : '';
+  const what=action[1]+(action[2]||'');
+  return suggestion(target+'의 '+what+(objectParticle(what)==='을'?'이':'가')+' '+place+'반영되는지 확인해줘',candidate.reason) || candidate;
+}
+function contextualFallback(lines,history) {
+  const {requestLines,requestTerms,usableRequest,previous,prior}=history;
   const answer=lines.join('\n');
-  const subject=topic?'직전 답변에서 다룬 ‘'+topic+'’에 대해 ':'직전 답변을 바탕으로 ';
-  const action =
-    /검증|점검|검사|시험|테스트|확인했/.test(answer) ? '확인한 범위와 추가 점검 항목을 정리해줘' :
-    /일정|예약|마감|기한/.test(answer) ? '확인한 기간과 다음에 확인할 항목을 정리해줘' :
-    /설치|설정|연결|사용\s*방법|단계|절차/.test(answer) ? '바로 따라 할 수 있는 점검 순서를 정리해줘' :
-    /문서|보고서|초안|문구|작성|정리|비교|분석/.test(answer) ? '핵심 결론과 활용할 수 있는 다음 단계 한 가지를 정리해줘' :
-    '바로 적용할 수 있는 예시와 확인 방법을 정리해줘';
-  const options=[
-    subject+action,
-    subject+'남은 질문이나 확인할 부분을 우선순위대로 알려줘',
-    subject+'가장 도움이 될 후속 작업 한 가지를 알려줘',
-  ];
-  const next=options.find(text=>!previous.has(normalized(text))) || options.at(-1);
-  return {source:'conversation',title:next,prompt:next,reason:'직전 답변의 후속 활용'};
+  const requestTopic=usableRequest && findTopic(requestLines,requestTerms);
+  const evidence=new Set([...requestTerms,...relevanceTerms(answer)]);
+  const carriesPrior=!usableRequest && requestLines.some(line=>shallowRequest.test(line));
+  const previousTopic=carriesPrior && prior.map(turn=>findTopic(turn.lines,evidence)).find(Boolean);
+  const topic=findTopic(lines,evidence) || requestTopic || previousTopic;
+  if (!topic) return;
+  const state=answer+'\n'+requestLines.join('\n');
+  let prompt;
+  if (/일정|예약|마감|기한/.test(state)) prompt=topic+' 중 확인한 기간과 가능한 다음 일정을 정리해줘';
+  else if (/설치|설정|연결|사용\s*방법|단계|절차/.test(state)) prompt=topic+objectParticle(topic)+' 실제로 적용할 때 필요한 순서와 확인 방법을 정리해줘';
+  else if (/검증|점검|검사|시험|테스트|확인했/.test(answer)) prompt=topic+'에서 확인한 범위와 아직 판단하기 어려운 항목을 정리해줘';
+  else if (/문서|보고서|초안|문구|작성|정리|비교|분석/.test(answer)) prompt=topic+'의 핵심 결론과 바로 활용할 수 있는 다음 단계 한 가지를 정리해줘';
+  else if (carriesPrior || topicAction.test(requestLines.join(' '))) prompt=topic+objectParticle(topic)+' 진행하려면 먼저 확인할 조건을 알려줘';
+  if (prompt && !previous.has(normalized(prompt))) return suggestion(prompt,'대화 맥락과 직전 답변의 후속 활용');
 }
 
 // 단계마다 계산 범위가 달라 진행률은 완료한 처리 단계의 비율을 표시한다.
@@ -211,27 +282,31 @@ function *followupSteps(session) {
   const context=followupContext(session);
   if (!context) return [];
   yield 0;
-  const lines=publicLines(context.answer.text);
-  const request=publicLines(attachmentDisplayText(context.request)).slice(-60).join('\n');
-  const terms=relevanceTerms(request);
+  const lines=publicLines(context.answer.text).filter(line=>!riskyLine.test(line));
+  const history=historyContext(session,context.answer,context.request);
   yield 25;
-  const candidates=answerCandidates(lines);
-  const previous=new Set(session.messages.slice(-12).filter(row=>row.role==='user'&&!row.sourceOnly&&row.text.length<500).map(row=>normalized(row.text)));
+  const candidates=isPing(lines,history.requestLines)?[]:answerCandidates(lines);
   yield 50;
   const best=(rows)=>{
     let candidate,score=-1;
     for (const row of rows) {
-      if (previous.has(normalized(row.prompt))) continue;
-      const current=rank(row,terms);
+      if (history.previous.has(normalized(row.prompt))) continue;
+      const current=rank(row,history.requestTerms,history.terms);
       if (current>score) {candidate=row;score=current;}
     }
     return candidate;
   };
-  const candidate=best(candidates)||best(contextualCandidates(lines.join('\n'),request));
+  const candidate=best(candidates)||best(contextualCandidates(lines.join('\n'),history.requestLines.join('\n')));
   yield 75;
-  const result=candidate||contextualFallback(lines,request,terms,previous);
+  const result=isPing(lines,history.requestLines)?undefined:applyStyle(specifyScope(candidate,history)||contextualFallback(lines,history),history.style);
   yield 100;
-  return [result];
+  return result?[result]:[];
+}
+export function canOfferFollowup(session) {
+  const context=followupContext(session);
+  if (!context) return false;
+  const request=attachmentDisplayText(context.request).trim();
+  return !(pingRequest.test(request) && isPing(publicLines(context.answer.text),[request]));
 }
 export function originalAnswerFollowups(session) {
   const steps=followupSteps(session);

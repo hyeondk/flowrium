@@ -58,8 +58,8 @@ async function mirrorContextUsage(runtime,session,thread,cwd,context) {
 const unfinished = status => status === 'inProgress' || status === 'in_progress';
 const recentProgress = 2 * 60_000;
 
-async function probe(runtime, session, context, cwd) {
-  const thread = await D.readThread(runtime.client, session.threadId, cwd);
+async function probe(runtime, session, context, cwd, thread = undefined) {
+  thread ??= await D.readThread(runtime.client, session.threadId, cwd);
   let newest;
   try {
     const page = await runtime.client.request('thread/turns/list', { threadId: thread.id, sortDirection: 'desc', limit: 1, itemsView: 'notLoaded' });
@@ -75,7 +75,7 @@ async function probe(runtime, session, context, cwd) {
   // interrupted with no completion time. It can still acquire a real final
   // status later. Never persist these intermediate frames as final history.
   const provisional=thread.status?.type==='notLoaded' && newest?.status==='interrupted' && newest.completedAt==null && newest.error==null;
-  return { thread, newest, provisional, active: D.active(thread) || unfinished(newest?.status), stamp: JSON.stringify([thread.updatedAt, thread.name, newest?.id, newest?.status, newest?.completedAt]) };
+  return { thread, newest, provisional, active: D.active(thread) || unfinished(newest?.status), stamp: JSON.stringify([thread.updatedAt, newest?.id, newest?.status, newest?.completedAt]) };
 }
 
 function mergeNative(local, incoming) {
@@ -125,14 +125,12 @@ async function refreshNative(runtime, session, cwd, context, thread) {
     }
     guardSession(runtime, session, id, context);
     const merged=mergeNative(session.messages,incoming);
-    const title = session.pendingThreadName || snapshot.thread.name?.trim().slice(0,300) || session.title;
-    if(title===session.title && JSON.stringify(merged)===JSON.stringify(session.messages))return {sync:'current'};
-    const oldMessages = session.messages, oldDate = session.updatedAt, oldTitle = session.title;
-    session.title = title;
+    if(JSON.stringify(merged)===JSON.stringify(session.messages))return {sync:'current'};
+    const oldMessages = session.messages, oldDate = session.updatedAt;
     session.messages = merged;
     session.updatedAt = [oldDate, D.at(snapshot.thread.updatedAt)].sort().at(-1);
     try { await runtime.store.save(); } catch (error) {
-      session.messages = oldMessages; session.updatedAt = oldDate; session.title = oldTitle;
+      session.messages = oldMessages; session.updatedAt = oldDate;
       throw error;
     }
     guardSession(runtime, session, id, context);
@@ -224,16 +222,21 @@ async function importedTailUnchanged(runtime,session,latest,cwd,context){
 
 async function syncSession(runtime, sessionId, force, background) {
   const session = runtime.store.session(D.id(sessionId));
-  if (deferred(runtime, session)) return { sync: 'deferred' };
+  if (runtime.isBusy()) return { sync: 'deferred' };
   if (!session.threadId && session.codexLink?.mode==='linked') {
-    await runtime.refresh(session.id,{background:true});
     if (deferred(runtime,session)) return {sync:'deferred'};
+    await runtime.refresh(session.id,{background:true});
   }
+  if (!session.threadId && deferred(runtime,session)) return {sync:'deferred'};
   const id = session.threadId;
   const context = await runtime.ready(true);
   const cwd = await connection(runtime, session, context);
   guardSession(runtime, session, id, context);
-  const latest = await probe(runtime, session, context, cwd);
+  const previousTitle=session.title;
+  const thread=await D.readThread(runtime.client,id,cwd);
+  await applyRemoteTitles(runtime,context,[{session,threadId:id,previousTitle,name:thread.name}]);
+  if (deferred(runtime,session)) return {sync:'deferred'};
+  const latest = await probe(runtime, session, context, cwd, thread);
   guardSession(runtime, session, id, context);
   await mirrorContextUsage(runtime,session,latest.thread,cwd,context);
   if (latest.active||latest.provisional) {
@@ -279,17 +282,17 @@ async function openDesktop(runtime, sessionId) {
 // current account and on this device may receive a title from the catalog.
 async function listingTitles(runtime, context) {
   const sessions = (runtime.store.visibleSessions?.() || runtime.store.state.sessions).filter(session =>
-    session.threadId && !session.pendingThreadName && !deferred(runtime,session) &&
+    session.threadId && !session.pendingThreadName && !titleWrites.has(session) &&
     (session.codexLink?.mode === 'linked' && session.codexLink.ownerHash === context.owner ||
      !session.codexLink && session.desktopThread?.ownerHash === context.owner));
   if (!sessions.length) return {};
-  const previousTitles = new Map(sessions.map(session => [session.id,session.title]));
   const hosts = new Map();
   for (const session of sessions) {
-    try { hosts.set(session.threadId,{session,cwd:await connection(runtime,session,context)}); }
+    const threadId=session.threadId,previousTitle=session.title;
+    try { hosts.set(threadId,{session,threadId,previousTitle,cwd:await connection(runtime,session,context)}); }
     catch { /* A portable copy from another device has no shared local thread. */ }
   }
-  const titles = {};
+  const titles = [];
   for (const archived of [false,true]) {
     if (!hosts.size) break;
     let cursor;
@@ -303,27 +306,36 @@ async function listingTitles(runtime, context) {
         const target = hosts.get(row.id);
         if (!target || typeof row.cwd !== 'string' || !require('./path-boundary.cjs').samePath(row.cwd,target.cwd)) continue;
         hosts.delete(row.id);
-        if (typeof row.name === 'string' && row.name.trim()) titles[target.session.id] = row.name.trim().slice(0,300);
+        titles.push({...target,name:row.name});
       }
       cursor = result.nextCursor;
       if (cursor && cursors.has(cursor)) throw Error('Codex 대화 목록의 다음 페이지를 확인할 수 없습니다.');
       if (cursor) cursors.add(cursor);
     } while (cursor && hosts.size);
   }
-  const changed = [];
-  for (const session of sessions) {
-    const name = titles[session.id];
-    if (!name || session.title===name || session.title!==previousTitles.get(session.id) || deferred(runtime,session) || session.pendingThreadName) continue;
-    guardSession(runtime,session,session.threadId,context);
-    changed.push({session,previous:session.title,name});
+  await applyRemoteTitles(runtime,context,titles);
+  return Object.fromEntries(sessions.map(session=>[session.id,session.title]));
+}
+
+async function applyRemoteTitles(runtime,context,titles) {
+  if(runtime.isBusy())return;
+  runtime.guard(context.owner,context.revision,context.epoch);
+  const changed=[];
+  for(const {session,threadId,previousTitle,name:remoteName} of titles){
+    const name=typeof remoteName==='string'?remoteName.trim().slice(0,300):'';
+    if (!name || session.title===name || session.title!==previousTitle || session.pendingThreadName || titleWrites.has(session)) continue;
+    if (runtime.store.peekSession(session.id)!==session || session.threadId!==threadId) continue;
+    changed.push({session,previous:previousTitle,name});
     session.title = name;
   }
   if (changed.length) {
     try { await runtime.store.save(); }
     catch(error){for(const {session,previous,name} of changed)if(session.title===name)session.title=previous;throw error;}
     runtime.guard(context.owner,context.revision,context.epoch);
+    for(const {session,name} of changed){
+      if(runtime.store.peekSession(session.id)===session&&session.title===name)runtime.controller.emitEvent?.({type:'sessionTitle',sessionId:session.id,title:name});
+    }
   }
-  return Object.fromEntries(sessions.map(session=>[session.id,session.title]));
 }
 
 // Native startup titles and explicit edits must arrive at Codex in the same order.
@@ -388,7 +400,7 @@ function rename(controller, session, name) {
       throw error;
     }
     controller.emitEvent?.({type:'session',sessionId:session.id,session:structuredClone(session)});
-    return structuredClone(session);
+    return structuredClone(runtime?.liveView?.(session)||session);
   });
 }
 

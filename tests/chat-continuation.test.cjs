@@ -8,7 +8,7 @@ test('실제 후속 제안은 공개 작업 설명 뒤에도 정확한 답변을
  const f=await fixture(t);
  f.session.messages.push({id:randomUUID(),role:'system',progressCommentary:true,text:'검증 결과를 정리했습니다.',createdAt:new Date().toISOString()});
  await continueConversation(f.controller,{...f.input,mode:'plan'});
- assert.equal(f.session.messages.at(-1).text,'회귀 검사도 이어서 진행해줘');
+ assert.equal(f.session.messages.at(-1).text,'회귀 검사도 이어서 진행해 주세요');
  assert.equal(f.calls(),1);
 });
 test('실제 전송의 파일 확인 대기 중 일반 요청이 완료돼도 지난 답변의 진행을 추가하거나 큐에 넣지 않는다',async t=>{

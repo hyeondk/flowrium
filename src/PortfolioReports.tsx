@@ -1,7 +1,7 @@
 import {modelDisplayName, effortDisplayName} from '../shared/model-display';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, BookOpen, Check, ClipboardList, Coffee, LoaderCircle, RefreshCw, X } from 'lucide-react';
-import { AnimatedCheckbox } from './ui-motion';
+import { ArrowRight, BookOpen, Check, ClipboardList, Coffee, LoaderCircle, RefreshCw } from 'lucide-react';
+import { CloseButton, AnimatedCheckbox } from './ui-motion';
 import type { Project, Session, Model, Effort } from '../shared/types';
 import { workKinds, type WorkInput } from '../shared/workbench';
 import { effortOptions } from '../shared/model-options';
@@ -89,11 +89,11 @@ export default function PortfolioReports({ kind, projects, sessions, onOpen, onS
     submitting.current = false;
   }
   const canStart = authenticated && accountReady && !modelLoading && !busy && !success && targets.length > 0 && name.trim();
-  const close = <button type="button" className="report-close" aria-label={title + ' 닫기'} onClick={onClose} disabled={busy}><X size={18}/></button>;
+  const close = <CloseButton aria-label={title + ' 닫기'} onClick={onClose} disabled={busy}/>;
   return <div className="portfolio-report-dialog" aria-busy={busy}>
     <header className="report-dialog-heading"><div className="ui-title-stagger"><h1>{title}</h1><p>프로젝트 업무를 ChatGPT로 작성합니다.</p></div>{onClose && close}</header>
     <nav className="report-dialog-tabs" aria-label={title + ' 화면'}><button type="button" aria-current={tab === 'create' ? 'page' : undefined} onClick={() => setTab('create')}>{weekly ? '새로 쓰기' : 'AI 마감 기록'}</button><button type="button" aria-current={tab === 'history' ? 'page' : undefined} onClick={() => setTab('history')}>{weekly ? '작성된 보고' : '이전 마감 기록'}</button></nav>
-    {tab === 'history' ? <><div className="report-dialog-body report-history">{past.map(session => <button key={session.id} className="report-history-row" onClick={() => onOpen(session)}><BookOpen size={17}/><span><strong>{session.title}</strong><small>{projects.find(p => p.id === session.projectId)?.name || '보관한 프로젝트'}</small></span><time>{localDay(session.updatedAt)}</time><ArrowRight size={15}/></button>)}{!past.length && <p className="report-empty">아직 작성한 기록이 없습니다.</p>}</div><footer className="report-dialog-footer"><div className="report-actions">{onClose && <button type="button" onClick={onClose}>닫기</button>}</div></footer></> : !projects.length ? <><div className="report-dialog-body report-empty"><h2>프로젝트를 먼저 추가하세요</h2><p>보고와 마감 기록은 선택한 프로젝트 폴더에 저장합니다.</p></div><footer className="report-dialog-footer"><div className="report-actions">{onClose && <button type="button" onClick={onClose}>취소</button>}<button type="button" className="report-primary" onClick={onCreateProject}>프로젝트 추가</button></div></footer></> : <form className="report-dialog-form" onSubmit={submit}>
+    {tab === 'history' ? <><div className="report-dialog-body report-history">{past.map(session => <button key={session.id} className="report-history-row" onClick={() => onOpen(session)}><BookOpen size={17}/><span><strong>{session.title}</strong><small>{projects.find(p => p.id === session.projectId)?.name || '보관한 프로젝트'}</small></span><time>{localDay(session.updatedAt)}</time><ArrowRight size={15}/></button>)}{!past.length && <p className="report-empty">아직 작성한 기록이 없습니다.</p>}</div><footer className="report-dialog-footer"><div className="report-actions">{onClose && <CloseButton onClick={onClose}/>}</div></footer></> : !projects.length ? <><div className="report-dialog-body report-empty"><h2>프로젝트를 먼저 추가하세요</h2><p>보고와 마감 기록은 선택한 프로젝트 폴더에 저장합니다.</p></div><footer className="report-dialog-footer"><div className="report-actions">{onClose && <button type="button" onClick={onClose}>취소</button>}<button type="button" className="report-primary" onClick={onCreateProject}>프로젝트 추가</button></div></footer></> : <form className="report-dialog-form" onSubmit={submit}>
       <div className="report-dialog-body"><p className="report-intro">{weekly ? 'ChatGPT가 완료 업무와 커밋, 변경 요청을 확인해 실제 한 일로 보고서를 작성합니다.' : 'ChatGPT가 최근 업무와 저장소 상태를 확인해 중단 지점과 복귀 순서를 프로젝트별로 작성합니다.'}</p>
         <fieldset disabled={busy || success || created.length > 0 || pending.current.size > 0}>
           <legend>{weekly ? '보고할 프로젝트' : '마감할 프로젝트'} ({targets.length}개 선택)</legend>
@@ -110,7 +110,7 @@ export default function PortfolioReports({ kind, projects, sessions, onOpen, onS
         {error && <p role="alert" className="report-error">{error}{(created.length > 0 || pending.current.size > 0) && <span> 시작한 대화는 유지하고 실패한 프로젝트만 다시 시도합니다.</span>}</p>}
         {created.length > 0 && <section className="report-results"><h2><Check size={16}/>{success ? 'AI 작업을 시작했습니다' : '시작한 AI 대화'}</h2>{created.map(session => <button type="button" key={session.id} className="report-history-row" onClick={() => onOpen(session)}><span>{projects.find(project => project.id === session.projectId)?.name} ({session.title})</span><ArrowRight size={15}/></button>)}</section>}
       </div>
-      <footer className="report-dialog-footer"><p>시작하면 오른쪽 대화함에서 AI 작업을 이어갑니다.</p><div className="report-actions">{onClose && <button type="button" disabled={busy} onClick={onClose}>{success ? '닫기' : '취소'}</button>}<button type="submit" className="report-primary" disabled={!canStart}>{busy ? <LoaderCircle size={16} className="spin"/> : weekly ? <ClipboardList size={16}/> : <Coffee size={16}/>} {busy ? '처리 중…' : success ? '시작 완료' : created.length || pending.current.size ? '실패한 프로젝트 다시 시작' : weekly ? 'ChatGPT로 보고서 작성' : 'ChatGPT로 업무 마감 작성'}</button></div></footer>
+      <footer className="report-dialog-footer"><p>시작하면 오른쪽 대화함에서 AI 작업을 이어갑니다.</p><div className="report-actions">{onClose && (success ? <CloseButton onClick={onClose}/> : <button type="button" disabled={busy} onClick={onClose}>취소</button>)}<button type="submit" className="report-primary" disabled={!canStart}>{busy ? <LoaderCircle size={16} className="spin"/> : weekly ? <ClipboardList size={16}/> : <Coffee size={16}/>} {busy ? '처리 중…' : success ? '시작 완료' : created.length || pending.current.size ? '실패한 프로젝트 다시 시작' : weekly ? 'ChatGPT로 보고서 작성' : 'ChatGPT로 업무 마감 작성'}</button></div></footer>
     </form>}
   </div>;
 }

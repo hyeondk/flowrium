@@ -1,6 +1,6 @@
 import {Download, ExternalLink, MoreHorizontal, Plus} from 'lucide-react';
 import {modelDisplayName, effortDisplayName} from '../shared/model-display';
-import { AnimatedSwitch,MotionOverlay } from './ui-motion';
+import { AnimatedSwitch,CloseButton,MotionOverlay } from './ui-motion';
 import {effortOptions} from '../shared/model-options';
 import {useEffect,useState} from 'react';
 import type {Session,ConversationEdit,Model,Effort,ChatPreferences,ChatAttachment} from '../shared/types';
@@ -28,7 +28,7 @@ export function ConversationTools({session,models,running,onOpen,onChange,notify
   }catch(e){fail(e);}finally{setBusy(false);}
  }
  return <div className="conversation-tools"><button className="button subtle conversation-menu-trigger" aria-label="대화 관리" title="대화 관리" aria-haspopup="dialog" aria-expanded={open} onClick={()=>{setOpen(!open);setTitle(session.title);setModel(session.preferences?.model||'');setEffort(session.preferences?.effort||'');setAddress(session.preferences?.chatGptUrl||'');setInherit(!(session.preferences?.answerLength || session.preferences?.approval));setPrefs({...initial,...defaults,...session.preferences});}}><MoreHorizontal size={17}/></button>
- <MotionOverlay open={open} onClose={()=>setOpen(false)} label="대화 관리" className="conversation-management"><header><h2>대화 관리</h2><button onClick={()=>setOpen(false)}>닫기</button></header><div className="conversation-utility-actions">{onHandoff&&<button type="button" onClick={()=>{setOpen(false);onHandoff();}}><ExternalLink size={15}/>ChatGPT로 이어가기</button>}{onExport&&<button type="button" onClick={()=>{setOpen(false);void onExport();}}><Download size={15}/>대화 내보내기</button>}{onNew&&<button type="button" onClick={()=>{setOpen(false);onNew();}}><Plus size={15}/>새 작업</button>}</div><fieldset disabled={busy} className="conversation-popover">
+ <MotionOverlay open={open} onClose={()=>setOpen(false)} label="대화 관리" className="conversation-management"><header><h2>대화 관리</h2><CloseButton onClick={()=>setOpen(false)}/></header><div className="conversation-utility-actions">{onHandoff&&<button type="button" onClick={()=>{setOpen(false);onHandoff();}}><ExternalLink size={15}/>ChatGPT로 이어가기</button>}{onExport&&<button type="button" onClick={()=>{setOpen(false);void onExport();}}><Download size={15}/>대화 내보내기</button>}{onNew&&<button type="button" onClick={()=>{setOpen(false);onNew();}}><Plus size={15}/>새 작업</button>}</div><fieldset disabled={busy} className="conversation-popover">
   <label>대화 이름<input aria-label="대화 이름" maxLength={300} value={title} onChange={e=>setTitle(e.target.value)}/></label>
   <small className="field-hint">{session.codexLink?.mode==='copy'?'이 이름은 독립 사본에 적용됩니다.':session.threadId && (linked || session.desktopThread)?'같은 기기의 Codex 대화와 제목을 공유합니다.':'이 제목은 첫 작업을 보내 Codex 대화에 연결하면 반영됩니다.'}</small>
   <button className="button subtle" disabled={!title.trim()} onClick={()=>apply({action:'rename',title})}>이름 저장</button>

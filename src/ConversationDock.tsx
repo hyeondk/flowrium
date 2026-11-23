@@ -5,7 +5,7 @@ import {ArrowLeft,Bell,ChevronRight,Folder,Globe2,Maximize2,MoreHorizontal,Squar
 import type {FlowriumEvent,Project,Session} from '../shared/types';
 import type {WorkflowProposal} from '../shared/workflow';
 import {executionLabels,sessionExecution,type ExecutionActivity,type ExecutionState} from '../shared/execution-state';
-import {MotionPresence} from './ui-motion';
+import {CloseButton,MotionPresence} from './ui-motion';
 import {ExecutionBadge,type ExecutionCounts} from './ExecutionStatus';
 import './dock-layout-modes.css';
 import ChoicePicker from './ChoicePicker';
@@ -63,12 +63,12 @@ export default function ConversationDock(props:Props){
  }
  const count=(value:'integrated'|'general')=>sessions.filter(s=>s.scope===value).length;
  return <MotionPresence open={props.open} durationMs={280}>{phase=><>
-  <button className="dock-mobile-scrim" aria-label="대화함 닫기" data-phase={phase} onClick={props.onClose}/>
+  <button className="dock-mobile-scrim" aria-hidden="true" tabIndex={-1} type="button" data-phase={phase} onClick={props.onClose}/>
   <aside ref={resize.bindPanel} className="conversation-dock" style={resize.style} data-resizing={resize.resizing} aria-label="통합 / 프로젝트 / 일반 대화" data-chat-active={chatActive} data-layout-mode={layout} data-minimized={isMinimized} data-expanded={props.expanded} data-phase={phase} aria-hidden={phase==='exit'} inert={phase==='exit'}>
    {resize.separator}<span className="project-order-readout" role="status">{grip.announcement}</span>
    <header className="dock-heading"><div><div><h2>{isMinimized?(selected?.title||'대화 입력창'):'대화'}</h2></div></div><div className="dock-heading-actions">{!dotsOpen&&<button className="dock-icon" aria-label="새 대화 시작" title="새 대화" disabled={props.busy||((scope==='project'||scope==='home'||scope==='all')&&!selectedProject)} onClick={()=>props.onCreate(scope==='integrated'?'integrated':scope==='general'||scope==='assistant'?'general':'project',selectedProject)}><SquarePen size={17}/></button>}{(chatActive||scope==='assistant'||isMinimized)&&<button className="dock-icon dock-layout-toggle" aria-label={isMinimized?'대화 패널 다시 펼치기':props.expanded?'대화 패널 좁히기':'대화 패널 넓히기'} title={isMinimized?'대화 패널 다시 펼치기':props.expanded?'대화 패널 좁히기':'대화 패널 넓히기'} onClick={()=>{resize.reset();if(isMinimized)setMinimized(false);else props.onExpand()}}>{isMinimized||!props.expanded?<Maximize2 size={18}/>:<PanelRight size={18}/>}</button>}
     <div className="dock-mode-picker" ref={modeRoot}><button ref={modeButton} className="dock-icon" aria-label="대화 패널 보기 방식" aria-haspopup="menu" aria-expanded={modeMenu} aria-controls={modeMenu?menuId:undefined} onClick={()=>setModeMenu(value=>!value)}><MoreHorizontal size={18}/></button>{modeMenu&&<div ref={menu} id={menuId} role="menu" aria-label="대화 패널 보기" className="flow-context-menu dock-panel-menu" onKeyDown={menuKey}>{([['docked','대시보드 옆에 고정'],['overlay','겹쳐 보기'],['composer','입력창만 보기']] as const).map(([value,label])=><button type="button" key={value} role="menuitemradio" aria-checked={value==='composer'?isMinimized:!isMinimized&&layout===value} tabIndex={-1} disabled={value==='composer'&&!chatActive} aria-describedby={value==='composer'&&!chatActive?menuId+'-help':undefined} onClick={()=>selectLayout(value)}><span>{label}</span><i aria-hidden="true">{(value==='composer'?isMinimized:!isMinimized&&layout===value)?'✓':''}</i></button>)}{!chatActive&&<p id={menuId+'-help'} className="dock-mode-help">Flowrium 대화를 연 뒤 사용할 수 있습니다.</p>}</div>}</div>
-    <button className="dock-icon" aria-label="대화함 접기" onClick={props.onClose}><PanelRightClose size={18}/></button></div></header>
+    <button className="dock-icon dock-fold" aria-label="대화함 접기" onClick={props.onClose}><PanelRightClose size={18}/></button><CloseButton className="dock-close-small" aria-label="대화함 닫기" onClick={props.onClose}/></div></header>
    <div className="dock-scope-tabs" aria-label="대화 종류">{([['integrated','통합'],['project','프로젝트'],['general','일반'],['assistant','개인 비서']] as const).map(([key,label])=><button key={key} aria-label={key==='assistant'?'개인 비서 보기':undefined} aria-pressed={scope===key} title={key==='integrated'?'전체 프로젝트의 대화와 알림':label+' 대화'} onClick={()=>key==='assistant'?props.onAssistant():group(key)}>{label}{key==='integrated'&&Boolean(props.attentionCount)&&<small>{props.attentionCount}</small>}</button>)}</div>
    <div className="dock-navigation-row">
     {(scope !== 'home' || chatActive) && <button

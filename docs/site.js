@@ -45,6 +45,42 @@ document.getElementById("example-open").addEventListener("click", event => {
   example.querySelector("img").loading = "eager";
 });
 
+const commandStatus = document.getElementById("command-copy-status");
+for (const button of document.querySelectorAll("[data-copy-command]")) {
+  const command = document.getElementById(button.dataset.copyCommand);
+  if (!command) continue;
+  button.hidden = false;
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(command.textContent);
+      button.textContent = "복사됨";
+      commandStatus.textContent = "명령을 클립보드에 복사했습니다.";
+    } catch {
+      const selection = window.getSelection();
+      if (!selection) return;
+      const range = document.createRange();
+      range.selectNodeContents(command);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      button.textContent = "선택됨";
+      commandStatus.textContent = "선택한 명령을 키보드로 복사하세요.";
+    }
+  });
+}
+
+function revealHelpItem(hash = location.hash) {
+  const target = document.getElementById(hash.slice(1));
+  if (target instanceof HTMLDetailsElement && target.closest(".help-list")) target.open = true;
+}
+
+window.addEventListener("hashchange", () => revealHelpItem());
+document.addEventListener("click", event => {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const link = event.target.closest('a[href^="#"]');
+  if (link) revealHelpItem(link.hash);
+});
+revealHelpItem();
+
 if (validRepository(repository)) {
   document.getElementById("source-link").href =
     `https://github.com/${repository}`;

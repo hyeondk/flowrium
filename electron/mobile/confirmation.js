@@ -46,6 +46,7 @@ export function confirmationButton(label, id, heading, description, execute) {
     // An informational sheet can be dismissed, but cannot grant permission.
     accept.hidden = !execute;
     cancel.textContent = execute ? '취소' : '닫기';
+    cancel.classList.toggle('popup-close-button', !execute);
     accept.textContent = label;
     sheet.dataset.phase = 'enter';
     sheet.showModal();

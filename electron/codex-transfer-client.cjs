@@ -1,9 +1,24 @@
 const {CodexClient}=require('./codex.cjs');
 const {publicMessage}=require('./errors.cjs');
+const closingWriter=/is closing; retry thread\/resume after the thread is closed/i;
 
 function linkedError(error){
- if(/already has an active writer|is closing; retry thread\/resume after the thread is closed/i.test(error?.rpcMessage||error?.message||''))return Object.assign(Error('Codex에서 원래 대화를 사용 중입니다.'),{code:'THREAD_WRITER_BUSY'});
+ const message=error?.rpcMessage||error?.message||'';
+ if(/already has an active writer/i.test(message)||closingWriter.test(message))return Object.assign(Error('Codex에서 원래 대화를 사용 중입니다.'),{code:'THREAD_WRITER_BUSY'});
  return error;
+}
+
+async function resumeClosingThread(client, params, check) {
+ const deadline=Date.now()+1500;
+ for(;;){
+  check();
+  try{return await client.request('thread/resume',params);}
+  catch(error){
+   if(!closingWriter.test(error?.rpcMessage||error?.message||''))throw error;
+   if(Date.now()>=deadline)throw linkedError(error);
+   await new Promise(resolve=>setTimeout(resolve,100));
+  }
+ }
 }
 function createRunClient(controller,run){
  const client=controller.options.linkedClientFactory?.(run)||new CodexClient({...controller.client.options});
@@ -38,4 +53,4 @@ function createRunClient(controller,run){
  })();
  return client;
 }
-module.exports={createRunClient,linkedError};
+module.exports={createRunClient,linkedError,resumeClosingThread};

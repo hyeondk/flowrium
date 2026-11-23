@@ -115,7 +115,14 @@ async function startScopedRun(controller,run,input,message,project){
  const model=input.model;
  let result;
  const previous=!run.threadId?session.messages.filter(m=>m.id!==run.userMessageId&&m.role!=='system').slice(-20).map(m=>m.role+': '+m.text).join('\n').slice(-40000):'';
- if(run.threadId){if(!controller.loadedThreads.has(run.threadId))result=await client.request('thread/resume',{threadId:run.threadId,excludeTurns:true,...params,...(model&&{model})});}
+ if(run.threadId){
+  if(!controller.loadedThreads.has(run.threadId))result=await require('./codex-transfer-client.cjs').resumeClosingThread(client,
+   {threadId:run.threadId,excludeTurns:true,...params,...(model&&{model})},()=>{
+    assertScope(controller.store,session);
+    if(controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
+    if(run.cancelled||run.finalized)throw Error('종료한 대화의 작업입니다.');
+   });
+ }
  else{
   const tools=session.scope==='integrated'?[...toolDefinitions,currentRequest.reader]:[currentRequest.reader];
   result=await client.request('thread/start',{...params,...(model&&{model}),dynamicTools:tools.map(t=>({type:'function',...t}))});

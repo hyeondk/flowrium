@@ -1,3 +1,4 @@
+import { CloseButton } from './ui-motion';
 import {useEffect,useState} from 'react';
 import type {ActivitySection, LocalRepository, RepositoryActivity, RepositoryItem, RepositoryKind} from '../shared/repository';
 import './repository-inspection.css';
@@ -68,7 +69,7 @@ export default function RepositoryInspection({id,repositoryId}:{id:string;reposi
       </details>;
     })}
     {detail&&<section aria-label="선택한 항목 상세"><header><h3>#{detail.item.number} {detail.item.title}</h3>
-      <button disabled={busy} onClick={()=>open(detail.kind,detail.item.number)}>GitHub에서 열기</button><button onClick={()=>setDetail(undefined)}>상세 닫기</button></header>
+      <button disabled={busy} onClick={()=>open(detail.kind,detail.item.number)}>GitHub에서 열기</button><CloseButton onClick={()=>setDetail(undefined)}>상세 닫기</CloseButton></header>
       {detail.item.body&&<p className="repo-description">{detail.item.body}</p>}
       {detail.item.labels.length>0&&<p>레이블: {detail.item.labels.join(', ')}</p>}
       {detail.item.assignees.length>0&&<p>담당자: {detail.item.assignees.join(', ')}</p>}

@@ -21,8 +21,28 @@
 }
 .markdown-input-ink .md-link {color:var(--accent,var(--focus,#255e91));text-decoration:underline;}
 .markdown-input-ink .md-destination,.markdown-input-ink .md-quote,.markdown-input-ink .md-marker {color:var(--muted,var(--soft,#61788d));}
-.markdown-input-ink .md-marker {opacity:.55;}
+.markdown-input-ink .md-marker {opacity:.18;}
 .markdown-input-ink .md-bullet,.markdown-input-ink .md-task {color:var(--accent,var(--focus,#255e91));-webkit-text-stroke:.35px currentColor;}
+.markdown-input-ink .md-bullet[data-unordered] {position:relative;color:transparent;}
+.markdown-input-ink .md-bullet[data-unordered]::before {
+  content:'•';position:absolute;inset-inline-start:0;color:var(--accent,var(--focus,#255e91));
+}
+.composer-format-tools {display:flex;gap:3px;align-items:center;min-width:0;padding:0 3px;}
+.composer-format-tools[hidden] {display:none;}
+.composer-format-tools > button {
+  display:inline-grid;place-items:center;min-width:25px;min-height:24px;padding:0 4px;border:0;border-radius:5px;
+  background:transparent;color:var(--text,CanvasText);font-size:.78rem;line-height:1;font-family:inherit;
+}
+.composer-format-tools > button[data-format=bold] {font-weight:800;}
+.composer-format-tools > button[data-format=italic] {font-style:italic;}
+.composer-format-tools > button[data-format=bullets] {font-size:1rem;}
+.composer-format-tools > button:hover {
+  color:var(--accent,var(--focus,#255e91));background:var(--selected,var(--row-tint,#e5edf4));
+}
+.composer-format-tools > button:focus-visible {outline:2px solid var(--accent,var(--focus,#255e91));outline-offset:-2px;}
+#content .chat-compose > .composer-format-tools {grid-column:1/-1;}
+#content .chat-compose > .composer-format-tools:not([data-active]) {display:none;}
+#content .chat-compose > .composer-format-tools > button {min-height:28px;}
 @media (forced-colors:active) {
   .markdown-input[data-formatted=true] > .markdown-input-ink {display:none;}
   .markdown-input[data-formatted=true] > textarea {color:CanvasText!important;-webkit-text-fill-color:CanvasText!important;}

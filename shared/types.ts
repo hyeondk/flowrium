@@ -173,8 +173,9 @@ export interface FlowriumEvent {
   restoredSessions?: Session[];
   turnId?: string;
   turnMessages?: Message[];
-  type: "contextUsage" | "externalTurn" | "sessionList" | "delta" | "status" | "error" | "done" | "approval" | "session" | "input" | "inputResolved";
+  type: "contextUsage" | "externalTurn" | "sessionList" | "sessionTitle" | "delta" | "status" | "error" | "done" | "approval" | "session" | "input" | "inputResolved";
   sessionId?: string;
+  title?: string;
   text?: string;
   status?: string;
   requestId?: string;
@@ -244,6 +245,7 @@ export interface FlowriumAPI
   deleteSession(id: string): Promise<void>;
   saveSettings(settings: Partial<Settings>): Promise<Settings>;
   connectionStatus(): Promise<ConnectionStatus>;
+  readDesktopChatInstallation(): Promise<boolean|null>;
   readChatConnection(): Promise<{ready:true} | {ready:false;reason:'login'|'unavailable'|'changed';message:string;desktopInstalled:boolean|null}>;
   listAvailableModels():ReturnType<FlowriumAPI['connect']>;
   connect(): Promise<{

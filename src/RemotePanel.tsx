@@ -89,8 +89,8 @@ export default function RemotePanel() {
           <label>휴대폰 연결 주소<input type="password" readOnly value={state.url} autoComplete="off" /></label>
           <p>이 주소와 QR 코드로 프로젝트에 접근할 수 있습니다. 연결을 종료한 뒤 다시 켜면 새 주소로 연결하세요.</p>
           <div className="settings-buttons">
-            <button type="button" className="button secondary" aria-expanded={qrVisible}
-              onClick={() => setQrVisible(!qrVisible)}><QrCode size={15}/>{qrVisible ? 'QR 코드 닫기' : 'QR 코드 보기'}</button>
+            <button type="button" className={qrVisible ? 'popup-close-button' : 'button secondary'} aria-expanded={qrVisible}
+              onClick={() => setQrVisible(!qrVisible)}>{!qrVisible && <QrCode size={15}/>} {qrVisible ? 'QR 코드 닫기' : 'QR 코드 보기'}</button>
             <button type="button" className="button subtle" onClick={async () => {
               try {
                 await api!.copyText(state.url!);

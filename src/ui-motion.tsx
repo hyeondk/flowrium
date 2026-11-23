@@ -65,6 +65,10 @@ export function MotionPresence({ open, durationMs = 240, children }: { open: boo
 
 export function ModalPortal({children}:{children:ReactNode}){return createPortal(children,document.body);}
 
+export function CloseButton({children = '닫기', className = '', ...props}: ComponentPropsWithRef<'button'>) {
+  return <button type="button" {...props} className={`popup-close-button ${className}`}>{children}</button>;
+}
+
 export function MotionOverlay({ open, onClose, children, label, className = '', kind = 'popup', durationMs = 240, initialFocus, persist=false }: {
   open: boolean; onClose?: () => void; children: ReactNode; label: string; className?: string; kind?: 'popup' | 'sheet'; durationMs?: number; initialFocus?:string; persist?:boolean;
 }) {
@@ -132,7 +136,7 @@ function Notice({ message, onClose, tone = 'info', action, className = '', revis
     <div className="ui-notification-surface" data-motion={kind} data-phase={phase} inert={phase === 'exit'}>
       <span className="ui-notice-indicator" aria-hidden="true">{tone === 'success' ? '✓' : tone === 'error' ? '!' : 'i'}</span>
       <span className="ui-notice-message">{last.current}</span>{action}
-      {kind === 'snackbar' && onClose && <button type="button" className="ui-notice-close" aria-label="알림 닫기" onClick={onClose}>×</button>}
+      {kind === 'snackbar' && onClose && <CloseButton aria-label="알림 닫기" onClick={onClose}/>}
     </div>
   </div>;
 }

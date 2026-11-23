@@ -121,10 +121,20 @@ async function main() {
       assert.equal(incoming.status,'running');
       assert.equal(runtime.liveView(live).messages.filter(m=>m.text===externalText).length,1);
       assert(!live.messages.some(m=>m.text===externalText));
+      const renamed=onceEvent(controller,'event',e=>e.type==='sessionTitle'&&e.sessionId===session.id&&e.title==='상대 작업 중 바꾼 제목');
+      await desktop.request('thread/name/set',{threadId:id,name:'상대 작업 중 바꾼 제목'});
+      await monitor.scan(runtime);
+      await monitor.scan(runtime);
+      assert.equal(live.title,'상대 작업 중 바꾼 제목','실행 중에도 본문 동기화와 무관하게 제목 변경을 수신해야 합니다.');
+      await renamed;
+      await operations.editConversation(session.id,{action:'rename',title:'Flowrium에서 작업 중 바꾼 제목'});
+      assert.equal((await D.readThread(desktop,id,cwd)).name,'Flowrium에서 작업 중 바꾼 제목');
+      assert(!live.messages.some(m=>m.text===externalText),'제목 변경은 실행 중인 메시지를 확정하지 않습니다.');
     }finally{remoteRelease.resolve();}
     const incomingReply=received('동기화 응답 2');
     assert.equal((await done).params.turn.status,'completed');
     await incomingReply;
+    assert.equal((await D.readThread(desktop,id,cwd)).name,'Flowrium에서 작업 중 바꾼 제목','작업 완료가 방금 저장한 원본 제목을 되돌리면 안 됩니다.');
     const { tokenUsage }=(await usage).params;
     const recordedThread=await D.readThread(reader,id,cwd);
     const expectedUsed=tokenUsage.last.inputTokens+tokenUsage.last.outputTokens;
@@ -161,6 +171,11 @@ async function main() {
       assert(active.turnId);
       await operations.editConversation(session.id,{action:'rename',title:'실행 중 바꾼 제목'});
       assert.equal((await reader.request('thread/read',{threadId:id,includeTurns:false})).thread.name,'실행 중 바꾼 제목');
+      await desktop.start();
+      await desktop.request('thread/name/set',{threadId:id,name:'Flowrium 실행 중 원본에서 바꾼 제목'});
+      await monitor.scan(runtime);
+      await monitor.scan(runtime);
+      assert.equal(live.title,'Flowrium 실행 중 원본에서 바꾼 제목');
       assert.equal(controller.runs.get(session.id).turnId,active.turnId);
       const result=await controller.send({sessionId:session.id,mode:'plan',text:'현재 작업에 추가한 지시',delivery:'steer'});
       assert(result.steered && !result.queued);
@@ -314,6 +329,10 @@ async function main() {
     const externalDone=originalTurn('원래 앱에서 실행 중인 요청');
     try{
       await externalStart.promise;
+      await desktop.request('thread/name/set',{threadId:source,name:'연결한 원본이 실행 중일 때 바꾼 제목'});
+      await monitor.scan(runtime);
+      await monitor.scan(runtime);
+      assert.equal(shared.title,'연결한 원본이 실행 중일 때 바꾼 제목');
       const active=await controller.send({...draft,text:'원래 작업 중 취소할 요청'});
       assert(active.queued&&active.waitingForWriter);
       assert(!controller.runs.has(shared.id));

@@ -16,7 +16,7 @@ const styles = {
   codeTextSequence:'marker', labelMarker:'marker', resourceMarker:'marker',
 };
 export function markdownRanges(source) {
-  if (!/[#>*_~\x60\[\]|\\-]|^\s*\d+[.)]\s/m.test(source)) return [];
+  if (!/[#>*_~\x60\[\]|\\-]|^\s*(?:\d+[.)]|\+)\s/m.test(source)) return [];
   const events = postprocess(parse({extensions:[syntax, {disable:{null:['strikethrough']}}]}).document().write(preprocess()(source, undefined, true)));
   const ranges = [];
   for (const [phase, token] of events) {

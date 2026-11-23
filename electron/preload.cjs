@@ -170,6 +170,7 @@ contextBridge.exposeInMainWorld(
     saveSettings: (input) => invoke("saveSettings", input),
     connectionStatus: () => invoke("connectionStatus"),
     connect: () => invoke("connect"),
+    readDesktopChatInstallation: () => invoke('readDesktopChatInstallation'),
     readChatConnection: () => invoke('readChatConnection'),
     listAvailableModels: () => invoke("listAvailableModels"),
     login: () => invoke("login"),
