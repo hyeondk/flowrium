@@ -4,6 +4,8 @@ import {attachmentDisplayText} from './attachment-text.js';
 const decline = /(?:추천|제안|후속(?:\s*작업)?|다음\s*(?:단계|작업)|추가\s*질문)[^.!?\n]{0,24}(?:하지\s*마|지\s*말|없이|빼|생략|금지|필요\s*없|원하지\s*않)|(?:do not|don't|no)\s+(?:suggest|recommend|follow[ -]?up)/i;
 const stoppedText = /^(?:작업을 완료하지 못했습니다\.|사용자의 요청으로 작업이 중지됐습니다\.)/;
 const sectionHeading = /^(?:다음\s*(?:(?:권장|우선)\s*)?(?:작업|단계)|(?:권장\s*)?후속\s*작업|남은\s*(?:작업|사항|검증)|next steps?)\s*(?:[:：]\s*(.*))?$/i;
+const reportHeading = /^(?:결과|요약|현재\s*상태|확인\s*결과|검증\s*결과|완료\s*항목)$/;
+const postponed = /(?:나중에|이따(?:가)?|잠시\s*뒤에?)\s*(?:부탁|진행|연결|해\s*주|요청|할게|다시\s*(?:진행|연결|요청))/;
 const actionVerb = '정리|비교|검토|작성|검증|분류|분석|확인|점검|시험|검사|수정|추가|변환|요약|제작|구현|적용|진행|실행|대조|측정|반영|조사|계산|선정|생성|설계|수집|기록|준비|조정|개선|보완';
 const actionNoun = new RegExp('(?:'+actionVerb+')$');
 const suggestedAction = new RegExp('^(.*?)('+actionVerb+')(?:(?:할|해\\s*볼)\\s*수\\s*(?:있습니다|있어요|있다)|해야\\s*(?:합니다|해요)|할\\s*필요가\\s*(?:있습니다|있어요)|하는\\s*(?:편이|것이|게)\\s*좋(?:습니다|아요|겠습니다))$');
@@ -43,7 +45,12 @@ export function publicLines(text) {
     if (writing) { if (/^ {0,3}:::\s*$/.test(line)) writing = false; continue; }
     if (!line.trim()) continue;
     if (line.length > 4096 || /^(?: {4}|\t|\s*[<>{[|"}])/.test(line)) { result.push(''); continue; }
-    result.push(line.trim().replace(/\*\*|__/g, '').replace(/^#{1,6}\s+/, ''));
+    const body=line.trim().replace(/^#{1,6}\s+/, '');
+    const inlineHeading=/^(\*\*|__)([^*_]+)\1(?:\s*[:：]\s*|\s+)(\S.*)$/.exec(body);
+    const title=inlineHeading?.[2].trim();
+    const text=title && sectionHeading.test(title) ? title+': '+inlineHeading[3]
+      : title && reportHeading.test(title) ? inlineHeading[3] : body;
+    result.push(text.replace(/\*\*|__/g, ''));
   }
   return result;
 }
@@ -163,7 +170,7 @@ function rank(row,requestTerms,historyTerms) {
 
 const topicLead = /^(?:(?:다만|우선|먼저|이어서|따라서|실제로|현재|이번(?:에|에는|의)?|최종적으로|다시|추가로|결과적으로)\s*[,，]?\s+)+/;
 const genericTopic = /^(?:(?:이|그|해당|직전|이전|이번|같은|모든|다른)\s+)*(?:내용|요청|작업|동작|상태|결과|확인한\s*결과|필요한\s*자료|핵심|요약|응답|답변|메시지|모두|문제|각각|방법|항목|다음\s*단계|관련\s*내용|테스트|확인|그날|내일|오늘|어제|이번엔)(?:의\s*내용)?$/;
-const topicPrefix = /^(?:(?:결과|요약|현재\s*상태|확인\s*결과|검증\s*결과|완료\s*항목)\s*[:：]\s*)|^(?:[-*+]\s+|\d+[.)]\s+)(?:\[[ xX]\]\s*)?/;
+const topicPrefix = /^(?:(?:결과|요약|현재\s*상태|확인\s*결과|검증\s*결과|완료\s*항목|남은\s*(?:작업|사항|검증)|다음\s*(?:작업|단계)|후속\s*작업)\s*[:：]\s*)|^(?:[-*+]\s+|\d+[.)]\s+)(?:\[[ xX]\]\s*)?/;
 const topicContent = /^[가-힣\p{L}\p{N}][가-힣\p{L}\p{N} .,_()-]*$/u;
 const quietIntro = /^(?:예상\s*소요\s*시간|안녕하세요|감사합니다|도움이\s*되|요청을\s*확인|무엇을\s*도와)/;
 function findTopic(lines,terms) {
@@ -261,6 +268,7 @@ function specifyScope(candidate,history) {
 function contextualFallback(lines,history) {
   const {requestLines,requestTerms,usableRequest,previous,prior}=history;
   const answer=lines.join('\n');
+  if (postponed.test(requestLines.join('\n')) && postponed.test(answer)) return;
   const requestTopic=usableRequest && findTopic(requestLines,requestTerms);
   const evidence=new Set([...requestTerms,...relevanceTerms(answer)]);
   const carriesPrior=!usableRequest && requestLines.some(line=>shallowRequest.test(line));

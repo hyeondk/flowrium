@@ -61,6 +61,13 @@ async function run(){
   }
   if(baseline){console.log(JSON.stringify({mode:'재현',rows}));return;}
   for(const width of [1440,390]){const heights=rows.filter(row=>row.width===width).map(row=>row.dialogHeight);assert(Math.max(...heights)-Math.min(...heights)<1,`설정 탭마다 같은 창 높이 ${JSON.stringify({width,heights})}`);}
+  await select('account');
+  const accountActions=dialog.locator('[data-settings-group=account] .settings-buttons').first();
+  const buttons=await accountActions.evaluate(row=>[...row.querySelectorAll('button')].map(button=>{
+   const rect=button.getBoundingClientRect(),style=getComputedStyle(button);
+   return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom,radius:parseFloat(style.borderRadius),fill:style.backgroundColor};
+  }));
+  assert(buttons.length===2&&buttons[0].top===buttons[1].top&&buttons[0].bottom===buttons[1].bottom&&buttons[1].left-buttons[0].right>=7.5&&buttons.every(button=>button.radius>=8&&button.fill!=='rgba(0, 0, 0, 0)'),JSON.stringify(buttons));
   await select('general');
   const version=releaseVersion(require('../package.json'));
   const history=dialog.getByRole('region',{name:'최신 변경점',exact:true});

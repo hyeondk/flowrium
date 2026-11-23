@@ -60,6 +60,14 @@ async function run(){
   assert.equal(await completed.locator('.flow-notice-summary p').count(),1);
   const completeText=await completed.innerText();assert.match(completeText,/답변을 마쳤습니다/);assert(!completeText.includes('임시 합성 확인값'));
   const completeBox=await completed.boundingBox();assert(Math.abs(completeBox.width-390)<1);assert(completeBox.height<115,JSON.stringify(completeBox));
+  const compact=await completed.evaluate(notice=>{
+   const symbol=getComputedStyle(notice.querySelector('.flow-notice-symbol'));
+   const action=getComputedStyle(notice.querySelector('.flow-notice-action'));
+   const card=getComputedStyle(notice);
+   return {symbol:[symbol.width,symbol.height].map(value=>Math.round(parseFloat(value))),
+    action:[action.minHeight,action.paddingInlineStart],padding:[card.paddingBlockStart,card.paddingBlockEnd]};
+  });
+  assert.deepEqual(compact,{symbol:[24,22],action:['26px','8px'],padding:['7px','7px']});
   await page.screenshot({path:path.join(output,'안내-완료.png'),animations:'disabled'});
   await captureNotice(completed,'알림-완료-확대.png');
   const state=await page.evaluate(()=>window.flowrium.bootstrap());assert(!JSON.stringify(state).includes('임시 합성 확인값'));

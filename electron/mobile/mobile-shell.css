@@ -401,6 +401,8 @@ html[data-mobile-keyboard] .chat-compose:focus-within{scroll-margin-block:8px}
   --left-gutter:max(var(--page-gutter),var(--safe-left));
   --right-gutter:max(var(--page-gutter),var(--safe-right));
   --header-height:48px;
+  --header-clearance:4px;
+  --bar-height:calc(var(--header-height) + var(--safe-top) + var(--header-clearance));
   --nav-floor:max(12px,calc(var(--safe-bottom) + 7px));
   --header-fill:linear-gradient(to bottom,var(--panel) var(--safe-top),color-mix(in srgb,var(--panel) 94%,transparent));
 }
@@ -414,8 +416,8 @@ html[data-mobile-keyboard] .chat-compose:focus-within{scroll-margin-block:8px}
   backdrop-filter:blur(18px) saturate(1.15);
 }
 .bar {
-  min-height:calc(var(--header-height) + var(--safe-top));
-  padding:var(--safe-top) var(--right-gutter) 0 var(--left-gutter);
+  min-height:var(--bar-height);
+  padding:calc(var(--safe-top) + var(--header-clearance)) var(--right-gutter) 0 var(--left-gutter);
 }
 #content {
   padding-left:var(--left-gutter);
@@ -426,7 +428,7 @@ html[data-mobile-keyboard] .chat-compose:focus-within{scroll-margin-block:8px}
   min-height:calc(44px + var(--safe-top));
   margin-left:calc(-1 * var(--left-gutter));
   margin-right:calc(-1 * var(--right-gutter));
-  padding:calc(var(--safe-top) + 2px) var(--right-gutter) 2px var(--left-gutter);
+  padding:calc(var(--safe-top) + var(--header-clearance) + 2px) var(--right-gutter) 0 var(--left-gutter);
 }
 body::after {
   content:'';
@@ -538,7 +540,7 @@ html[data-mobile-keyboard] #content[data-view=chat] {
   padding-bottom:calc(24px + var(--safe-bottom));
 }
 [data-workspace-layout=wide] #nav {
-  inset:calc(var(--header-height) + var(--safe-top)) auto var(--safe-bottom) max(var(--safe-left),calc((100% - var(--workspace-width)) / 2));
+  inset:var(--bar-height) auto var(--safe-bottom) max(var(--safe-left),calc((100% - var(--workspace-width)) / 2));
   width:var(--workspace-rail);
   max-inline-size:none;
   height:auto;
@@ -555,7 +557,7 @@ html[data-mobile-keyboard] #content[data-view=chat] {
   overflow:auto;
   touch-action:pan-y pinch-zoom;
 }
-[data-workspace-layout=wide] body:has(#content[data-view=chat]) #nav {inset-block-start:var(--safe-top)}
+[data-workspace-layout=wide] body:has(#content[data-view=chat]) #nav {inset-block-start:calc(var(--safe-top) + var(--header-clearance))}
 [data-workspace-layout=wide] #nav::before {display:none}
 [data-workspace-layout=wide] #nav button {
   flex-direction:row;

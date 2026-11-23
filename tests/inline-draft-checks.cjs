@@ -16,14 +16,22 @@ async function editorDigest(input) {
 }
 
 async function checkInlineDraft(page,input,draft) {
-  const toolbar=page.getByRole('group',{name:'입력 서식'});
   const shortcut=process.platform==='darwin'?'Meta':'Control';
   const ink=input.locator('..').locator('.markdown-input-ink');
+  const visiblyHidden=()=>ink.locator('.md-marker').evaluateAll(rows=>
+    rows.length>0&&rows.every(row=>getComputedStyle(row).visibility==='hidden'));
+  assert.equal(await page.getByRole('group',{name:'입력 서식'}).count(),0);
   await input.fill('현장 자료');
   await input.evaluate(el=>el.select());
-  await toolbar.getByRole('button',{name:'굵게',exact:true}).click();
+  await input.press(shortcut+'+b');
   assert.equal(await input.inputValue(),'**현장 자료**');
   assert.equal(await ink.locator('.md-strong').textContent(),'현장 자료');
+  assert(await visiblyHidden(),'굵게 기호가 화면에 표시되지 않음');
+  assert(await input.evaluate(el=>{
+    const flow=el.nextElementSibling, first=flow.querySelector('.md-strong');
+    const range=document.createRange();range.selectNodeContents(first);
+    return Math.abs(range.getBoundingClientRect().left-flow.getBoundingClientRect().left-parseFloat(getComputedStyle(flow).paddingLeft))<=1;
+  }), '첫 줄 시작에서 굵게 기호가 들여쓰기 폭을 만들지 않음');
   await input.press(shortcut+'+i');
   assert.equal(await input.inputValue(),'***현장 자료***');
   assert.equal(await ink.locator('.md-em .md-strong').textContent(),'현장 자료');
@@ -31,9 +39,9 @@ async function checkInlineDraft(page,input,draft) {
   assert.equal(await input.inputValue(),'**현장 자료**','겹쳐 적용한 기울임만 해제');
   await input.fill('현장 자료');
   await input.evaluate(el=>el.select());
-  await toolbar.getByRole('button',{name:'굵게',exact:true}).click();
+  await input.press(shortcut+'+b');
   await input.press(shortcut+'+z');
-  assert.equal(await input.inputValue(),'현장 자료','도구를 사용한 편집도 기본 실행 취소로 복구');
+  assert.equal(await input.inputValue(),'현장 자료','단축키 서식도 기본 실행 취소로 복구');
   await input.evaluate(el=>el.select());
   await input.press(shortcut+'+i');
   assert.equal(await ink.locator('.md-em').textContent(),'현장 자료');
@@ -42,11 +50,11 @@ async function checkInlineDraft(page,input,draft) {
 
   await input.fill('첫 항목\n둘째 항목');
   await input.evaluate(el=>el.select());
-  await toolbar.getByRole('button',{name:'글머리표',exact:true}).click();
+  await input.press(shortcut+'+Shift+Digit8');
   assert.equal(await input.inputValue(),'- 첫 항목\n- 둘째 항목');
   assert.equal(await ink.locator('.md-bullet[data-unordered]').count(),2);
   assert.match(await ink.locator('.md-bullet[data-unordered]').first().evaluate(el=>getComputedStyle(el,'::before').content),/•/);
-  await toolbar.getByRole('button',{name:'번호 목록',exact:true}).click();
+  await input.press(shortcut+'+Shift+Digit7');
   assert.equal(await input.inputValue(),'1. 첫 항목\n2. 둘째 항목');
   await input.evaluate(el=>el.setSelectionRange(el.value.length,el.value.length));
   await input.press('Shift+Enter');
@@ -55,10 +63,50 @@ async function checkInlineDraft(page,input,draft) {
   assert.equal(await input.inputValue(),'1. 첫 항목\n2. 둘째 항목\n','내용 없는 항목에서 줄을 바꾸면 번호 목록 종료');
 
   await input.fill('');
-  await toolbar.getByRole('button',{name:'굵게',exact:true}).click();
+  await input.press(shortcut+'+b');
+  assert(await visiblyHidden(),'입력을 시작하기 전 열린 굵게 기호도 숨김');
   await page.keyboard.insertText('굵게 입력');
   assert.equal(await input.inputValue(),'**굵게 입력**');
   assert.equal(await ink.locator('.md-strong').textContent(),'굵게 입력');
+  await input.press('Space');
+  assert(await visiblyHidden(),'굵게 작성 중 마지막 어절 뒤 공백에도 기호 표시 없음');
+  await page.keyboard.insertText('이어서');
+  assert.equal(await ink.locator('.md-strong').textContent(),'굵게 입력 이어서');
+  await input.press('Space');
+  await input.press(shortcut+'+b');
+  await page.keyboard.insertText('보통 입력');
+  assert.equal(await input.inputValue(),'**굵게 입력 이어서** 보통 입력','같은 단축키로 새 입력의 굵게를 끔');
+  assert.equal(await ink.locator('.md-strong').textContent(),'굵게 입력 이어서');
+  await input.fill('');
+  await input.press(shortcut+'+i');
+  assert(await visiblyHidden(),'입력 전 열린 기울임 기호도 숨김');
+  await page.keyboard.insertText('기울여 입력');
+  assert.equal(await input.inputValue(),'*기울여 입력*');
+  assert.equal(await ink.locator('.md-em').textContent(),'기울여 입력');
+
+  await input.fill('');
+  await page.keyboard.type('*');
+  assert.equal(await ink.locator('.md-bullet').count(),0,'별표 하나만 입력할 때에는 목록을 만들지 않음');
+  await input.press('Space');
+  assert.equal(await input.inputValue(),'* ');
+  assert.match(await ink.locator('.md-bullet[data-unordered]').evaluate(el=>getComputedStyle(el,'::before').content),/•/);
+  await page.keyboard.insertText('목록');
+  await input.press('Shift+Enter');
+  assert.equal(await input.inputValue(),'* 목록\n* ');
+  await input.fill('앞 문장\n');
+  await page.keyboard.type('2.');
+  assert.equal(await ink.locator('.md-bullet').count(),0);
+  await input.press('Space');
+  assert.equal(await input.inputValue(),'앞 문장\n\n2. ','문단 다음의 번호 목록은 Markdown 블록 경계를 함께 기록');
+  assert.equal(await ink.locator('.md-bullet').textContent(),'2.');
+  await page.keyboard.insertText('다음');
+  await input.press('Shift+Enter');
+  assert.equal(await input.inputValue(),'앞 문장\n\n2. 다음\n3. ');
+  await input.fill('```\n');
+  await page.keyboard.type('* ');
+  await input.press('Shift+Enter');
+  assert.equal(await input.inputValue(),'```\n* \n','코드 블록의 별표는 목록으로 바꾸지 않음');
+
   await input.fill(draft);
   await ink.waitFor();
   assert.equal(await page.getByText('서식 미리보기',{exact:true}).count(),0);
@@ -69,6 +117,7 @@ async function checkInlineDraft(page,input,draft) {
   assert.equal(await ink.getAttribute('aria-hidden'),'true');
   assert.equal(await input.inputValue(),draft);
   assert.equal(await ink.textContent(),draft);
+  assert(await visiblyHidden());
   assert(await ink.locator('.md-heading').evaluate(el=>parseFloat(getComputedStyle(el).webkitTextStrokeWidth)>0));
   assert.notEqual(await ink.locator('.md-code').evaluate(el=>getComputedStyle(el).backgroundColor),'rgba(0, 0, 0, 0)');
 
@@ -94,12 +143,22 @@ async function checkInlineDraft(page,input,draft) {
   try {
     await input.fill('**한글** ');
     await ime.send('Input.imeSetComposition',{text:'ㄱ',selectionStart:1,selectionEnd:1});
-    assert.equal(await ink.isVisible(),false,'조합 중 본문은 운영체제 입력창에 표시');
+    assert(await visiblyHidden(),'한글 조합 중 기존 서식 기호가 드러나지 않음');
+    assert.match(await ink.textContent(),/ㄱ$/,'조합 중인 글자도 같은 서식 레이어에서 확인');
     await ime.send('Input.imeSetComposition',{text:'가',selectionStart:1,selectionEnd:1});
     await ime.send('Input.insertText',{text:'각'});
     assert.equal(await input.inputValue(),'**한글** 각');
     await ink.waitFor();
   }finally{await ime.detach();}
+  const medium='**중간 길이**\n'+('한글 문장 유지 / '.repeat(16)+'\n').repeat(70);
+  await input.fill(medium);
+  await ink.locator('.md-strong').filter({hasText:'중간 길이'}).waitFor();
+  assert(await input.evaluate(el=>{
+    el.setRangeText('여기에서도 바로 표시',el.value.length,el.value.length,'end');
+    el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText'}));
+    return el.nextElementSibling.textContent.endsWith('여기에서도 바로 표시');
+  }),'분석 대기 중에도 이미 적용한 서식과 새 입력이 같은 위치에 즉시 표시');
+  assert(await visiblyHidden());
   const bulk='# 긴 문서\n'+('긴 본문 '.repeat(100)+'\n').repeat(400)+'\n**끝**';
   // Programmatic assignment, like a native paste, independently measures the
   // synchronous input handler without timing Playwright IPC or the OS clipboard.

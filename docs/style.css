@@ -135,7 +135,8 @@ nav a,.support-links a { display: inline-flex; align-items: center; min-height: 
 .start-steps h3 { font-size: 1.05rem; }
 .start-steps p { margin-top: .3rem; color: var(--muted); }
 .help-section { background: var(--tint); border-top: 1px solid var(--rule); }
-.help-list { max-width: 56rem; margin-top: 1.15rem; border: 1px solid var(--rule); border-radius: .8rem; background: white; }
+.help-section > .wrap { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,2.4fr); align-items: start; gap: clamp(1.1rem,4vw,3.4rem); }
+.help-list { min-width: 0; border: 1px solid var(--rule); border-radius: .8rem; background: white; }
 .help-list details + details { border-top: 1px solid var(--rule); }
 .help-list summary { padding: .8rem 1rem; color: var(--ink); font-weight: 700; cursor: pointer; }
 .help-list summary:hover,.help-list details[open] summary { color: var(--blue); }
@@ -198,6 +199,7 @@ nav a,.support-links a { display: inline-flex; align-items: center; min-height: 
   .features article svg { position: absolute; left: 0; top: 1.05rem; }
   .features h3 { margin: 0; }
   .download-grid,.command-grid,.start-steps { grid-template-columns: minmax(0,1fr); }
+  .help-section > .wrap { grid-template-columns: minmax(0,1fr); }
   .download-card { grid-template-columns: minmax(0,1fr) auto; }
   .workspace-section,.getting-started,.download-section,.guide-section,.help-section { padding-block: 1.9rem; }
   .site-footer .wrap { gap: .3rem 1rem; }

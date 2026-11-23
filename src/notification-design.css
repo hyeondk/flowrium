@@ -6,12 +6,15 @@
  word-break:keep-all;overflow-wrap:anywhere;
 }
 .flow-question-notice[data-tone=error] {background:var(--notice-alert-fill);border-color:var(--notice-alert-line);color:var(--notice-alert-ink)}
+.flow-question-notice[data-tone=success] {padding-block:7px;}
 .flow-question-notice>header {grid-area:1/1;display:flex;align-items:center;gap:8px;min-width:0;}
 .flow-question-notice>header strong {flex:1;min-width:0;font-size:13px;line-height:1.45;font-weight:700;}
 .flow-notice-symbol {display:grid;place-items:center;flex:none;width:24px;height:24px;border-radius:8px;background:color-mix(in srgb,currentColor 12%,transparent);}
 .flow-notice-summary {grid-row:2;grid-column:1/-1;min-width:0;padding-inline-start:32px;}
 .flow-question-notice .flow-notice-summary p {margin:0;font-size:12px;line-height:1.5;}
 .flow-notice-action {grid-area:1/2;display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:28px;padding:3px 8px;border:0;border-radius:7px;font:inherit;font-size:12px;font-weight:700;background:color-mix(in srgb,currentColor 8%,transparent);color:inherit;}
+.flow-question-notice[data-tone=success] .flow-notice-symbol {height:22px;}
+.flow-question-notice[data-tone=success] .flow-notice-action {min-height:26px;padding-block:2px;}
 .flow-notice-action:hover {background:color-mix(in srgb,currentColor 15%,transparent);}
 .flow-notice-action:focus-visible {outline:2px solid currentColor;outline-offset:2px;}
 :is(.ui-notification [data-motion=toast],.flow-question-notice)[data-phase=enter] {animation:ui-toast-rise 240ms var(--ease-enter) both;}

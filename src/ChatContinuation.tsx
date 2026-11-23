@@ -44,7 +44,7 @@ export default function ChatContinuation({
   const [accepted, setAccepted] = useState('');
   const [generation, setGeneration] = useState<{
     key: string;
-    answer: string;
+    messages: Session['messages'];
     percent: number;
     done?: true;
     result?: NonNullable<Awaited<ReturnType<typeof prepareAnswerFollowup>>>;
@@ -59,22 +59,25 @@ export default function ChatContinuation({
     setAction(null); setError('');
   }, [key]);
   const canShowRecommendation = useMemo(() => eligible && canOfferFollowup(session), [eligible, session]);
-  const answerText = last?.text;
+  const messages = session?.messages;
   useEffect(() => {
-    if (!canShowRecommendation || !active || !answerText || !key) return;
-    if (finished.current?.key === key && finished.current.answer === answerText) return;
+    if (!canShowRecommendation || !active || !messages || !key) return;
+    if (finished.current?.key === key && finished.current.messages === messages) {
+      setGeneration(finished.current);
+      return;
+    }
     const controller = new AbortController();
-    void prepareAnswerFollowup(session, percent => setGeneration({key,answer:answerText,percent}), controller.signal)
+    void prepareAnswerFollowup(session, percent => setGeneration({key,messages,percent}), controller.signal)
       .then(result => {
         if (controller.signal.aborted) return;
-        const state = {key, answer: answerText, percent: 100, result, done: true as const};
+        const state = {key, messages, percent: 100, result, done: true as const};
         finished.current = state;
         setGeneration(state);
       });
     return () => controller.abort();
-    // 동기화로 대화 객체가 바뀌어도 같은 답변에는 한 번만 추천을 만든다.
-  }, [canShowRecommendation, active, key, answerText]);
-  const current = active && canShowRecommendation && generation?.key === key && generation.answer === answerText ? generation : undefined;
+    // 같은 답변이라도 동기화된 이전 요청이 바뀌면 전체 맥락을 다시 읽는다.
+  }, [canShowRecommendation, active, key, messages]);
+  const current = active && canShowRecommendation && generation?.key === key && generation.messages === messages ? generation : undefined;
   const suggestion = current?.result;
   const candidate = suggestion && (!draft || key !== accepted) ? suggestion : undefined;
   const preview = candidate && !draft && !busy ? candidate.prompt : undefined;

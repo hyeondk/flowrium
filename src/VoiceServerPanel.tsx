@@ -71,7 +71,7 @@ function ServerCard({ config, run, revision, onState, onConnect }: { config: Voi
     <MotionOverlay open={Boolean(preview)} onClose={() => setPreview(null)} label="음성 서버 실행 확인" className="voice-server-preview">{preview && <>
       <h2>음성 서버 실행 확인</h2><p>{preview.notice}</p>
       <dl><dt>실행 파일</dt><dd>{preview.command}</dd><dt>인자 (한 줄에 하나씩)</dt><dd><pre>{preview.args.length ? preview.args.map((value, index) => `${index + 1}: ${value}`).join('\n') : '없음'}</pre></dd><dt>작업 폴더</dt><dd>{preview.cwd}</dd><dt>서버 주소</dt><dd>{preview.endpoint}</dd><dt>준비 확인</dt><dd>{preview.healthPath ? `${preview.healthPath}의 성공 응답` : '포트 연결만 확인합니다. 모델 준비 여부는 음성을 사용할 때 확인합니다.'}</dd><dt>환경변수 이름</dt><dd>{preview.environmentNames.join(', ') || '없음'}</dd></dl>
-      <div className="voice-server-actions">
+      <div className="voice-server-actions dialog-actions">
         <button type="button" className="button secondary" onClick={() => setPreview(null)}><X size={14} aria-hidden="true"/>취소</button>
         <button type="button" className="button primary" disabled={busy} onClick={() => void launch()}>
           {intent === 'restart' ? <><RefreshCw size={14} aria-hidden="true"/>종료 후 다시 시작</> : <><Play size={14} aria-hidden="true"/>서버 시작</>}

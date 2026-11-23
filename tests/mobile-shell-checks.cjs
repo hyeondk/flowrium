@@ -173,7 +173,7 @@ function workspaceGeometry() {
   const paint=document.createElement('canvas').getContext('2d',{willReadFrequently:true});
   paint.fillStyle=headerStyle.backgroundColor;
   paint.fillRect(0,0,1,1);
-  const geometry={headerTop:box(header).top,logoTop:box(logo).top,logoLeft:box(logo).left,scroll:scrollY,
+  const geometry={headerTop:box(header).top,headerBottom:box(header).bottom,logoTop:box(logo).top,logoLeft:box(logo).left,scroll:scrollY,
     layer:document.elementFromPoint(box(logo).left+4,Math.max(1,box(header).height/3))?.closest('.bar')===header,
     filter:headerStyle.backdropFilter||headerStyle.webkitBackdropFilter||'none',
     opaque:paint.getImageData(0,0,1,1).data[3]===255&&headerStyle.backgroundImage==='none',
@@ -203,6 +203,7 @@ async function checkWorkspaceSizes(page) {
   ];
   const devices=[
     {name:'아이폰',w:390,h:844,layout:'compact',top:47,bottom:34},
+    {name:'아이폰 가로',w:844,h:390,layout:'compact',left:47,right:47,bottom:21},
     {name:'안드로이드 휴대폰',w:412,h:915,layout:'compact',top:28,bottom:24},
     {name:'안드로이드 휴대폰 가로',w:915,h:412,layout:'compact',left:32,right:15,bottom:16},
     {name:'아이패드 미니 세로',w:744,h:1133,layout:'compact',top:24,bottom:20},
@@ -210,6 +211,7 @@ async function checkWorkspaceSizes(page) {
     {name:'이전 아이패드 미니 가로',w:1024,h:768,layout:'compact',top:20},
     ...desktop('아이패드 10.2형',810,1080),
     ...desktop('아이패드 11형',834,1194),
+    ...desktop('아이패드 13형',1024,1366),
     {name:'아이패드 11형 분할 화면',w:540,h:834,screenWidth:1194,screenHeight:834,layout:'compact',top:24,bottom:20},
   ];
   const metrics=[];
@@ -223,9 +225,9 @@ async function checkWorkspaceSizes(page) {
       const values=await page.evaluate(workspaceGeometry);
       const summary=JSON.stringify({name,layout,...values});
       checkHeaderCover(values,summary);
-      assert(values.logoTop>=top && values.logoLeft>=left && values.overflow<=1,summary);
+      assert(values.logoTop>=top+4 && values.logoLeft>=left && values.overflow<=1,summary);
       assert(values.navLeft>=left-1 && values.navRight<=w-right+1 && values.navBottom>=bottom-1,summary);
-      if(layout==='wide')assert(values.navRight<=values.contentLeft+1 && values.contentCols===2,summary);
+      if(layout==='wide')assert(values.navTop>=values.headerBottom-1 && values.navRight<=values.contentLeft+1 && values.contentCols===2,summary);
       else assert(values.navTop>h/2 && values.navBottom>=8 && values.navBottom>=bottom+4,summary);
       metrics.push([name,layout,values.navBottom]);
     }

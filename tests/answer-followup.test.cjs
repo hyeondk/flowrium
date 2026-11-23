@@ -181,3 +181,17 @@ test('최신 과제에 필요한 앞선 대상과 검증 범위를 담고 이미
   ]};
   assert.equal(originalAnswerFollowups(history)[0]?.prompt,'도움말의 밝은 모드 대비를 점검해 주세요');
 });
+
+test('인라인 요약 제목을 추천에 붙이지 않고 서로 합의해 미룬 일은 다시 권하지 않는다',async()=>{
+  const {originalAnswerFollowups}=await loaded;
+  const messages=[
+    {role:'user',text:'아이폰 QR은 나중에 부탁할게. 지금 할 수 없다.'},
+    {role:'assistant',text:'**남은 사항** 아이폰 연결 정보는 유지했고, 같은 인증으로 맥 내부 접속을 확인했습니다. 기존 외부 주소가 만료되어 새 QR 연결은 말씀하신 대로 나중에 진행합니다.'},
+  ];
+  assert.deepEqual(originalAnswerFollowups({messages}),[]);
+  messages.at(-1).text+='\n\n**다음 단계** 윈도우 설치를 검증해 주세요.';
+  assert.equal(originalAnswerFollowups({messages})[0]?.prompt,'윈도우 설치를 검증해줘');
+  messages[0].text='모바일 연결도 확인해줘';
+  messages[1].text='**검증 결과** 터미널 설치를 확인했습니다.\n**남은 사항** 아이폰 연결은 아직 확인하지 못했습니다.';
+  assert.equal(originalAnswerFollowups({messages})[0]?.prompt,'아이폰 연결을 확인해줘');
+});

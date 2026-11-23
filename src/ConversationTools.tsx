@@ -31,7 +31,9 @@ export function ConversationTools({session,models,running,onOpen,onChange,notify
  <MotionOverlay open={open} onClose={()=>setOpen(false)} label="대화 관리" className="conversation-management"><header><h2>대화 관리</h2><CloseButton onClick={()=>setOpen(false)}/></header><div className="conversation-utility-actions">{onHandoff&&<button type="button" onClick={()=>{setOpen(false);onHandoff();}}><ExternalLink size={15}/>ChatGPT로 이어가기</button>}{onExport&&<button type="button" onClick={()=>{setOpen(false);void onExport();}}><Download size={15}/>대화 내보내기</button>}{onNew&&<button type="button" onClick={()=>{setOpen(false);onNew();}}><Plus size={15}/>새 작업</button>}</div><fieldset disabled={busy} className="conversation-popover">
   <label>대화 이름<input aria-label="대화 이름" maxLength={300} value={title} onChange={e=>setTitle(e.target.value)}/></label>
   <small className="field-hint">{session.codexLink?.mode==='copy'?'이 이름은 독립 사본에 적용됩니다.':session.threadId && (linked || session.desktopThread)?'같은 기기의 Codex 대화와 제목을 공유합니다.':'이 제목은 첫 작업을 보내 Codex 대화에 연결하면 반영됩니다.'}</small>
-  <button className="button subtle" disabled={!title.trim()} onClick={()=>apply({action:'rename',title})}>이름 저장</button>
+  <div className="dialog-actions">
+   <button type="button" className="button secondary" disabled={!title.trim()} onClick={()=>apply({action:'rename',title})}>이름 저장</button>
+  </div>
  </fieldset><fieldset disabled={running||busy||session.compacting} className="conversation-popover">
   <label>이 대화의 모델<select aria-label="이 대화의 모델" value={model} onChange={e=>{setModel(e.target.value);setEffort('')}}><option value="">앱 기본 설정</option>{model&&!models.some(m=>m.id===model)&&<option value={model}>{modelDisplayName(model)}</option>}{models.map(m=><option key={m.id} value={m.id}>{modelDisplayName(m)}</option>)}</select></label>
   <label>이 대화의 추론 강도<select aria-label="이 대화의 추론 강도" value={effort} onChange={e=>setEffort(e.target.value)}><option value="">앱 기본 설정</option>{efforts.map(row=><option key={row.reasoningEffort} value={row.reasoningEffort}>{effortDisplayName(row.reasoningEffort)}</option>)}</select></label>
@@ -49,16 +51,20 @@ export function ConversationTools({session,models,running,onOpen,onChange,notify
    <label className="preference-check"><AnimatedSwitch checked={!!prefs.networkAccess} onChange={e=>set('networkAccess',e.target.checked)}/>명령의 네트워크 사용 허용</label>
 </>}
   </fieldset>
-  <button className="button subtle" onClick={()=>apply({action:'preferences',preferences:{...(!inherit?behavior():{}),model:model||undefined,effort:(effort||undefined) as Effort|undefined,speed:session.preferences?.speed,chatGptUrl:address.trim()||undefined}})}>대화 연결 설정 저장</button>
-  <button className="button subtle" disabled={linked} onClick={async()=>{try{const value=await window.flowrium!.saveSettings({chatDefaults:behavior()});onDefaults?.(value.chatDefaults||{});notify('새 대화와 기본 설정을 따르는 대화에 적용했습니다.');}catch(e){fail(e);}}}>이 동작을 앱 기본값으로 저장</button>
+  <div className="dialog-actions">
+   <button type="button" className="button secondary" onClick={()=>apply({action:'preferences',preferences:{...(!inherit?behavior():{}),model:model||undefined,effort:(effort||undefined) as Effort|undefined,speed:session.preferences?.speed,chatGptUrl:address.trim()||undefined}})}>대화 연결 설정 저장</button>
+   <button type="button" className="button secondary" disabled={linked} onClick={async()=>{try{const value=await window.flowrium!.saveSettings({chatDefaults:behavior()});onDefaults?.(value.chatDefaults||{});notify('새 대화와 기본 설정을 따르는 대화에 적용했습니다.');}catch(e){fail(e);}}}>이 동작을 앱 기본값으로 저장</button>
+  </div>
   {session.scope&&<p>이 대화의 프로젝트 파일 접근과 명령 실행은 제한됩니다.</p>}
   {linked&&<p className="field-hint">이 대화는 원래 앱과 연결되어 있습니다. 원본의 분기와 되감기, 압축은 원래 앱에서 수행하거나, 독립 사본에서 사용하세요.</p>}
   <label>기준 요청<select disabled={linked} aria-label="기준 요청" value={messageId} onChange={e=>{select(e.target.value);setConfirm(false);}}><option value="">대화 끝</option>{session.messages.filter(m=>m.role==='user').map((m,i)=><option key={m.id} value={m.id}>{i+1}. {m.text.slice(0,48)}</option>)}</select></label>
-  <button className="button subtle" disabled={linked||!session.threadId} onClick={()=>apply({action:'branch',messageId:messageId||undefined})}>여기까지 새 대화로 분기</button>
-  {!linked&&messageId&&<button className="button subtle" onClick={()=>setConfirm(true)}>이 요청 전으로 되감기</button>}
-  {confirm&&<div><p>Codex 내부 대화도 선택한 요청 전으로 되감습니다. 프로젝트 파일은 보존되며 원래 대화 상태의 사본을 유지합니다.</p><button className="button primary" onClick={()=>apply({action:'rewind',messageId})}>되감기 확인</button></div>}
-  <button className="button subtle" disabled={linked||!session.threadId} onClick={()=>apply({action:'compact'})}>Codex 문맥 압축</button>
-  {onDelete&&<button className="button danger" onClick={()=>{setOpen(false);onDelete();}}>대화 삭제</button>}
+  <div className="dialog-actions">
+   <button type="button" className="button secondary" disabled={linked||!session.threadId} onClick={()=>apply({action:'branch',messageId:messageId||undefined})}>여기까지 새 대화로 분기</button>
+   {!linked&&messageId&&<button type="button" className="button secondary" onClick={()=>setConfirm(true)}>이 요청 전으로 되감기</button>}
+   <button type="button" className="button secondary" disabled={linked||!session.threadId} onClick={()=>apply({action:'compact'})}>Codex 문맥 압축</button>
+   {onDelete&&<button type="button" className="button danger" onClick={()=>{setOpen(false);onDelete();}}>대화 삭제</button>}
+  </div>
+  {confirm&&<div><p>Codex 내부 대화도 선택한 요청 전으로 되감습니다. 프로젝트 파일은 보존되며 원래 대화 상태의 사본을 유지합니다.</p><div className="dialog-actions"><button type="button" className="button primary" onClick={()=>apply({action:'rewind',messageId})}>되감기 확인</button></div></div>}
  </fieldset></MotionOverlay>
  </div>;
 }

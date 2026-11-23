@@ -93,6 +93,13 @@ function resetHistory() {
   historyBusy = historyLoadingOlder = historyOlderQueued = historyErrorOlder = false;
   historyError = "";
 }
+function historyIsCurrent(session,page) {
+  return page?.id===session.id &&
+    session.messageCount===page.total &&
+    session.revision===page.revision &&
+    session.lastMessageId===page.lastMessageId &&
+    session.updatedAt===page.updatedAt;
+}
 const drafts = new Map();
 const draftPages = new Map();
 const questionDrafts = new Map();
@@ -440,14 +447,7 @@ async function poll() {
       void loadQueue();
       const current = session(selectedSession);
       if (!current) go("projects");
-      else if (
-        !historyError &&
-        (!historyPage ||
-          current.messageCount !== historyPage.total ||
-          current.revision !== historyPage.revision ||
-          current.lastMessageId !== historyPage.lastMessageId ||
-          current.updatedAt !== historyPage.updatedAt)
-      )
+      else if (!historyError && !historyIsCurrent(current,historyPage))
         void loadMessages();
     }
     if (route === "project" && detailTab === "team" && !busy)
@@ -1300,7 +1300,7 @@ function chat(root) {
   const ink=node('span',undefined,'markdown-input-ink');ink.setAttribute('aria-hidden','true');
   text.replaceWith(editor);editor.append(text,ink);
   text.rows=1;text.placeholder='이어서 요청하세요';textLabel.firstChild.remove();
-  form.append(textLabel,node('div',undefined,'composer-format-tools'));
+  form.append(textLabel);
   const pages=node('div',undefined,'mobile-draft-pages');
   const previousPage=action('이전',()=>mobileDraftEditor.go(pageNumber-1));
   const nextPage=action('다음',()=>mobileDraftEditor.go(pageNumber+1));
@@ -1345,13 +1345,16 @@ function chat(root) {
   }));
   uploadStatus.hidden=!textUploads.has(s.id);
   uploadLabel.textContent=textUploads.get(s.id)?.label||'';form.append(uploadStatus);
-  if(historyPage && s.executionState !== 'decision' && !running(s.id) && !pending.length && !busy) {
+  if(historyIsCurrent(s,historyPage) && s.executionState !== 'decision' && !running(s.id) && !pending.length && !busy) {
     const history={...s,messages:historyPage.messages};
-    const answer=latestFollowupAnswer(history);
     const serverRecommendation=Object.hasOwn(historyPage,'recommendation');
     const suggestedByDesktop=historyPage.recommendation;
-    if(answer && (!Object.hasOwn(s,'recommendationMessageId')||s.recommendationMessageId===answer.id)
-      && (serverRecommendation ? suggestedByDesktop?.answerId===answer.id : canOfferFollowup(history))){
+    const answer=serverRecommendation && Object.hasOwn(s,'recommendationMessageId') ? undefined : latestFollowupAnswer(history);
+    const answerId=Object.hasOwn(s,'recommendationMessageId') ? s.recommendationMessageId : answer?.id;
+    // The server reads the complete conversation even when the page omits its last answer.
+    const hasRecommendation=serverRecommendation ? suggestedByDesktop?.answerId===answerId
+      : answer?.id===answerId && canOfferFollowup(history);
+    if(answerId && hasRecommendation){
       const recommendation=node('div',undefined,'mobile-followup-progress');
       recommendation.setAttribute('role','progressbar');
       recommendation.setAttribute('aria-label','작업 추천 중');
@@ -1381,13 +1384,13 @@ function chat(root) {
       form.append(recommendation);
       if(serverRecommendation)
         show(suggestedByDesktop);
-      else if(mobileRecommendation?.id===s.id && mobileRecommendation.answerId===answer.id && mobileRecommendation.text===answer.text){
+      else if(mobileRecommendation?.id===s.id && mobileRecommendation.messages===historyPage.messages){
         if(mobileRecommendation.suggested)show(mobileRecommendation.suggested);
         else recommendation.remove();
       }
       else void prepareAnswerFollowup(history,progress,listener.signal).then(suggested=>{
         if(listener.signal.aborted)return;
-        mobileRecommendation={id:s.id,answerId:answer.id,text:answer.text,suggested};
+        mobileRecommendation={id:s.id,messages:history.messages,suggested};
         if(suggested)show(suggested);
         else recommendation.remove();
       });
@@ -2004,8 +2007,7 @@ function render() {
   const composingInput=content.querySelector('.markdown-input > textarea');
   if(composingInput){
     if(composerHistory?.id!==selectedSession)composerHistory={id:selectedSession};
-    mobileEditor=attachComposerMarkdown(composingInput,composingInput.nextElementSibling,composerHistory,
-      composingInput.closest('.chat-compose').querySelector('.composer-format-tools'));
+    mobileEditor=attachComposerMarkdown(composingInput,composingInput.nextElementSibling,composerHistory);
   }else{
     composerHistory=undefined;mobileDraftEditor?.dispose();mobileDraftEditor=undefined;mobileDraftSurface=undefined;
   }

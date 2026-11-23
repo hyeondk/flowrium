@@ -224,6 +224,14 @@ async function run() {
       assert.equal(await page.locator('.hero-copy > p').evaluate(e=>getComputedStyle(e).wordBreak),'keep-all');
       const commandFits = await page.locator('.command-block pre').evaluateAll(blocks=>blocks.every(block=>block.scrollWidth<=block.clientWidth+1));
       assert.ok(commandFits,'설치 명령 가로폭 '+width);
+      const help=await page.locator('#help').evaluate(section=>{
+        const heading=section.querySelector('h2').getBoundingClientRect();
+        const list=section.querySelector('.help-list').getBoundingClientRect();
+        const wrap=section.querySelector('.wrap').getBoundingClientRect();
+        return {right:list.left>=heading.right+12&&Math.abs(list.top-heading.top)<=1&&Math.abs(list.right-wrap.right)<=1,
+          stacked:Math.abs(list.left-heading.left)<=1&&list.top>=heading.bottom+12};
+      });
+      assert(width>=768?help.right:help.stacked,'도움말 제목 옆과 작은 화면의 박스 배치 '+width);
       assert.deepEqual(await page.locator('.sales-bars data').allTextContents(), monthlySales.map(amount));
       const heights = await page.locator('.sales-bars i').evaluateAll(nodes=>nodes.map(e=>e.getBoundingClientRect().height));
       assert(heights[2] < heights[1] && heights[5] > heights[4], '3월의 하락과 6월의 최고 매출');

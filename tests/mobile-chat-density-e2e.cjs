@@ -10,10 +10,90 @@ async function typography(page,selectors) {
  }),selectors);
 }
 
+async function verifyChatSafeArea(page) {
+ const cdp=await page.context().newCDPSession(page);
+ const devices=[
+  {width:390,height:844,top:47,bottom:34,left:0,right:0},
+  {width:844,height:390,top:0,bottom:21,left:47,right:47},
+  {width:412,height:915,top:28,bottom:24,left:0,right:0},
+ ];
+ try {
+  for(const device of devices) {
+   const {width,height,...insets}=device;
+   const landscape=width>height;
+   await cdp.send('Emulation.setDeviceMetricsOverride',{width,height,screenWidth:width,screenHeight:height,deviceScaleFactor:2,mobile:true,
+     screenOrientation:{type:landscape?'landscapePrimary':'portraitPrimary',angle:landscape?90:0}});
+   await cdp.send('Emulation.setSafeAreaInsetsOverride',{insets});
+   await page.waitForFunction(w=>innerWidth===w,width);
+   const geometry=await page.evaluate(()=>{
+    window.scrollTo(0,0);
+    const heading=document.querySelector('.mobile-chat-heading');
+    const back=heading.querySelector('button').getBoundingClientRect(),title=heading.querySelector('h1').getBoundingClientRect();
+    const header=heading.getBoundingClientRect(),nav=document.querySelector('#nav').getBoundingClientRect();
+    return {top:header.top,buttonTop:back.top,titleTop:title.top,left:back.left,right:title.right,navBottom:innerHeight-nav.bottom,
+      flow:document.documentElement.scrollWidth-innerWidth};
+   });
+   const overview=JSON.stringify({device,geometry});
+   assert(Math.abs(geometry.top)<=1 && Math.min(geometry.titleTop,geometry.buttonTop)>=insets.top+5,overview);
+   assert(geometry.left>=insets.left-1 && geometry.right<=width-insets.right+1 && geometry.flow<=1,overview);
+   assert(geometry.navBottom>=insets.bottom,overview);
+  }
+ } finally {
+   await cdp.send('Emulation.setSafeAreaInsetsOverride',{insets:{}});
+   await cdp.send('Emulation.clearDeviceMetricsOverride');
+   await cdp.detach();
+   await page.setViewportSize({width:390,height:844});
+ }
+ console.log('휴대폰 채팅 상단 안전 영역 / 아이폰 세로·가로, 안드로이드 세로 / 제목·뒤로 가기·하단 메뉴가 화면 안에 표시됨');
+}
+
+async function verifyRecommendationFreshness(page,chat,expected,whenChanged) {
+ const button=page.locator('button.mobile-followup');
+ const historyRoute='**/api/mobile/sessions/'+chat.id+'?**';
+ const reached=Promise.withResolvers(),older=Promise.withResolvers(),updated=Promise.withResolvers();
+ let holdLatest=false;
+ const delay=async route=>{
+   const params=new URL(route.request().url()).searchParams;
+   if(params.has('before')) await older.promise;
+   else if(holdLatest) {reached.resolve();await updated.promise;}
+   await route.continue();
+ };
+ await page.route(historyRoute,delay);
+ try {
+   const latest=page.waitForResponse(response=>response.url().includes('/sessions/'+chat.id+'?') &&
+     !new URL(response.url()).searchParams.has('before') && response.ok());
+   const started=Date.now();
+   await page.getByRole('button',{name:new RegExp(chat.title)}).click();
+   const first=await (await latest).json();
+   assert.equal(first.messages.some(row=>row.id===first.recommendation.answerId),false);
+   assert.equal(first.recommendation.prompt,expected);
+   await button.filter({hasText:expected}).waitFor({timeout:8000});
+   const initialMs=Date.now()-started;
+   older.resolve();
+   await page.getByRole('heading',{name:chat.title}).waitFor();
+   holdLatest=true;
+   const changeStarted=Date.now();
+   await whenChanged();
+   await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+   await Promise.race([reached.promise,page.waitForTimeout(8000).then(()=>{throw Error('갱신된 대화 기록 필요');})]);
+   await button.filter({hasText:expected}).waitFor({state:'hidden'});
+   holdLatest=false;updated.resolve();
+   await button.filter({hasText:'윈도우 설치 복원을 검증해줘'}).waitFor({timeout:8000});
+   const updateMs=Date.now()-changeStarted;
+   await page.getByRole('button',{name:'프로젝트로',exact:true}).click();
+   assert.equal(await button.count(),0);
+   assert(initialMs<10000&&updateMs<10000,JSON.stringify({initialMs,updateMs}));
+   console.log('휴대폰: 작업 로그 57개 뒤 숨겨진 최종 답변 기반 추천 '+initialMs+'ms, 같은 답변의 이전 맥락 갱신 '+updateMs+'ms');
+ } finally {
+   older.resolve();updated.resolve();
+   await page.unroute(historyRoute,delay);
+ }
+}
+
 async function main(){
  const root=path.resolve(__dirname,'..'),scratch=path.join(root,'.flowrium-tmp');await fs.mkdir(scratch,{recursive:true});
  const temp=await fs.mkdtemp(path.join(scratch,'mobile-density-'));
- const output=path.resolve(process.env.FLOWRIUM_CAPTURE_DIR||path.join(root,'artifacts/actual-design-20261118'));
+ const output=process.env.FLOWRIUM_CAPTURE_DIR && path.resolve(process.env.FLOWRIUM_CAPTURE_DIR);
  let app,controller,remote,workflow;
  try{
   const projectDir=path.join(temp,'온라인 스토어 분석');await fs.mkdir(path.join(projectDir,'docs'),{recursive:true});
@@ -28,6 +108,13 @@ async function main(){
    row('user',reply),
    {...row('system','주문 데이터를 정리하고 월별 매출을 비교했어요.'),progressCommentary:true},
    row('assistant','최근 3개월 매출 분석을 완료했습니다.\n\n**10월 매출 3,120만 원 / 전월 대비 14.3% 증가**\n주문 수가 늘며 매출도 함께 증가했어요. 월별 변화를 아래에 정리했습니다.\n\n:codex-file-citation{path="docs/월별 매출.png" purpose="output"}')
+  ]});
+  const recommend=await store.createSession(project.id,{title:'오래된 답변 추천 검증',messages:[
+   row('user','아이폰 연결 유지를 먼저 확인해 주세요.'),
+   row('assistant','연결 상태와 작업 항목을 확인했습니다.'),
+   row('user','같은 조건으로 계속'),
+   row('assistant','다음 단계\n- 윈도우 설치 복원을 검증해 주세요.\n- 아이폰 연결 유지를 확인해 주세요.'),
+   ...Array.from({length:57},(_,i)=>({...row('system','공개 작업 설명 '+i),turnId:randomUUID(),progressCommentary:true})),
   ]});
   const handlers=new Map(),register=(name,fn)=>handlers.set(name,fn);let pending=[],locked=false;const delivered=[];
   controller=new Controller(store,{descriptor:{command:process.execPath,prefix:[path.join(__dirname,'backend-fake-codex.cjs')],label:'격리된 검증용 연결',node:false},canRun:()=>true,queueOwner:()=>0});await controller.connect();
@@ -48,6 +135,8 @@ async function main(){
   const env={...process.env};delete env.ELECTRON_RUN_AS_NODE;
   app=await _electron.launch({args:[browser,'--user-data-dir='+path.join(temp,'browser')],env});
   const page=await app.firstWindow();page.setDefaultTimeout(12000);await page.setViewportSize({width:390,height:844});
+  if(output) await fs.mkdir(output,{recursive:true});
+  const capture=async name=>{if(output) await page.screenshot({path:path.join(output,name),animations:'disabled'});};
   const failures=[];page.on('pageerror',error=>failures.push(error.message));
   await page.goto(access.localUrl);await page.getByRole('button',{name:/온라인 스토어 분석.*업무/}).waitFor();
   await page.evaluate(()=>document.fonts.ready);
@@ -81,6 +170,12 @@ async function main(){
   });
   await fs.writeFile(path.join(projectDir,'docs','월별 매출.png'),Buffer.from(chart,'base64'));
   await page.getByRole('button',{name:/온라인 스토어 분석.*업무/}).click();
+  await verifyRecommendationFreshness(page,recommend,'아이폰 연결 유지를 확인해 주세요',async()=>{
+   const record=store.session(recommend.id);
+   record.messages[0].text='윈도우 설치 복원을 먼저 확인해줘.';
+   record.updatedAt=new Date(Date.now()+1_000).toISOString();
+   await store.save();
+  });
   await page.getByRole('button',{name:/월별 매출 분석/}).click();
   await page.getByRole('region',{name:'보낸 질문 답변'}).waitFor();
   await page.locator('.citation-preview img').waitFor();
@@ -94,8 +189,8 @@ async function main(){
   await field.fill('작성 중인 요청');assert.equal(await candidate.isVisible(),false);await field.fill('');
   await field.dispatchEvent('compositionstart');await field.press('Tab');assert.equal(await field.inputValue(),'');await field.dispatchEvent('compositionend');
   await field.blur();await candidate.waitFor();assert(!calls.includes('send')&&!calls.includes('workflowAction'));
-  await fs.mkdir(output,{recursive:true});await page.evaluate(()=>{document.activeElement?.blur();scrollTo(0,0)});
-  await page.screenshot({path:path.join(output,'mobile-chat.png'),animations:'disabled'});
+  await page.evaluate(()=>{document.activeElement?.blur();scrollTo(0,0)});
+  await capture('mobile-chat.png');
   const metrics=[];
   for(const [width,height]of [[320,705],[390,844],[430,900],[844,390]]){
    await page.setViewportSize({width,height});await page.evaluate(()=>scrollTo(0,0));
@@ -105,8 +200,9 @@ async function main(){
    assert.deepEqual(chatType.map(size=>size.font),[15.04,16,15]);
    assert(chatType[1].height>=44,JSON.stringify(chatType));
   }
+  await verifyChatSafeArea(page);
   await page.setViewportSize({width:390,height:844});await page.evaluate(()=>{document.activeElement?.blur();scrollTo(0,0)});await page.evaluate(()=>document.fonts.ready);
-  await fs.mkdir(output,{recursive:true});await page.screenshot({path:path.join(output,'mobile-chat.png'),animations:'disabled'});
+  await capture('mobile-chat.png');
   await page.getByRole('navigation',{name:'모바일 메뉴'}).getByRole('button',{name:'설정',exact:true}).click();
   await page.getByRole('button',{name:'기본 설정 저장',exact:true}).waitFor();await page.evaluate(()=>scrollTo(0,0));
   const settingsType=await typography(page,['#content h1','.settings-guides h2','.settings-guides button']);
@@ -117,14 +213,14 @@ async function main(){
   assert.deepEqual((await typography(page,['#install-guide h2','#install-guide h3','#install-guide [data-help] p'])).map(size=>size.font),[16,13,12]);
   await guide.getByRole('button',{name:'도움말 닫기'}).click();
   await guide.waitFor({state:'hidden'});
-  await page.screenshot({path:path.join(output,'mobile-settings.png'),animations:'disabled'});
+  await capture('mobile-settings.png');
   const picker=page.locator('select').first();await picker.scrollIntoViewIfNeeded();await picker.click();
   await page.waitForFunction(()=>document.querySelector('select')?.matches(':open'));
   await page.waitForTimeout(250);
   const selectBounds=await picker.boundingBox(),optionBounds=await picker.locator('option').first().boundingBox();
   assert(optionBounds&&selectBounds&&optionBounds.x>=selectBounds.x-1&&optionBounds.x+optionBounds.width<=selectBounds.x+selectBounds.width+1);
   assert(optionBounds.y>=0&&optionBounds.y+optionBounds.height<=844);
-  await page.screenshot({path:path.join(output,'mobile-picker.png'),animations:'disabled'});await page.keyboard.press('Escape');
+  await capture('mobile-picker.png');await page.keyboard.press('Escape');
   const refresh=async()=>{
     const response=page.waitForResponse(r=>r.url().endsWith('/api/mobile/state')&&r.ok());
     await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await response;
@@ -141,7 +237,7 @@ async function main(){
   assert.equal(await arrival.getByText('어시스턴트가 질문이 있으니 결정 부탁드립니다.',{exact:true}).count(),1);
   assert(!(await arrival.innerText()).includes('추가 분석에 포함할 기간'));
   const arrivalSize=await arrival.boundingBox();assert(arrivalSize.width<=360&&arrivalSize.height>=176);
-  await page.screenshot({path:path.join(output,'mobile-question-arrival.png'),animations:'disabled'});
+  await capture('mobile-question-arrival.png');
   await arrival.getByRole('button',{name:'대화에서 답하기',exact:true}).click();
   const form=page.locator('[data-input-request="'+requestId+'"]');await form.waitFor();
   assert.equal(await field.inputValue(),'답변 중에도 보존할 요청');
@@ -158,13 +254,13 @@ async function main(){
   const doneCard=page.locator('.mobile-notification-card[data-notification-kind=done]');await doneCard.waitFor();
   assert(await doneCard.getByText(`‘${chat.title}’ 대화의 답변이 완료됐습니다.`,{exact:true}).isVisible());
   assert((await doneCard.locator('.mobile-notification-summary').boundingBox()).height<=60);
-  await doneCard.scrollIntoViewIfNeeded();await page.screenshot({path:path.join(output,'mobile-notifications.png'),animations:'disabled'});
+  await doneCard.scrollIntoViewIfNeeded();await capture('mobile-notifications.png');
   pending=[{...question,requestId:randomUUID()}];await refresh();await arrival.waitFor();locked=true;
   const lockResponse=page.waitForResponse(r=>r.url().endsWith('/api/mobile/state')&&r.status()===403);
   await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await lockResponse;await arrival.waitFor({state:'detached'});
   assert.deepEqual(failures,[]);
   console.log('모바일 응답 요약 / 원시 태그 비노출 / 로컬 추천 / Tab 초안 / IME / 전송 없음 / 네 화면 크기 통과 '+JSON.stringify(metrics));
-  console.log('최종 캡처 '+output);
+  if(output) console.log('최종 캡처 '+output);
  } finally {
   if(app)await app.close();if(remote)await remote.shutdown();if(workflow)await workflow.shutdown();if(controller)await controller.shutdown();
   await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:150});

@@ -22,20 +22,19 @@ function storedHeight() {
 export default function ResizableComposerInput({textareaRef,value,onTextChange, ...props}: Props) {
   const id = useId();
   const ink = useRef<HTMLSpanElement>(null);
-  const formats = useRef<HTMLDivElement>(null);
   const editor = useRef<ReturnType<typeof attachComposerMarkdown> | null>(null);
   const draftEditor=useRef<ReturnType<typeof attachDraftEditor>|null>(null);
   const current=useRef({value,onTextChange});
   current.current={value,onTextChange};
   const [view,setView]=useState<{page:number;count:number}>(()=>draftWindow(value,0));
   useLayoutEffect(() => {
-    if (!textareaRef.current || !ink.current || !formats.current) return;
+    if (!textareaRef.current || !ink.current) return;
     draftEditor.current=attachDraftEditor(textareaRef.current,{
       read:()=>current.current.value,
       change:next=>current.current.onTextChange(next),
       render:next=>setView(previous=>previous.page===next.page&&previous.count===next.count?previous:next),
     });
-    editor.current=attachComposerMarkdown(textareaRef.current,ink.current,undefined,formats.current);
+    editor.current=attachComposerMarkdown(textareaRef.current,ink.current);
     return () => {draftEditor.current?.dispose();draftEditor.current=null;editor.current?.dispose();editor.current=null;};
   },[textareaRef]);
   useLayoutEffect(() => {draftEditor.current?.refresh();editor.current?.refresh();},[value]);
@@ -130,6 +129,5 @@ export default function ResizableComposerInput({textareaRef,value,onTextChange, 
       data-large-draft={largeDraft || undefined} spellCheck={largeDraft ? false : props.spellCheck}
       data-height-mode={actual === undefined ? 'auto' : 'manual'}
       style={{height: actual === undefined ? undefined : actual, '--composer-limit': bounds.max + 'px'} as CSSProperties}/><span ref={ink} className="markdown-input-ink" aria-hidden="true"/></div>
-    <div ref={formats} className="composer-format-tools"/>
   </>;
 }

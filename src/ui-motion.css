@@ -65,6 +65,24 @@ dialog[data-phase=exit]::backdrop{animation:ui-fade-out var(--motion-duration) v
 .command-scrim{align-items:flex-start;padding:12vh 16px}
 .motion-overlay{position:fixed;inset:0;z-index:1100;display:flex;align-items:center;justify-content:center;padding:24px;background:#080d1a9e;backdrop-filter:blur(6px)}
 .motion-surface{width:min(620px,100%);max-height:calc(100dvh - 48px);overflow:auto;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:20px;padding:24px;box-shadow:0 24px 90px #0004;outline:none}
+:is(.motion-surface,.settings-modal .modal-content,.motion-surface :is(.attention-list,.music-page,.report-dialog-body),dialog.assistant-dialog) {
+  overscroll-behavior:contain;
+}
+:is(.motion-surface,.settings-modal .modal-content,.motion-surface :is(.attention-list,.music-page,.report-dialog-body),dialog.assistant-dialog)::-webkit-scrollbar {
+  width:12px;height:12px;
+}
+:is(.motion-surface,.settings-modal .modal-content,.motion-surface :is(.attention-list,.music-page,.report-dialog-body),dialog.assistant-dialog)::-webkit-scrollbar-track:vertical {
+  margin-block:10px;
+}
+:is(.motion-surface,.settings-modal .modal-content,.motion-surface :is(.attention-list,.music-page,.report-dialog-body),dialog.assistant-dialog)::-webkit-scrollbar-track:horizontal {
+  margin-inline:10px;
+}
+:is(.motion-surface,.settings-modal .modal-content,.motion-surface :is(.attention-list,.music-page,.report-dialog-body),dialog.assistant-dialog)::-webkit-scrollbar-thumb {
+  border:3px solid transparent;
+  background-color:var(--line);
+  background-clip:padding-box;
+  border-radius:10px;
+}
 .motion-overlay[data-kind=sheet]{align-items:flex-end;padding:0}
 .motion-overlay[data-kind=sheet]>.motion-surface{border-radius:22px 22px 0 0;width:min(760px,100%);max-height:86dvh;padding-bottom:max(24px,env(safe-area-inset-bottom))}
 

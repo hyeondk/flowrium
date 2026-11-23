@@ -62,8 +62,8 @@
 .command-scrim>.motion-surface{max-width:660px}.command-scrim header{align-items:center;gap:16px;margin-bottom:18px}.command-scrim h2{font-size:20px;line-height:28px}
 .command-scrim [role=listbox]{display:grid;gap:4px;margin:14px 0}.command-scrim [role=option]{border:1px solid transparent!important;border-radius:8px!important;min-height:44px}.command-scrim [role=option][aria-selected=true]{background:var(--selected)!important;border-color:transparent!important}
 .conversation-popover{position:static!important;width:100%!important;max-height:none!important;box-shadow:none!important;border:0!important;padding:0!important;display:flex;flex-direction:column;align-items:stretch;gap:12px}
-.conversation-popover+.conversation-popover{margin-top:12px!important}.conversation-popover>button{align-self:flex-end}.conversation-popover>fieldset{border:1px solid var(--line-soft);border-radius:10px;padding:16px;display:grid;gap:14px}.conversation-management header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
-.conversation-management .conversation-popover {min-inline-size:0;overflow:visible}
+.conversation-popover+.conversation-popover{margin-top:12px!important}.conversation-popover>fieldset{border:1px solid var(--line-soft);border-radius:10px;padding:16px;display:grid;gap:14px}.conversation-management header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px}
+.conversation-management .conversation-popover {min-inline-size:0;margin:0;overflow:visible}
 .conversation-management :is(fieldset,label) {min-inline-size:0}
 .conversation-management label:has(> :is(input:not([type=checkbox]),select)) {grid-template-columns:minmax(0,1fr)}
 .conversation-management :is(input:not([type=checkbox]),select):focus-visible {outline:2px solid var(--accent);outline-offset:-2px}
@@ -109,6 +109,38 @@ label:has(>.ui-switch-control){display:flex!important;align-items:center!importa
 /* 행동 묶음의 보조 기능은 면을 나누지 않고 글자와 호버 상태로 구분합니다. */
 :is(.settings-buttons,.workflow-actions,.pf-actions,.wb-actions,.wb-tools,.wb-form-footer,.repo-actions,.memory-actions,.integration-actions,.modal-actions,.confirm-actions,.voice-server-actions,.ports-actions,.migration-actions,.report-actions,.team-actions,.team-node-actions)>button:where(:not(.primary):not(.pf-primary):not(.wb-primary):not(.report-primary):not(.team-primary):not(.pp-primary):not(.secondary):not(.pf-secondary):not(.wb-secondary):not(.danger):not([class*="danger"]):not([type=submit]):not(.pf-row):not(.pf-card):not(.wb-line-item):not(.report-history-row)){border-color:transparent;border-radius:8px;background:transparent;box-shadow:none;color:var(--muted)}
 :is(.settings-buttons,.workflow-actions,.pf-actions,.wb-actions,.wb-tools,.wb-form-footer,.repo-actions,.memory-actions,.integration-actions,.modal-actions,.confirm-actions,.voice-server-actions,.ports-actions,.migration-actions,.report-actions,.team-actions,.team-node-actions)>button:where(:not(.primary):not(.pf-primary):not(.wb-primary):not(.report-primary):not(.team-primary):not(.pp-primary):not(.secondary):not(.pf-secondary):not(.wb-secondary):not(.danger):not([class*="danger"]):not([type=submit]):not(.pf-row):not(.pf-card):not(.wb-line-item):not(.report-history-row)):hover:not(:disabled){border-color:transparent;background:var(--panel-alt);color:var(--text)}
+.motion-surface .dialog-actions,
+.settings-modal :is(.settings-buttons,.remote-panel .settings-buttons,.update-settings-actions),
+.assistant-dialog .pf-actions {
+  display:flex;
+  align-items:stretch;
+  justify-content:flex-end;
+  flex-wrap:nowrap;
+  gap:8px;
+  min-inline-size:0;
+}
+:is(.motion-overlay .dialog-actions,.settings-modal :is(.settings-buttons,.update-settings-actions),.assistant-dialog .pf-actions)>button:not(.popup-close-button) {
+  flex:0 1 auto;
+  min-height:34px;
+  padding:5px clamp(5px,2vw,12px);
+  border-radius:8px;
+  font-size:12px;
+  line-height:18px;
+  white-space:normal;
+  word-break:keep-all;
+}
+:is(.motion-overlay .dialog-actions,.settings-modal :is(.settings-buttons,.update-settings-actions),.assistant-dialog .pf-actions)>button:where(:not(.primary,.danger,.popup-close-button,[type=submit])) {
+  border:1px solid var(--line);
+  background:var(--card-subtle);
+  color:var(--text);
+}
+:is(.motion-overlay .dialog-actions,.settings-modal :is(.settings-buttons,.update-settings-actions),.assistant-dialog .pf-actions)>button:where(:not(.primary,.danger,.popup-close-button,[type=submit])):hover:enabled {
+  border-color:var(--blue-400);
+  background:var(--panel-alt);
+}
+@media(max-width:400px) {
+  .motion-surface .dialog-actions {gap:5px}
+}
 .report-segments{display:inline-flex;align-self:flex-start;gap:2px;padding:3px;border:1px solid var(--line-soft);border-radius:10px;background:var(--panel-alt)}
 .report-segments>button{border-color:transparent;border-radius:7px;min-height:32px;padding:4px 12px;background:transparent;box-shadow:none;color:var(--muted)}
 .report-segments>button[aria-pressed=true]{border-color:transparent;background:var(--panel);color:var(--accent-bright);box-shadow:0 1px 3px #081f4810}

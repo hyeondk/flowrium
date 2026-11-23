@@ -54,6 +54,11 @@ async function verifyFollowupTiming() {
     const declined = await add('추천 거부','다음 단계는 제안하지 마세요.',answer);
     const finished = await add('완료한 결과','표를 확인해줘','판매표를 확인했습니다.');
     const waiting = await add('후속 작업 대기','기기 분류표의 누락을 살펴봐 주세요.','기기 분류표를 확인했습니다. 계속 진행할까요?');
+    const contextual=await store.createSession(project.id,{title:'추천의 전체 맥락 갱신',messages:[
+      {id:randomUUID(),role:'user',text:'아이폰 연결 유지를 먼저 확인해 주세요.',createdAt:new Date().toISOString()},
+      {id:randomUUID(),role:'user',text:'같은 조건으로 계속',createdAt:new Date().toISOString()},
+      {id:randomUUID(),role:'assistant',text:'다음 단계\n- 윈도우 설치 복원을 검증해 주세요.\n- 아이폰 연결 유지를 확인해 주세요.',createdAt:new Date().toISOString()},
+    ]});
     const fresh = await store.createSession(project.id,{title:'새 작업'});
     await store.saveSettings({codexPath:path.join(__dirname,'continuation-fake-codex.cjs'),model:'test-model'});
     await fs.writeFile(trace,'');
@@ -100,6 +105,16 @@ async function verifyFollowupTiming() {
     await openConversation(page,finished.title);
     await accept.filter({hasText:/판매표.*확인한 범위/}).waitFor({timeout:10000});
     assert.equal(await input.inputValue(),'');
+    await openConversation(page,contextual.title);
+    await accept.filter({hasText:'아이폰 연결 유지를 확인해 주세요'}).waitFor({timeout:10000});
+    const contextChangedAt=Date.now();
+    await app.evaluate(({BrowserWindow},session)=>BrowserWindow.getAllWindows()[0].webContents.send(
+      'flowrium:event',{type:'session',sessionId:session.id,session}
+    ),{...contextual,messages:contextual.messages.map((row,index)=>index===0?{...row,text:'윈도우 설치 복원을 먼저 확인해줘.'}:row)});
+    await accept.filter({hasText:'윈도우 설치 복원을 검증해줘'}).waitFor({timeout:10000});
+    assert.equal(await accept.filter({hasText:'아이폰 연결 유지'}).count(),0);
+    const contextMs=Date.now()-contextChangedAt;
+    assert(contextMs<10000);
     for(const session of [declined,fresh]){
       await openConversation(page,session.title);
       assert.equal(await accept.count(),0);
@@ -130,6 +145,7 @@ async function verifyFollowupTiming() {
     assert.deepEqual(state.messages.filter(m=>m.role==='user').map(m=>m.text),['분류표를 확인해줘']);
     assert.equal(await fs.readFile(trace,'utf8'),'전송\n','실제 사용자 턴 이외의 요청이 없어 추가 토큰을 사용하지 않음');
     console.log('무초점 답변 후 추천 '+Math.round(metrics.delay)+'ms / 추가 모델 호출 0 / 클릭과 Tab은 편집 가능한 초안만 생성 / 명시 후속 없는 답변·거부·빈 대화·긴 답변 통과');
+    console.log('데스크톱: 같은 답변의 앞선 대화 수정 뒤 추천 갱신 '+contextMs+'ms');
     console.log('320·390·960·1440px / 소수 첫째 자리 진행률과 진행·완료가 같은 줄 / 결과 뒤에는 전체 너비 추천과 아래 줄의 진행·완료');
   } finally {
     try { if(app) await closeInstalledApp(app,'로컬 추천 화면 종료'); }

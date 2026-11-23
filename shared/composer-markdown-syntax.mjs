@@ -9,7 +9,7 @@ const styles = {
   blockQuote:'quote', codeTextData:'code', codeFlowValue:'code',
   labelText:'link', literalAutolink:'link', autolinkProtocol:'link', autolinkEmail:'link',
   resourceDestination:'destination', taskListCheck:'task',
-  listItemMarker:'bullet', blockQuoteMarker:'marker', thematicBreak:'marker',
+  listItemPrefix:'bullet', blockQuoteMarker:'marker', thematicBreak:'marker',
   tableDelimiterMarker:'marker', tableDelimiterFiller:'marker', tableDelimiter:'marker',
   codeFencedFence:'marker', atxHeadingSequence:'marker', setextHeadingLine:'marker',
   strongSequence:'marker', emphasisSequence:'marker',
@@ -22,7 +22,12 @@ export function markdownRanges(source) {
   for (const [phase, token] of events) {
     const style = styles[token.type];
     if (!style) continue;
-    ranges.push([phase === 'enter' ? token.start.offset : token.end.offset, phase === 'enter' ? style : null]);
+    const start = token.start.offset;
+    // A bare '*' is still being typed. Give a list a visual marker once the
+    // separator is present, and include the number in an ordered marker.
+    const prefix = style === 'bullet' && /^(?:\d{1,9}[.)]|[-+*])(?=[ \t])/.exec(source.slice(start,start+12));
+    if (style === 'bullet' && !prefix) continue;
+    ranges.push([phase === 'enter' ? start : prefix ? start + prefix[0].length : token.end.offset, phase === 'enter' ? style : null]);
   }
   return ranges;
 }

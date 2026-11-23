@@ -40,7 +40,7 @@ async function run() {
           <div data-motion="loading" aria-label="로딩" style={{width:20,height:20}}>◌</div>
           <button type="button" onClick={openCommandCenter}>프로젝트와 화면 찾기</button>
           <CommandCenter projects={[]} sessions={[]} onProject={()=>{}} onSession={()=>{}} onView={()=>{}} onNew={()=>{}}/>
-          <ConversationTools session={{id:'fixture',title:'검증 대화',messages:[]}} models={[]} running={false} onOpen={()=>{}} onChange={()=>{}} notify={()=>{}} fail={console.error}/>
+          <ConversationTools session={{id:'fixture',title:'검증 대화',threadId:'thread',messages:[{id:'request',role:'user',text:'기준 요청 검증'}]}} models={[]} running={false} onOpen={()=>{}} onChange={()=>{}} onDelete={()=>{}} notify={()=>{}} fail={console.error}/>
           <AssistantShortcut projects={[]} onOpen={()=>{}}/>
           <MotionOverlay open={popup} onClose={()=>setPopup(false)} label={popup?"검증 팝업":"닫힘"}>{popup && <><h2>검증 팝업</h2><button>첫 버튼</button><button>끝 버튼</button></>}</MotionOverlay>
           <MotionOverlay open={sheet} onClose={()=>setSheet(false)} label="검증 시트" kind="sheet"><h2>검증 시트</h2><button onClick={()=>setSheet(false)}>시트 닫기</button></MotionOverlay>
@@ -139,15 +139,51 @@ async function run() {
       const position=await dismiss.boundingBox();
       assert.ok(position.x+position.width<=320 && position.height>=34);
       assert.equal(await dismiss.evaluate(button=>getComputedStyle(button).backgroundColor),base);
-      await dismiss.click();
+      await management.getByLabel('기준 요청',{exact:true}).selectOption('request');
+      for(const row of await management.locator('.dialog-actions').all()){
+        const geometry=await row.evaluate(group=>{
+          const buttons=[...group.querySelectorAll('button')],area=group.getBoundingClientRect();
+          const items=buttons.map(button=>{const box=button.getBoundingClientRect(),style=getComputedStyle(button);return {
+            left:box.left,right:box.right,top:box.top,bottom:box.bottom,radius:parseFloat(style.borderRadius),background:style.backgroundColor
+          };});
+          return {items,left:area.left,right:area.right,gap:parseFloat(getComputedStyle(group).columnGap)};
+        });
+        const {items,left,right,gap}=geometry;
+        assert(items.every(item=>item.left>=left-1&&item.right<=right+1&&item.top===items[0].top&&item.bottom===items[0].bottom&&item.radius>=8&&item.background!=='rgba(0, 0, 0, 0)'),JSON.stringify(geometry));
+        assert(Math.abs(items.at(-1).right-right)<1&&items.slice(1).every((item,index)=>Math.abs(item.left-items[index].right-gap)<1),JSON.stringify(geometry));
+      }
+      if(theme==='light'){
+        const scrollbar=await management.evaluate(surface=>{
+          surface.scrollTop=0;
+          const thumb=getComputedStyle(surface,'::-webkit-scrollbar-thumb');
+          return {track:surface.offsetWidth-surface.clientWidth,width:thumb.borderInlineEndWidth,clip:thumb.backgroundClip};
+        });
+        assert(scrollbar.track>=12&&scrollbar.width==='3px'&&scrollbar.clip==='padding-box',JSON.stringify(scrollbar));
+        const box=await management.boundingBox();
+        const x=box.x+box.width-7;
+        await page.mouse.click(x,box.y+box.height-5);
+        assert.equal(await management.evaluate(surface=>surface.scrollTop),0,'둥근 모서리에서는 스크롤 트랙을 누를 수 없습니다.');
+        await page.mouse.click(x,box.y+box.height-28);
+        await page.waitForFunction(()=>document.querySelector('.conversation-management .motion-surface')?.scrollTop>0);
+        const maximum=await management.evaluate(surface=>{
+          surface.scrollTop=surface.scrollHeight;
+          return surface.scrollTop;
+        });
+        await page.mouse.click(x,box.y+5);
+        assert.equal(await management.evaluate(surface=>surface.scrollTop),maximum,'위쪽 모서리에서도 스크롤 트랙을 누를 수 없습니다.');
+        await page.mouse.click(x,box.y+28);
+        await page.waitForFunction(max=>document.querySelector('.conversation-management .motion-surface')?.scrollTop<max,maximum);
+      }
+      await page.keyboard.press('Escape');
       await management.waitFor({state:'detached'});
+      assert(await manage.evaluate(button=>button===document.activeElement));
     }
     await page.evaluate(()=>document.documentElement.dataset.theme='light');
     await page.setViewportSize({width:1000,height:950});
     await page.getByRole('button',{name:'개인 비서',exact:true}).click();const assistant=page.locator('dialog[aria-label="개인 비서 연결"]');await assistant.waitFor();assert.equal(await assistant.evaluate(e=>e.open),true);await page.keyboard.press('Escape');assert.equal(await assistant.getAttribute('data-phase'),'exit');assert.equal(await assistant.evaluate(e=>e.open),true,'기본 Escape 닫힘을 지연하여 종료 애니메이션 보장');await assistant.waitFor({state:'detached'});
     await page.emulateMedia({reducedMotion:'reduce'});await page.evaluate(()=>window.motion.setPopup(true));await popup.waitFor();assert.equal(await popup.evaluate(e=>getComputedStyle(e).transform),'none');await page.evaluate(()=>window.motion.setPopup(false));await popup.waitFor({state:'detached'});
     assert.deepEqual(errors,[]);
-    console.log('통과: 공식 로컬 글꼴 4종 / 제어 요소 높이 / 체크박스 참조와 키보드 / 팝업과 알림 입퇴장 / 시트 / 실제 검색과 비서 팝업 / 재열기 / 동작 줄이기');
+    console.log('공식 로컬 글꼴 4종 / 제어 요소 높이 / 체크박스 참조와 키보드 / 팝업과 알림 입퇴장 / 시트 / 대화 관리 스크롤과 버튼 정렬 / 실제 검색과 비서 팝업 / 재열기 / 동작 줄이기 검사 통과');
   } catch(error) {
     if(errors.length) console.error("렌더러 오류",errors);
     if(page)console.error("실패 시 화면 상태",await page.evaluate(()=>({url:location.href,body:document.body.innerText.slice(0,500)})));

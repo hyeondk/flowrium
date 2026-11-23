@@ -75,13 +75,13 @@ async function run() {
       const context=canvas.getContext('2d');
       context.drawImage(img,0,0,32,32);
       const pixels=context.getImageData(0,0,32,32).data;
-      let yellow=0;
+      let blue=0;
       for(let index=0;index<pixels.length;index+=4){
         const [r,g,b,a]=pixels.subarray(index,index+4);
-        if(r>190 && g>145 && r>b+75 && g>b+50 && a>200) yellow++;
+        if(b>105 && b>r+40 && b>g+12 && a>200) blue++;
       }
-      return img.naturalWidth===img.naturalHeight && yellow>50 && pixels[3]===0;
-    }), '번들에 포함된 투명 배경 노란 삼각형 아바타가 실제 렌더링됨');
+      return img.naturalWidth===img.naturalHeight && blue>100 && pixels[3]===0;
+    }), '투명 배경의 파란색 Dots 아바타가 실제 렌더링됨');
     const like = message.getByRole('button', { name: '좋아요', exact: true });
     await like.waitFor();
     const capture = process.argv.indexOf('--screenshot');
