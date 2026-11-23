@@ -5,17 +5,19 @@ const photoHeader="# Files mentioned by the user:\n\n## codex-clipboard-abcd.png
 
 async function addReadingFixture(store,projectId){
   const initial=randomUUID(),second=randomUUID();
-  const message=(role,text,turnId)=>({id:randomUUID(),role,text,turnId,createdAt:new Date().toISOString()});
+  let time=Date.parse('2026-10-05T00:59:00.000Z');
+  const timestamp=()=>{time+=1000;return new Date(time).toISOString();};
+  const message=(role,text,turnId)=>({id:randomUUID(),role,text,turnId,createdAt:timestamp()});
   const progress=()=>({...message('system','작업 설명을 한 번만 표시합니다.',initial),progressCommentary:true});
-  const search=()=>({...message('system','웹 검색',initial),workSteps:[{id:randomUUID(),label:'웹 검색',state:'completed',kind:'search',createdAt:new Date().toISOString()}]});
-  const failedRead={...message('system','실행 도구 / 명령\n시험용 출력 원문',initial),workSteps:[
-    {id:randomUUID(),label:'파일 읽기',state:'failed',kind:'command',createdAt:new Date().toISOString(),target:'목록.txt',exitCode:2},
-  ]};
+  const search=()=>({...message('system','웹 검색',initial),workSteps:[{id:randomUUID(),label:'웹 검색',state:'completed',kind:'search',createdAt:timestamp()}]});
+  const failedRead=()=>({...message('system','실행 도구 / 명령\n시험용 출력 원문',initial),workSteps:[
+    {id:randomUUID(),label:'파일 읽기',state:'failed',kind:'command',createdAt:timestamp(),target:'목록.txt',exitCode:2},
+  ]});
   return store.createSession(projectId,{title:'휴대폰 읽기 확인',messages:[
     message('user','인터뷰 질문을 검토해 주세요.'),
     ...Array.from({length:55},()=>message('system','내부 계산 로그')),
     {...message('user',photoHeader+'첫 요청',initial),workStartedAt:'2026-10-05T01:00:00Z',workCompletedAt:'2026-10-05T01:03:26Z'},message('system','실행 도구 / 명령\n시험용 출력 원문',initial),
-    message('assistant','**진행**',initial),message('system','파일 변경 기록\n시험용 출력 원문',initial),progress(),progress(),search(),search(),search(),failedRead,
+    message('assistant','**진행**',initial),message('system','파일 변경 기록\n시험용 출력 원문',initial),progress(),progress(),search(),search(),search(),failedRead(),
     message('user','다음 요청',second),message('system','도구 실행 기록\n시험용 출력 원문',second),
     message('assistant','마지막 응답\n\n**다음 단계**\n- 인터뷰 질문을 한 쪽으로 정리',second),
   ]});
