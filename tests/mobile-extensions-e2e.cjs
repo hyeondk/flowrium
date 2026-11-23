@@ -223,10 +223,13 @@ async function main(){
   await btn('확인 주기 5분 늘리기').click();assert.equal(await interval.inputValue(),'42');
   const hour=page.getByRole('slider',{name:'업무 시작 시간'});await hour.focus();await hour.press('Home');await hour.press('ArrowRight');
   assert.equal(await hour.inputValue(),'1');
-  await interval.focus();const bounds=await interval.boundingBox();await page.mouse.move(bounds.x+15,bounds.y+12);await page.mouse.wheel(0,-50);assert.equal(await interval.inputValue(),'42');
   assert.equal((await savedInterval).status(),200);
   assert.equal((await savedHour).status(),200);
   const updated=(await workflow.state()).preferences;assert.equal(updated.intervalMinutes,42);assert.equal(updated.startHour,1);
+  await interval.focus();
+  await interval.hover();
+  await page.mouse.wheel(0,-50);
+  assert.equal(await interval.inputValue(),'42','마우스 휠로 확인 주기를 바꾸지 않음');
   await interval.fill('4');
   await btn('예약 알림').click();
   await btn('비서 설정').click();
