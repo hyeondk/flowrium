@@ -366,7 +366,8 @@ async function run() {
       console.log(JSON.stringify({theme,accentColor,sameBackground:true,colors:collapsed.stops,contrast:ratios,markerContrast:markerRatios,shortcut}));
       if(process.env.FLOWRIUM_SIDEBAR_CAPTURE)await side.locator('.sidebar-surface').screenshot({path:path.join(stage,`sidebar-${theme}-${accentColor}.png`)});
     }
-    for(const theme of ['light','dark'])assert.equal(new Set(workspaceBackgrounds[theme]).size,3,'앱 바깥 배경도 파랑 / 초록 / 보라 선택에 함께 반응합니다.');
+    assert.equal(new Set(workspaceBackgrounds.light).size,3,'밝은 모드의 앱 바깥 배경은 선택한 강조색에 따라 달라집니다.');
+    assert.equal(new Set(workspaceBackgrounds.dark).size,1,'어두운 모드의 앱 바깥 배경은 모든 강조색에서 같은 중립색을 유지합니다.');
   } finally {
     if(page&&!page.isClosed())await page.evaluate(async ids=>{for(const sessionId of ids)try{await window.flowrium.interrupt(sessionId)}catch{}},fixtureRuns).catch(()=>{});
     if(app) await app.close().catch(()=>{});

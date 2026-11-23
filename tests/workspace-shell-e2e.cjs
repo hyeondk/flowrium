@@ -7,7 +7,7 @@ const {_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs');
 const {randomUUID}=require('node:crypto');
 
-const {settledRail,settledLayout}=require('./shell-test-helpers.cjs');
+const {dockDismissButton,settledRail,settledLayout}=require('./shell-test-helpers.cjs');
 
 async function run(){
  const root=path.resolve(__dirname,'..'),temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-shell-ui-'));
@@ -81,7 +81,7 @@ async function run(){
   // 세로 높이를 고정하고 각 폭에서 주요 영역과 내부 스크롤 폭을 함께 검사합니다.
   for(const width of [1440,1280,1024,390]){
    await page.setViewportSize({width,height:1000});await settledLayout(main);
-   const dock=page.locator('.conversation-dock');if(await dock.count()){await dock.getByRole('button',{name:'대화함 접기',exact:true}).click();await dock.waitFor({state:'detached'});}
+   const dock=page.locator('.conversation-dock');if(await dock.count()){await dockDismissButton(dock).click();await dock.waitFor({state:'detached'});}
    const layout=await page.evaluate(()=>{
     const rect=e=>{const b=e.getBoundingClientRect();return{x:b.x,right:b.right,width:b.width,client:e.clientWidth,scroll:e.scrollWidth}};
     return{width:innerWidth,document:document.documentElement.scrollWidth,main:rect(document.querySelector('.main-shell')),topbar:rect(document.querySelector('.topbar')),page:rect(document.querySelector('.pf-page')),content:rect(document.querySelector('.pf-content')),family:getComputedStyle(document.body).fontFamily,wordBreak:getComputedStyle(document.querySelector('.pf-heading h1')).wordBreak,headerButtons:[...document.querySelectorAll('.topbar button')].filter(e=>e.getClientRects().length).map(e=>({label:e.getAttribute('aria-label')||e.innerText,height:e.getBoundingClientRect().height,width:e.getBoundingClientRect().width,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right})),actions:[...document.querySelectorAll('.pf-heading .dashboard-heading-actions>button')].map(e=>e.getBoundingClientRect().height)};
@@ -95,7 +95,8 @@ async function run(){
    measurements.push({width,layout,panel});await dashboard();
   }
   await page.setViewportSize({width:1440,height:1000});
-  if(await page.locator('.conversation-dock').count()){await button('대화함 접기').click();await page.locator('.conversation-dock').waitFor({state:'detached'});}
+  const dock=page.locator('.conversation-dock');
+  if(await dock.count()){await dockDismissButton(dock).click();await dock.waitFor({state:'detached'});}
   await button('설정').click();const settings=page.locator('.settings-modal[aria-labelledby="settings-title"]');await settings.waitFor();await settledLayout(settings);
   check(await settings.evaluate(e=>e.contains(document.activeElement)),'설정 팝업 최초 초점 이동',await page.evaluate(()=>({tag:document.activeElement?.tagName,label:document.activeElement?.getAttribute('aria-label')})));
   const focusables='button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]';

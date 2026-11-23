@@ -186,7 +186,7 @@ async function run() {
       const end = await measure();
       assert.ok(end.rows.at(-1).bottom <= end.nav.bottom + 1, '모바일 마지막 메뉴 접근');
       measurements.push({ mobile: m, lastRow: end.rows.at(-1) });
-      await page.getByRole('button', { name: '메뉴 닫기', exact: true }).click({ position: { x: width - 20, y: 80 } });
+      await page.locator('.workspace-side').getByRole('button', { name: '메뉴 닫기', exact: true }).click();
       await page.locator('.workspace-side.is-open').waitFor({ state: 'detached' });
     }
     assert.deepEqual(errors, [], '렌더러 오류 없음');

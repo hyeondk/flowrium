@@ -1,5 +1,6 @@
 const assert=require('node:assert/strict');
 const composer=page=>page.getByLabel('Codex에 보낼 작업 요청');
+const dockDismissButton=dock=>dock.getByRole('button',{name:/^대화함 (접기|닫기)$/});
 async function dockHome(page){
  await page.locator('.app-shell').waitFor();
  const dock=page.getByRole('complementary',{name:'통합 / 프로젝트 / 일반 대화'});
@@ -24,7 +25,7 @@ async function newProjectConversation(page,projectId){
 }
 async function closeSettings(page){await page.getByRole('button',{name:'설정 닫기',exact:true}).click();await page.getByRole('dialog',{name:'설정',exact:true}).waitFor({state:'hidden'});}
 async function leaveConversation(page){await page.getByRole('button',{name:'대화 목록으로',exact:true}).click();await composer(page).waitFor({state:'hidden'});}
-module.exports={composer,dockHome,openConversation,newProjectConversation,closeSettings,leaveConversation,openProjectTab,settledRail,settledLayout};
+module.exports={composer,dockDismissButton,dockHome,openConversation,newProjectConversation,closeSettings,leaveConversation,openProjectTab,settledRail,settledLayout};
 
 async function openProjectTab(page,name) {
  if(name==='홈'){
