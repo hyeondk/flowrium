@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const {_electron} = require('playwright');
 const {Store} = require('../electron/store.cjs');
+const {settledLayout} = require('./shell-test-helpers.cjs');
 const {releaseVersion} = require('../electron/version.cjs');
 const {releaseNotes} = require('../shared/release-notes.ts');
 
@@ -27,13 +28,20 @@ async function run(){
    assert.equal(await dialog.getByRole('button',{name:'완료',exact:true}).count(),0);
    assert.equal(await dialog.getByRole('button',{name:'설정 닫기',exact:true}).count(),1);
   }
-  const select=async id=>{const button=dialog.locator(`[data-settings-target=${id}]`);if(await button.getAttribute('aria-expanded')!=='true')await button.click();await page.waitForTimeout(220);await content.evaluate(node=>node.scrollTo({top:0,behavior:'instant'}));};
+  const groupFor=id=>dialog.locator(`[data-settings-group=${id}]`);
+  const select=async id=>{
+   const button=dialog.locator(`[data-settings-target=${id}]`);
+   if(await button.getAttribute('aria-expanded')!=='true')await button.click();
+   await groupFor(id).waitFor({state:'visible'});
+   await content.evaluate(node=>node.scrollTo({top:0,behavior:'instant'}));
+   await settledLayout(content);
+  };
   const rows=[];
   for(const width of [1440,390]){
    await page.setViewportSize({width,height:width===1440?940:844});
    for(const id of groups){
     await select(id);
-    const group=dialog.locator(`[data-settings-group=${id}]`);
+    const group=groupFor(id);
     const row=await group.evaluate((node,{id,width})=>{
      const visible=el=>el.getClientRects().length&&getComputedStyle(el).display!=='none'&&!['absolute','fixed'].includes(getComputedStyle(el).position);
      const children=[...node.children].filter(visible),rects=children.map(child=>child.getBoundingClientRect());
@@ -81,7 +89,8 @@ async function run(){
   assert.deepEqual(await history.locator('li').allTextContents(),expected,'현재 버전의 변경점을 순서대로 그대로 표시합니다.');
   await select('categories');const draft=dialog.getByRole('combobox',{name:'카테고리 이름',exact:true});await draft.fill('보존 확인');
   await select('appearance');await select('categories');assert.equal(await draft.inputValue(),'보존 확인');
-  await dialog.locator('[data-settings-target=categories]').click();await page.waitForTimeout(220);assert.equal(await dialog.locator('[data-settings-group=categories]').isVisible(),false);
+  await dialog.locator('[data-settings-target=categories]').click();
+  await groupFor('categories').waitFor({state:'hidden'});
   await select('categories');assert.equal(await draft.inputValue(),'보존 확인');
   await dialog.getByRole('button',{name:'설정 닫기',exact:true}).click();
   await dialog.waitFor({state:'detached'});

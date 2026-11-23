@@ -79,7 +79,9 @@ async function main() {
     await settledRail(rail,{expanded:true,pinned:true,width:236},'메뉴 고정 유지');assert.equal(await rail.getAttribute('data-expanded'),'true');
     await button('메뉴 자동 접기').click();await page.mouse.move(500,100);await settledRail(rail,{expanded:false,pinned:false,width:56},'고정 해제 후 메뉴 접힘');
     assert.equal(await rail.getAttribute('data-expanded'),'false');
-    await rail.hover();await nav.getByRole("button",{name:"프로젝트 추가"}).click();
+    await rail.hover();
+    await settledRail(rail,{expanded:true,pinned:false,width:236},'프로젝트 추가 전 메뉴 펼치기');
+    await nav.getByRole("button",{name:"프로젝트 추가",exact:true}).click();
     await page.getByLabel("프로젝트 이름", { exact: true }).fill(name);
     await page.getByLabel("프로젝트 구분", { exact: true }).fill("개인");
     const startDate=page.getByLabel("시작일",{exact:true}), dueDate=page.getByLabel("목표일",{exact:true});

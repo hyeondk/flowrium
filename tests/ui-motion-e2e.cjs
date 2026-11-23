@@ -4,6 +4,36 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { _electron } = require('playwright');
 
+async function scrollbarPaint(page, first, last, box, thumbColor) {
+  return page.evaluate(async({first,last,box,thumbColor})=>{
+    const left=Math.floor(box.x+box.width-15),top=Math.floor(box.y);
+    const width=Math.ceil(box.x+box.width)-left,height=Math.ceil(box.y+box.height)-top;
+    async function pixels(png){
+      const image=new Image();
+      image.src='data:image/png;base64,'+png;
+      await image.decode();
+      const canvas=document.createElement('canvas');
+      canvas.width=width;
+      canvas.height=height;
+      const context=canvas.getContext('2d');
+      context.drawImage(image,-left,-top);
+      return context.getImageData(0,0,width,height).data;
+    }
+    const [before,after]=await Promise.all([pixels(first),pixels(last)]);
+    const color=thumbColor.match(/\d+/g).slice(0,3).map(Number);
+    const matches=(data,offset)=>color.every((channel,index)=>Math.abs(data[offset+index]-channel)<=10);
+    const painted={first:0,last:0,top:Infinity,bottom:-Infinity,right:-Infinity};
+    for(let y=0;y<height;y++)for(let x=0;x<width;x++){
+      const offset=(y*width+x)*4,upper=matches(before,offset),lower=matches(after,offset);
+      if(upper===lower)continue;
+      if(upper){painted.first++;painted.top=Math.min(painted.top,top+y);}
+      if(lower){painted.last++;painted.bottom=Math.max(painted.bottom,top+y);}
+      painted.right=Math.max(painted.right,left+x);
+    }
+    return painted;
+  },{first:first.toString('base64'),last:last.toString('base64'),box,thumbColor});
+}
+
 async function run() {
   const root = path.resolve(__dirname, '..');
   const tempRoot = path.join(root, '.flowrium-tmp');
@@ -154,25 +184,24 @@ async function run() {
       }
       if(theme==='light'){
         const scrollbar=await management.evaluate(surface=>{
-          surface.scrollTop=0;
           const thumb=getComputedStyle(surface,'::-webkit-scrollbar-thumb');
-          return {track:surface.offsetWidth-surface.clientWidth,width:thumb.borderInlineEndWidth,clip:thumb.backgroundClip};
+          return {track:surface.offsetWidth-surface.clientWidth,width:thumb.borderInlineEndWidth,clip:thumb.backgroundClip,color:thumb.backgroundColor};
         });
         assert(scrollbar.track>=12&&scrollbar.width==='3px'&&scrollbar.clip==='padding-box',JSON.stringify(scrollbar));
-        const box=await management.boundingBox();
-        const x=box.x+box.width-7;
-        await page.mouse.click(x,box.y+box.height-5);
-        assert.equal(await management.evaluate(surface=>surface.scrollTop),0,'둥근 모서리에서는 스크롤 트랙을 누를 수 없습니다.');
-        await page.mouse.click(x,box.y+box.height-28);
+        // The transparent native track can handle clicks beyond the painted thumb on some systems.
+        // Compare both endpoints so the panel's stationary border is excluded.
+        await management.evaluate(surface=>surface.scrollTop=0);
+        const box=await settledLayout(management),first=await page.screenshot({scale:'css'});
+        await page.mouse.move(box.x+box.width/2,box.y+box.height/2);
+        await page.mouse.wheel(0,200);
         await page.waitForFunction(()=>document.querySelector('.conversation-management .motion-surface')?.scrollTop>0);
-        const maximum=await management.evaluate(surface=>{
-          surface.scrollTop=surface.scrollHeight;
-          return surface.scrollTop;
-        });
-        await page.mouse.click(x,box.y+5);
-        assert.equal(await management.evaluate(surface=>surface.scrollTop),maximum,'위쪽 모서리에서도 스크롤 트랙을 누를 수 없습니다.');
-        await page.mouse.click(x,box.y+28);
-        await page.waitForFunction(max=>document.querySelector('.conversation-management .motion-surface')?.scrollTop<max,maximum);
+        await management.evaluate(surface=>surface.scrollTop=surface.scrollHeight);
+        const bottom=await settledLayout(management),last=await page.screenshot({scale:'css'});
+        const paint=await scrollbarPaint(page,first,last,box,scrollbar.color);
+        assert(['x','y','width','height'].every(key=>Math.abs(box[key]-bottom[key])<.25),JSON.stringify({box,bottom}));
+        assert(paint.first>=12&&paint.last>=12,JSON.stringify(paint));
+        const gaps={top:paint.top-box.y,bottom:box.y+box.height-paint.bottom-1,right:box.x+box.width-paint.right-1};
+        assert(gaps.top>=9&&gaps.bottom>=9&&gaps.right>=3,JSON.stringify({gaps,box,paint}));
       }
       await page.keyboard.press('Escape');
       await management.waitFor({state:'detached'});
