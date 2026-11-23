@@ -269,6 +269,7 @@ test("구버전 로컬 기록은 선택 폴더로 이관하고 원본 파일을 
     messages: [message("보존할 원본 대화")],
     createdAt: now,
     updatedAt: now,
+    threadId: randomUUID(),
   };
   const source = JSON.stringify({
     projects: [project],
@@ -279,11 +280,18 @@ test("구버전 로컬 기록은 선택 폴더로 이관하고 원본 파일을 
   await fs.writeFile(legacyFile, source);
   const migrated = new Store(registry);
   await migrated.load();
-  await migrated.save();
+  migrated.state.projects[0].name = '아직 저장하지 않은 이름';
+  migrated.session(imported.id).threadId = randomUUID();
+  await migrated.saveSettings({ theme: 'dark' });
+  const reopened = new Store(registry);
+  await reopened.load();
   assert.equal(
-    migrated.session(imported.id).messages[0].text,
+    reopened.session(imported.id).messages[0].text,
     "보존할 원본 대화",
   );
+  assert.equal(reopened.session(imported.id).threadId, imported.threadId);
+  assert.equal(reopened.state.projects[0].name, project.name);
+  assert.equal(reopened.state.settings.theme, 'dark');
   assert.equal(await fs.readFile(legacyFile, "utf8"), source);
   assert.equal(
     (await fs.readFile(migrated.file, "utf8")).includes("보존할 원본 대화"),
@@ -364,9 +372,13 @@ test("기존 외관의 파란 기본값, 강조색 독립 저장과 저장 실�
   assert.equal(fresh.state.settings.accentColor,"green");
   assert.equal(fresh.state.settings.theme,"dark");
   await assert.rejects(fresh.saveSettings({accentColor:"invalid"}),/강조색/);
-  fresh.save = async () => {throw Error("시험용 저장 실패")};
+  const previous=await fs.readFile(store.file,'utf8');
+  const rename=t.mock.method(fs,'rename',async ()=>{throw Error("시험용 저장 실패");});
   await assert.rejects(fresh.saveSettings({accentColor:"purple"}),/저장 실패/);
+  rename.mock.restore();
   assert.equal(fresh.state.settings.accentColor,"green");
+  assert.equal(await fs.readFile(store.file,'utf8'),previous);
+  assert.deepEqual(await fs.readdir(path.dirname(store.file)),[path.basename(store.file)]);
   const registry=JSON.parse(await fs.readFile(store.file,"utf8"));
   for(const value of [undefined,"invalid"]){
     registry.settings.accentColor=value;
@@ -381,25 +393,30 @@ test("기존 외관의 파란 기본값, 강조색 독립 저장과 저장 실�
 test("동시 자동 저장이 순서를 지키고 실패한 값을 다음 설정에 섞지 않는다", async t => {
   const {store,root}=await fixture(t);
   await store.saveSettings({theme:'light',chatDefaults:{approval:'on-request',compactAt:73}});
-  const save=store.save.bind(store);
+  const realRename=fs.rename;
   const started=Promise.withResolvers(),finish=Promise.withResolvers();
   let failOnce=true;
-  store.save=async(...args)=>{
-    if(failOnce){
+  t.mock.method(fs,'rename',async (source,target)=>{
+    if(target===store.file && failOnce){
       failOnce=false;
       started.resolve();
       await finish.promise;
       throw Error('첫 자동 저장 실패');
     }
-    return save(...args);
-  };
+    return realRename(source,target);
+  });
   const rejected=assert.rejects(store.saveSettings({theme:'dark'}),/첫 자동 저장 실패/);
   await started.promise;
-  await store.save();
-  assert.equal(JSON.parse(await fs.readFile(store.file,'utf8')).settings.theme,'light');
-  const next=store.saveSettings({accentColor:'purple',chatDefaults:{askNext:true}},{mergeChatDefaults:true});
-  const last=store.saveSettings({chatDefaults:{answerLength:'short'}},{mergeChatDefaults:true});
-  finish.resolve();
+  const projectSave=store.save();
+  let next,last;
+  try {
+    assert.equal(JSON.parse(await fs.readFile(store.file,'utf8')).settings.theme,'light');
+    next=store.saveSettings({accentColor:'purple',chatDefaults:{askNext:true}},{mergeChatDefaults:true});
+    last=store.saveSettings({chatDefaults:{answerLength:'short'}},{mergeChatDefaults:true});
+  } finally {
+    finish.resolve();
+    await projectSave;
+  }
   await rejected;
   assert.equal((await next).theme,'light');
   assert.deepEqual((await last).chatDefaults,{approval:'on-request',compactAt:73,askNext:true,answerLength:'short'});
@@ -408,4 +425,81 @@ test("동시 자동 저장이 순서를 지키고 실패한 값을 다음 설정
   assert.equal(reopened.state.settings.accentColor,'purple');
   assert.equal(reopened.state.settings.theme,'light');
   assert.deepEqual(reopened.state.settings.chatDefaults,(await last).chatDefaults);
+});
+
+test("프로젝트 기록 쓰기가 멈춰 있어도 설정을 먼저 저장하고 다음 기록 쓰기에서 보존한다", async t => {
+  const {store,project,session}=await fixture(t);
+  const previous=JSON.parse(await fs.readFile(store.file,'utf8'));
+  const repository=store.repositories.get(project.id);
+  const commit=repository.commit.bind(repository);
+  const entered=Promise.withResolvers(), resume=Promise.withResolvers();
+  t.mock.method(repository,'commit',async (...args)=>{
+    entered.resolve();
+    await resume.promise;
+    return commit(...args);
+  });
+  store.state.projects[0].name='저장 대기 중인 프로젝트 이름';
+  const chat=store.session(session.id);
+  chat.threadId=randomUUID();
+  chat.messages.push(message('프로젝트가 나중에 저장할 대화'));
+  const writing=store.save();
+  await entered.promise;
+  const saving=store.saveSettings({accentColor:'purple'});
+  let timeout;
+  try {
+    await Promise.race([
+      saving,
+      new Promise((_,reject)=>{
+        timeout=setTimeout(()=>reject(Error('프로젝트 기록을 기다리지 않고 설정을 저장해야 합니다.')),2000);
+      }),
+    ]);
+    const stored=JSON.parse(await fs.readFile(store.file,'utf8'));
+    assert.equal(stored.settings.accentColor,'purple');
+    assert.deepEqual(stored.projects,previous.projects);
+    assert.deepEqual(stored.localThreads,previous.localThreads);
+  } finally {
+    clearTimeout(timeout);
+    resume.resolve();
+    await Promise.all([writing,saving]);
+  }
+  const reopened=new Store(path.dirname(store.file));
+  await reopened.load();
+  assert.equal(reopened.state.settings.accentColor,'purple');
+  assert.equal(reopened.state.projects[0].name,'저장 대기 중인 프로젝트 이름');
+  assert.equal(reopened.session(session.id).threadId,chat.threadId);
+  assert.equal(reopened.session(session.id).messages[0].text,'프로젝트가 나중에 저장할 대화');
+});
+
+test("등록 파일이 없는 첫 설정 저장은 아직 확정되지 않은 프로젝트를 함께 기록하지 않는다", async t => {
+  const {root,project}=await fixture(t);
+  const fresh=new Store(path.join(root,'새 기기'));
+  await fresh.load();
+  fresh.state.projects.push(project);
+  await fresh.saveSettings({theme:'dark'});
+  const persisted=JSON.parse(await fs.readFile(fresh.file,'utf8'));
+  assert.equal(persisted.version,2);
+  assert.deepEqual(persisted.projects,[]);
+  assert.deepEqual(persisted.localThreads,{});
+  const reopened=new Store(path.dirname(fresh.file));
+  await reopened.load();
+  assert.equal(reopened.state.settings.theme,'dark');
+});
+
+test("설정만 저장할 때 형식이 바뀌거나 손상된 기존 등록 파일을 덮어쓰지 않는다", async t => {
+  const {store}=await fixture(t);
+  const stored=JSON.parse(await fs.readFile(store.file,'utf8'));
+  await fs.writeFile(store.file,JSON.stringify({...stored, extra:{ preserved: true }}));
+  await store.saveSettings({theme:'dark'});
+  assert.deepEqual(JSON.parse(await fs.readFile(store.file,'utf8')).extra, {preserved:true});
+  for(const source of ['{', JSON.stringify({...stored, version:3})]){
+    await fs.writeFile(store.file,source);
+    await assert.rejects(store.saveSettings({theme:'light'}));
+    assert.equal(await fs.readFile(store.file,'utf8'),source);
+    assert.equal(store.state.settings.theme,'dark');
+  }
+  const beyondLimit=32*1024*1024+1;
+  await fs.truncate(store.file,beyondLimit);
+  await assert.rejects(store.saveSettings({theme:'light'}),/허용 크기/);
+  assert.equal((await fs.stat(store.file)).size,beyondLimit);
+  assert.equal(store.state.settings.theme,'dark');
 });

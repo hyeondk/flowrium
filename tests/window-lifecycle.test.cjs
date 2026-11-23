@@ -10,7 +10,7 @@ function fixture({diagnostics=false,reentrant=false}={}){
  }
  const modules={electron:{app,BrowserWindow:Window,ipcMain:{handle(){}}},'./store.cjs':{},'./controller.cjs':{},'./errors.cjs':{},'./version.cjs':{},'./updater.cjs':{},'./workbench.cjs':{},'./desktop-zoom.cjs':require('../electron/desktop-zoom.cjs')};
  const context=vm.createContext({require:name=>name==='node:fs'?{writeSync:(_,value)=>logs.push(value)}:Object.hasOwn(modules,name)?modules[name]:require(name),process:{env:diagnostics?{FLOWRIUM_LIFECYCLE_DIAGNOSTICS:'1'}:{},platform:'darwin'},__dirname:path.join(__dirname,'../electron'),setImmediate:callback=>scheduled.push(callback)});
- vm.runInContext(source+`\nsecurity={state:()=>({hasPin:false})};drafts={beginMigration(){}};globalThis.probe={ensure:ensureWindow,complete(){launchComplete=true},quit(){quitting=true},pending:()=>windowRequestPending,current:()=>window,prepareQuit(shutdown,flush,draftQueue,settingsQueue){controller={shutdown,store:{settingsQueue}};teamRuntime={flush};drafts.queue=draftQueue}};`,context,{filename:'main-lifecycle-fixture.cjs'});
+ vm.runInContext(source+`\nsecurity={state:()=>({hasPin:false})};drafts={beginMigration(){}};globalThis.probe={ensure:ensureWindow,complete(){launchComplete=true},quit(){quitting=true},pending:()=>windowRequestPending,current:()=>window,prepareQuit(shutdown,flush,draftQueue,settingsQueue){controller={shutdown,store:{settingsQueue}};teamRuntime={flush};drafts.queue=draftQueue},prepareInvocation(transfer,guard){codexTransfer=transfer;security.guard=guard},invoke:invokeRegistered};`,context,{filename:'main-lifecycle-fixture.cjs'});
  return{app,windows,logs,scheduled,api:context.probe,ready:()=>ready=true};
 }
 test('준비와 초기 등록이 끝나기 전 창 요청은 대기하고 완료 후 하나만 만든다',()=>{
@@ -37,6 +37,32 @@ test('정리·팀·초안·설정 저장을 모두 기다린 뒤 다음 이벤�
  finishServices();await tick();assert.equal(f.scheduled.length,0);finishTeams();await tick();assert.equal(f.scheduled.length,0);finishDrafts();await tick();assert.equal(f.scheduled.length,0);
  finishSettings();await tick();assert.equal(f.scheduled.length,1);assert.equal(f.app.quitCalls,0);assert.equal(window.enabled,false);
  f.scheduled[0]();assert.equal(window.enabled,true);assert.equal(f.app.quitCalls,1);
+});
+
+test('환경설정은 대화 동기화 중에도 저장하며 실행 파일·프로젝트 변경은 기존 작업을 기다린다',async()=>{
+ const f=fixture();
+ const {promise:sync,resolve:finishSync}=Promise.withResolvers();
+ const handled=[];
+ let approved=0;
+ f.api.prepareInvocation({syncMonitor:{flight:sync},context:()=>({}),guard(){}},(_,run)=>{approved++;return run();});
+ const independent=[
+  ['saveSettings',{accentColor:'green'}],
+  ['setSecurityPreferences',{idleMinutes:10}],
+  ['configureVoicePreferences',{silenceMs:1200}],
+  ['webPushAction',{action:'preferences',kinds:['decision']}],
+ ];
+ const settings=independent.map(([name,patch])=>f.api.invoke(name,()=>handled.push(name),[patch]));
+ const executable=f.api.invoke('saveSettings',()=>handled.push('실행 파일'),[{codexPath:'/test/codex'}]);
+ const project=f.api.invoke('updateProjectDetails',()=>handled.push('프로젝트'),['test',1,{action:'category',category:'검증'}]);
+ try{
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(handled.slice(),independent.map(([name])=>name));
+  assert.equal(approved,independent.length);
+ }finally{
+  finishSync();
+  await Promise.all([...settings,executable,project]);
+ }
+ assert.deepEqual(handled.slice(independent.length).sort(),['실행 파일','프로젝트'].sort());
 });
 
 test('실제 창 생성 경로에 87%를 적용하고 재생성 후에도 기본 배율을 유지한다',()=>{

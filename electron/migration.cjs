@@ -56,7 +56,7 @@ function restoredWorkflow(record){
 async function optional(file){try{return await F.bytes(file);}catch(e){if(e.code==='ENOENT')return null;throw e;}}
 function slug(value){return value.normalize('NFC').replace(/[<>:"/\\|?*\x00-\x1f]/g,'-').replace(/[. ]+$/,'').slice(0,70)||'프로젝트';}
 async function nativeSnapshot(store,options={},hooks={}){
- await store.queue;await store.syncConversationOwner();
+ await store.settingsQueue;await store.queue;await store.syncConversationOwner();
  const selected=options.projectIds?new Set(options.projectIds):null,projects=[],entries=[],excluded=[],warnings=[];
  const all=[...store.state.projects,...(options.includePrivate!==false?store.conversations.projects():[])];
  for(const p of all){if(selected&&!selected.has(p.id)&&!p.conversationScope)continue;const key='p-'+p.id,scope=p.conversationScope||'project';

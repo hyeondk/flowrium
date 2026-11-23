@@ -90,7 +90,27 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     });
     return;
   }
-  if (method === 'project/list' || method === 'thread/list') {write({id,result:{data:[],nextCursor:null}});return;}
+  if (method === 'project/list' || method === 'thread/list') {
+    const reply = () => write({id,result:{data:[],nextCursor:null}});
+    const gate = process.env.FLOWRIUM_TEST_SETTINGS_SYNC_GATE;
+    if (gate && method === 'thread/list' && params.archived === false && params.limit === 100 &&
+        params.sortKey === 'updated_at' && params.sourceKinds?.[0] === 'appServer' && params.useStateDbOnly === true &&
+        !params.cwd && !params.cursor) {
+      const fs = require('node:fs');
+      if (!fs.existsSync(gate+'.release')) {
+        fs.writeFileSync(gate+'.pending','');
+        const timer=setInterval(()=>{
+          if (!fs.existsSync(gate+'.release')) return;
+          clearInterval(timer);
+          reply();
+        },20);
+        timer.unref();
+        return;
+      }
+    }
+    reply();
+    return;
+  }
   if (method === "account/logout") {
     loggedOut = true;
     write({ id, result: {} });

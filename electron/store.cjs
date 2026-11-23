@@ -75,6 +75,14 @@ function validateProject(project) {
   )
     throw new Error("저장된 프로젝트 형식이 올바르지 않습니다.");
 }
+function localThreadBinding(session, repository) {
+  return {
+    threadId: session.threadId,
+    ...(session.requestReaderThreadId===session.threadId && {requestReader:true}),
+    ...(session.desktopThread?.threadId===session.threadId && {desktopThread:session.desktopThread}),
+    revision: repository.heads.get(session.id),
+  };
+}
 class Store {
   constructor(directory, {projectTrustOwner = () => 'local'} = {}) {
     this.file = path.join(directory, "workspace-v2.json");
@@ -86,6 +94,7 @@ class Store {
     };
     this.queue = Promise.resolve();
     this.settingsQueue = Promise.resolve();
+    this.registryQueue = Promise.resolve();
     this.repositories = new Map();
     this.projectTrust = new (require('./project-trust.cjs').ProjectTrust)(directory,
       id => this.state.projects.find(project => project.id === id), projectTrustOwner);
@@ -110,6 +119,9 @@ class Store {
           legacy = true;
         } catch (oldError) {
           if (oldError.code !== "ENOENT") throw oldError;
+          // 처음부터 비어 있던 작업 공간에서만 빈 등록의 첫 저장을 허용합니다.
+          if (!Object.hasOwn(this, "initialRegistry"))
+            this.initialRegistry = { version: 2, projects: [], localThreads: {} };
           return this.state;
         }
       }
@@ -145,6 +157,7 @@ class Store {
         sessions: [],
         settings: settings({...raw.settings,accentColor:["blue","green","purple"].includes(raw.settings?.accentColor)?raw.settings.accentColor:"blue"}),
       };
+      const legacyThreads = {};
       for (const project of raw.projects) {
         try {
           await fs.stat(project.path);
@@ -215,10 +228,16 @@ class Store {
               validateSession(session,session.projectId);
             }
           }
+          if (legacy && session.threadId)
+            legacyThreads[session.id] = localThreadBinding(session, repository);
           next.sessions.push(session);
         }
       }
       next.sessions.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      // 이전 기록을 이관했다면 첫 v2 쓰기에도 이미 확정한 연결을 포함합니다.
+      this.initialRegistry = legacy
+        ? { version: 2, projects: structuredClone(next.projects), localThreads: legacyThreads }
+        : undefined;
       this.state = next;
     } catch (error) {
       throw new Error(
@@ -239,7 +258,25 @@ class Store {
   peekSession(id){return this.state.sessions.find(s=>s.id===id)||this.conversations.peekSession(id);}
   isCurrentConversation(id){return this.conversations.isCurrent(id);}
   syncConversationOwner(){return this.conversations.sync();}
-  save({nextSettings}={}) {
+  writeRegistry(update, { applySettings = false } = {}) {
+    const write = this.registryQueue.then(async () => {
+      const registry = await update();
+      const data = JSON.stringify(registry, null, 2);
+      await fs.mkdir(path.dirname(this.file), { recursive: true });
+      const temp = `${this.file}.${randomUUID()}.tmp`;
+      try {
+        await fs.writeFile(temp, data, { flag: "wx", mode: 0o600 });
+        await fs.rename(temp, this.file);
+        this.initialRegistry = undefined;
+        if (applySettings) this.state.settings = registry.settings;
+      } finally {
+        await fs.rm(temp, { force: true });
+      }
+    });
+    this.registryQueue = write.catch(() => {});
+    return write;
+  }
+  save() {
     const snapshot = structuredClone(this.state),conversationSnapshots=this.conversations.snapshots();
     const write = async () => {
       const localThreads = {};
@@ -256,33 +293,15 @@ class Store {
         await repository.commit(sessions);
         for (const session of sessions)
           if (session.threadId)
-            localThreads[session.id] = {
-              threadId: session.threadId,
-              ...(session.requestReaderThreadId===session.threadId && {requestReader:true}),
-              ...(session.desktopThread?.threadId===session.threadId && {desktopThread:session.desktopThread}),
-              revision: repository.heads.get(session.id),
-            };
+            localThreads[session.id] = localThreadBinding(session, repository);
       }
-      const data = JSON.stringify(
-        {
-          version: 2,
-          projects: snapshot.projects,
-          settings: nextSettings ?? this.state.settings,
-          localThreads,
-        },
-        null,
-        2,
-      );
       await this.conversations.commit(conversationSnapshots);
-      await fs.mkdir(path.dirname(this.file), { recursive: true });
-      const temp = `${this.file}.${randomUUID()}.tmp`;
-      try {
-        await fs.writeFile(temp, data, { mode: 0o600 });
-        await fs.rename(temp, this.file);
-        if(nextSettings)this.state.settings=nextSettings;
-      } finally {
-        await fs.rm(temp, { force: true });
-      }
+      await this.writeRegistry(() => ({
+        version: 2,
+        projects: snapshot.projects,
+        settings: this.state.settings,
+        localThreads,
+      }));
     };
     this.queue = this.queue.then(write, write).catch((error) => {
       throw new Error(
@@ -456,7 +475,19 @@ class Store {
         ? {...input,chatDefaults:{...previous.chatDefaults,...input.chatDefaults}}
         : input;
       const next=settings(changes,previous);
-      await this.save({nextSettings:next});
+      await this.writeRegistry(async () => {
+        let registry;
+        try { registry = await this.readRegistry(this.file); }
+        catch (error) {
+          if (error.code !== "ENOENT" || !this.initialRegistry) throw error;
+          registry = this.initialRegistry;
+        }
+        if (registry?.version !== 2 || !Array.isArray(registry.projects))
+          throw new Error("저장된 작업 공간 형식이 올바르지 않습니다.");
+        return { ...registry, settings: next };
+      }, {applySettings: true}).catch(error => {
+        throw new Error(publicMessage(error, "설정을 저장하지 못했습니다. 설정 폴더를 확인해 주세요."));
+      });
       return {...next};
     });
     this.settingsQueue=operation.catch(()=>{});

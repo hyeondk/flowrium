@@ -80,8 +80,12 @@ async function invokeRegistered(name,handler,args){
   if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity','hideDotsView','readDotsState'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
   const independent=/^(read|list)/.test(name)||['bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name);
   const query=args[0];
+  // 실행 파일과 프로젝트를 바꾸는 작업은 기존 동기화를 기다린다.
+  const settingsOnly=(name==='saveSettings'&&!Object.hasOwn(query??{},'codexPath')) ||
+    name==='setSecurityPreferences' || name==='configureVoicePreferences' ||
+    (name==='webPushAction'&&query?.action==='preferences');
   const passiveTransfer=name==='codexTransferAction'&&(query?.action==='sync'&&!query.force||query?.action==='receipts'||query?.action==='readOriginal'||query?.background===true);
-  const foreground=!independent&&!passiveTransfer;
+  const foreground=!independent&&!passiveTransfer&&!settingsOnly;
   if(foreground)foregroundOperations++;
   try{
     if(foreground&&name!=='chooseProject')await waitForTransferWrites();

@@ -29,9 +29,33 @@ async function openSettings(page,group) {
 
 const generalSettings=page=>page.evaluate(async()=>(await window.flowrium.bootstrap()).settings);
 const voiceSettings=page=>page.evaluate(()=>window.flowrium.voicePreferences());
+const closeSettingsButton={name:'설정 닫기',exact:true};
+const diskSettings=async profile=>JSON.parse(await fs.readFile(path.join(profile,'workspace-v2.json'),'utf8')).settings;
+const accentButton=(dialog,name)=>dialog.getByRole('group',{name:'강조색'}).getByRole('button',{name,exact:true});
+
+async function verifyFirstSaveDuringSync(page,profile,syncGate) {
+ const ready=await openSettings(page,'화면');
+ await expect.poll(()=>fs.access(syncGate+'.pending').then(()=>true,()=>false),{timeout:18000}).toBe(true);
+ assert.equal((await diskSettings(profile)).accentColor,'blue');
+ try {
+  await accentButton(ready,'보라').click();
+  await ready.getByRole('button',closeSettingsButton).click();
+  await ready.waitFor({state:'detached'});
+  await expect.poll(async()=>(await diskSettings(profile)).accentColor,{
+   timeout:3000,message:'동기화 응답이 없는 동안에도 처음 바꾼 설정이 디스크에 저장됨',
+  }).toBe('purple');
+  await assert.rejects(fs.access(syncGate+'.release'),{code:'ENOENT'});
+  const reopened=await openSettings(page,'화면');
+  await expect(accentButton(reopened,'보라')).toHaveAttribute('aria-pressed','true');
+  await reopened.getByRole('button',closeSettingsButton).click();
+  await reopened.waitFor({state:'detached'});
+ } finally {
+  await fs.writeFile(syncGate+'.release','');
+ }
+}
 
 async function verifyAutomaticSave(app,page,codexPath) {
- const closeName={name:'설정 닫기',exact:true};
+ const closeName=closeSettingsButton;
  const ready=await openSettings(page,'화면');
  assert.equal(await ready.getByRole('button',{name:'완료',exact:true}).count(),0,'설정은 별도 완료 버튼 없이 닫기에서 마칩니다.');
  await app.evaluate(({ipcMain})=>{
@@ -109,16 +133,26 @@ async function verifyAutomaticSave(app,page,codexPath) {
 async function run(){
  checkTransparentColors();
  const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-settings-layout-')));
+ const syncGate=path.join(temp,'settings-sync');
  let app,page;const errors=[],measurements=[];
  try{
   const profile=path.join(temp,'profile'),store=new Store(profile);await store.load();await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
-  const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
+  const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex'),FLOWRIUM_TEST_SETTINGS_SYNC_GATE:syncGate};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   async function launch(){
    app=await _electron.launch({args:[root],env,timeout:45000});
    page=await app.firstWindow();page.setDefaultTimeout(20000);page.on('pageerror',error=>errors.push(error.message));
    await page.setViewportSize({width:1440,height:1000});
   }
   await launch();
+  await verifyFirstSaveDuringSync(page,profile,syncGate);
+  await app.close();app=null;page=null;
+  await launch();
+  assert.equal((await diskSettings(profile)).accentColor,'purple');
+  const firstRestored=await openSettings(page,'화면');
+  await expect(accentButton(firstRestored,'보라')).toHaveAttribute('aria-pressed','true');
+  await firstRestored.getByRole('button',closeSettingsButton).click();
+  await firstRestored.waitFor({state:'detached'});
+  console.log('첫 설정 자동 저장 / 백그라운드 대화 목록 응답 대기 중 디스크 저장 / 즉시 닫기 / 재열기와 앱 재실행 복원 통과');
   const dialog=await openSettings(page);await settledLayout(dialog);
   for(const [width,height]of [[1440,1000],[800,1000],[390,844],[320,844]]){
    await page.setViewportSize({width,height});const securityTab=page.locator('.settings-nav-item[data-settings-target="security"]');if(await securityTab.getAttribute('aria-expanded')!=='true')await securityTab.click();
@@ -158,7 +192,7 @@ async function run(){
   assert.deepEqual(errors,[]);
   console.log('설정 자동 저장 / 응답 지연 뒤 여러 값과 같은 항목의 연속 변경 / 저장 오류와 키보드 재시도 / 닫기와 Escape / 음성 주소·시간·스위치와 Codex 경로 / 앱 재실행 복원 통과');
  }catch(error){if(page&&await page.locator('.settings-content').count())console.error('넘침 요소',JSON.stringify(await page.locator('.settings-content').evaluate(root=>[...root.querySelectorAll('*')].filter(e=>e.clientWidth>0&&e.scrollWidth>e.clientWidth+1).map(e=>({tag:e.tagName,class:e.className,client:e.clientWidth,scroll:e.scrollWidth,text:e.textContent?.slice(0,100)})).slice(0,35))));if(measurements.length)console.error('설정 배치 측정',JSON.stringify(measurements));if(page)console.error('화면 상태',(await page.locator('body').innerText()).slice(0,1200));throw error;}
- finally{if(app)await app.close().catch(()=>{});await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});}
+ finally{await fs.writeFile(syncGate+'.release','').catch(()=>{});if(app)await app.close().catch(()=>{});await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});}
 }
 async function baseline(){
  const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-settings-before-')));let app;
