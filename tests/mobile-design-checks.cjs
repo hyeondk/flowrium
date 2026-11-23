@@ -63,10 +63,15 @@ async function checkDesign(app,page,store,folder) {
       const el=document.querySelector('.mobile-timeline'),photo=el.querySelector('.citation-preview img');
       const box=()=>{const r=photo.getBoundingClientRect();return [r.width,r.height];};
       const original=el.style.zoom,at90=box();el.style.zoom='1';const at100=box();el.style.zoom=original;
+      const heading=document.querySelector('.mobile-chat-heading'), bounds=heading.getBoundingClientRect();
+      const back=heading.querySelector('button').getBoundingClientRect();
       return {ratio:at90.map((v,i)=>v/at100[i]),width:innerWidth,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
-        head:document.querySelector('.mobile-chat-heading').getBoundingClientRect().height};
+        head:bounds.height,backInset:back.top-bounds.top};
     });
-    assert.equal(metrics.overflow,0);assert(metrics.ratio.every(n=>Math.abs(n-.90)<.02),JSON.stringify(metrics));assert(metrics.head>=39 && metrics.head<=46);ratios.push(metrics);
+    assert.equal(metrics.overflow,0);
+    assert(metrics.ratio.every(n=>Math.abs(n-.90)<.02),JSON.stringify(metrics));
+    assert(metrics.head>=47 && metrics.head<=49 && metrics.backInset>=6,JSON.stringify(metrics));
+    ratios.push(metrics);
   }
   await page.setViewportSize({width:390,height:844});
   const keyboard=await page.evaluate(async()=>{
