@@ -50,10 +50,14 @@ async function main() {
     await page.getByRole('heading',{name:'시험 프로젝트',exact:true}).waitFor(); await click('터미널'); await click('터미널 추가');
     const textbox = page.locator('.xterm-helper-textarea');
     async function send(command) {
+      await page.locator('.terminal-shell[aria-busy="false"]').waitFor();
       await textbox.focus();
       await page.keyboard.type(command); await page.keyboard.press('Enter');
     }
     const output = (a, b) => win ? "Write-Output ('" + a + "' + '" + b + "')" : "printf '%s%s\\n' '" + a + "' '" + b + "'";
+    const checkSubdirectory = (a, b) => win
+      ? "if ((Split-Path -Leaf (Get-Location).Path) -eq 'sub') { " + output(a, b) + " }"
+      : 'if test "${PWD##*/}" = sub; then ' + output(a, b) + '; fi';
     const waitOutput = (fragment) => page.waitForFunction((expected) => {
       const rows = document.querySelector('.xterm-rows');
       return !!rows && rows.textContent.includes(expected);
@@ -63,7 +67,7 @@ async function main() {
     await send(win ? "if (-not [Console]::IsInputRedirected) { " + output('FIRST_', 'PTY') + " }" :
       'if test -t 0 && test -t 1; then ' + output('FIRST_', 'PTY') + '; fi');
     await waitOutput('FIRST_PTY');
-    await send('cd sub'); await send(output('MOVED_', 'OK')); await waitOutput('MOVED_OK');
+    await send('cd sub'); await send(checkSubdirectory('MOVED_', 'OK')); await waitOutput('MOVED_OK');
     await click('터미널 추가'); await page.waitForFunction(() => {
       const tabs = document.querySelectorAll('.terminal-tabs button');
       const rows = document.querySelector('.xterm-rows')?.textContent || '';
@@ -72,8 +76,7 @@ async function main() {
     await send(output('SECOND_', 'PTY')); await waitOutput('SECOND_PTY');
     assert.equal(await page.locator('.xterm-rows').textContent().then((s) => s.includes('FIRST_PTY')), false);
     await page.locator('.terminal-tabs button').first().click(); await waitOutput('FIRST_PTY');
-    await send(win ? "if ((Split-Path -Leaf (Get-Location).Path) -eq 'sub') { " + output('KEPT_', 'DIR') + " }" :
-      'if test "${PWD##*/}" = sub; then ' + output('KEPT_', 'DIR') + '; fi');
+    await send(checkSubdirectory('KEPT_', 'DIR'));
     await waitOutput('KEPT_DIR');
     await click('터미널 종료'); await waitOutput('SECOND_PTY');
     await send('exit 7'); await page.getByText('종료 코드 7', { exact: true }).waitFor();
