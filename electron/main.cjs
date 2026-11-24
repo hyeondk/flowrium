@@ -44,6 +44,7 @@ let migrationTransition=false;
 let importRestartRequired=false;
 let activeOperations=0;
 let foregroundOperations=0;
+let activeForegroundOperations=0;
 const apiHandlers = new Map();
 let window;
 let controller;
@@ -100,7 +101,8 @@ async function invokeRegistered(name,handler,args){
     if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity','hideDotsView','readDotsState'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
     if(controller?.trashRuntime?.isBusy()&&!/^(read|list)/.test(name)&&!['chooseProject','trashAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','interrupt','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('삭제 또는 복원을 마친 뒤 변경해 주세요.');
     activeOperations++;
-    try{return await security.guard(name,()=>handler(...args));}finally{activeOperations--;}
+    if(foreground)activeForegroundOperations++;
+    try{return await security.guard(name,()=>handler(...args));}finally{activeOperations--;if(foreground)activeForegroundOperations--;}
   }finally{if(foreground)foregroundOperations--;}
 }
 async function waitForTransferWrites(){
@@ -436,7 +438,7 @@ async function launch() {
     accountOwner:()=>security.data.accountOwner||'unverified:'+security.accountRevision,
     stateEpoch:()=>security.epoch,
     canRun:()=>!quitting&&!migrationTransition&&!importRestartRequired&&!security.locked&&!security.loggingOut&&!updater.isInstalling(),
-    isBusy:()=>activeOperations>1||migrationTransition||migration?.busy||updater.isInstalling()||controller.runs.size>0||controller.editingSessions.size>0||controller.analysisRuns?.size>0||workflowRuntime.isBusy()||teamRuntime.isBusy(),
+    isBusy:()=>activeForegroundOperations>1||migrationTransition||migration?.busy||updater.isInstalling()||controller.runs.size>0||controller.editingSessions.size>0||controller.analysisRuns?.size>0||workflowRuntime.isBusy()||teamRuntime.isBusy(),
   });
   require('./trash.cjs').registerTrash(register,store,controller,{
     accountRevision:()=>security.accountRevision,
@@ -559,7 +561,14 @@ async function launch() {
     return saving;
   });
   register("connectionStatus", () => controller.connectionStatus());
-  register('readDesktopChatInstallation', () => require('./chat-connection.cjs').desktopAppInstalled());
+  register('readDesktopChatInstallation', async () => {
+    const {desktopAppInstalled, refreshSharedDesktopAccount} = require('./chat-connection.cjs');
+    const installed = await desktopAppInstalled();
+    if (installed) void refreshSharedDesktopAccount(controller, {
+      canReconnect: () => canUseAccount() && foregroundOperations === 0,
+    }).catch(() => {});
+    return installed;
+  });
   register('readChatConnection', async () => {
     const {desktopAppInstalled,verifyChatConnection} = require('./chat-connection.cjs');
     const status = await verifyChatConnection(controller);

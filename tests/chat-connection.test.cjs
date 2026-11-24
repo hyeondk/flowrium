@@ -1,8 +1,63 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const {verifyChatConnection} = require('../electron/chat-connection.cjs');
+const {desktopAppInstalled, verifyChatConnection, refreshSharedDesktopAccount} = require('../electron/chat-connection.cjs');
 const {chatFailure} = require('../electron/errors.cjs');
 const {serviceTierForPlan} = require('../electron/model-speed.cjs');
+
+test('윈도우에서 ChatGPT 또는 Codex 설치 변화와 시작 메뉴 등록을 다시 확인한다', async () => {
+  let data = {packages:[], startIds:[]};
+  const options = {systemRoot:'C:\\Windows', execute:async (exe,args) => {
+    assert.equal(exe,'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    assert.match(args.at(-1),/Get-AppxPackage/);
+    assert.match(args.at(-1),/Get-StartApps/);
+    return {stdout:JSON.stringify(data)};
+  }};
+  assert.equal(await desktopAppInstalled('win32',options),false);
+  data = {packages:['OpenAI.CodexPrimaryRuntime'],startIds:[]};
+  assert.equal(await desktopAppInstalled('win32',options),false);
+  data = {packages:['OpenAI.ChatGPT-Desktop'],startIds:[]};
+  assert.equal(await desktopAppInstalled('win32',options),true);
+  data = {packages:null,startIds:['OpenAI.Codex_2p2nqsd0c76g0!App']};
+  assert.equal(await desktopAppInstalled('win32',options),true);
+  data = {packages:null,startIds:['OpenAI.Codex_otherpublisher!App']};
+  assert.equal(await desktopAppInstalled('win32',options),null);
+});
+
+test('공유 로그인을 발견하면 작업과 브라우저 인증을 건드리지 않고 미연결 상태만 다시 읽는다', async () => {
+  let shared = null, started = 0, connected = 0, closed = 0, busyDuringRead = false;
+  const makeClient = () => ({
+    start:async () => {started++;},
+    request:async () => {
+      if (busyDuringRead) current.runs.set('in-flight',{});
+      return {account:shared};
+    },
+    close:() => {closed++;},
+  });
+  function createController() {
+    return {
+      options:{queueOwner:()=>1}, store:{state:{settings:{}}}, status:{authenticated:false},
+      runs:new Map(), editingSessions:new Set(), client:{pending:new Map(), close:() => {closed++;}},
+      codexTransfer:{ownsClient:true, isBusy:()=>false, client:{close:() => {closed++;}}},
+      connect:async quiet=>{assert.equal(quiet,true);connected++;},
+    };
+  }
+  const refresh = controller => refreshSharedDesktopAccount(controller,{canReconnect:()=>true,makeClient});
+  let current = createController();
+  await refresh(current);
+  assert.deepEqual({started,connected,closed},{started:1,connected:0,closed:1});
+  current = createController();
+  current.loginPending = true;
+  shared = {type:'chatgpt'};
+  await refresh(current);
+  assert.equal(started,1);
+  current.loginPending = false;
+  await refresh(current);
+  assert.deepEqual({started,connected,closed},{started:2,connected:1,closed:4});
+  current = createController();
+  busyDuringRead = true;
+  await refresh(current);
+  assert.deepEqual({started,connected,closed},{started:3,connected:1,closed:5});
+});
 
 test('데스크톱 앱 설치 여부 없이 내장 Codex 계정을 확인한다', async () => {
   let owner = 'current', account = {type:'chatgpt',planType:'pro'}, allowed = true;

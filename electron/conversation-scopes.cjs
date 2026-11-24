@@ -69,7 +69,8 @@ async function scopeThreadParams(controller,session){
  const directory=path.join(controller.store.project(session.projectId).path,'workspace');
  await require('./project-store.cjs').projectDirectory(directory);
  const cwd=await fs.realpath(directory),profile='flowrium_hub_'+session.scope;
- return{cwd,approvalPolicy:'never',approvalsReviewer:'user',permissions:profile,baseInstructions:instructions[session.scope],developerInstructions:instructions[session.scope],config:{permissions:{[profile]:{filesystem:{':root':'deny',':minimal':'read',':tmpdir':'deny',':slash_tmp':'deny',[cwd]:'read'},network:{enabled:false}}},project_doc_max_bytes:0,web_search:'disabled'}};
+ // ChatGPT's workspace routing rebuilds the session from config without its RPC permission override.
+ return{cwd,approvalPolicy:'never',approvalsReviewer:'user',permissions:profile,baseInstructions:instructions[session.scope],developerInstructions:instructions[session.scope],config:{default_permissions:profile,permissions:{[profile]:{filesystem:{':root':'deny',':minimal':'read',':tmpdir':'deny',':slash_tmp':'deny',[cwd]:'read'},network:{enabled:false}}},project_doc_max_bytes:0,web_search:'disabled'}};
 }
 async function scopeClient(controller,session){
  assertScope(controller.store,session);
@@ -97,7 +98,7 @@ async function scopeClient(controller,session){
    try{if(!run||run.client!==client||run.cancelled||run.finalized||(run.turnId&&run.turnId!==params.turnId))throw Error('종료한 대화의 도구 요청입니다.');const result=await callScopeTool(controller,run,params);client.answerTool(requestId,{contentItems:[{type:'inputText',text:JSON.stringify(result)}],success:true});}
    catch(e){client.answerTool(requestId,{contentItems:[{type:'inputText',text:require('./errors.cjs').publicMessage(e)}],success:false});}
   });
-  client.on('disconnect',error=>{for(const run of controller.runs.values())if(run.client===client)void controller.finish(run,'failed',error);for(const id of entry.threads)controller.loadedThreads.delete(id);controller.scopeClients.delete(key);});
+  client.on('disconnect',error=>{for(const run of controller.runs.values())if(run.client===client&&!run.claimingWriter)void controller.finish(run,'failed',error);for(const id of entry.threads)controller.loadedThreads.delete(id);controller.scopeClients.delete(key);});
   await client.start(controller.store.state.settings.codexPath);
   if(owner!==controller.store.conversations.owner()||controller.options.canRun?.()===false){client.close();throw Error('계정이나 잠금 상태가 바뀌었습니다.');}
   client.flowriumAccountPlan=account.account.planType;
@@ -106,30 +107,58 @@ async function scopeClient(controller,session){
  entry={ready,client:null,threads:new Set()};controller.scopeClients.set(key,entry);
  try{return await ready;}catch(e){controller.scopeClients.delete(key);entry.client?.close();throw e;}
 }
-async function startScopedRun(controller,run,input,message,project){
- const session=controller.store.session(run.sessionId);assertScope(controller.store,session);
+async function prepareScopedRun(controller,run,input,session){
+ assertScope(controller.store,session);
  const client=await scopeClient(controller,session);run.client=client;run.scope=session.scope;run.approvalsAllowed=false;
+ const check=()=>{
+  assertScope(controller.store,session);
+  if(controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
+  if(run.cancelled||run.finalized)throw Error('종료한 대화의 작업입니다.');
+ };
+ const params=await scopeThreadParams(controller,session);
+ check();
+ const threadId=run.threadId,model=input.model;
+ const entry=controller.scopeClients.get(controller.store.conversations.owner()+':'+session.scope);
+ if(threadId && !entry?.threads.has(threadId)){
+  const {resumeClosingThread,linkedError}=require('./codex-transfer-client.cjs');
+  const resumed=await resumeClosingThread(client,{threadId,excludeTurns:true,...params,...(model&&{model})},check)
+   .catch(error=>{throw linkedError(error);});
+  if(resumed.thread?.id!==threadId)throw Error('원래 대화 식별자를 확인하지 못했습니다. 새 요청을 보내지 않았습니다.');
+  run.releaseScopedWriter=()=>client.ready?client.request('thread/unsubscribe',{threadId},2500).catch(()=>{}):undefined;
+  check();
+  if(resumed.activePermissionProfile?.id!==params.permissions)throw Error('대화의 파일 접근 제한을 확인하지 못했습니다.');
+ }
+ return {client,params};
+}
+async function startScopedRun(controller,run,input,message,project){
+ const session=controller.store.session(run.sessionId);
+ const {client,params}=run.prepared||await prepareScopedRun(controller,run,input,session);
  if(run.cancelled||run.finalized)return controller.finish(run,'interrupted');
  if(run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('계정이 바뀌었습니다. 대화를 다시 선택해 주세요.');
- const params=await scopeThreadParams(controller,session),prefs=require('./chat-preferences.cjs').resolved(controller.store.state.settings.chatDefaults,session.preferences);
- const model=input.model;
- let result;
- const previous=!run.threadId?session.messages.filter(m=>m.id!==run.userMessageId&&m.role!=='system').slice(-20).map(m=>m.role+': '+m.text).join('\n').slice(-40000):'';
- if(run.threadId){
-  if(!controller.loadedThreads.has(run.threadId))result=await require('./codex-transfer-client.cjs').resumeClosingThread(client,
-   {threadId:run.threadId,excludeTurns:true,...params,...(model&&{model})},()=>{
-    assertScope(controller.store,session);
-    if(controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
-    if(run.cancelled||run.finalized)throw Error('종료한 대화의 작업입니다.');
-   });
+ const prefs=require('./chat-preferences.cjs').resolved(controller.store.state.settings.chatDefaults,session.preferences);
+ let model=input.model;
+ // An inherited preference may belong to a different account or an earlier model catalog.
+ if(model && run.useAvailableDefaultModel){
+  const catalog=await client.request('model/list',{limit:100,includeHidden:true},5000).catch(()=>undefined);
+  if(run.cancelled||run.finalized)return controller.finish(run,'interrupted');
+  if(run.ownerRevision!==(controller.options.queueOwner?.()??'local')||controller.options.canRun?.()===false)
+   throw Error('계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.');
+  const entries=Array.isArray(catalog?.data)?catalog.data:[];
+  const fallback=entries.find(row=>row?.isDefault);
+  const preferredDefault=fallback?.model||fallback?.id;
+  if(preferredDefault&&!entries.some(row=>row?.model===model||row?.id===model)){
+   model=preferredDefault;
+   controller.emitEvent({type:'status',sessionId:session.id,status:'running',text:'저장된 기본 모델을 현재 계정에서 사용할 수 없어 현재 계정의 기본 모델로 보냅니다.'});
+  }
  }
- else{
+ const previous=!run.threadId?session.messages.filter(m=>m.id!==run.userMessageId&&m.role!=='system').slice(-20).map(m=>m.role+': '+m.text).join('\n').slice(-40000):'';
+ if(!run.threadId){
   const tools=session.scope==='integrated'?[...toolDefinitions,currentRequest.reader]:[currentRequest.reader];
-  result=await client.request('thread/start',{...params,...(model&&{model}),dynamicTools:tools.map(t=>({type:'function',...t}))});
+  const result=await client.request('thread/start',{...params,...(model&&{model}),dynamicTools:tools.map(t=>({type:'function',...t}))});
   run.threadId=result.thread?.id;if(!run.threadId)throw Error('ChatGPT 대화를 생성하지 못했습니다.');session.threadId=run.threadId;
+  if(result.activePermissionProfile?.id!==params.permissions)throw Error('대화의 파일 접근 제한을 확인하지 못했습니다.');
   session.requestReaderThreadId=run.threadId;
  }
- if(result&&result.activePermissionProfile?.id!==params.permissions)throw Error('대화의 파일 접근 제한을 확인하지 못했습니다.');
  controller.codexTransfer?.bindNative?.(session,run.threadId,params.cwd);
  controller.loadedThreads.add(run.threadId);controller.scopeClients.get(controller.store.conversations.owner()+':'+session.scope)?.threads.add(run.threadId);
  await controller.store.save();
@@ -179,4 +208,4 @@ function registerConversationScopes(register,store,controller,options={}){
  register('listHubConversations',async()=>{await store.syncConversationOwner();return structuredClone({projects:store.conversations.projects(),sessions:store.conversations.sessions()});});
  return{sync:()=>store.syncConversationOwner()};
 }
-module.exports={registerConversationScopes,startScopedRun,scopeClient,scopeThreadParams,callScopeTool,snapshot,toolDefinitions};
+module.exports={registerConversationScopes,startScopedRun,prepareScopedRun,scopeClient,scopeThreadParams,callScopeTool,snapshot,toolDefinitions};

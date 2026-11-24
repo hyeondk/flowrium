@@ -14,7 +14,8 @@ const loginUrl = 'https://auth.openai.com/authorize?test=true';
 async function recordWeb(app) {
   await app.evaluate(({app,shell,clipboard}) => {
     const require = process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json');
-    require('./electron/chat-connection.cjs').desktopAppInstalled = async () => false;
+    globalThis.flowriumDesktopAppInstalled = false;
+    require('./electron/chat-connection.cjs').desktopAppInstalled = async () => globalThis.flowriumDesktopAppInstalled;
     globalThis.flowriumChatWebFixture = {opened:[],copied:[]};
     shell.openExternal = async url => {globalThis.flowriumChatWebFixture.opened.push(url);};
     clipboard.writeText = text => {globalThis.flowriumChatWebFixture.copied.push(text);};
@@ -129,6 +130,10 @@ async function main() {
     await options.getByRole('button',{name:'초안 복사하고 웹 열기',exact:true}).click();
     assert.deepEqual(await recorded(),{opened:[loginUrl,'https://learn.chatgpt.com/docs/app',address],copied:[draft]});
     assert.equal(await composer(authenticated).inputValue(),draft);
+    await app.evaluate(() => { globalThis.flowriumDesktopAppInstalled = true; });
+    await options.waitFor({state:'hidden',timeout:18000});
+    assert.equal(await composer(authenticated).inputValue(),draft);
+    console.log('앱을 다시 열거나 초안을 버리지 않고 뒤늦게 설치된 데스크톱 앱을 자동 감지');
     const syncedTitle='다른 창에서 바꾼 시험 제목';
     await app.evaluate(({BrowserWindow},{id,title})=>BrowserWindow.getAllWindows()[0].webContents.send('flowrium:event',{type:'sessionTitle',sessionId:id,title}),{id:authenticatedSession.id,title:syncedTitle});
     await authenticated.locator('.session-heading').getByRole('heading',{name:syncedTitle,exact:true}).waitFor();

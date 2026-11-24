@@ -60,13 +60,61 @@ class CodexTransfer {
   if(input.action==='refresh')return this.refresh(input.sessionId,{externalFinished:input.externalFinished===true,background:input.background===true});
   throw Error('지원하는 대화 연결 작업을 선택해 주세요.');
  }
- async projects(input){let values=input.projects;
-  if(values===undefined){const found=new Map(this.store.state.projects.map(p=>[p.path,{name:p.name,path:p.path,threadIds:[]}])) ;const temporary=await fs.realpath(os.tmpdir());
-   for(const archived of [false,true])for(const thread of await pages(this.client,'thread/list',{archived,limit:100,sortKey:'updated_at',sortDirection:'desc',sourceKinds:roots,modelProviders:['openai'],useStateDbOnly:true})){
-    if(thread.ephemeral||D.isSubagent(thread)||/^flowrium(?:_|$)/i.test(thread.originator||''))continue;
-    try{const folder=await D.canonical(thread.cwd),relative=path.relative(temporary,folder);if(!this.options.allowTemporaryProjects&&(relative===''||!relative.startsWith('..')&&!path.isAbsolute(relative)))continue;if(folder.split(path.sep).some(part=>['.flowrium','.flowrium-tmp'].includes(part)))continue;let project=[...found.values()].find(candidate=>sameFilesystemPath(candidate.path,folder));if(!project){project={name:path.basename(folder),path:folder,threadIds:[]};found.set(folder,project);}project.threadIds.push(D.id(thread.id));}catch{continue;}
-   }values=[...found.values()];}
- if(!Array.isArray(values)||!values.length||values.length>200)throw Error('연결할 프로젝트를 1개에서 200개까지 선택해 주세요.');const out=[],seen=new Set();for(const value of values){if(!value||typeof value.name!=='string'||!value.name.trim()||value.name.length>300)throw Error('프로젝트 이름을 확인해 주세요.');const folder=await D.canonical(value.path),key=typeof value.key==='string'&&value.key.length<=300?value.key:folder;if(seen.has(folder))throw Error('같은 프로젝트 폴더가 중복되었습니다.');seen.add(folder);let threadIds;if(value.threadIds!==undefined){if(!Array.isArray(value.threadIds)||value.threadIds.length>10000)throw Error('프로젝트의 대화 목록을 확인해 주세요.');threadIds=[...new Set(value.threadIds.map(D.id))];}out.push({key,name:value.name,path:folder,threadIds});}return out;}
+ async discoverProjects(){
+  const found=[], temporary=await fs.realpath(os.tmpdir());
+  const within=(root,folder)=>{
+   const relative=path.relative(root,folder);
+   return relative!=='..'&&!relative.startsWith('..'+path.sep)&&!path.isAbsolute(relative);
+  };
+  const find=async(source,name)=>{
+   const folder=await D.canonical(source).catch(()=>undefined);
+   if(!folder||within(this.base,folder)||!this.options.allowTemporaryProjects&&within(temporary,folder)||
+     folder.split(path.sep).some(part=>['.flowrium','.flowrium-tmp'].includes(part.toLowerCase())))return;
+   const existing=found.find(project=>sameFilesystemPath(project.path,folder));
+   if(existing)return existing;
+   const local=this.store.state.projects.find(project=>sameFilesystemPath(project.path,folder));
+   const safeName=typeof name==='string'&&name.trim()&&name.length<=300?name:path.basename(folder)||folder;
+   const project={name:local?.name||safeName,path:folder,threadIds:[]};
+   found.push(project);
+   return project;
+  };
+  let registered=[];
+  try{registered=await pages(this.client,'project/list',{limit:100,sortKey:'position',sortDirection:'asc'});}
+  catch(error){if(error.rpcCode!==-32601&&!/experimentalApi|experimental api|not supported/i.test(error.rpcMessage||''))throw error;}
+  for(const project of registered){
+   if(!Array.isArray(project?.roots))continue;
+   for(const root of project.roots)await find(root?.path,project.roots.length===1?project.name:undefined);
+  }
+  for(const archived of [false,true]){
+   const threads=await pages(this.client,'thread/list',{archived,limit:100,sortKey:'updated_at',sortDirection:'desc',sourceKinds:roots,modelProviders:['openai'],useStateDbOnly:true});
+   for(const thread of threads){
+    if(!thread||thread.ephemeral||D.isSubagent(thread)||/^flowrium(?:_|$)/i.test(thread.originator||''))continue;
+    let threadId;
+    try{threadId=D.id(thread.id);}catch{continue;}
+    const project=await find(thread.cwd);
+    if(project)project.threadIds.push(threadId);
+   }
+  }
+  return found;
+ }
+ async projects(input){
+  const values=input.projects===undefined?await this.discoverProjects():input.projects;
+  if(!Array.isArray(values)||(!values.length&&input.projects!==undefined)||values.length>200)throw Error('연결할 프로젝트를 1개에서 200개까지 선택해 주세요.');
+  const out=[],seen=new Set();
+  for(const value of values){
+   if(!value||typeof value.name!=='string'||!value.name.trim()||value.name.length>300)throw Error('프로젝트 이름을 확인해 주세요.');
+   const folder=await D.canonical(value.path),key=typeof value.key==='string'&&value.key.length<=300?value.key:folder;
+   if(seen.has(key)||out.some(project=>sameFilesystemPath(project.path,folder)))throw Error('같은 프로젝트 폴더가 중복되었습니다.');
+   seen.add(key);
+   let threadIds;
+   if(value.threadIds!==undefined){
+    if(!Array.isArray(value.threadIds)||value.threadIds.length>10000)throw Error('프로젝트의 대화 목록을 확인해 주세요.');
+    threadIds=[...new Set(value.threadIds.map(D.id))];
+   }
+   out.push({key,name:value.name,path:folder,threadIds});
+  }
+  return out;
+ }
  async preview(input){const context=await this.ready();this.busy=true;try{
   const projects=await this.projects(input),forced=new Set((input.activeThreadIds||[]).map(D.id)),entries=[],snapshots=new Map();
   for(const project of projects){this.guard(context.owner,context.revision,context.epoch);let rows;
@@ -80,9 +128,17 @@ class CodexTransfer {
  async historyThread(threadId,data,context){this.guard(context.owner,context.revision,context.epoch);const account=await this.client.request('account/read',{refreshToken:false});if(await this.controller.accountObserved?.(account.account))throw Error('연결 계정이 바뀌었습니다. 다시 대화를 선택해 주세요.');this.guard(context.owner,context.revision,context.epoch);const response=await this.client.request('thread/read',{threadId:D.id(threadId),includeTurns:false}),thread=response.thread;if(!thread||![threadId,data.thread.id].includes(thread.id)||!samePath(thread.cwd,data.thread.cwd)||thread.ephemeral||D.isSubagent(thread))throw Error('선택한 대화의 기반 기록인지 확인하지 못했습니다.');this.guard(context.owner,context.revision,context.epoch);return thread;}
  async archive(project,data){const root=path.join(project.path,'.flowrium');await projectDirectory(root);const base=path.join(root,'codex-source');await projectDirectory(base);const dir=path.join(base,D.hash(data.thread.id));await projectDirectory(dir);const file=path.join(dir,data.sha256+'.json');try{await fs.writeFile(file,data.data,{flag:'wx',mode:0o600});}catch(error){if(error.code!=='EEXIST')throw error;if(D.hash(await this.readArchive(file))!==data.sha256)throw Error('보관한 대화 원문이 변경됐습니다.');}return path.relative(project.path,file).split(path.sep).join('/');}
  async readArchive(file){const real=await fs.realpath(file);if(!sameFilesystemPath(real,path.resolve(file)))throw Error('대화 원문 경로가 다른 위치를 가리킵니다.');const stat=await fs.lstat(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>512*1024*1024)throw Error('대화 원문의 형식과 크기를 확인해 주세요.');const handle=await fs.open(file,require('node:fs').constants.O_RDONLY|(require('node:fs').constants.O_NOFOLLOW||0));try{const opened=await handle.stat();if(opened.dev!==stat.dev||opened.ino!==stat.ino||opened.size!==stat.size)throw Error('대화 원문이 읽는 중 바뀌었습니다.');return await handle.readFile();}finally{await handle.close();}}
- async apply(input){const context=await this.ready(),plan=this.getPlan(input.planId);const mode=input.mode||'linked';if(input.retryAttachments!==undefined&&typeof input.retryAttachments!=='boolean')throw Error('첨부 다시 확인 형식을 확인해 주세요.');if(!['linked','copy'].includes(mode))throw Error('대화 연결 방식을 확인해 주세요.');if(input.threadIds!==undefined&&!Array.isArray(input.threadIds))throw Error('연결할 대화 목록을 확인해 주세요.');const ids=input.threadIds===undefined?plan.plan.entries.map(e=>e.threadId):[...new Set(input.threadIds.map(D.id))];if(!Array.isArray(ids)||!ids.length||ids.some(id=>!plan.snapshots.has(id)))throw Error('읽을 수 있는 대화를 선택해 주세요.');this.busy=true;const receipt={id:randomUUID(),at:now(),ownerHash:context.owner,mode,imported:0,updated:0,skipped:0,failed:0,entries:[],warnings:[],attachments:{copied:0,recovered:0,missing:0}};const receiptRoot=path.join(this.directory,receipt.id);try{
+ async apply(input){const context=await this.ready(),plan=this.getPlan(input.planId);const mode=input.mode||'linked';if(input.retryAttachments!==undefined&&typeof input.retryAttachments!=='boolean')throw Error('첨부 다시 확인 형식을 확인해 주세요.');if(!['linked','copy'].includes(mode))throw Error('대화 연결 방식을 확인해 주세요.');
+  if(input.threadIds!==undefined&&!Array.isArray(input.threadIds))throw Error('연결할 대화 목록을 확인해 주세요.');
+  const ids=input.threadIds===undefined?(input.projectKeys===undefined?plan.plan.entries.map(e=>e.threadId):[]):[...new Set(input.threadIds.map(D.id))];
+  if(ids.some(id=>!plan.snapshots.has(id)))throw Error('읽을 수 있는 대화를 선택해 주세요.');
+  const available=new Set(plan.projects.map(project=>project.key));
+  if(input.projectKeys!==undefined&&(!Array.isArray(input.projectKeys)||input.projectKeys.some(key=>!available.has(key))))throw Error('연결할 프로젝트 목록을 확인해 주세요.');
+  const selected=new Set([...(input.projectKeys||[]),...ids.map(id=>plan.snapshots.get(id).project.key)]);
+  if(!selected.size)throw Error('프로젝트 또는 읽을 수 있는 대화를 선택해 주세요.');
+  this.busy=true;const receipt={id:randomUUID(),at:now(),ownerHash:context.owner,mode,projects:0,imported:0,updated:0,skipped:0,failed:0,entries:[],warnings:[],attachments:{copied:0,recovered:0,missing:0}};const receiptRoot=path.join(this.directory,receipt.id);try{
   await projectDirectory(this.directory);await projectDirectory(receiptRoot);await createJSON(path.join(receiptRoot,'receipt.json'),{...receipt,status:'applying'});const deviceHash=await this.device();
-  const projects=new Map();for(const p of plan.projects){this.guard(context.owner,context.revision,context.epoch);const project=await this.store.addProject(p.path);const live=this.store.project(project.id);if(live.name!==p.name){live.name=p.name;await this.store.save();}projects.set(p.key,live);}
+  const projects=new Map();for(const p of plan.projects){if(!selected.has(p.key))continue;this.guard(context.owner,context.revision,context.epoch);const project=await this.store.addProject(p.path);const live=this.store.project(project.id);if(live.name!==p.name){live.name=p.name;await this.store.save();}projects.set(p.key,live);receipt.projects++;}
   for(const threadId of ids){let result;try{this.guard(context.owner,context.revision,context.epoch);const snap=plan.snapshots.get(threadId),project=projects.get(snap.project.key);let existing=this.store.state.sessions.find(s=>s.projectId===project.id&&(s.codexLink?.sourceThreadId===threadId&&s.codexLink.mode===mode||mode==='linked'&&(s.threadId===threadId||!s.codexLink&&s.sourceThreadId===threadId)));
     if(existing&&(this.controller.runs.has(existing.id)||this.controller.editingSessions.has(existing.id)||existing.compacting))throw Error('Flowrium에서 실행 중인 대화입니다. 작업을 마친 뒤 다시 연결해 주세요.');
     const data=await this.snapshot(threadId,project.path,snap.data.active,context);this.guard(context.owner,context.revision,context.epoch);

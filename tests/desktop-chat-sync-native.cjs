@@ -68,13 +68,20 @@ async function main() {
     const address='http://127.0.0.1:'+server.address().port+'/v1';
     await fs.writeFile(path.join(profile,'config.toml'),['cli_auth_credentials_store = "file"','model = "gpt-5.5"','[model_providers.flowrium_test]','name = "Flowrium local test"','base_url = '+JSON.stringify(address),'wire_api = "responses"','env_key = "FLOWRIUM_OFFLINE_KEY"','supports_websockets = false','[analytics]','enabled = false',''].join('\n'));
     const descriptor=await resolveCodex();assert(descriptor);
-    function makeClient(options = {}) {
+    function makeClient({sourceApp=false,...options} = {}) {
       const client=new CodexClient({...options,descriptor,spawn:(cmd,args,opts)=>spawn(cmd,[...args,'-c','model_provider="flowrium_test"'],{...opts,env:{...opts.env,CODEX_HOME:profile,FLOWRIUM_OFFLINE_KEY:'synthetic-local-only',OPENAI_BASE_URL:address}})});
       const request=client.request.bind(client);
-      client.request=(method,...args)=>method==='account/read'?Promise.resolve({account:{type:'chatgpt',planType:'test'}}):request(method,...args);
+      client.request=(method,...args)=>{
+        if(method==='account/read')return Promise.resolve({account:{type:'chatgpt',planType:'test'}});
+        if(method==='initialize'&&sourceApp){
+          const [params,...rest]=args;
+          return request(method,{...params,clientInfo:{...params.clientInfo,name:'codex_test_desktop',title:'Codex'}},...rest);
+        }
+        return request(method,...args);
+      };
       return client;
     }
-    primary=makeClient();reader=makeClient();desktop=makeClient();
+    primary=makeClient();reader=makeClient();desktop=makeClient({sourceApp:true});
     let store=new Store(path.join(root,'flowrium'));await store.load();
     const project=await addTrustedFixtureProject(store, cwd),session=await store.createSession(project.id);
     await store.saveSettings({model:'gpt-5.5'});
@@ -610,6 +617,30 @@ async function main() {
     assert.ok(!(await listSecond(true)).some(row=>row.id===outgoingId));
     assert.equal((await D.readThread(desktop,id,cwd)).id,id);
     console.log('새 대화의 프로젝트 목록 반영 / Codex 삭제 후 자동 목록 제거 / Flowrium 보관과 영구 삭제 반영 / 다른 대화 보존 통과');
+
+    runtime.options.discoverProjectThreads=require('../electron/chat-discovery.cjs').discoverProjectThreads;
+    await monitor.scan(runtime);
+    const inbound=(await desktop.request('thread/start',{cwd:second,projectId:secondRemote.id,model:'gpt-5.5',approvalPolicy:'never',sandbox:'read-only'})).thread.id;
+    const inboundText='Codex에서 시작한 새 프로젝트 대화';
+    const inboundReply='동기화 응답 '+(requests+1);
+    const inboundDone=onceEvent(desktop,'notification',event=>event.method==='turn/completed'&&event.params.threadId===inbound);
+    const discovered=onceEvent(controller,'event',event=>event.type==='session'&&event.session?.threadId===inbound&&event.session.messages.some(message=>message.text===inboundReply));
+    monitor.start(runtime);
+    try {
+      await desktop.request('turn/start',{threadId:inbound,input:[{type:'text',text:inboundText}]});
+      assert.equal((await inboundDone).params.turn.status,'completed');
+      const received=(await discovered).session;
+      assert.equal(received.projectId,secondProject.id);
+      assert.deepEqual(received.messages.filter(message=>message.role!=='system').map(message=>message.text),[inboundText,inboundReply]);
+      await desktop.request('thread/unsubscribe',{threadId:inbound});
+      const continuation='Flowrium에서 발견한 프로젝트 대화에 이어서 보낸 요청';
+      const continuationDone=onceEvent(controller,'event',event=>event.type==='done'&&event.sessionId===received.id);
+      await controller.send({sessionId:received.id,mode:'plan',text:continuation});
+      assert.equal((await continuationDone).status,'completed');
+      const source=(await D.snapshot(desktop,inbound,second)).messages;
+      assert.deepEqual(source.filter(message=>message.role!=='system').map(message=>message.text),[inboundText,inboundReply,continuation,'동기화 응답 '+requests]);
+    } finally { await monitor.stop(runtime); }
+    console.log('Codex에서 새 프로젝트 대화 생성 / 요청과 응답 자동 연결 / Flowrium에서 같은 원본에 이어 보내기 통과');
 
     console.log('18MiB가 넘는 원본 / 기존 방식 응답 한도 초과 재현 / 원본 전체 보존과 같은 대화 답변 통과');
     console.log('서로 다른 앱 서버의 대화 제목 왕복 / 미열람 대화 제목 수신 / 프로젝트 이름 왕복과 순서 이동 / 관련 없는 카드 및 파일 경로 보존 / 재실행 복원 통과');

@@ -7,6 +7,7 @@ class Client extends EventEmitter{
  async start(){this.ready=true;}
  async request(method,params){this.calls.push({method,params});if(this.hook)await this.hook(method,params);
   if(method==='account/read')return{account:{type:'chatgpt'}};
+  if(method==='project/list')return{data:this.projects||[],nextCursor:null};
   if(method==='thread/list')return{data:[...this.threads.values()].filter(t=>!params.cwd||t.cwd===params.cwd),nextCursor:null};
   if(method==='thread/read'){const thread=this.threads.get(params.threadId);if(!thread)throw Error('대화 없음');return{thread:structuredClone(thread)};}
   if(method==='thread/turns/list'){let turns=structuredClone(this.turns.get(params.threadId)||[]);if(params.sortDirection==='desc')turns.reverse();return{data:turns.slice(0,params.limit||turns.length).map(turn=>params.itemsView==='notLoaded'?{...turn,itemsView:'notLoaded',items:[]}:turn),nextCursor:null};}
@@ -260,4 +261,21 @@ test('다른 앱의 진행 설명과 도구 상태를 공개 범위에서 표시
  assert(s.messages.some(message=>message.text.includes('원래 출력')));
  assert(!s.messages.some(message=>message.text.includes('비공개 모델 추론')));
  assert(!f.client.calls.some(c=>['thread/resume','turn/start'].includes(c.method)));
+});
+test('등록한 Codex 프로젝트 중 선택한 폴더만 대화 없이 불러올 수 있다',async t=>{
+ const f=await fixture(t),selected=path.join(f.root,'선택한 폴더'),excluded=path.join(f.root,'다른 폴더');
+ await fs.mkdir(selected);await fs.mkdir(excluded);
+ f.client.projects=[{name:'선택한 Codex 프로젝트',roots:[{path:selected}]},{name:'다른 Codex 프로젝트',roots:[{path:excluded}]}];
+ const plan=await f.runtime.preview({});
+ const project=plan.projects.find(row=>row.name==='선택한 Codex 프로젝트');
+ assert.equal(project.threads,0);
+ assert(plan.projects.some(row=>row.name==='다른 Codex 프로젝트'));
+ await assert.rejects(f.runtime.apply({planId:plan.id,projectKeys:['다른 미리보기']}),/프로젝트 목록/);
+ const result=await f.runtime.apply({planId:plan.id,projectKeys:[project.key],threadIds:[]});
+ assert.equal(result.projects,1);
+ assert.equal(result.imported,0);
+ assert.equal(f.store.state.sessions.length,0);
+ assert(f.store.state.projects.some(row=>row.path===selected));
+ assert(!f.store.state.projects.some(row=>row.path===excluded));
+ await assert.rejects(fs.access(path.join(excluded,'.flowrium')),{code:'ENOENT'});
 });

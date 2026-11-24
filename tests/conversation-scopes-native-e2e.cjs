@@ -1,14 +1,17 @@
 // 실제 번들 app-server로 일반 / 통합 대화, 제한 프로필, 첨부, 분기, 되감기를 검증한다.
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),http=require('node:http'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
 const {CodexClient,resolveCodex}=require('../electron/codex.cjs'),{Controller}=require('../electron/controller.cjs'),{Store}=require('../electron/store.cjs');
-const {addAttachments}=require('../electron/chat-attachments.cjs'),{registerConversationTools,threadTurns}=require('../electron/conversation-tools.cjs'),{registerConversationScopes}=require('../electron/conversation-scopes.cjs');
+const {addAttachments}=require('../electron/chat-attachments.cjs'),{registerConversationTools,threadTurns}=require('../electron/conversation-tools.cjs'),{registerConversationScopes,scopeThreadParams}=require('../electron/conversation-scopes.cjs');
 const {createHash}=require('node:crypto');
 const {createLargeRequest}=require('./large-request-fixture.cjs');
 const {readRequestSource}=require('../electron/chat-long-request.cjs');
-const {itemPages}=require('../electron/codex-transfer-data.cjs');
+const {itemPages,snapshot}=require('../electron/codex-transfer-data.cjs');
 const {CodexTransfer}=require('../electron/codex-transfer.cjs');
+const monitor=require('../electron/chat-sync-monitor.cjs');
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const readerName='flowrium_read_current_request';
+const externalRequest='Codex에서 같은 일반 대화에 추가한 요청';
+const modelProbe='모델 오류와 같은 일반 대화의 복구 확인';
 function longRequest(scope){
  const start=scope==='general'?'일반 대화의 머리 조건':'통합 대화의 머리 조건';
  return start+'가'.repeat(11999-start.length)+'🧭'+('한글과 그림 🚦로 확인하는 문장입니다. ').repeat(1100)+'끝 조건 '+scope;
@@ -59,17 +62,37 @@ function modelReadsRequest(body,itemId,probe){
  const answer=probe.probes?probe.markers.join(' / '):probe.answer;
  return {id:itemId,type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text:answer,annotations:[]}]};
 }
-function done(c,id){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{c.off('event',handler);reject(Error('대화 완료 대기 시간 초과'));},20000);function handler(e){if(e.type==='done'&&e.sessionId===id){clearTimeout(timer);c.off('event',handler);if(e.status==='completed')resolve(e);else reject(Error(e.text));}}c.on('event',handler);});}
+function done(c,id,expected='completed'){return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{c.off('event',handler);reject(Error('대화 완료 대기 시간 초과'));},20000);function handler(e){if(e.type==='done'&&e.sessionId===id){clearTimeout(timer);c.off('event',handler);if(e.status===expected)resolve(e);else reject(Error(e.text));}}c.on('event',handler);});}
+async function until(check, message){
+ const deadline=Date.now()+20000;
+ while(Date.now()<deadline){
+  const value=await check();
+  if(value)return value;
+  await new Promise(resolve=>setTimeout(resolve,100));
+ }
+ throw Error(message);
+}
 async function main(){
  const temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-native-hub-')),folder=path.join(temp,'project'),profile=path.join(temp,'codex');
- let server,controller,client,desktop,runtime,failure;const bodies=[];let delegated=0,projectId,patchAttempted=false,longProbe;
+ let server,controller,client,desktop,runtime,failure;const bodies=[];let delegated=0,projectId,patchAttempted=false,longProbe,holdPeerReply;
  try{
   await fs.mkdir(folder);await fs.mkdir(profile);await fs.writeFile(path.join(folder,'protected.txt'),'원본 보존');
   server=http.createServer(async(req,res)=>{try{
    if(req.method!=='POST'||!req.url.startsWith('/v1/responses')){res.writeHead(404).end();return;}
    const chunks=[];for await(const chunk of req)chunks.push(chunk);const body=JSON.parse(Buffer.concat(chunks).toString());bodies.push(body);
    const number=bodies.length,id='resp_hub_'+number,itemId='item_'+number,names=(body.tools||[]).flatMap(t=>t.tools?t.tools.map(v=>v.name):[t.name||t.type]);
-   for(const name of ['exec_command','write_stdin','shell','spawn_agent','web_search','flowrium_chat_send','flowrium_memory_save','read_file','list_dir','view_image'])assert(!names.includes(name),'제한 대화의 외부 실행 도구: '+name);
+   const userContent=body.input.findLast(item=>item.role==='user')?.content;
+   const desktopRequest=userContent?.some(item=>item.text===externalRequest);
+   if(body.model==='gpt-5.4'&&userContent?.some(item=>item.text?.includes(modelProbe))){
+    const events=[{type:'response.created',response:{id,status:'in_progress'}},{type:'response.failed',response:{id,status:'failed',error:{code:'model_not_found',message:'Unavailable'}}}];
+    res.writeHead(200,{'Content-Type':'text/event-stream'}).end(events.map(e=>'data: '+JSON.stringify(e)+'\n\n').join(''));
+    return;
+   }
+   if(!desktopRequest)for(const name of ['exec_command','write_stdin','shell','spawn_agent','web_search','flowrium_chat_send','flowrium_memory_save','read_file','list_dir','view_image'])assert(!names.includes(name),'제한 대화의 외부 실행 도구: '+name);
+   if(desktopRequest&&holdPeerReply){
+    holdPeerReply.started=true;
+    await holdPeerReply.release.promise;
+   }
    const namespace=(body.tools||[]).find(t=>t.type==='namespace'&&t.tools?.some(v=>v.name==='flowrium_hub_snapshot'));
    const integrated=names.includes('flowrium_hub_snapshot'),outputs=body.input.filter(v=>v.type==='function_call_output');let item;
    if(longProbe)item=modelReadsRequest(body,itemId,longProbe);
@@ -118,6 +141,54 @@ async function main(){
    assert.equal(stored.title,incoming);
   }
   console.log('일반·통합 대화에서 독립된 실제 서버와 제목이 양방향 반영됨');
+  const shared=await handlers.get('createHubConversation')({scope:'general'});
+  await send(shared.id,'채팅 테스트');
+  const sharedSession=store.session(shared.id),sharedThreadId=sharedSession.threadId;
+  const scopeParams=await scopeThreadParams(controller,sharedSession);
+  const list=await desktop.request('thread/list',{limit:100,useStateDbOnly:true,modelProviders:[]});
+  assert(list.data.some(row=>row.id===sharedThreadId),'새 일반 대화는 다른 Codex 서버의 기본 목록에서 보여야 합니다.');
+  const firstReply='범위 검증 응답 '+bodies.length;
+  const messages=value=>value.messages.filter(message=>message.role!=='system').map(message=>message.text);
+  assert.deepEqual(messages(await snapshot(desktop,sharedThreadId,scopeParams.cwd)),['채팅 테스트',firstReply]);
+  await require('../electron/codex-transfer-client.cjs').resumeClosingThread(desktop,{...scopeParams,threadId:sharedThreadId,model:'gpt-5.5',excludeTurns:true},()=>{});
+  await controller.connect();
+  monitor.start(runtime);
+  const peerReply={started:false,release:Promise.withResolvers()};
+  const queuedWhileActive='다른 앱 작업 중에 보낸 시험 지시';
+  const queuedWhileIdle='Flowrium에서 같은 일반 대화에 이어서 보낸 요청';
+  let finished;
+  try{
+   holdPeerReply=peerReply;
+   const externalReply='범위 검증 응답 '+(bodies.length+1);
+   await desktop.request('turn/start',{threadId:sharedThreadId,cwd:scopeParams.cwd,permissions:scopeParams.permissions,input:[{type:'text',text:externalRequest}]});
+   await until(()=>peerReply.started,'원본에서 실행한 일반 대화 요청이 서버에 도달하지 않았습니다.');
+   const active=await controller.send({sessionId:shared.id,text:queuedWhileActive,mode:'build'});
+   assert(active.queued&&active.waitingForWriter);
+   assert.equal(active.nativeQueueAvailable,undefined);
+   assert(!messages(sharedSession).includes(queuedWhileActive));
+   await controller.cancelQueuedMessage(shared.id,active.queueId);
+   peerReply.release.resolve();
+   holdPeerReply=undefined;
+   await until(()=>sharedSession.messages.some(message=>message.role==='assistant'&&message.text===externalReply),'원본의 일반 대화 답변이 자동으로 반영되지 않았습니다.');
+   await until(async()=>!(await snapshot(desktop,sharedThreadId,scopeParams.cwd)).active,'원본 앱 작업이 종료되지 않았습니다.');
+   assert.deepEqual(messages(sharedSession),['채팅 테스트',firstReply,externalRequest,externalReply]);
+   const idle=await controller.send({sessionId:shared.id,text:queuedWhileIdle,mode:'build'});
+   assert(idle.queued&&idle.waitingForWriter);
+   assert.equal(idle.nativeQueueAvailable,undefined);
+   assert(!messages(sharedSession).includes(queuedWhileIdle));
+   finished=done(controller,shared.id);
+   finished.catch(()=>{});
+  } finally {
+   peerReply.release.resolve();
+   holdPeerReply=undefined;
+   await monitor.stop(runtime);
+   await desktop.request('thread/unsubscribe',{threadId:sharedThreadId});
+  }
+  await finished;
+  assert.equal(sharedSession.threadId,sharedThreadId);
+  assert.equal(messages(sharedSession).filter(text=>text===queuedWhileIdle).length,1);
+  assert.deepEqual(messages(await snapshot(desktop,sharedThreadId,scopeParams.cwd)),messages(sharedSession));
+  console.log('새 일반 대화의 Codex 기본 목록 표시 / 두 서버에서 같은 원본으로 요청·답변 왕복 / 원본 작업 보호와 쓰기 권한 반환 뒤 한 번 실행');
   const guarded=await handlers.get('createHubConversation')({scope:'general'});await send(guarded.id,'차단시도 / 프로젝트 파일을 변경해 줘');assert(patchAttempted);assert.equal(await fs.readFile(path.join(folder,'protected.txt'),'utf8'),'원본 보존');
   const patchOutputs=[...new Set(bodies.flatMap(body=>body.input||[]).filter(item=>['custom_tool_call_output','function_call_output'].includes(item.type)&&item.call_id==='blocked-patch').map(item=>JSON.stringify({type:item.type,call_id:item.call_id,output:item.output})))];
   const patchDiagnostic=(patchOutputs.length?patchOutputs.join('\n'):'blocked-patch의 도구 반환 항목을 찾지 못했습니다.').slice(0,2000);
@@ -174,6 +245,24 @@ async function main(){
   assert.equal(reopened.threadId,saved.threadId);
   assert.deepEqual(reopened.messages.filter(m=>m.role==='assistant').map(m=>m.text),[expected]);
   assert.equal(digest((await readRequestSource(restored,reopened.id,user[0].id,'full')).text),large.sha256);
+  const unavailable=await handlers.get('createHubConversation')({scope:'general'});
+  await edit(unavailable.id,{action:'model',model:'gpt-5.4'});
+  await Promise.all([done(controller,unavailable.id,'failed'),controller.send({sessionId:unavailable.id,text:modelProbe,mode:'plan'})]);
+  const failed=store.session(unavailable.id),originalThread=failed.threadId;
+  assert(failed.messages.some(message=>message.role==='system'&&message.text.includes('이 계정에서 선택한 모델을 사용할 수 없습니다.')));
+  await edit(unavailable.id,{action:'model',model:'gpt-5.5'});
+  await send(unavailable.id,modelProbe);
+  assert.equal(store.session(unavailable.id).threadId,originalThread);
+  assert.equal(bodies.at(-1).model,'gpt-5.5');
+  assert.equal(store.session(unavailable.id).messages.filter(message=>message.role==='assistant').length,1);
+  const staleModel='flowrium-removed-test-model';
+  await store.saveSettings({model:staleModel});
+  const inherited=await handlers.get('createHubConversation')({scope:'general'}),before=bodies.length;
+  await send(inherited.id,'현재 계정 기본 모델로 답변');
+  assert.notEqual(bodies.at(-1).model,staleModel);
+  assert.equal(bodies.length,before+1,'첫 요청을 다른 모델로 중복 전송하지 않는다.');
+  assert.equal(store.state.settings.model,staleModel,'저장된 설정은 사용자 선택 전까지 유지한다.');
+  console.log('모델 미지원 오류 원인 표시 / 같은 원본의 정상 재전송 / 새 대화가 상속한 미지원 모델만 전송 전에 기본값으로 복구');
   console.log('번들 Codex 실제 RPC 통과 / 일반 대화의 프로젝트 격리 / 외부 실행 도구 미노출 / 위험 설정 강제 제한과 실제 파일 변경 시도 차단 / 첨부 텍스트와 이미지 모델 입력 / 실제 분기와 되감기 / 통합 현황 조회와 승인 대기 제안 / 모델 재지정·상속 실제 전송 / 재시작 영속 저장');
  }finally{
   await controller?.shutdown();await runtime?.shutdown();client?.close();desktop?.close();if(server){server.closeAllConnections();await new Promise(r=>server.close(r));}await fs.rm(temp,{recursive:true,force:true,maxRetries:6,retryDelay:200});

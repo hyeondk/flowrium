@@ -40,6 +40,7 @@ jobs:
           node-version: '24'
           package-manager-cache: false
       - run: npm ci
+      - run: node tests/chatgpt-workspace-config-native.cjs
       - run: node tests/conversation-scopes-native-e2e.cjs
   features:
     if: inputs.test_scope == 'features'
@@ -111,6 +112,8 @@ jobs:
       - run: npm run build
       - name: 첫 로그인과 인증 후 자동 연결 확인
         run: node tests/chat-connection-e2e.cjs
+      - name: ChatGPT 계정의 일반 대화 권한 유지 확인
+        run: node tests/chatgpt-workspace-config-native.cjs
       - name: 프로젝트 대화의 실제 읽기 및 쓰기 권한 검사
         run: node tests/project-edit-native-e2e.cjs
       - name: 가상 터미널 검증
@@ -503,7 +506,7 @@ jobs:
         id: update
         continue-on-error: true
         timeout-minutes: 12
-        run: node tests/update-native-e2e.cjs
+        run: node tests/update-native-e2e.cjs --prefer-published-previous
       - name: 설치와 업데이트 최종 결과 확인
         if: ${{ !cancelled() }}
         env:

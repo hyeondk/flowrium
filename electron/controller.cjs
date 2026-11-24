@@ -320,6 +320,8 @@ class Controller extends EventEmitter {
     const own = session.preferences || {};
     // Capture the selection before any asynchronous work, including time in the queue.
     const queuedSelection = internal.useCapturedSelection || (internal.fromQueue && input.model !== undefined);
+    const inheritsModel = !queuedSelection && !own.model &&
+      (!input.model || input.model === settings.model || input.model === settings.chatDefaults?.model);
     input = {
       ...input,
       model: queuedSelection ? input.model : own.model || settings.chatDefaults?.model || input.model || settings.model || null,
@@ -365,6 +367,7 @@ class Controller extends EventEmitter {
       attachments,
       sessionId: session.id,
       threadId: session.threadId,
+      useAvailableDefaultModel: Boolean(session.scope && !session.threadId && inheritsModel),
       creatingThread: !session.threadId,
       turnId: null,
       items: new Map(),
@@ -385,16 +388,18 @@ class Controller extends EventEmitter {
     this.runs.set(session.id, run);
     // Claim an existing conversation before committing a user message. A busy
     // owner must leave one cancellable queued request and no unsent transcript row.
-    if(run.threadId && !session.scope && (session.codexLink?.mode==='linked' || session.desktopThread)){
+    if(run.threadId && (session.scope || session.codexLink?.mode==='linked' || session.desktopThread)){
       run.claimingWriter=true;
       try{
-        run.prepared=await this.prepareProjectRun(run,input,project);
+        run.prepared=session.scope
+          ? await require('./conversation-scopes.cjs').prepareScopedRun(this,run,input,session)
+          : await this.prepareProjectRun(run,input,project);
         if(run.cancelled||run.finalized||this.shuttingDown||this.options.canRun?.()===false||
            ownerRevision!==(this.options.queueOwner?.()??'local')||
            internal.queueItem?.status==='cancelled')throw Error('대화 전송이 취소되었습니다.');
       }catch(error){
         run.finalized=true;
-        await run.releaseClient?.();
+        await (run.releaseClient||run.releaseScopedWriter)?.();
         if(this.runs.get(session.id)===run)this.runs.delete(session.id);
         if(error.code!=='THREAD_WRITER_BUSY'||internal.fromQueue||internal.outputSchema)throw error;
         return this.messageQueue.enqueue({...input,text:message,ownerRevision,waitingForWriter:true});
@@ -428,7 +433,7 @@ class Controller extends EventEmitter {
       if(session.title===sentTitle && !session.pendingThreadName)session.title = previous.title;
       session.updatedAt = previous.updatedAt;
       this.runs.delete(session.id);
-      await run.releaseClient?.();
+      await (run.releaseClient||run.releaseScopedWriter)?.();
       throw error;
     }
     this.emitEvent({
@@ -846,13 +851,12 @@ class Controller extends EventEmitter {
         }
       }
     }
-    if (method === "error")
-      this.emitEvent({
-        type: "error",
-        sessionId: run.sessionId,
-        text: chatFailure(params.error).message,
-      });
-    if (method === "turn/completed")
+    if (method === "error" && !params.willRetry) {
+      const failure = chatFailure(params.error);
+      if (failure.reason !== 'other' && (!run.turnId || !params.turnId || params.turnId === run.turnId))
+        run.reportedFailure = { ...failure, turnId: params.turnId };
+    }
+    if (method === "turn/completed" && (!run.turnId || !params.turn?.id || params.turn.id === run.turnId))
       await this.finish(
         run,
         params.turn?.status || "completed",
@@ -959,7 +963,12 @@ class Controller extends EventEmitter {
       if (request.params?.threadId === run.threadId)
         client.approvals.delete(id);
     const session = this.store.peekSession(run.sessionId);
-    const failureMessage = status === 'failed' || error ? chatFailure(error).message : undefined;
+    const failure = status === 'failed' || error ? chatFailure(error) : undefined;
+    const reported = run.reportedFailure;
+    const failureMessage = status === 'failed' && failure?.reason === 'other' && reported &&
+      (!reported.turnId || !run.turnId || reported.turnId === run.turnId)
+      ? reported.message
+      : failure?.message;
     const user = session.messages.find(message => message.id === run.userMessageId);
     if (user?.workStartedAt) user.workCompletedAt = new Date().toISOString();
     for (const step of user?.workSteps || []) {
@@ -1010,7 +1019,7 @@ class Controller extends EventEmitter {
             this.loadedThreads.delete(run.threadId);
             for (const entry of this.scopeClients?.values() || []) entry.threads.delete(run.threadId);
           }
-        }
+        } else await run.releaseScopedWriter?.();
       } finally { if (this.runs.get(run.sessionId) === run) this.runs.delete(run.sessionId); }
     }
     if(run.ownerRevision===(this.options.queueOwner?.()??'local'))this.emitEvent({

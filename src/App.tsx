@@ -431,21 +431,31 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }, [focusQuestion, dockOpen, chatActive, sessionId, approvals]);
 
   useEffect(() => {
-    if (!api || !dockOpen || !chatActive || security.state.locked) return;
-    let latestCheck = 0;
-    const refreshInstallation = () => {
-      const check = ++latestCheck;
-      void api.readDesktopChatInstallation().then(installed => {
-        if (check === latestCheck) setDesktopChatInstalled(installed);
-      }).catch(() => {});
+    if (!api || security.state.locked) return;
+    let active = true;
+    let checking = false;
+    let installed: boolean | null | undefined;
+    const refreshInstallation = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        installed = await api.readDesktopChatInstallation();
+        if (!active) return;
+        setDesktopChatInstalled(installed);
+      } catch { /* Restart detection at the next focus or periodic check. */ }
+      finally { checking = false; }
     };
-    refreshInstallation();
+    void refreshInstallation();
+    const timer = window.setInterval(() => { if (installed !== true || !connection.authenticated) void refreshInstallation(); }, 10000);
     window.addEventListener('focus',refreshInstallation);
+    document.addEventListener('visibilitychange',refreshInstallation);
     return () => {
-      latestCheck++;
+      active = false;
+      window.clearInterval(timer);
       window.removeEventListener('focus',refreshInstallation);
+      document.removeEventListener('visibilitychange',refreshInstallation);
     };
-  },[dockOpen,chatActive,security.state.locked]);
+  },[connection.authenticated,security.state.locked]);
 
   const notify = useCallback((message: string) => setToast(old=>({message,tone:'info',revision:old.revision+1})), []);
   const accountLinked=connection.authenticated && security.state.accountLinked === true;
@@ -1603,7 +1613,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 {!connection.authenticated && chatWebFallback?.key===draftKey ? <section className="composer-web-fallback" aria-label="브라우저에서 대화 이어가기">
                   <p role="status">{chatWebFallback.message}{!conversationProject?.conversationScope&&!session?.preferences?.chatGptUrl&&' 웹에서 코딩 작업을 하려면 작업 위치로 클라우드를 선택하세요.'}{attachments.length>0&&' 웹에서는 첨부 파일을 다시 선택해 주세요.'}</p>
                   <div>
-                    {chatWebFallback.showInstall&&<button type="button" className="button subtle" onClick={()=>void api?.openExternal('chatgpt-desktop').catch(fail)}><Download size={14} aria-hidden="true"/>데스크톱 앱 설치</button>}
+                    {chatWebFallback.showInstall&&desktopChatInstalled!==true&&<button type="button" className="button subtle" onClick={()=>void api?.openExternal('chatgpt-desktop').catch(fail)}><Download size={14} aria-hidden="true"/>데스크톱 앱 설치</button>}
                     {chatWebFallback.canLogin&&<button type="button" className="button subtle" disabled={connecting} onClick={()=>void login()}><LogIn size={14} aria-hidden="true"/>Flowrium에서 로그인</button>}
                     <button type="button" className="button secondary" onClick={()=>void openChatWeb()}><ExternalLink size={14} aria-hidden="true"/>{/\S/.test(input)?'초안 복사하고 웹 열기':'웹에서 이어가기'}</button>
                   </div>
@@ -1740,6 +1750,19 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       </button>
     </div>
   );
+  const refreshAfterCodexTransfer=async()=>{
+    if(!api)return;
+    const next=await api.bootstrap();
+    setData(next);
+    if(!projectId&&next.projects[0])setProjectId(next.projects[0].id);
+    return next;
+  };
+  const openTransferredConversation=(id:string)=>{
+    void refreshAfterCodexTransfer().then(next=>{
+      const found=next?.sessions.find(row=>row.id===id);
+      if(found){closeSettings();selectSession(found);}
+    }).catch(fail);
+  };
   return (
     <div className="app-shell" data-chat-focus={isChatFocused}>
       {sidebarPresence.present && (
@@ -1785,7 +1808,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             <LoadingProgress startup label="작업 공간을 불러오고 있습니다." />
           </div>
         ) : view === "music" ? null : view === "workflow" ? (
-          <div className="page-scroll"><div className="page-inner"><WorkflowHub onOpen={openWork} onOpenInbox={()=>setView("inbox")}/><details className="work-resources"><summary>자료 관리</summary><CodexTransferPanel onChanged={async()=>{if(!api)return;const next=await api.bootstrap();setData(next);if(!projectId&&next.projects[0])setProjectId(next.projects[0].id);}} onOpen={id=>{void (async()=>{const next=await api!.bootstrap();setData(next);const found=next.sessions.find(row=>row.id===id);if(found){setSettingsOpen(false);selectSession(found);}})().catch(fail);}}/><MigrationPanel/>
+          <div className="page-scroll"><div className="page-inner"><WorkflowHub onOpen={openWork} onOpenInbox={()=>setView("inbox")}/><details className="work-resources"><summary>자료 관리</summary><CodexTransferPanel onChanged={refreshAfterCodexTransfer} onOpen={openTransferredConversation}/><MigrationPanel/>
               <IntegrationPanel projectId={projectId}/></details></div></div>
         ) : view === "terminal" && !project ? (
           <div className="pf-page"><div className="pf-content"><h1>터미널</h1><section className="pf-welcome"><h2>터미널을 열 폴더를 연결하세요</h2><button onClick={()=>void chooseProjectFor("terminal")}>프로젝트 폴더 선택</button></section></div></div>
@@ -2310,6 +2333,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </div>
                 )}
               </div>
+              <CodexTransferPanel onChanged={refreshAfterCodexTransfer} onOpen={openTransferredConversation}/>
               <div className="settings-section">
                 <h3>
                   <Sparkles size={17} />

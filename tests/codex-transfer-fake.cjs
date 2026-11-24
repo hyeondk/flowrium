@@ -12,6 +12,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{let input;try{i
  if(method==='config/read')return reply({config:{model:'test-model'}});
  if(method==='model/list')return reply({data:[{id:'test-model',model:'test-model',displayName:'합성 검증 모델',supportedReasoningEfforts:[{reasoningEffort:'medium'}],defaultReasoningEffort:'medium',isDefault:true}],nextCursor:null});
  if(method==='account/rateLimits/read')return reply({rateLimits:{}});
+ if(method==='project/list')return reply({data:data.projects||[],nextCursor:null});
  if(method==='thread/list')return reply({data:params.archived?[]:[thread(data)],nextCursor:null});
  if(method==='thread/read'||method==='thread/resume')return reply({thread:{...thread(data),...(params.includeTurns?{turns:data.turns}:{})},model:'test-model'});
  if(method==='thread/turns/list')return reply({data:(params.sortDirection==='desc'?[...data.turns].reverse():data.turns).slice(0,params.limit),nextCursor:null});

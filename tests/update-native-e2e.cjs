@@ -124,7 +124,13 @@ int main(int argc, char** argv) {
   console.log('macOS 교체 도우미 / 실제 네이티브 프로세스의 준비 확인 후 이전 번들 정리 통과');
 }
 async function installPreviousWindows(folder) {
-  if(dateVersion(previous)){
+  const dated = !!dateVersion(previous);
+  const tag = releaseTag(previous);
+  const publicPrevious = dated && process.argv.includes('--prefer-published-previous')
+    ? await fetch('https://api.github.com/repos/hyeondk/flowrium/releases/tags/' + tag, { signal: AbortSignal.timeout(30000) })
+    : undefined;
+  if (publicPrevious && !publicPrevious.ok) assert.equal(publicPrevious.status, 404, '직전 공개 릴리스 조회 실패');
+  if(dated && !publicPrevious?.ok){
     const output=path.join(path.dirname(folder),'previous-date-package'),root=path.resolve(__dirname,'..');
     await run(process.execPath,[require.resolve('electron-builder/cli.js'),'--win','--x64','--dir','--publish','never','--config.directories.output='+output,'--config.extraMetadata.version='+nativeVersion(previous),'--config.extraMetadata.flowriumVersion='+previous],{cwd:root,env:process.env,timeout:300000,maxBuffer:16*1024*1024});
     await fs.cp(path.join(output,'win-unpacked'),folder,{recursive:true,errorOnExist:true});
@@ -132,21 +138,21 @@ async function installPreviousWindows(folder) {
     return path.join(folder,'Flowrium.exe');
   }
   const name = 'Flowrium-'+previous+'-win-x64.exe';
-  const base = 'https://github.com/hyeondk/flowrium/releases/download/v'+previous+'/';
+  const base = 'https://github.com/hyeondk/flowrium/releases/download/'+tag+'/';
   const url = base+name;
   let previousHash = 'ff7b59fc1a309a0906b5335cec606bd6ea2450ab9ba54ea641ac16cbbc064ddf';
-  if ((dateVersion(previous)||['0.2.0','0.3.0','0.4.0','0.5.0'].includes(previous))) {
-    const response=await fetch('https://api.github.com/repos/hyeondk/flowrium/releases/tags/v'+previous);
+  if (dated||['0.2.0','0.3.0','0.4.0','0.5.0'].includes(previous)) {
+    const response=publicPrevious ?? await fetch('https://api.github.com/repos/hyeondk/flowrium/releases/tags/'+tag);
     assert.ok(response.ok,previous+' 공개 릴리스 사전 설치 정보가 필요합니다.');
     const release=await response.json();
-    assert.equal(release.tag_name,'v'+previous); assert.equal(release.draft,false); assert.equal(release.prerelease,false);
+    assert.equal(release.tag_name,tag); assert.equal(release.draft,false); assert.equal(release.prerelease,false);
     const binary=release.assets.find(a=>a.name===name),sums=release.assets.find(a=>a.name==='SHA256SUMS.txt');
     assert.equal(binary?.browser_download_url,url);assert.equal(sums?.browser_download_url,base+'SHA256SUMS.txt');
     assert.match(binary.digest,/^sha256:[0-9a-f]{64}$/);
-    const fetched=await fetch(sums.browser_download_url);assert.ok(fetched.ok);
+    const fetched=await fetch(sums.browser_download_url,{signal:AbortSignal.timeout(30000)});assert.ok(fetched.ok);
     const list=Buffer.from(await fetched.arrayBuffer());
     assert.equal('sha256:'+createHash('sha256').update(list).digest('hex'),sums.digest);
-    previousHash=previous==='0.5.0'?'79ee3076d5447fa5501b8b729b44b5a5be662f63ac7b8ed97dc6d0e5f00d36d6':previous==='0.4.0'?'2edeef466884e7b2482862befad5fc1e63cc6cad4879421193567f164b81a803':previous==='0.3.0'?'43ed7740b9fb2c45ee5050a37e92f967000230bb2996bacf9969b386b420cec1':'12fa38f5666a2a55d4f34683b7ac2264eebbb9163ace166ca57f5e3043baca09';
+    previousHash=dated ? binary.digest.slice(7) : previous==='0.5.0'?'79ee3076d5447fa5501b8b729b44b5a5be662f63ac7b8ed97dc6d0e5f00d36d6':previous==='0.4.0'?'2edeef466884e7b2482862befad5fc1e63cc6cad4879421193567f164b81a803':previous==='0.3.0'?'43ed7740b9fb2c45ee5050a37e92f967000230bb2996bacf9969b386b420cec1':'12fa38f5666a2a55d4f34683b7ac2264eebbb9163ace166ca57f5e3043baca09';
     assert.equal(binary.digest,'sha256:'+previousHash,previous+' 실설치 검증을 통과한 공개 파일과 달라졌습니다.');
     assert.ok(list.toString().split(/\r?\n/).some(row=>row.trim().split(/\s+/)[0]===previousHash && row.trim().split(/\s+/)[1]===name));
   }
@@ -160,7 +166,8 @@ async function installPreviousWindows(folder) {
     if ($installer.ExitCode -ne 0) { exit $installer.ExitCode }`, { INSTALLER: file, FOLDER: folder });
   const binary = path.join(folder, 'Flowrium.exe');
   assert.equal((await powershell('[Diagnostics.FileVersionInfo]::GetVersionInfo($env:BINARY).ProductVersion',
-    { BINARY: binary })).stdout.trim().split(/[+ ]/)[0].split('.').slice(0, 3).join('.'), previous);
+    { BINARY: binary })).stdout.trim().split(/[+ ]/)[0].split('.').slice(0, 3).join('.'), nativeVersion(previous));
+  console.log('직전 공개 설치 파일의 체크섬 확인 및 설치', previous);
   return binary;
 }
 async function processIds(executable) {
