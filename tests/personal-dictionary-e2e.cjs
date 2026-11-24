@@ -3,6 +3,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { _electron } = require('playwright');
+const { expect } = require('playwright/test');
 const { Store } = require('../electron/store.cjs');
 const { addTrustedFixtureProject, backendFixtureAccount } = require('./project-trust-fixture.cjs');
 const { closeSettings, composer, openConversation, settledLayout } = require('./shell-test-helpers.cjs');
@@ -139,11 +140,11 @@ async function main() {
         .sessions.find(item => item.id === id).messages.filter(message => message.role === 'assistant').length, session.id);
       await composer(page).fill(prompt);
       await composer(page).press('Enter');
-      await page.waitForFunction(async ({ id, prompt, stored }) => {
+      await expect.poll(() => page.evaluate(async ({ id, prompt, stored }) => {
         const messages = (await window.flowrium.bootstrap()).sessions.find(item => item.id === id).messages;
         return messages.some(message => message.role === 'user' && message.text === prompt)
           && messages.filter(message => message.role === 'assistant' && message.text.includes('확인한 결과입니다.')).length > stored;
-      }, { id: session.id, prompt, stored });
+      }, { id: session.id, prompt, stored }), { timeout: 18000 }).toBe(true);
       return readRequest(app, prompt);
     }
 

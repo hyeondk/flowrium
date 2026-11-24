@@ -5,6 +5,7 @@ const path = require('node:path');
 const {execFile} = require('node:child_process');
 const {promisify} = require('node:util');
 const {_electron} = require('playwright');
+const {expect} = require('playwright/test');
 const {Store} = require('../electron/store.cjs');
 const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 
@@ -78,11 +79,11 @@ async function main() {
     }
     await article.getByRole('button',{name:'깃허브에서 열기',exact:true}).click();
     assert.equal(await app.evaluate(()=>globalThis.flowriumPullTestUrl),'https://github.com/example/flow-demo/pull/71');
-    await page.waitForFunction(async noticeId=>(await window.flowrium.workflowState()).notifications.find(row=>row.id===noticeId)?.readAt,matching[0].id);
+    await expect.poll(()=>page.evaluate(async noticeId=>Boolean((await window.flowrium.workflowState()).notifications.find(row=>row.id===noticeId)?.readAt),matching[0].id)).toBe(true);
     await inbox.getByRole('button',{name:'알림 닫기',exact:true}).click();
     await inbox.waitFor({state:'detached'});
     await toggle.click();
-    await page.waitForFunction(async()=>!(await window.flowrium.workflowState()).pullWatch.enabled);
+    await expect.poll(()=>page.evaluate(async()=>Boolean((await window.flowrium.workflowState()).pullWatch.enabled))).toBe(false);
     console.log('실제 앱 깃허브 감시 설정 / 모의 원격 PR 조회 / 10분 간격 / 토스트 및 알림 목록 한 건 / 깃허브 URL / 읽음 / 끄기 통과');
   } catch(error) {
     if(page&&!page.isClosed())console.error((await page.locator('body').innerText()).slice(0,3500));
