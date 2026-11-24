@@ -74,10 +74,11 @@ async function run() {
 
   async function close(label) {
     const current=app, pid=appPid;
+    const child=current.process();
     try {
       await step(label,45000,()=>closeInstalledApp(current,'배포 앱 정상 종료'));
     } finally {
-      if (current.process().exitCode!==null || current.process().signalCode!==null) app=undefined;
+      if (child.exitCode!==null || child.signalCode!==null) app=undefined;
     }
     if(windows && pid) await step(label+' / 본체 PID '+pid+' 확인',11000,()=>waitForProcessExit(pid));
     app=undefined;
