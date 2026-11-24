@@ -1,4 +1,4 @@
-const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
+const {addTrustedFixtureProject, backendFixtureAccount, setFixtureAccountLinked} = require('./project-trust-fixture.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),{_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs'),{closeInstalledApp}=require('./update-installed-ui.cjs');
 const {dockDismissButton,waitForCodexConnection}=require('./shell-test-helpers.cjs');
@@ -6,7 +6,9 @@ async function main(){
  const root=path.resolve(__dirname,'..'),qa=path.join(root,'.flowrium-tmp/qa-261115_03');await fs.mkdir(qa,{recursive:true});const temp=await fs.mkdtemp(path.join(qa,'decision-notice-'));let app;const measurements=[],dismissLabels=new Set();
  try{
   const folder=path.join(temp,'합성 알림 프로젝트');await fs.mkdir(folder);const profile=path.join(temp,'profile'),store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount}),session=await store.createSession(project.id);await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
+  await setFixtureAccountLinked(profile);
   app=await _electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();page.setDefaultTimeout(16000);await page.setViewportSize({width:1440,height:1000});await waitForCodexConnection(page);
+  await page.waitForFunction(async id=>(await window.flowrium.bootstrap()).projects.some(row=>row.id===id&&row.trustedForFileAccess),project.id);
   for(const width of [1440,1024,390]){
    await page.setViewportSize({width,height:1000});const dock=page.locator('.conversation-dock');if(await dock.count()){await dockDismissButton(dock).click();await dock.waitFor({state:'detached'})}
    await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'승인검증',mode:'build'}),session.id);const notice=page.locator('.flow-question-notice[data-tone="question"]');await notice.waitFor();
