@@ -82,8 +82,8 @@ function validateSender(event) {
 }
 async function invokeRegistered(name,handler,args){
   if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity','hideDotsView','readDotsState'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
-  // A recommendation is background work. It must never hold up an update, logout or send.
-  if(name==='readChatRecommendation')return security.guard(name,()=>handler(...args));
+  // Suggestions and app discovery are background queries. They cannot block foreground work.
+  if(name==='readChatRecommendation'||name==='readDesktopChatInstallation')return security.guard(name,()=>handler(...args));
   if(['send','startWork','logoutSecurity','installUpdate','lockSecurity'].includes(name)||
     (name==='workflowAction'&&args[0]?.action==='continueConversation')||
     (name==='saveSettings'&&(args[0]?.aiFollowups===false||Object.hasOwn(args[0]??{},'codexPath'))))followupGenerator?.invalidate();
