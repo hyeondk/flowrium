@@ -252,6 +252,7 @@ jobs:
         continue-on-error: true
         run: |
           node tests/workflow-e2e.cjs
+          node tests/pull-watch-e2e.cjs
           node tests/teams-automation-e2e.cjs
       - name: 외부 자료·일정 검토·연결 주소 전달
         id: verify_7
@@ -284,7 +285,9 @@ jobs:
       - name: 개인 메모와 프로젝트 지시·비서
         id: verify_13
         continue-on-error: true
-        run: node tests/memory-e2e.cjs
+        run: |
+          node tests/memory-e2e.cjs
+          node tests/personal-dictionary-e2e.cjs
       - name: 음악·음성 입력의 실제 화면
         id: verify_14
         continue-on-error: true

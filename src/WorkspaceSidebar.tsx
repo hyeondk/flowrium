@@ -1,13 +1,13 @@
 import {useProjectGrip,type MoveProject} from './ProjectOrder';
 import {useEffect,useRef,useState,type ReactNode,type MouseEvent} from 'react';
-import {Archive,ClipboardList,Coffee,FileText,Folder,Folders,LayoutDashboard,LockKeyhole,LogIn,LogOut,MessagesSquare,Pin,PinOff,Plus,Settings2,SquareTerminal,Trash2,type LucideIcon} from 'lucide-react';
+import {Archive,BookOpenText,ClipboardList,Coffee,FileText,Folder,Folders,LayoutDashboard,LockKeyhole,LogIn,LogOut,MessagesSquare,Pin,PinOff,Plus,Settings2,SquareTerminal,Trash2,type LucideIcon} from 'lucide-react';
 import type {Project} from '../shared/types';
 import './workspace-sidebar.css';
 import SidebarUsage from './SidebarUsage';
 import {CloseButton} from './ui-motion';
 import type {AccountUsage} from './account-usage';
 import {executionLabels} from '../shared/execution-state';
-export type SideDestination='dashboard'|'kickoff'|'archive'|'outputs'|'weekly'|'pause'|'terminal'|'workflow';
+export type SideDestination='dashboard'|'kickoff'|'archive'|'outputs'|'weekly'|'pause'|'terminal'|'workflow'|'dictionary';
 type Props={categories:Record<string,string>;current:string;mobileOpen:boolean;projects:Project[];onProjectMove:MoveProject;selected?:string;counts:Record<string,{running:number;waiting:number;decision:number;total:number}>;onGo(view:SideDestination):void;onClose():void;onProject(p:Project):void;onSettings():void;onTrash():void;onLock():void;onLogout():void;onLogin():void;accountUsage:AccountUsage;onProjectMenu?(event:MouseEvent,project:Project):void};
 function MenuRow({label,icon:Icon,active,onClick,extraClass=''}:{label:string;icon:LucideIcon;active?:boolean;onClick():void;extraClass?:string}){return <button type="button" title={label} aria-label={label} aria-current={active?'page':undefined} onClick={onClick} className={'side-row '+extraClass}><Icon size={20} strokeWidth={1.7}/><span>{label}</span></button>}
 function MenuGroup({label,children}:{label:string;children:ReactNode}){return <section className={'side-group '+(label==='도구'?'side-tools':'side-storage')} aria-label={label}><h2>{label}</h2>{children}</section>}
@@ -39,7 +39,7 @@ export default function WorkspaceSidebar({categories,current,mobileOpen,projects
     </section>
     <div className="side-lower-nav">
      <MenuGroup label="보관">{row('outputs','산출물',FileText)}{row('archive','완료한 업무',Archive)}<MenuRow label="휴지통" icon={Trash2} onClick={onTrash}/></MenuGroup>
-     <MenuGroup label="도구">{row('workflow','업무 연결 / 비서',MessagesSquare)}{row('weekly','주간업무보고',ClipboardList)}{row('pause','업무 마감',Coffee)}{row('terminal','터미널',SquareTerminal)}</MenuGroup>
+     <MenuGroup label="도구">{row('workflow','업무 연결 / 비서',MessagesSquare)}{row('weekly','주간업무보고',ClipboardList)}{row('pause','업무 마감',Coffee)}{row('dictionary','사전',BookOpenText)}{row('terminal','터미널',SquareTerminal)}</MenuGroup>
     </div>
    </nav>
    <div className="side-foot"><SidebarUsage usage={accountUsage} expanded={expanded}/><div className="side-account-actions"><MenuRow label="설정" icon={Settings2} onClick={onSettings} extraClass="settings-button"/><MenuRow label="잠금" icon={LockKeyhole} onClick={onLock}/><MenuRow label={accountUsage.connected?"로그아웃":"로그인"} icon={accountUsage.connected?LogOut:LogIn} onClick={accountUsage.connected?onLogout:onLogin}/></div><div className="side-account" title="제작자 hyeondk"><span className="side-copyright-icon">©</span><span><span className="side-copyright-year">2026 </span>hyeondk</span></div></div>

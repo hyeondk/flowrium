@@ -174,6 +174,8 @@ contextBridge.exposeInMainWorld(
     readDesktopChatInstallation: () => invoke('readDesktopChatInstallation'),
     readChatConnection: () => invoke('readChatConnection'),
     readChatRecommendation: (sessionId,answerId) => invoke('readChatRecommendation',sessionId,answerId),
+    dictionaryState: () => invoke('dictionaryState'),
+    dictionaryAction: (input) => invoke('dictionaryAction',input),
     listAvailableModels: () => invoke("listAvailableModels"),
     login: () => invoke("login"),
     send: (input) => invoke("send", input),

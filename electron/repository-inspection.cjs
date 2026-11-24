@@ -95,4 +95,4 @@ async function inspectRepository(input, run, openUrl = url => require('electron'
   }));
   return {repository,...Object.fromEntries(entries)};
 }
-module.exports={inspectionActions:actions, inspectRepository};
+module.exports={inspectionActions:actions, inspectRepository, originName, slug};

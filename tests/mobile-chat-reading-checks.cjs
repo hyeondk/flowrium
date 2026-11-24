@@ -30,7 +30,7 @@ async function checkReading(page,chat,origin,key,folder) {
   assert(!JSON.stringify(expanded).includes('codex-clipboard-abcd') && !JSON.stringify(old).includes('codex-clipboard-abcd'));
   assert.equal(old.messages.filter(m=>m.role==='system').length,0);
   assert(!expanded.messages.some(message=>message.text.includes('인터뷰 질문을 검토해 주세요')));
-  assert.equal(expanded.recommendation.prompt,'인터뷰 질문을 한 쪽으로 정리해 주세요');
+  assert.equal(expanded.recommendation.prompt,'인터뷰 질문을 한 쪽으로 정리해줘');
   assert(!JSON.stringify(expanded).includes('시험용 출력 원문'));
   await page.getByRole('button',{name:/휴대폰 읽기 확인/}).click();
   const first=page.getByRole('button',{name:'3분 26초 동안 작업',exact:true}).first();
@@ -53,7 +53,7 @@ async function checkReading(page,chat,origin,key,folder) {
   const field=page.getByRole('textbox',{name:'요청',exact:true});
   const candidate=page.locator('button.mobile-followup');
   const started=Date.now();await candidate.waitFor();
-  const prompt=await candidate.locator('span').innerText();assert.equal(prompt,'인터뷰 질문을 한 쪽으로 정리해 주세요');
+  const prompt=await candidate.locator('span').innerText();assert.equal(prompt,'인터뷰 질문을 한 쪽으로 정리해줘');
   assert(Date.now()-started<10000);assert.equal(await page.getByLabel('작업 모드',{exact:true}).count(),0);
   const actionTypes=[];
   const watch=request=>{if(request.url().endsWith('/api/mobile/call'))actionTypes.push(request.postDataJSON()?.method);};

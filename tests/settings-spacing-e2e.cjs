@@ -39,8 +39,11 @@ async function run(){
   const rows=[];
   for(const width of [1440,390]){
    await page.setViewportSize({width,height:width===1440?940:844});
+   await settledLayout(page.locator('body'));
+   await settledLayout(dialog);
    for(const id of groups){
     await select(id);
+    await settledLayout(dialog);
     const group=groupFor(id);
     const row=await group.evaluate((node,{id,width})=>{
      const visible=el=>el.getClientRects().length&&getComputedStyle(el).display!=='none'&&!['absolute','fixed'].includes(getComputedStyle(el).position);
@@ -50,7 +53,7 @@ async function run(){
       const rect=box.getBoundingClientRect(),inside=[...box.children].filter(visible).map(child=>child.getBoundingClientRect());
       return {className:box.className,top:inside.length?Math.min(...inside.map(r=>r.top))-rect.top:null,bottom:inside.length?rect.bottom-Math.max(...inside.map(r=>r.bottom)):null};
      });
-     return {width,id,gaps:rects.slice(1).map((r,i)=>r.top-rects[i].bottom),top:rects[0].top-bounds.top,overflow:viewport.scrollWidth-viewport.clientWidth,boxes,dialogHeight:node.closest('[role=dialog]').getBoundingClientRect().height,layoutHeight:viewport.parentElement.getBoundingClientRect().height};
+     return {width,id,gaps:rects.slice(1).map((r,i)=>r.top-rects[i].bottom),top:rects[0].top-bounds.top,overflow:viewport.scrollWidth-viewport.clientWidth,boxes,dialogHeight:node.closest('[role=dialog]').getBoundingClientRect().height,layoutHeight:viewport.parentElement.getBoundingClientRect().height,layoutWidth:viewport.clientWidth,referenceHeight:viewport.parentElement.style.getPropertyValue('--settings-reference-height')};
     },{id,width});
     await content.evaluate(node=>node.scrollTo({top:node.scrollHeight,behavior:'instant'}));
     row.bottom=await group.evaluate(node=>{const children=[...node.children].filter(child=>child.getClientRects().length);return node.closest('.settings-content').getBoundingClientRect().bottom-children.at(-1).getBoundingClientRect().bottom;});

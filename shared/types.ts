@@ -5,6 +5,7 @@ import type { MigrationAPI } from "./migration";
 import type { ProjectPortsAPI } from "./project-ports";
 import type { VoiceServerAPI } from "./voice-server";
 import type { WorkflowAPI } from "./workflow";
+import type { DictionaryAPI } from "./dictionary";
 import type { MemoryAPI } from "./memory";
 import type { VoiceAPI } from "./voice";
 import type { RemoteAPI } from "./remote";
@@ -207,6 +208,7 @@ export interface FlowriumAPI
     ProjectPortsAPI,
     VoiceServerAPI,
     WorkflowAPI,
+    DictionaryAPI,
     MemoryAPI,
     VoiceAPI,
     RemoteAPI,

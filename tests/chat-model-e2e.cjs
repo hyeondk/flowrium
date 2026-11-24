@@ -130,15 +130,20 @@ async function main() {
     for(const [width,height] of [[1280,900],[390,568],[320,260],[320,160]]){
       await page.setViewportSize({width,height});
       await settledLayout(page.locator('.conversation-dock'));
-      const fits=await controls.evaluate(element=>{
+      const layout=await controls.evaluate(element=>{
         const {top,left,right,bottom}=element.getBoundingClientRect();
         const buttons=[...element.querySelectorAll('.chat-speeds button')];
-        return getComputedStyle(element).overflow==='visible'&&top>=0&&left>=0&&right<=innerWidth+1&&bottom<=innerHeight+1&&buttons.every(button=>{
+        const hits=buttons.map(button=>{
           const {x,y,width,height}=button.getBoundingClientRect();
-          return button.contains(document.elementFromPoint(x+width/2,y+height/2));
+          const target=document.elementFromPoint(x+width/2,y+height/2);
+          return {name:button.textContent,x,y,hit:button.contains(target),target:target?.tagName};
         });
+        return {top,left,right,bottom,width:innerWidth,height:innerHeight,overflow:getComputedStyle(element).overflow,
+          scroll:element.scrollHeight,client:element.clientHeight,hits};
       });
-      assert(fits,`${width}×${height} 화면에서 불필요한 스크롤 없이 속도 버튼에 접근할 수 있습니다.`);
+      assert(layout.overflow==='visible'&&layout.scroll<=layout.client+1&&layout.top>=0&&layout.left>=0&&
+        layout.right<=layout.width+1&&layout.bottom<=layout.height+1&&layout.hits.length===3&&layout.hits.every(button=>button.hit),
+      `${width}×${height} 화면에서 불필요한 스크롤 없이 속도 버튼에 접근할 수 있습니다. ${JSON.stringify(layout)}`);
     }
     await page.setViewportSize({width:1280,height:900});
     await settledLayout(page.locator('.conversation-dock'));

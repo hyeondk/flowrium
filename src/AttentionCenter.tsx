@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import {ArrowRight,Bell,Check,CheckCheck,ChevronRight,MessageSquareText,Trash2} from 'lucide-react';
+import {ArrowRight,Bell,Check,CheckCheck,ChevronRight,ExternalLink,MessageSquareText,Trash2} from 'lucide-react';
 import type {WorkflowNotification,WorkflowState} from '../shared/workflow';
 import type {FlowriumEvent,Session} from '../shared/types';
 import {visibleProposals} from '../shared/execution-state';
@@ -49,7 +49,7 @@ export function noticePreview(notification:WorkflowNotification){
  return (boundary>39?head.slice(0,boundary):head)+'…';
 }
 
-export default function AttentionCenter({open,onClose,data,sessions,requests,onOpen,onQuestion,onDecisions,onUpdate,onResume,onRefresh}:{open:boolean;onClose():void;data?:WorkflowState;sessions:Session[];requests:FlowriumEvent[];onOpen(s:Session):void;onQuestion?:(event:FlowriumEvent)=>void;onDecisions():void;onUpdate():void;onResume():void;onRefresh():Promise<void>}){
+export default function AttentionCenter({open,onClose,data,sessions,requests,onOpen,onQuestion,onDecisions,onUpdate,onResume,onPullRequest,onRefresh}:{open:boolean;onClose():void;data?:WorkflowState;sessions:Session[];requests:FlowriumEvent[];onOpen(s:Session):void;onQuestion?:(event:FlowriumEvent)=>void;onDecisions():void;onUpdate():void;onResume():void;onPullRequest(notification:WorkflowNotification):void;onRefresh():Promise<void>}){
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[unreadOnly,setUnreadOnly]=useState(false);
  const [selected,setSelected]=useState<string[]>([]);
  const [deleted,setDeleted]=useState<string[]>([]);
@@ -110,6 +110,7 @@ export default function AttentionCenter({open,onClose,data,sessions,requests,onO
        {resume&&<button className="attention-open-label" onClick={()=>{if(!n.readAt)void change('read',[n.id]);onResume();}}>업무 재개 <ChevronRight size={13}/></button>}
        {!resume&&session&&<button className="attention-open-label" onClick={()=>{if(!n.readAt)void change('read',[n.id]);onOpen(session);onClose();}}>대화에서 자세히 보기 <ChevronRight size={13}/></button>}
        {n.kind==='update'&&<button className="attention-open-label" onClick={()=>{if(!n.readAt)void change('read',[n.id]);onClose();onUpdate();}}>업데이트 열기 <ChevronRight size={13}/></button>}
+       {n.kind==='github-pr'&&n.pullRequest&&<button className="attention-open-label" onClick={()=>onPullRequest(n)}>깃허브에서 열기 <ExternalLink size={13}/></button>}
       </div>
      </div>
      <div className="attention-row-actions">

@@ -53,6 +53,7 @@ import { useSecurity, SecurityPanel, LockScreen } from "./SecurityPanel";
 import { ProjectPortfolio } from "./ProjectPortfolio";
 import { ProjectOverview } from "./ProjectOverview";
 import DashboardBack from "./DashboardBack";
+import PersonalDictionary from './PersonalDictionary';
 import type { PortfolioView, ProjectTab } from "../shared/portfolio";
 import TerminalPanel from "./TerminalPanel";
 import ProjectDetails from "./ProjectDetails";
@@ -119,7 +120,7 @@ import type {
   ChatPreferences,
 } from "../shared/types";
 
-type View = "workflow" | PortfolioView | "weekly" | "pause" | "music" | "overview" | "terminal" | "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library";
+type View = "workflow" | PortfolioView | "weekly" | "pause" | "music" | "overview" | "terminal" | "details" | "activity" | "team" | "repo" | "inbox" | "home" | "workspace" | "history" | "library" | 'dictionary';
 type CodexHistoryItem = {
   id: string;
   title: string;
@@ -467,9 +468,17 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const previous = noticeIds.current;
     noticeIds.current = new Set(attentionState.notifications.map(item=>item.id));
     if (!previous) return;
-    const newest = attentionState.notifications.find(item=>["done","error","update"].includes(item.kind) && !item.readAt && !previous.has(item.id));
+    const newest = attentionState.notifications.find(item=>["done","error","update","github-pr"].includes(item.kind) && !item.readAt && !previous.has(item.id));
     if (newest) setCompletionNotice(newest);
   }, [attentionState]);
+  async function openPullNotice(notification:WorkflowNotification){
+    if(!api)return;
+    try{
+      await api.workflowAction({action:'pullWatchOpen',notificationId:notification.id});
+      if(!notification.readAt)await api.workflowAction({action:'read',ids:[notification.id]});
+      await refreshAttention();
+    }catch(error){fail(error);}
+  }
   useEffect(()=>{if(update?.status==="available")window.dispatchEvent(new Event("flowrium-attention-refresh"));},[update?.status,update?.latestVersion]);
   useEffect(()=>{if(!api)return;let alive=true;const refresh=()=>api.workflowState().then(value=>{if(alive){setProposals(value.proposals);setAttentionState(value)}}).catch(()=>{});void refresh();const timer=setInterval(refresh,5000);window.addEventListener("flowrium-attention-refresh",refresh);return()=>{alive=false;clearInterval(timer);window.removeEventListener("flowrium-attention-refresh",refresh)}},[]);
   useEffect(()=>{
@@ -1768,7 +1777,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             <span>내 작업 공간</span>
             <ChevronRight size={13} />
             <strong>
-              {({dashboard:"대시보드",kickoff:"새 프로젝트",archive:"완료",outputs:"산출물",timeline:"날짜별 기록",workflow:"업무 연결 / 비서",weekly:"주간업무보고",pause:"업무 마감",music:"뮤직",history:"작업 기록",library:"프롬프트 보관함",activity:"작업 현황",inbox:"승인함",terminal:"터미널"} as Partial<Record<View,string>>)[view] || project?.name || "시작하기"}
+              {({dashboard:"대시보드",kickoff:"새 프로젝트",archive:"완료",outputs:"산출물",timeline:"날짜별 기록",workflow:"업무 연결 / 비서",weekly:"주간업무보고",pause:"업무 마감",music:"뮤직",history:"작업 기록",library:"프롬프트 보관함",dictionary:'사전',activity:"작업 현황",inbox:"승인함",terminal:"터미널"} as Partial<Record<View,string>>)[view] || project?.name || "시작하기"}
             </strong>
             {!api && <span className="preview-badge">화면 미리보기</span>}
           </div>
@@ -1839,6 +1848,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               tab==="team"?<TeamPanel projectId={project.id} onOpen={openWork}/>:<RepositoryPanel project={project}/>}/>
         ) : view === "home" ? (
           <Workbench key={projectId || "welcome"} project={project} sessions={projectSessions} onChooseProject={chooseProject} onOpen={openWork} onSessionChange={rememberSession} />
+        ) : view === 'dictionary' ? (
+          <PersonalDictionary authenticated={connection.authenticated}/>
         ) : view === "library" ? (
           <div className="page-scroll">
             <div className="page-inner library-page">
@@ -1991,7 +2002,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       <TrashPanel open={trashOpen} onClose={()=>setTrashOpen(false)} onRestored={reloadItems}/>
 
       <MotionOverlay open={musicOpen} persist onClose={()=>setMusicOpen(false)} label="뮤직" className="music-popup"><header className="utility-popup-heading"><div><Music2 size={20}/><h2>뮤직</h2></div><CloseButton aria-label="뮤직 닫기" onClick={()=>setMusicOpen(false)}/></header><MusicPanel visible={musicPresence.present} locked={security.state.locked}/></MotionOverlay>
-      <AttentionCenter open={attentionOpen} onClose={()=>setAttentionOpen(false)} data={attentionState} sessions={data.sessions} requests={approvals} onOpen={selectSession} onQuestion={openQuestion} onDecisions={()=>{setAttentionOpen(false);setView(visibleProposals(proposals).length?'workflow':'inbox')}} onUpdate={openUpdateSettings} onResume={showWorkResume} onRefresh={refreshAttention}/>
+      <AttentionCenter open={attentionOpen} onClose={()=>setAttentionOpen(false)} data={attentionState} sessions={data.sessions} requests={approvals} onOpen={selectSession} onQuestion={openQuestion} onDecisions={()=>{setAttentionOpen(false);setView(visibleProposals(proposals).length?'workflow':'inbox')}} onUpdate={openUpdateSettings} onResume={showWorkResume} onPullRequest={notification=>void openPullNotice(notification)} onRefresh={refreshAttention}/>
       {!dockPresence.present && <button type="button" className="dock-reopen-tab"
         aria-label="대화 패널 펼치기" aria-expanded={false} title="대화 패널 펼치기"
         onClick={() => setDockOpen(true)}>
@@ -2014,10 +2025,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         summary:data.sessions.find(item=>item.id===questionNotice.sessionId)?.title || "답변을 기다리는 질문이 있습니다.",
         action:questionNotice.type==="input"?"대화에서 답하기":"대화에서 확인하기",onOpen:()=>openQuestion(questionNotice),onExpire:()=>dismissQuestion(questionNotice)}
         : completionNotice ? {noticeId:completionNotice.id,tone:completionNotice.kind==="error"?"error" as const:"success" as const,
-          title:completionNotice.kind==="update"?completionNotice.title:answerNoticeTitle(completionNotice,data.sessions.find(item=>item.id===completionNotice.sessionId)?.title),
-          summary:noticePreview(completionNotice),action:completionNotice.kind==="update"?"업데이트 열기":"대화 열기",onExpire:()=>setCompletionNotice(undefined),
+          title:['update','github-pr'].includes(completionNotice.kind)?completionNotice.title:answerNoticeTitle(completionNotice,data.sessions.find(item=>item.id===completionNotice.sessionId)?.title),
+          summary:noticePreview(completionNotice),action:completionNotice.kind==='github-pr'?'깃허브에서 열기':completionNotice.kind==='update'?'업데이트 열기':'대화 열기',onExpire:()=>setCompletionNotice(undefined),
           onOpen:()=>{
             const owner=data.sessions.find(item=>item.id===completionNotice.sessionId);
+            if(completionNotice.kind==='github-pr'){void openPullNotice(completionNotice);setCompletionNotice(undefined);return;}
             if(completionNotice.kind==="update")openUpdateSettings();
             else if(owner)selectSession(owner);
             else setAttentionOpen(true);

@@ -39,7 +39,15 @@ async function free(){const server=net.createServer();await new Promise(resolve=
   const saved=await page.evaluate(()=>window.flowrium.voiceServersState());
   assert.equal(saved.revision,stopped+1);
   assert.deepEqual(saved.servers[0].config.args,nextArgs);
-  for(const width of [390,768,1440]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);const fields=card().getByLabel('음성 인식 서버 시작 대기 시간',{exact:true});const before=await fields.inputValue();await fields.hover();await page.mouse.wheel(0,500);assert.equal(await fields.inputValue(),before);}
+  for(const width of [390,768,1440]){
+    await page.setViewportSize({width,height:1000});
+    await settledLayout(page.locator('body'));
+    const dimensions=await card().evaluate(content=>({width:innerWidth,scroll:document.documentElement.scrollWidth,
+      contentWidth:content.clientWidth,contentScroll:content.scrollWidth}));
+    assert(dimensions.scroll<=dimensions.width+1&&dimensions.contentScroll<=dimensions.contentWidth+1,JSON.stringify(dimensions));
+    const fields=card().getByLabel('음성 인식 서버 시작 대기 시간',{exact:true});
+    const before=await fields.inputValue();await fields.hover();await page.mouse.wheel(0,500);assert.equal(await fields.inputValue(),before);
+  }
   await page.setViewportSize({width:1440,height:1000});await app.close();app=null;await launch();assert.equal(await card().getByLabel('음성 인식 서버 주소',{exact:true}).inputValue(),endpoint);assert.equal(await card().getByRole('switch',{name:'음성 인식 서버 실행',exact:true}).isChecked(),false);assert.equal(await portOpen(endpoint),false);
   await prepare();await confirm();await app.close();app=null;for(let attempt=0;attempt<30&&await portOpen(endpoint);attempt++)await wait(100);assert.equal(await portOpen(endpoint),false);assert.deepEqual(errors,[]);
   console.log('로컬 음성 서버 / 실제 실행·인자 저장·중앙 확인창·취소·준비·재시작·중지 / 연결 적용 / 기존 포트 보존 / 실패 로그 / 반응형·숫자 스크롤 보존 / 재실행 자동 시작 없음 / 앱 종료 정리 통과');

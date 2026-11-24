@@ -1,6 +1,6 @@
 const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path'),http=require('node:http');
-const {openConversation,newProjectConversation,closeSettings,leaveConversation}=require('./shell-test-helpers.cjs');
+const {openConversation,newProjectConversation,closeSettings,leaveConversation,settledLayout}=require('./shell-test-helpers.cjs');
 const {_electron}=require('playwright');const {Store}=require('../electron/store.cjs');
 async function main(createNew=false){
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-voice-dialogue-')),profile=path.join(temp,'profile'),folder=path.join(temp,'project');
@@ -76,7 +76,15 @@ async function main(createNew=false){
     hold=true;await page.evaluate(()=>window.voiceTest.segment());while(!pendingResponse)await new Promise(resolve=>setTimeout(resolve,10));const oldDraft=await composer().inputValue();await leaveConversation(page);await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();pendingResponse.end(JSON.stringify({text:'플로리움, 화면을 떠난 뒤 전달 금지'}));pendingResponse=null;
     assert.equal(await page.evaluate(()=>window.voiceTest.contexts.filter(context=>context.state==='running').length),0);await page.waitForTimeout(100);
     state=await page.evaluate(()=>window.flowrium.bootstrap());assert.equal(state.sessions.some(session=>session.messages.some(message=>message.text.includes('화면을 떠난 뒤 전달 금지'))),false);assert.equal(oldDraft,'');
-    await button('설정').click();assert.equal(await page.getByLabel('호출어 뒤 요청을 ChatGPT에 바로 전송',{exact:true}).isChecked(),true);for(const width of [390,768,1280]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),true);}await closeSettings(page);
+    await button('설정').click();assert.equal(await page.getByLabel('호출어 뒤 요청을 ChatGPT에 바로 전송',{exact:true}).isChecked(),true);
+    for(const width of [390,768,1280]){
+      await page.setViewportSize({width,height:900});
+      await settledLayout(page.locator('body'));
+      const dimensions=await page.locator('.settings-content').evaluate(content=>({width:innerWidth,scroll:document.documentElement.scrollWidth,
+        contentWidth:content.clientWidth,contentScroll:content.scrollWidth}));
+      assert(dimensions.scroll<=dimensions.width+1&&dimensions.contentScroll<=dimensions.contentWidth+1,JSON.stringify(dimensions));
+    }
+    await closeSettings(page);
     console.log(`${createNew?'첫 자유 대화':'기존 대화'} / 로컬 음성 실제 HTTP·WAV / 연속 구간 순서와 검토 기본값 / 호출어 없는 말 무시 / 설정 이동 스트림 해제 / 명시 자동 전송과 실제 모델 답변·듣기 재개 / 로컬 읽기 재생·중단 / 화면 이동 뒤 늦은 전사 폐기 / 설정 보존 / 반응형 통과`);
   }catch(error){if(page&&!page.isClosed())console.error('음성 화면 진단',await page.locator('body').innerText().catch(()=>''));throw error;}
   finally{if(app)await app.close();if(server)await new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});await fs.rm(temp,{recursive:true,force:true,maxRetries:8,retryDelay:150});}

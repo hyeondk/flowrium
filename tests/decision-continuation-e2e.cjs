@@ -11,7 +11,7 @@ async function main(){const root=path.resolve(__dirname,'..'),qa=path.join(root,
  const newRecommendation='번호가 다른 항목 3개를 원본 목록과 대조해줘';
  const followupTrace=path.join(temp,'synthetic-requests.log');await fs.writeFile(followupTrace,'');const env={...process.env,FLOWRIUM_TEST_FOLLOWUP_TRACE:followupTrace,FLOWRIUM_TEST_FOLLOWUP_ANSWER:nextAnswer,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
  app=await _electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();page.setDefaultTimeout(16000);await page.setViewportSize({width:1440,height:1000});await page.locator('.side-usage[data-connected=true]').waitFor();await openConversation(page,waiting.title);const input=composer(page);
- const expected='회귀 검사도 이어서 진행해 주세요';
+ const expected='회귀 검사도 이어서 진행해줘';
  const recommendation=page.locator('.followup-accept[data-source="conversation"]');
  await recommendation.waitFor({timeout:10000});
  assert.equal(await input.inputValue(),'');

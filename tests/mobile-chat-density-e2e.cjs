@@ -253,7 +253,7 @@ async function main(){
   });
   await fs.writeFile(path.join(projectDir,'docs','월별 매출.png'),Buffer.from(chart,'base64'));
   await page.getByRole('button',{name:/온라인 스토어 분석.*업무/}).click();
-  await verifyRecommendationFreshness(page,recommend,'아이폰 연결 유지를 확인해 주세요',async()=>{
+  await verifyRecommendationFreshness(page,recommend,'아이폰 연결 유지를 확인해줘',async()=>{
    const record=store.session(recommend.id);
    record.messages[0].text='윈도우 설치 복원을 먼저 확인해줘.';
    record.updatedAt=new Date(Date.now()+1_000).toISOString();

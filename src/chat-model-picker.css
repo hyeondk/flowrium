@@ -96,7 +96,7 @@
   margin:0;
 }
 
-@media (max-height:200px) {
+@media (max-height:320px) {
   .chat-performance-popup {
     position-area:none;
     inset:6px 10px auto auto;

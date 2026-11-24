@@ -38,6 +38,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
   const [source,setSource]=useState(""),[target,setTarget]=useState(""),[title,setTitle]=useState(""),[message,setMessage]=useState(""),[project,setProject]=useState("");
   const [when,setWhen]=useState(""),[reminder,setReminder]=useState(""),[repeatDays,setRepeatDays]=useState(0);
   const [prefs,setPrefs]=useState<WorkflowPreferences>();
+  const [pullWatchChoice,setPullWatchChoice]=useState<boolean>();
   const alive=useRef(true),sending=useRef(false),prefDirty=useRef(false);
   const refresh=useCallback(async()=>{
     if(!api)return;
@@ -163,7 +164,11 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
       {[...new Set(data.notifications.map(n=>n.group))].map(group=><section key={group}><h3>{data.sessions.find(s=>s.id===group)?.title||(/^[a-f0-9-]{36}$/i.test(group)?"팀 업무 보고":group)}</h3>
         {data.notifications.filter(n=>n.group===group&&(!unreadOnly||!n.readAt)).map(n=><article className="workflow-card" key={n.id}>
           <h4>{n.title}{!n.readAt&&" (미확인)"}</h4><time>{new Date(n.createdAt).toLocaleString("ko-KR")}</time><p>{noticePreview(n)}</p>
-          <div className="workflow-actions">{!n.readAt&&<button onClick={()=>void act({action:"read",ids:[n.id]})}>읽음 표시</button>}{n.sessionId&&<button onClick={()=>void open(n.sessionId)}>대화 열기</button>}<button disabled={busy} onClick={()=>void act({action:"deleteNotifications",ids:[n.id]})}>삭제</button></div>
+          <div className="workflow-actions">{!n.readAt&&<button onClick={()=>void act({action:"read",ids:[n.id]})}>읽음 표시</button>}{n.sessionId&&<button onClick={()=>void open(n.sessionId)}>대화 열기</button>}
+            {n.kind==='github-pr'&&n.pullRequest&&<button disabled={busy} onClick={()=>void act({action:'pullWatchOpen',notificationId:n.id}).then(opened=>{
+              if(opened&&!n.readAt)void act({action:'read',ids:[n.id]});
+            })}>깃허브에서 열기</button>}
+            <button disabled={busy} onClick={()=>void act({action:"deleteNotifications",ids:[n.id]})}>삭제</button></div>
         </article>)}</section>)}
       {!data.notifications.length&&<p>도착한 알림이 없습니다.</p>}
     </>}
@@ -182,6 +187,19 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
         {["held","failed"].includes(d.status)&&<button disabled={busy} onClick={()=>void act({action:"retryDelivery",id:d.id})}>대화 확인 후 다시 전달</button>}</article>)}
     </>}
     {data&&prefs&&tab==="assistant"&&<>
+      <section className="workflow-form" aria-label="깃허브 변경 요청 감시">
+        <h3>깃허브 변경 요청 감시</h3>
+        <p>Flowrium이 켜져 있고 잠금이 해제된 동안 연결된 저장소를 10분마다 확인합니다.</p>
+        <label><AnimatedSwitch checked={pullWatchChoice??data.pullWatch?.enabled??false} disabled={busy}
+          onChange={event=>{
+            const enabled=event.currentTarget.checked;
+            setPullWatchChoice(enabled);
+            void act({action:'pullWatchSettings',enabled}).finally(()=>setPullWatchChoice(undefined));
+          }}/>새 변경 요청 알림 받기</label>
+        {data.pullWatch?.enabled&&<p role="status">{data.pullWatch.running?'연결된 저장소를 확인하고 있습니다.':data.pullWatch.lastCheckedAt
+          ? `${new Date(data.pullWatch.lastCheckedAt).toLocaleString('ko-KR')} 확인 / 저장소 ${data.pullWatch.repositories}개${data.pullWatch.failures?` / 접근 확인 필요 ${data.pullWatch.failures}건`:''}`
+          : '첫 확인을 기다리고 있습니다.'}</p>}
+      </section>
       <form className="workflow-form" onSubmit={event=>{event.preventDefault();void act({action:"preferences",value:prefs},"비서 운영 설정을 저장했습니다.").then(()=>{prefDirty.current=false;});}}>
         <h3>개인 비서 운영 설정</h3><p>켜기 전에는 주기 감시와 AI 보고를 실행하지 않습니다. AI 보고를 켜면 연결한 ChatGPT 계정의 사용량을 씁니다.</p>
         <label><AnimatedSwitch checked={prefs.enabled} onChange={e=>preference("enabled",e.target.checked)}/>정한 시간에 프로젝트 감시와 반복 목표 알림 켜기</label>

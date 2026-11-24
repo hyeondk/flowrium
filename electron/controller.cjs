@@ -576,8 +576,12 @@ class Controller extends EventEmitter {
     if(this.options.canRun?.()===false || run.ownerRevision!==(this.options.queueOwner?.()??'local')) throw Error("계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.");
     await verifyAccess();
     guardRequest();
+    const dictionary = await this.dictionaryReference(message, run.requestPages);
+    guardRequest();
     run.verifyProjectAccess=verifyAccess;
     run.cwd=cwd;
+    const definition = dictionary?.();
+    if (definition) additionalContext.flowrium_dictionary = definition;
     const turn = await client.request("turn/start", {
       ...(run.outputSchema && { outputSchema: run.outputSchema }),
       threadId: run.threadId,
@@ -613,6 +617,16 @@ class Controller extends EventEmitter {
         threadId: run.threadId,
         turnId: run.turnId,
       });
+  }
+  async dictionaryReference(message, pages) {
+    if (!this.options.dictionaryReference) return;
+    const input = pages ? async () => {
+      if (pages.length === 1) return pages.read(0);
+      const [first, last] = await Promise.all([pages.read(0), pages.read(pages.length - 1)]);
+      return first.slice(0, 20_000) + '\0' + last.slice(-20_000);
+    } : message;
+    try { return await this.options.dictionaryReference(input); }
+    catch { return; }
   }
   confirmWorkCloseTurn(run, session) {
     if (run.workCloseObserved || !run.turnId || run.finalized || run.cancelled ||

@@ -26,6 +26,7 @@ const accountCommands = new Set([
   "exportSession", "openGeneralAssistant", "createHubConversation", "listHubConversations",
   "readDrafts",
   "writeDrafts",
+  "dictionaryState", "dictionaryAction",
   "addChatAttachments", "readChatAttachment", "readChatCitation", "listQueuedMessages", "cancelQueuedMessage", "resumeQueuedMessages", "sendQueuedToCodex", "clearUnconfirmedCodexQueue",
   "workflowAction", "exportMemory", "previewMemoryImport", "applyMemoryImport", "moveMemory",
   "portfolioAction", "repositoryFlow", "artifactAction", "storageAction", "analyzeSystemProcesses", "stopSystemProcesses",

@@ -8,6 +8,7 @@ const {visibleProposals,QUESTION_DECISION_NOTICE}=require('./execution-state.js'
 const {completionSummary,completionPreview}=require('./notification-summary.cjs');
 const {newer}=require('./version.cjs');
 const workClose=require('./work-close.cjs');
+const {pullWatchInterval,pullRequestUrl,savedPullWatch,watchSummary}=require('./pull-watch.cjs');
 const run = promisify(execFile);
 const copy = value => structuredClone(value);
 const invalid = () => new Error("업무 연결과 알림 요청의 형식을 확인해 주세요.");
@@ -81,7 +82,10 @@ class WorkflowRuntime {
       }).catch(error=>this.noticeError(error));
     };
     controller.on('workCloseTurnStarted',this.workCloseStarted);
-    this.timer=setInterval(()=>{void this.tick().catch(error=>this.noticeError(error));},options.intervalMs||15000);
+    this.timer=setInterval(()=>{
+      void this.tick().catch(error=>this.noticeError(error));
+      void this.checkPullRequests().catch(error=>this.noticeError(error));
+    },options.intervalMs||15000);
     this.timer.unref?.();
   }
   account(){return this.options.accountRevision?.()??0;}
@@ -104,6 +108,7 @@ class WorkflowRuntime {
       if(!Array.isArray(record.dismissedNotificationKeys))record.dismissedNotificationKeys=[];
       for(const field of ["notifications","proposals","deliveries","reminders","reports"])for(const value of record[field])id(value.id);
       record.workClose=workClose.validate(record.workClose);
+      record.pullWatch=savedPullWatch(record.pullWatch);
       this.record=record;
       let changed=false;
       const recovered=workClose.recover(record.workClose,this.store,this.controller.runs);
@@ -200,10 +205,11 @@ class WorkflowRuntime {
     return workClose.resumeView(next.current);
   }
   async state(){
-    return this.serial(async()=>{this.ready();await this.syncUpdateNotice();const record=copy(this.record);delete record.dismissedNotificationKeys;delete record.latestUpdateNotified;delete record.workClose;
+    return this.serial(async()=>{this.ready();await this.syncUpdateNotice();const record=copy(this.record);delete record.dismissedNotificationKeys;delete record.latestUpdateNotified;delete record.workClose;delete record.pullWatch;
       const batch=this.record.workClose?.current;
       const resume=this.controller.status?.authenticated===true?workClose.resumeView(batch):undefined;
-      return{...record,...(resume&&{workClose:{...resume,returnPending:!batch.returnedAt}}),pending:await this.options.pending?.()||[],
+      return{...record,...(resume&&{workClose:{...resume,returnPending:!batch.returnedAt}}),
+      pullWatch:watchSummary(this.record.pullWatch,this.pullRun?.checking===true&&this.pullRun.owner===this.owner),pending:await this.options.pending?.()||[],
       projects:this.store.state.projects.map(p=>({id:p.id,name:p.name})),
       sessions:this.store.state.sessions.slice(0,200).map(s=>({id:s.id,projectId:s.projectId,title:s.title,running:this.controller.runs.has(s.id)}))};});
   }
@@ -425,6 +431,27 @@ class WorkflowRuntime {
           const batch=this.record.workClose?.current;
           return batch?.id===id(input.batchId)?workClose.resumeView(batch,true)||null:null;
         }
+        case 'pullWatchSettings':{
+          this.requirePullWatchAccount();
+          if(typeof input.enabled!=='boolean')throw invalid();
+          const previous=this.record.pullWatch;
+          if(Boolean(previous?.enabled)!==input.enabled){
+            const now=Math.floor(this.now()/1000)*1000;
+            this.record.pullWatch=input.enabled ? {enabled:true,key:randomUUID(),enabledAt:now,cursors:{}} : {enabled:false};
+            try{await this.save();}catch(error){this.record.pullWatch=previous;throw error;}
+            this.pullRun?.controller.abort();
+            if(input.enabled)setImmediate(()=>{void this.checkPullRequests().catch(error=>this.noticeError(error));});
+          }
+          return watchSummary(this.record.pullWatch,false);
+        }
+        case 'pullWatchOpen':{
+          this.requirePullWatchAccount();
+          const target=id(input.notificationId);
+          const row=this.record.notifications.find(notice=>notice.id===target&&notice.kind==='github-pr');
+          if(!row?.pullRequest||!this.options.openPullRequest)throw Error('열 변경 요청을 알림에서 다시 선택해 주세요.');
+          await this.options.openPullRequest(pullRequestUrl(row.pullRequest.repository,row.pullRequest.number));
+          return true;
+        }
         case 'completeContinuation':{
           const deciding=visibleProposals(this.record.proposals,this.now()).some(p=>p.sourceId===input.sessionId||p.targetId===input.sessionId);
           if(deciding)throw Error('이 대화의 결정 요청에 먼저 응답해 주세요.');
@@ -643,6 +670,56 @@ class WorkflowRuntime {
       await this.save();
     }
   }
+  requirePullWatchAccount(){
+    if(this.controller.status?.authenticated!==true || !/^[\da-f]{64}$/.test(this.controller.options?.modelAccount?.()||''))
+      throw Error('ChatGPT 계정에 연결한 뒤 깃허브 변경 요청 감시를 설정해 주세요.');
+  }
+  async checkPullRequests(){
+    if(this.pullRun||!this.options.scanPullRequests||this.closed||this.options.canRun?.()===false||this.controller.status?.authenticated!==true)return;
+    const flight={owner:this.account(),controller:new AbortController()};
+    this.pullRun=flight;
+    try {
+      const watch=await this.serial(async()=>{
+        this.ready();
+        const saved=this.record.pullWatch;
+        if(!saved?.enabled||saved.lastCheckedAt&&this.now()-saved.lastCheckedAt<pullWatchInterval)return;
+        this.requirePullWatchAccount();
+        return copy(saved);
+      });
+      if(!watch)return;
+      flight.checking=true;
+      const signal=AbortSignal.any([flight.controller.signal,AbortSignal.timeout(120000)]);
+      const current=()=>!this.closed&&!flight.controller.signal.aborted&&this.options.canRun?.()!==false&&this.account()===flight.owner&&
+        this.record?.pullWatch?.key===watch.key&&this.controller.status?.authenticated===true;
+      const guard=()=>{if(!current()||signal.aborted)throw stale();};
+      const started=this.now();
+      let result;
+      try{result=await this.options.scanPullRequests(watch,started,{signal,guard});}
+      catch(error){if(!current())return; result={scanned:[],failures:1};this.noticeError(error);}
+      if(!current())return;
+      await this.serial(async()=>{
+        if(!current())return;
+        const prior=this.record.pullWatch, notices=this.record.notifications.slice();
+        const next={...watch,lastCheckedAt:started,repositories:result.scanned.length,failures:result.failures,cursors:{...watch.cursors}};
+        const alerts=[];
+        for(const row of result.scanned){
+          if(!row.pulls)continue;
+          next.cursors[row.key]=started;
+          for(const pull of row.pulls)alerts.push({row,pull});
+        }
+        for(const {row,pull} of alerts.sort((a,b)=>a.pull.created-b.pull.created)){
+          const eventKey=`github-pr:${row.key}:${pull.number}`;
+          const notice=this.notification('github-pr',`${row.name}에 새 변경 요청이 열렸습니다.`,
+            `#${pull.number} ${pull.title || '제목 없음'}`,null,'깃허브 변경 요청',eventKey,undefined,false);
+          if(notice&&!notice.pullRequest)notice.pullRequest={repository:row.name,number:pull.number};
+        }
+        this.record.pullWatch=next;
+        try{await this.save();}catch(error){this.record.pullWatch=prior;this.record.notifications=notices;throw error;}
+      });
+    } finally {
+      if(this.pullRun===flight)this.pullRun=undefined;
+    }
+  }
   async tick(){
     if(this.tickRunning||this.closed||this.options.canRun?.()===false)return;
     this.tickRunning=true;
@@ -683,7 +760,7 @@ class WorkflowRuntime {
     });}finally{this.tickRunning=false;}
   }
   isBusy(){return this.transitions>0||this.tickRunning;}
-  async shutdown(){this.closed=true;clearInterval(this.timer);this.controller.off("event",this.listener);
+  async shutdown(){this.closed=true;clearInterval(this.timer);this.pullRun?.controller.abort();this.controller.off("event",this.listener);
     this.controller.off('workCloseTurnStarted',this.workCloseStarted);
     this.finishWorkCloseSubmission(this.workCloseSubmission,false);await this.queue;}
 }

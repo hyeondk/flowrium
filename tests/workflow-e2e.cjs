@@ -3,7 +3,7 @@ const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-tru
 const assert=require("node:assert/strict"),fs=require("node:fs/promises"),path=require("node:path"),os=require("node:os");
 const { _electron }=require("playwright");
 const {Store}=require("../electron/store.cjs"),{registerMemory}=require("../electron/memory.cjs");
-const {dockHome,composer,openConversation}=require("./shell-test-helpers.cjs");
+const {dockHome,composer,openConversation,settledLayout}=require("./shell-test-helpers.cjs");
 async function main(){
   const temp=await fs.mkdtemp(path.join(os.tmpdir(),"flowrium-workflow-ui-")),profile=path.join(temp,"설정"),folder=path.join(temp,"기능 검증 프로젝트");
   await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount});
@@ -103,7 +103,14 @@ async function main(){
     await page.getByRole("heading",{name:"적용할 메모 선택",exact:true}).waitFor();await button("선택한 메모 가져오기").click();await page.getByRole("status").filter({hasText:"메모 1개를 적용"}).waitFor();
     await page.locator(".memory-list button").filter({hasText:"보관할 기준"}).click();assert.equal(await page.getByLabel("지시와 메모",{exact:true}).inputValue(),"가져오기 후 메모 본문");
     await button("기기 전체로 옮기기").click();await page.locator(".memory-list button").filter({hasText:"이 기기 전체"}).waitFor();
-    await button("업무 연결 / 비서").click();for(const width of [390,768,1280]){await page.setViewportSize({width,height:900});const dimensions=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth}));assert(dimensions.scroll<=dimensions.width+1,JSON.stringify(dimensions));}
+    await button("업무 연결 / 비서").click();
+    for(const width of [390,768,1280]){
+      await page.setViewportSize({width,height:900});
+      await settledLayout(page.locator('body'));
+      const dimensions=await page.locator('.workflow-hub').evaluate(hub=>({width:innerWidth,scroll:document.documentElement.scrollWidth,
+        contentWidth:hub.clientWidth,contentScroll:hub.scrollWidth}));
+      assert(dimensions.scroll<=dimensions.width+1&&dimensions.contentScroll<=dimensions.contentWidth+1,JSON.stringify(dimensions));
+    }
     console.log("업무 연결 화면 / 조사 요청 승인과 실제 모델 응답·원대화 회신 / 결정 숨김복원 / 읽음과 알림정리 / AI 비서 보고·산출물 / 예약과 재실행 / 메모 백업·선택가져오기·범위이동 / 세 화면 폭 통과");
   }catch(error){if(page&&!page.isClosed())console.error("업무 연결 화면 진단",await page.locator("main").innerText().catch(()=>page.locator("body").innerText()));throw error;}
   finally{if(app)await app.close();await fs.rm(temp,{recursive:true,force:true,maxRetries:8,retryDelay:150});}

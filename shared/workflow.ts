@@ -16,7 +16,9 @@ export interface WorkflowNotification {
   id:string;kind:string;title:string;body:string;sessionId:string|null;group:string;createdAt:string;readAt:string|null;
   preview?:string;
   updateVersion?:string;
+  pullRequest?:{repository:string;number:number};
 }
+export interface PullWatchState {enabled:boolean;running:boolean;repositories:number;failures:number;lastCheckedAt?:string;nextCheckAt?:string;}
 export interface WorkflowProposal {
   id:string;revision:number;kind:"request"|"external"|"next"|"report"|"team";title:string;body:string;
   sourceId:string|null;targetId:string|null;projectId:string|null;
@@ -49,12 +51,15 @@ export interface WorkflowState {
   projects:{id:string;name:string}[];
   sessions:{id:string;projectId:string;title:string;running:boolean}[];
   workClose?: Omit<WorkCloseResume, 'memo'> & { returnPending: boolean };
+  pullWatch?: PullWatchState;
 }
 export type WorkflowAction =
   |{action:'beginWorkClose'|'finishWorkClose';batchId:string}
   |{action:'armWorkClose';batchId:string;sessionId:string;submissionId:string;reason:WorkCloseReason;memo?:string}
   |{action:'returnToWork'}
   |{action:'readWorkClose';batchId:string}
+  |{action:'pullWatchSettings';enabled:boolean}
+  |{action:'pullWatchOpen';notificationId:string}
   |{action:'completeContinuation';sessionId:string;messageId:string}
   |{action:'continueConversation';submissionId?:string;sessionId:string;messageId:string;text?:string;attachments?:string[];mode:Mode;model?:string;effort?:Effort}
   |{action:"preferences";value:Partial<WorkflowPreferences>}

@@ -30,6 +30,7 @@ let updater;
 let terminals;
 let systemTools;
 let workflowRuntime;
+let dictionary;
 let teamRuntime;
 let externalTools;
 let projectTools;
@@ -85,11 +86,11 @@ async function invokeRegistered(name,handler,args){
   if(['send','startWork','logoutSecurity','installUpdate','lockSecurity'].includes(name)||
     (name==='workflowAction'&&args[0]?.action==='continueConversation')||
     (name==='saveSettings'&&(args[0]?.aiFollowups===false||Object.hasOwn(args[0]??{},'codexPath'))))followupGenerator?.invalidate();
-  const independent=/^(read|list)/.test(name)||['bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name);
+  const independent=/^(read|list)/.test(name)||['bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','dictionaryState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name);
   const query=args[0];
   // 실행 파일과 프로젝트를 바꾸는 작업은 기존 동기화를 기다린다.
   const settingsOnly=(name==='saveSettings'&&!Object.hasOwn(query??{},'codexPath')) ||
-    name==='setSecurityPreferences' || name==='configureVoicePreferences' ||
+    name==='setSecurityPreferences' || name==='configureVoicePreferences' || name==='dictionaryAction' ||
     (name==='webPushAction'&&query?.action==='preferences');
   const passiveTransfer=name==='codexTransferAction'&&(query?.action==='sync'&&!query.force||query?.action==='receipts'||query?.action==='readOriginal'||query?.background===true);
   const foreground=!independent&&!passiveTransfer&&!settingsOnly;
@@ -265,10 +266,21 @@ async function launch() {
   const music = require("./music.cjs").registerMusic(register, app.getPath("userData"));
   require("./lyrics.cjs").registerLyrics(register);
   app.on("will-quit", () => { void music.shutdown(); });
+  const canUseAccount = () => !quitting && !migrationTransition && !importRestartRequired &&
+    !security.locked && !security.loggingOut && !updater?.isInstalling();
+  const {Dictionary}=require('./dictionary.cjs');
+  dictionary=new Dictionary(app.getPath('userData'),{
+    context:()=>canUseAccount() && controller?.status.authenticated ? {
+      owner:security.data.accountOwner, revision:security.accountRevision, epoch:security.epoch,
+    } : null,
+  });
+  register('dictionaryState',()=>dictionary.state());
+  register('dictionaryAction',input=>dictionary.action(input));
   controller = new Controller(store, {
-    canRun: () => !quitting && !migrationTransition && !importRestartRequired && !security.locked && !security.loggingOut && !updater?.isInstalling(),
+    canRun: canUseAccount,
     queueOwner: () => security.accountRevision,
     modelAccount: () => security.data.accountOwner,
+    dictionaryReference: input=>dictionary.reference(input),
     applicationTools: async session => [...(await workflowRuntime?.toolsFor(session) || []), ...(externalTools?.definitions || []), ...(projectTools?.definitions || [])],
     callApplicationTool: async input => externalTools?.handles(input.name)
       ? externalTools.call(input) : projectTools?.handles(input.name) ? projectTools.call(input) : workflowRuntime?.callTool(input),
@@ -337,6 +349,8 @@ async function launch() {
     externalMethods: ['commitMacEvent','repositoryFlow'],
     repositoryAction: (id,input) => apiHandlers.get('repositoryAction')(id,input),
     repositoryFlow: input => apiHandlers.get('repositoryFlow')(input),
+    scanPullRequests: (watch,now,options) => require('./pull-watch.cjs').scanPullRequests(store,watch,now,options),
+    openPullRequest: url => shell.openExternal(url),
     notify: event => webPush?.notify(event),
     pending: () => apiHandlers.get('securityPending')(),
     guard: (name, action) => security.guard(name, action), memory, teamRuntime,
@@ -734,7 +748,7 @@ else {
     if (window && !window.isDestroyed()) window.setEnabled(false);
     Promise.allSettled([externalRepositoryAccess?.shutdown(),dotsRuntime?.shutdown(),workflowRuntime?.shutdown(), linkDelivery?.shutdown(), webPush?.shutdown(), voice?.shutdown?.({finishPendingSettings:true}), projectPorts?.shutdown(), codexTransfer?.shutdown(), controller.shutdown(), terminals?.shutdown(), systemTools?.shutdown()])
       .then(() => { lifecycleDiagnostic('quit-services-finished'); return teamRuntime?.flush(); })
-      .then(() => { lifecycleDiagnostic('quit-teams-finished'); return Promise.all([drafts.queue,controller.store.settingsQueue,followupSettingsQueue]); })
+      .then(() => { lifecycleDiagnostic('quit-teams-finished'); return Promise.all([drafts.queue,controller.store.settingsQueue,followupSettingsQueue,dictionary?.flush()]); })
       .finally(() => {
         lifecycleDiagnostic('quit-finished');
         setImmediate(() => {
