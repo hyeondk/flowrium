@@ -116,7 +116,12 @@ jobs:
         timeout-minutes: 3
         run: node --test --test-reporter=spec tests/terminal.test.cjs
       - run: npm test
+        if: runner.os != 'Windows'
         timeout-minutes: 5
+      - name: Windows 단위 검사
+        if: runner.os == 'Windows'
+        timeout-minutes: 9
+        run: node --test --test-concurrency=2 tests/*.test.cjs
       - name: 다운로드 페이지 확인
         run: node scripts/verify-downloads.mjs
       - name: 다운로드 페이지 실제 브라우저 확인
@@ -199,8 +204,10 @@ jobs:
       - name: 패키지 내장 터미널 검증
         run: node tests/terminal-packaged-e2e.cjs
       - name: 배포 앱의 프로젝트·일반·통합 대화 송수신 검증
-        timeout-minutes: 4
+        timeout-minutes: ${{ runner.os == 'Windows' && 7 || 4 }}
         run: node tests/packaged-chat-e2e.cjs
+        env:
+          DEBUG: ${{ runner.os == 'Windows' && 'pw:browser' || '' }}
       - name: 실제 앱에서 업무 대화 검증
         id: verify_1
         continue-on-error: true
