@@ -47,13 +47,21 @@ async function bindUpdateTransport(application, fixture) {
     const load = module.createRequire(path.join(app.getAppPath(), 'package.json'));
     const {DesktopUpdater} = load('./electron/updater.cjs');
     const original = DesktopUpdater.prototype.check;
-    DesktopUpdater.prototype.check = function(...args) {
-      this.fetchImpl = async (url) => {
-        if (url === 'https://api.github.com/repos/hyeondk/flowrium/releases/latest') return Response.json(data.manifest);
-        if (url === data.sumsURL) return new Response(data.sums);
-        if (url === data.assetURL) return new Response(fs.createReadStream(data.file));
-        throw new Error('예상한 업데이트 주소와 다릅니다.');
-      };
+    globalThis.flowriumUpdateFixtureChecks = 0;
+    const fetchFixture = async url => {
+      if (url === 'https://api.github.com/repos/hyeondk/flowrium/releases/latest') {
+        globalThis.flowriumUpdateFixtureChecks++;
+        return Response.json(data.manifest);
+      }
+      if (url === data.sumsURL) return new Response(data.sums);
+      if (url === data.assetURL) return new Response(fs.createReadStream(data.file));
+      throw new Error('예상한 업데이트 주소와 다릅니다.');
+    };
+    DesktopUpdater.prototype.check = async function(...args) {
+      const previousCheck = this.fetchImpl === fetchFixture ? undefined : this.operation;
+      this.fetchImpl = fetchFixture;
+      // The startup request may already have captured the live transport.
+      if (previousCheck && !this.isInstalling()) await previousCheck;
       return original.apply(this,args);
     };
   }, fixture),30000,'업데이트 전송 연결');
@@ -64,22 +72,30 @@ async function clickAvailable(application,version) {
   await within(application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().find(w=>!w.isDestroyed())?.focus()),30000,'업데이트 창 포커스');
   page.setDefaultTimeout(25000);
   const banner=page.locator('.update-banner').filter({hasText:'Flowrium '+version+' 업데이트'});
-  if(!await banner.isVisible()) {
-    const rail=page.locator('.workspace-side');if(await rail.count())await rail.hover();
-    await page.locator('.settings-button').click();
-    const settings=page.getByRole('dialog').getByRole('region',{name:'프로그램 업데이트'});
-    const check=settings.getByRole('button',{name:'새 버전 확인',exact:true,disabled:false});
-    const restart=settings.getByRole('button',{name:'업데이트 후 재시작',exact:true});
-    // 설정 표시와 자동 확인이 모두 비동기다. 실제로 누를 수 있는 상태를 기다린다.
-    await check.or(restart).waitFor();
-    if(await check.isVisible()){
-      try{await check.click();}
-      catch(error){if(!await restart.isVisible())throw error;}
+  try {
+    if(!await banner.isVisible()) {
+      const rail=page.locator('.workspace-side');if(await rail.count())await rail.hover();
+      await page.locator('.settings-button').click();
+      const settings=page.getByRole('dialog').getByRole('region',{name:'프로그램 업데이트'});
+      const check=settings.getByRole('button',{name:'새 버전 확인',exact:true,disabled:false});
+      const restart=settings.getByRole('button',{name:'업데이트 후 재시작',exact:true});
+      // 설정 표시와 자동 확인이 모두 비동기다. 실제로 누를 수 있는 상태를 기다린다.
+      await check.or(restart).waitFor({timeout:35000});
+      if(await check.isVisible()){
+        try{await check.click();}
+        catch(error){if(!await restart.isVisible())throw error;}
+      }
+      await restart.waitFor({timeout:35000});
+      await page.getByRole('button',{name:'설정 닫기'}).click();
     }
-    await restart.waitFor();
-    await page.getByRole('button',{name:'설정 닫기'}).click();
+    const reads=await application.evaluate(()=>globalThis.flowriumUpdateFixtureChecks);
+    if(!reads)throw Error('시험 업데이트 목록 응답을 받지 못했습니다.');
+    await banner.getByRole('button',{name:'업데이트 후 재시작'}).click();
+  } catch(error) {
+    console.error('검사 업데이트 상태',await page.evaluate(()=>window.flowrium.updateState()).catch(()=>null),
+      '시험 응답 조회',await application.evaluate(()=>globalThis.flowriumUpdateFixtureChecks).catch(()=>null));
+    throw error;
   }
-  await banner.getByRole('button',{name:'업데이트 후 재시작'}).click();
   return page;
 }
 async function seedOldProject(userData,temporary) {
