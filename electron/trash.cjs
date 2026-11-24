@@ -149,7 +149,7 @@ class TrashRuntime{
    return {entry:this.view(entry),notice:plan.mode?entry.notice:'이미 휴지통에 있는 항목입니다. 목록을 갱신했습니다.'};
   }
   if(!['keep','archive','delete'].includes(input.native))throw Error('원래 대화의 처리 방법을 선택해 주세요.');const target=this.target(plan.kind,plan.id);this.idle(target);if(plan.fingerprint!==this.fingerprint(target))throw Error('확인 후 항목이 바뀌었습니다. 변경된 내용을 다시 확인해 주세요.');
-  const pending=input.native==='archive'&&plan.deferredArchive;let impact;if(input.native!=='keep'&&!pending){if(!plan.native.available)throw Error('이 항목은 원래 Codex 대화를 처리할 수 없습니다.');if(input.native==='delete'&&input.confirmTitle!==target.title)throw Error('영구 삭제하려면 대상 이름을 정확히 입력해 주세요.');impact=await this.nativeImpact(target,plan.context);if(this.signature(impact)!==this.signature(plan.native))throw Error('하위 대화나 보관 상태가 바뀌었습니다. 전체 영향을 다시 확인해 주세요.');}
+  const pending=input.native==='archive'&&plan.deferredArchive;let impact;if(input.native!=='keep'&&!pending){if(!plan.native.available)throw Error('이 항목은 원래 Codex 대화를 처리할 수 없습니다.');if(input.native==='delete'&&input.confirmTitle!==target.title)throw Error(plan.kind==='session'?'대화 이름이 바뀌었습니다. 삭제 창을 다시 열어 확인해 주세요.':'영구 삭제하려면 대상 이름을 정확히 입력해 주세요.');impact=await this.nativeImpact(target,plan.context);if(this.signature(impact)!==this.signature(plan.native))throw Error('하위 대화나 보관 상태가 바뀌었습니다. 전체 영향을 다시 확인해 주세요.');}
   let projectRef;
   if(input.removeProjectRegistration){
    const transfer=this.controller.codexTransfer;if(!plan.projectLink||!transfer)throw Error('Codex 프로젝트 등록 정보를 다시 확인해 주세요.');

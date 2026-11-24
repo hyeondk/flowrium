@@ -36,9 +36,9 @@ test('원래 Codex 보관은 하위 작업 목록을 확인하고 이번에 옮�
  const p=await s.action({action:'preview',kind:'session',id:s.session.id});assert.equal(p.native.roots.length,1);assert.equal(p.native.descendants.length,2);const result=await s.action({action:'delete',token:p.token,native:'archive'});assert.equal(result.entry.nativeStatus,'completed');assert.equal(s.rows.get('root-synthetic').archived,true);assert.equal(s.rows.get('child-new').archived,true);
  await s.action({action:'restore',id:result.entry.id});assert.equal(s.rows.get('root-synthetic').archived,false);assert.equal(s.rows.get('child-new').archived,false);assert.equal(s.rows.get('child-old').archived,true);assert(!s.calls.some(c=>c.method==='thread/delete'));
 });
-test('원래 Codex 영구 삭제는 이름 재입력 뒤에만 실행하고 복원은 독립 사본으로 만든다',async t=>{
+test('원래 Codex 영구 삭제는 확인한 대화 이름과 일치해야 하고 복원은 독립 사본으로 만든다',async t=>{
  const s=await fixture(t);await s.linked();s.rows.set('child',{id:'child',parentThreadId:'root-synthetic',name:'함께 삭제될 하위 작업',archived:false});const p=await s.action({action:'preview',kind:'session',id:s.session.id});
- await assert.rejects(s.action({action:'delete',token:p.token,native:'delete',confirmTitle:'잘못된 이름'}),/이름을 정확히/);assert(s.store.session(s.session.id));assert(!s.calls.some(c=>c.method==='thread/delete'));
+ await assert.rejects(s.action({action:'delete',token:p.token,native:'delete',confirmTitle:'잘못된 이름'}),/대화 이름이 바뀌었습니다/);assert(s.store.session(s.session.id));assert(!s.calls.some(c=>c.method==='thread/delete'));
  const result=await s.action({action:'delete',token:p.token,native:'delete',confirmTitle:p.title});assert.equal(result.entry.nativeStatus,'completed');assert.equal(s.rows.get('root-synthetic').deleted,true);assert.equal(s.rows.get('child').deleted,true);await s.action({action:'restore',id:result.entry.id});assert.equal(s.store.session(s.session.id).codexLink.mode,'copy');assert.equal(s.store.session(s.session.id).threadId,undefined);assert.equal(s.store.session(s.session.id).messages[0].text,'합성 본문');
 });
 test('실행 중 삭제와 확인 뒤 변경, 계정·잠금 변경, 하위 대화 변경은 원본 처리 전에 차단한다',async t=>{

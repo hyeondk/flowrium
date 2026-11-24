@@ -11,9 +11,9 @@ const { promisify } = require('node:util');
 const { setTimeout: delay } = require('node:timers/promises');
 const { DesktopUpdater, artifactSuffix } = require('../electron/updater.cjs');
 const run = promisify(execFile);
-const {releaseVersion,releaseTag,nativeVersion,displayVersion,dateVersion,previousVersion}=require('../electron/version.cjs');
+const {releaseVersion,releaseTag,nativeVersion,displayVersion,dateVersion,previousVersion,parseReleaseTag,newer}=require('../electron/version.cjs');
 const version = releaseVersion(require('../package.json'));
-const previous = dateVersion(version)?previousVersion(version):version === '0.6.0' ? '0.5.0' : version === '0.2.0' ? '0.1.2' : version === '0.3.0' ? '0.2.0' : version === '0.4.0' ? '0.3.0' : '0.4.0';
+const previousFixture = dateVersion(version)?previousVersion(version):version === '0.6.0' ? '0.5.0' : version === '0.2.0' ? '0.1.2' : version === '0.3.0' ? '0.2.0' : version === '0.4.0' ? '0.3.0' : '0.4.0';
 const fixture = process.argv.includes('--unsigned-fixture');
 const unsigned = fixture || process.argv.includes('--expect-unsigned');
 const mac = process.platform === 'darwin';
@@ -88,7 +88,7 @@ async function verifyMacReady(temporary) {
   const stage = path.join(root, 'staging');
   const prepared = path.join(stage, 'new', 'Flowrium.app');
   await fs.mkdir(path.dirname(prepared), { recursive: true });
-  await macFixture(installed, previous);
+  await macFixture(installed, previousFixture);
   const executable = await macFixture(prepared, version);
   const receipt = path.join(root, 'receipt');
   const token = require('node:crypto').randomUUID();
@@ -123,28 +123,36 @@ int main(int argc, char** argv) {
   }
   console.log('macOS 교체 도우미 / 실제 네이티브 프로세스의 준비 확인 후 이전 번들 정리 통과');
 }
+async function previousWindowsRelease() {
+  if (!dateVersion(previousFixture) || !process.argv.includes('--prefer-published-previous')) return;
+  const response = await fetch('https://api.github.com/repos/hyeondk/flowrium/releases/latest', { signal: AbortSignal.timeout(30000) });
+  if (response.status === 404) return;
+  assert(response.ok,'직전 공개 릴리스 조회 실패');
+  const release = await response.json();
+  const published = parseReleaseTag(release.tag_name);
+  if (dateVersion(published) && newer(version,published)) return release;
+}
 async function installPreviousWindows(folder) {
+  const publicPrevious = await previousWindowsRelease();
+  const previous = parseReleaseTag(publicPrevious?.tag_name) || previousFixture;
   const dated = !!dateVersion(previous);
   const tag = releaseTag(previous);
-  const publicPrevious = dated && process.argv.includes('--prefer-published-previous')
-    ? await fetch('https://api.github.com/repos/hyeondk/flowrium/releases/tags/' + tag, { signal: AbortSignal.timeout(30000) })
-    : undefined;
-  if (publicPrevious && !publicPrevious.ok) assert.equal(publicPrevious.status, 404, '직전 공개 릴리스 조회 실패');
-  if(dated && !publicPrevious?.ok){
+  if(dated && !publicPrevious){
     const output=path.join(path.dirname(folder),'previous-date-package'),root=path.resolve(__dirname,'..');
     await run(process.execPath,[require.resolve('electron-builder/cli.js'),'--win','--x64','--dir','--publish','never','--config.directories.output='+output,'--config.extraMetadata.version='+nativeVersion(previous),'--config.extraMetadata.flowriumVersion='+previous],{cwd:root,env:process.env,timeout:300000,maxBuffer:16*1024*1024});
     await fs.cp(path.join(output,'win-unpacked'),folder,{recursive:true,errorOnExist:true});
     console.log('동일 소스로 만든 직전 날짜판의 격리 설치',previous);
-    return path.join(folder,'Flowrium.exe');
+    return {binary:path.join(folder,'Flowrium.exe'),previous};
   }
   const name = 'Flowrium-'+previous+'-win-x64.exe';
   const base = 'https://github.com/hyeondk/flowrium/releases/download/'+tag+'/';
   const url = base+name;
   let previousHash = 'ff7b59fc1a309a0906b5335cec606bd6ea2450ab9ba54ea641ac16cbbc064ddf';
   if (dated||['0.2.0','0.3.0','0.4.0','0.5.0'].includes(previous)) {
-    const response=publicPrevious ?? await fetch('https://api.github.com/repos/hyeondk/flowrium/releases/tags/'+tag);
-    assert.ok(response.ok,previous+' 공개 릴리스 사전 설치 정보가 필요합니다.');
-    const release=await response.json();
+    const release=publicPrevious ?? await fetch('https://api.github.com/repos/hyeondk/flowrium/releases/tags/'+tag).then(response=>{
+      assert.ok(response.ok,previous+' 공개 릴리스 사전 설치 정보가 필요합니다.');
+      return response.json();
+    });
     assert.equal(release.tag_name,tag); assert.equal(release.draft,false); assert.equal(release.prerelease,false);
     const binary=release.assets.find(a=>a.name===name),sums=release.assets.find(a=>a.name==='SHA256SUMS.txt');
     assert.equal(binary?.browser_download_url,url);assert.equal(sums?.browser_download_url,base+'SHA256SUMS.txt');
@@ -168,7 +176,7 @@ async function installPreviousWindows(folder) {
   assert.equal((await powershell('[Diagnostics.FileVersionInfo]::GetVersionInfo($env:BINARY).ProductVersion',
     { BINARY: binary })).stdout.trim().split(/[+ ]/)[0].split('.').slice(0, 3).join('.'), nativeVersion(previous));
   console.log('직전 공개 설치 파일의 체크섬 확인 및 설치', previous);
-  return binary;
+  return {binary,previous};
 }
 async function processIds(executable) {
   if (mac) {
@@ -219,6 +227,7 @@ async function main() {
   const userData = mac && !unsigned
     ? path.join(os.homedir(), 'Library', 'Application Support', 'Flowrium') : path.join(temporary, 'profile');
   const assetName = 'Flowrium-' + version + '-' + suffix;
+  let previous = previousFixture;
   let binary, oldProcess, oldPid, oldApp, quitRequest, restartedPid, projectFixture;
   try {
     if (mac) { await verifyMacRollback(temporary); await verifyMacReady(temporary); }
@@ -236,7 +245,8 @@ async function main() {
     const manifest = { tag_name: releaseTag(version), draft: false, prerelease: false,
       assets: [[assetName, size, sha], ['SHA256SUMS.txt', sums.length, createHash('sha256').update(sums).digest('hex')]]
         .map(([name, size, hash]) => ({ name, size, digest: 'sha256:' + hash, browser_download_url: url + name })) };
-    binary = mac ? await macFixture(installed, previous) : await installPreviousWindows(installed);
+    if (mac) binary = await macFixture(installed, previous);
+    else ({binary,previous} = await installPreviousWindows(installed));
     const before = await digest(binary);
     if (mac) {
       oldProcess = spawn(binary, ['--hold'], { stdio: ['ignore','pipe','ignore'] });
