@@ -3,6 +3,7 @@ const {createHash} = require('node:crypto');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {Store} = require('../electron/store.cjs');
+const {Security} = require('../electron/security.cjs');
 const {samePath} = require('../electron/path-boundary.cjs');
 
 // The test supplies the project it created under its temporary fixture directory.
@@ -21,6 +22,12 @@ async function trustFixtureProject(store, project, { account } = {}) {
 }
 const backendFixtureAccount = '개인정보를 출력하지 않음';
 
+async function setFixtureAccountLinked(profile) {
+  const security = new Security(profile);
+  await security.load();
+  await security.accountOwner({type: 'chatgpt', email: backendFixtureAccount}, false, true);
+}
+
 async function addTrustedFixtureProject(store, folder, options) {
   const project = await store.addProject(folder);
   await trustFixtureProject(store, project, options);
@@ -36,4 +43,4 @@ async function trustRegisteredFixtureFolder(profile, folder, account = backendFi
   return trustFixtureProject(store, project, {account});
 }
 
-module.exports = { trustFixtureProject, addTrustedFixtureProject, trustRegisteredFixtureFolder, backendFixtureAccount };
+module.exports = { trustFixtureProject, addTrustedFixtureProject, trustRegisteredFixtureFolder, backendFixtureAccount, setFixtureAccountLinked };

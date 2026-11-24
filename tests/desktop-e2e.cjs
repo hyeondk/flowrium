@@ -1,5 +1,5 @@
 const {settledRail}=require('./shell-test-helpers.cjs');
-const {trustRegisteredFixtureFolder} = require('./project-trust-fixture.cjs');
+const {trustRegisteredFixtureFolder,setFixtureAccountLinked} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -26,6 +26,7 @@ async function run() {
   await fs.mkdir(project);
   await store.load();
   await store.saveSettings({ codexPath: path.join(__dirname, "backend-fake-codex.cjs") });
+  await setFixtureAccountLinked(profile);
   const env = { ...process.env, FLOWRIUM_USER_DATA: profile, CODEX_HOME: path.join(temp, "codex") };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.ELECTRON_RENDERER_URL;

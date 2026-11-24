@@ -42,6 +42,7 @@ export function useModelCatalog(api:FlowriumAPI | undefined, active:boolean, set
   useEffect(() => {
     generation.current++;
     if (!active) return;
+    void refresh();
     const foreground = () => { if(document.visibilityState === 'visible') void refresh(); };
     const timer = window.setInterval(foreground,refreshInterval);
     window.addEventListener('focus',foreground);

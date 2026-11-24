@@ -109,6 +109,8 @@ jobs:
           node scripts/build-win-updater.cjs
           node tests/update-native-e2e.cjs --windows-helper-smoke
       - run: npm run build
+      - name: 첫 로그인과 인증 후 자동 연결 확인
+        run: node tests/chat-connection-e2e.cjs
       - name: 프로젝트 대화의 실제 읽기 및 쓰기 권한 검사
         run: node tests/project-edit-native-e2e.cjs
       - name: 가상 터미널 검증
@@ -246,7 +248,6 @@ jobs:
           node tests/chat-core-e2e.cjs
           node tests/chat-core-native-e2e.cjs
           node tests/chat-model-e2e.cjs
-          node tests/chat-connection-e2e.cjs
       - name: 목표·그래프·산출물·복원과 실제 모델 도구
         id: verify_5
         continue-on-error: true

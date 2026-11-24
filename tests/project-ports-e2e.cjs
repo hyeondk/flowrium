@@ -1,4 +1,4 @@
-const {openProjectTab,settledLayout}=require('./shell-test-helpers.cjs');
+const {openProjectTab,settledLayout,waitForCodexConnection}=require('./shell-test-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -22,7 +22,7 @@ async function run() {
       app = await _electron.launch({ args: [root], env, timeout: 45000 }); page = await app.firstWindow();
       page.setDefaultTimeout(16000); page.on('pageerror', error => errors.push(error.message)); await page.setViewportSize({ width: 1440, height: 1000 });
       await page.getByRole('heading', { name: '프로젝트 대시보드', exact: true }).waitFor();
-      await page.waitForFunction(() => document.querySelector('.side-usage')?.dataset.connected === 'true');
+      await waitForCodexConnection(page);
       await app.evaluate(({ clipboard }) => { clipboard.writeText = text => { globalThis.flowriumPortCopied = text; }; });
     }
     async function openPorts() {

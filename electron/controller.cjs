@@ -73,6 +73,8 @@ class Controller extends EventEmitter {
     this.client.on("disconnect", (error) => {
       this.loadedThreads.clear();
       this.status.authenticated = false;
+      this.loginId = null;
+      this.loginPending = false;
       for (const run of [...this.runs.values()])
         if(!run.claimingWriter && (!run.client || run.client===this.client))this.finish(run, "failed", error).catch(() => {});
       this.emitEvent({
@@ -157,12 +159,13 @@ class Controller extends EventEmitter {
       return { available: false, authenticated: false, error: error.message };
     }
   }
-  async connect(quiet=false) {
+  async connect(quiet=false, linkAccount=false) {
     await this.client.start(this.store.state.settings.codexPath);
     const {account:record}=await this.client.request("account/read",{refreshToken:false});
-    const changed=await this.accountObserved?.(record);
+    const changed=await this.accountObserved?.(record, linkAccount);
     const owner=this.options.queueOwner?.();
-    const models=await this.client.request("model/list",{limit:100,includeHidden:false});
+    // Complete sign-in without waiting for the model catalog to load.
+    const models=linkAccount ? [] : (await this.client.request("model/list",{limit:100,includeHidden:false})).data || [];
     if(this.options.queueOwner?.()!==owner)throw Error('연결 계정이 바뀌었습니다. 다시 확인해 주세요.');
     const previous=this.status.authenticated, previousDots=this.status.dotsEligible;
     const authenticated = record?.type === "chatgpt";
@@ -190,7 +193,7 @@ class Controller extends EventEmitter {
     return {
       status: { ...this.status },
       modelAccount:authenticated ? this.options.modelAccount?.() : undefined,
-      models: (models.data || []).map((model) => ({
+      models: models.map((model) => ({
         id: model.model || model.id,
         displayName: model.displayName || model.id,
         description: model.description || undefined,
@@ -220,6 +223,7 @@ class Controller extends EventEmitter {
     )
       throw new Error("확인되지 않은 로그인 주소를 차단했습니다.");
     this.loginId = result.loginId || null;
+    this.loginPending = true;
     return { authUrl: result.authUrl };
   }
   async saveSettings(input, {mergeChatDefaults=false}={}) {
@@ -705,14 +709,16 @@ class Controller extends EventEmitter {
   }
   async notification({ method, params = {} }, client=this.client) {
     if (method === "account/login/completed") {
+      if (client !== this.client || !this.loginPending || (this.loginId && params.loginId && this.loginId !== params.loginId)) return;
+      this.loginPending = false;
       this.loginId = null;
       if (params.success) {
-        this.emitEvent({
+        const {status} = await this.connect(false, true);
+        if (status.authenticated) this.emitEvent({
           type: "status",
           status: "login-completed",
-          text: "ChatGPT 로그인이 완료됐습니다. 연결 버튼으로 계정을 확인해 주세요.",
+          text: "ChatGPT 로그인이 완료됐습니다. Flowrium에서 바로 작업할 수 있습니다.",
         });
-        await this.connect();
       } else
         this.emitEvent({
           type: "error",

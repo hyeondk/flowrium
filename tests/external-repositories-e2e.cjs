@@ -1,4 +1,4 @@
-const {openProjectTab}=require('./shell-test-helpers.cjs');
+const {openProjectTab,waitForCodexConnection}=require('./shell-test-helpers.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),{_electron}=require('playwright'),{setup}=require('./external-repositories-fixtures.cjs'),{samePath}=require('../electron/path-boundary.cjs');
 async function main(){
  const root=path.resolve(__dirname,'..'),base=process.env.FLOWRIUM_TEST_STAGE||path.join(root,'.flowrium-tmp/qa-261115_02');await fs.mkdir(base,{recursive:true});const f=await setup(base);let app,page,stage='준비';
@@ -6,7 +6,7 @@ async function main(){
  try{
   await f.store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});await fs.mkdir(path.join(f.root,'gh'));const empty=path.join(f.root,'empty-git-config');await fs.writeFile(empty,'');
   const env={...process.env,FLOWRIUM_USER_DATA:f.profile,CODEX_HOME:path.join(f.root,'codex'),GH_CONFIG_DIR:path.join(f.root,'gh'),GIT_CONFIG_GLOBAL:empty,GIT_CONFIG_NOSYSTEM:'1'};for(const key of ['ELECTRON_RUN_AS_NODE','ELECTRON_RENDERER_URL','GH_TOKEN','GITHUB_TOKEN','GH_ENTERPRISE_TOKEN','GITHUB_ENTERPRISE_TOKEN'])delete env[key];
-  async function launch(){app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(16000);await page.setViewportSize({width:1440,height:1000});await page.locator('.side-usage[data-connected=true]').waitFor();await page.locator('.workspace-side').hover();await page.locator('.side-project').getByText(f.target.name,{exact:true}).click();await page.getByRole('heading',{name:f.target.name,exact:true}).waitFor();await openProjectTab(page,'프로젝트 설정');await page.locator('.project-repositories').waitFor();}
+  async function launch(){app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(16000);await page.setViewportSize({width:1440,height:1000});await waitForCodexConnection(page);await page.locator('.workspace-side').hover();await page.locator('.side-project').getByText(f.target.name,{exact:true}).click();await page.getByRole('heading',{name:f.target.name,exact:true}).waitFor();await openProjectTab(page,'프로젝트 설정');await page.locator('.project-repositories').waitFor();}
   await launch();const panel=()=>page.locator('.project-repositories');
   await app.evaluate(({dialog},{selected,permissionFile})=>{
    globalThis.repositoryPickerCalls=[];globalThis.repositoryPick=selected;dialog.showOpenDialog=async(_window,options)=>{globalThis.repositoryPickerCalls.push({title:options.title,defaultPath:options.defaultPath});return {canceled:!globalThis.repositoryPick,filePaths:globalThis.repositoryPick?[globalThis.repositoryPick]:[]};};

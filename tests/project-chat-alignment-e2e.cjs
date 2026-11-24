@@ -5,7 +5,7 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { _electron } = require('playwright');
 const { Store } = require('../electron/store.cjs');
-const { openConversation } = require('./shell-test-helpers.cjs');
+const { openConversation,waitForCodexConnection} = require('./shell-test-helpers.cjs');
 
 async function run() {
   const root = path.resolve(__dirname, '..');
@@ -33,7 +33,7 @@ async function run() {
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.locator('.side-usage[data-connected=true]').waitFor();
+    await waitForCodexConnection(page);
     await page.locator('.workspace-side').hover();
     await page.locator('.side-project').getByText(project.name, { exact: true }).click();
     await page.locator('.overview-tools>summary').click();

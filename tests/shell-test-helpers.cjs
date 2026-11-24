@@ -25,7 +25,10 @@ async function newProjectConversation(page,projectId){
 }
 async function closeSettings(page){await page.getByRole('button',{name:'설정 닫기',exact:true}).click();await page.getByRole('dialog',{name:'설정',exact:true}).waitFor({state:'hidden'});}
 async function leaveConversation(page){await page.getByRole('button',{name:'대화 목록으로',exact:true}).click();await composer(page).waitFor({state:'hidden'});}
-module.exports={composer,dockDismissButton,dockHome,openConversation,newProjectConversation,closeSettings,leaveConversation,openProjectTab,settledRail,settledLayout};
+async function waitForCodexConnection(page){
+ await page.waitForFunction(async()=>Boolean((await window.flowrium?.connectionStatus())?.authenticated),undefined,{polling:100});
+}
+module.exports={composer,dockDismissButton,dockHome,openConversation,newProjectConversation,closeSettings,leaveConversation,openProjectTab,settledRail,settledLayout,waitForCodexConnection};
 
 async function openProjectTab(page,name) {
  if(name==='홈'){

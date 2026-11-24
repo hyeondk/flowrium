@@ -16,6 +16,7 @@ export interface SecurityState {
   reason: string;
   accountRevision: number;
   preferences?: SecurityPreferences;
+  accountLinked?: boolean;
 }
 export interface UsageCredits {
   hasCredits: boolean;

@@ -1,4 +1,4 @@
-const {openProjectTab}=require('./shell-test-helpers.cjs');
+const {openProjectTab,waitForCodexConnection}=require('./shell-test-helpers.cjs');
 const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
@@ -34,7 +34,7 @@ async function main() {
       const page = await app.firstWindow();
       await page.setViewportSize({width:1440,height:1000});
       page.setDefaultTimeout(20000);
-      await page.locator('.side-usage[data-connected=true]').waitFor();
+      await waitForCodexConnection(page);
       await page.locator('.workspace-side').hover();
       await page.locator('.workspace-side').getByRole('button',{name:'화면 검증',exact:true}).click();
       if(await page.locator('.workspace-side').getAttribute('data-pinned')==='true')await page.getByRole('button',{name:'메뉴 자동 접기',exact:true}).click();await page.mouse.move(800,100);await page.waitForFunction(()=>document.querySelector('.workspace-side')?.dataset.expanded==='false');await openProjectTab(page,'팀');

@@ -1,4 +1,4 @@
-const {settledLayout}=require('./shell-test-helpers.cjs');
+const {settledLayout,waitForCodexConnection}=require('./shell-test-helpers.cjs');
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const os=require('node:os');
@@ -185,7 +185,7 @@ async function verifyAutomaticSave(app,page,codexPath) {
  await voice.waitFor({state:'detached'});
  await expect.poll(()=>voiceSettings(page)).toMatchObject(nextVoice);
 
- await page.locator('.side-usage[data-connected=true]').waitFor();
+ await waitForCodexConnection(page);
  const account=await openSettings(page,'계정과 모델');
  const followups=account.getByRole('switch',{name:'모델로 다음 작업 추천',exact:true});
  await expect(followups).not.toBeChecked();
@@ -264,7 +264,7 @@ async function run(){
   await launch();
   await expect.poll(()=>generalSettings(page)).toMatchObject(expected.settings);
   await expect.poll(()=>voiceSettings(page)).toMatchObject(expected.voice);
-  await page.locator('.side-usage[data-connected=true]').waitFor();
+  await waitForCodexConnection(page);
   const modelSettings=await openSettings(page,'계정과 모델');
   const followups=modelSettings.getByRole('switch',{name:'모델로 다음 작업 추천',exact:true});
   await expect(followups).toBeChecked();

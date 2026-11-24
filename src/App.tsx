@@ -448,7 +448,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   },[dockOpen,chatActive,security.state.locked]);
 
   const notify = useCallback((message: string) => setToast(old=>({message,tone:'info',revision:old.revision+1})), []);
-  const accountUsage=useAccountUsage(Boolean(connection.authenticated));
+  const accountLinked=connection.authenticated && security.state.accountLinked === true;
+  const accountUsage=useAccountUsage(accountLinked);
   const modelCatalog=useModelCatalog(api,connection.authenticated&&!security.state.locked,setModels,notify);
   const fail = useCallback((error:unknown)=>setToast(old=>({message:error instanceof Error?error.message:"작업을 처리하지 못했습니다.",tone:'error',revision:old.revision+1})),[]);
   const receiveCatalog=useCallback((catalog:ProjectNavigationState)=>{
@@ -682,24 +683,17 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           setModels([]);
         } else if (
           event.status === "connected" ||
-          event.status === "login-required"
-        )
+          event.status === "login-required" ||
+          event.status === "login-completed"
+        ) {
+          if (event.status === "login-completed" && event.text) notify(event.text);
           api
             .connectionStatus()
             .then((value) => {
               if (alive) setConnection(value);
             })
             .catch(fail);
-        else if (event.status === "login-completed")
-          api
-            .connect()
-            .then((value) => {
-              if (alive) {
-                setConnection(value.status);
-                modelCatalog.accept(value);
-              }
-            })
-            .catch(fail);
+        }
       }
       if (event.type === "inputResolved") {
         setApprovals(prev=>prev.filter(row=>row.requestId!==event.requestId));
@@ -967,7 +961,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       modelCatalog.accept(result);
       notify(
         result.status.authenticated
-          ? "Codex에 연결했습니다."
+          ? (security.state.accountLinked ? "Codex에 연결했습니다." : "기존 ChatGPT 계정을 찾았습니다. 로그인 버튼으로 연결하세요.")
           : result.status.error ||
               "Codex가 준비됐습니다. ChatGPT 계정으로 로그인해 주세요.",
       );
@@ -984,7 +978,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     setConnecting(true);
     try {
       await api.login();
-      notify("브라우저에서 로그인을 마친 뒤 연결 확인을 눌러 주세요.");
+      notify("브라우저에서 로그인을 마치면 Flowrium에 자동으로 연결됩니다.");
     } catch (error) {
       fail(error);
     } finally {
@@ -1762,7 +1756,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         onGo={value=>{if(value==='weekly'||value==='pause')setReportDialog(value);else setView(value);setSidebarOpen(false);}} onProject={selectProject}
         onTrash={()=>{setTrashOpen(true);setSidebarOpen(false);}} onSettings={()=>{setSettingsOpen(true);setSidebarOpen(false);}}
         onLock={()=>{setSidebarOpen(false);if(!security.state.hasPin){setSettingsOpen(true);notify("설정에서 잠금 번호를 정하세요.");return;}void security.lock().catch(fail);}}
-        onLogin={()=>{setSidebarOpen(false);void login();}} onLogout={()=>{setSidebarOpen(false);setLogoutOpen(true);}}/>
+        accountLinked={accountLinked} onLogin={()=>{setSidebarOpen(false);void login();}} onLogout={()=>{setSidebarOpen(false);setLogoutOpen(true);}}/>
       <main className="main-shell" data-view={view}>
         <header className="topbar">
           <div className="breadcrumbs">
@@ -1785,7 +1779,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         </header>
 
         {!settingsOpen&&!isChatFocused && <UpdatePanel state={update} fail={fail} />}
-        {loaded&&view==="dashboard"&&!data.projects.length&&<AccountSetupCard chatConnected={connection.authenticated} onChat={()=>setSettingsOpen(true)}/>}
+        {loaded&&view==="dashboard"&&!data.projects.length&&<AccountSetupCard chatConnected={accountLinked} onChat={()=>setSettingsOpen(true)}/>}
         {!loaded ? (
           <div className="loading-page">
             <LoadingProgress startup label="작업 공간을 불러오고 있습니다." />
@@ -1994,7 +1988,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         ) : (
           <div className="page-scroll"><div className="empty-state"><h1>대화를 오른쪽에서 이어가세요</h1><button className="button primary" onClick={()=>setDockOpen(true)}>대화함 열기</button></div></div>
         )}
-        <footer className="statusbar"><span><span className={`status-dot ${connection.authenticated?'online':''}`}/>{connection.authenticated?'ChatGPT 연결됨':'ChatGPT 연결 전'}</span><ExecutionSummary counts={activeCounts} onSelect={showExecution}/></footer>
+        <footer className="statusbar"><span><span className={`status-dot ${accountLinked?'online':''}`}/>{accountLinked?'ChatGPT 연결됨':'ChatGPT 연결 전'}</span><ExecutionSummary counts={activeCounts} onSelect={showExecution}/></footer>
       </main>
       <IconTooltips/>
       <ContextMenu anchor={itemMenu?{x:itemMenu.x,y:itemMenu.y}:null} label="항목 메뉴" onClose={()=>setItemMenu(null)} items={itemMenu?[{id:'open',label:itemMenu.target.kind==='project'?'프로젝트 열기':'대화 열기',onSelect:()=>{const target=itemMenu.target;if(target.kind==='project'){const p=data.projects.find(p=>p.id===target.id);if(p)selectProject(p)}else{const s=data.sessions.find(s=>s.id===target.id);if(s)selectSession(s)}}},...(itemMenu.target.kind==='project'?[{id:'category',label:'카테고리 관리',onSelect:()=>openCategorySettings(itemMenu.target.id)}]:[]),{id:'delete',label:itemMenu.target.kind==='project'?'프로젝트 삭제…':'대화 삭제…',danger:true,disabled:itemMenu.target.kind==='session'?Boolean(activities[itemMenu.target.id]):data.sessions.some(s=>s.projectId===itemMenu.target.id&&Boolean(activities[s.id])),onSelect:()=>setDeletionTarget(itemMenu.target)},{id:'trash',label:'휴지통 열기',onSelect:()=>setTrashOpen(true)}]:[]}/>
@@ -2246,18 +2240,18 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   Codex 연결
                 </h3>
                 <p>
-                  Codex의 공식 연결 방식으로 기존 ChatGPT 로그인을 활용합니다.
+                  기본 브라우저에서 ChatGPT 계정으로 로그인하면 Flowrium에 자동으로 연결됩니다.
                 </p>
                 <div className="connection-state">
                   <span
-                    className={`status-dot ${connection.authenticated ? "online" : ""}`}
+                    className={`status-dot ${accountLinked ? "online" : ""}`}
                   />
                   <span>
-                    {connection.authenticated
+                    {accountLinked
                       ? connection.accountLabel || "ChatGPT 계정 연결됨"
-                      : connection.available
-                        ? "로그인이 필요합니다"
-                        : "연결 확인 전"}
+                      : connection.authenticated
+                        ? "기존 Codex 계정을 찾았습니다. 로그인 버튼으로 연결하세요."
+                        : connection.available ? "로그인이 필요합니다" : "연결 확인 전"}
                   </span>
                   {connecting && <LoaderCircle size={15} className="spin" />}
                 </div>

@@ -1,12 +1,13 @@
 const {settledLayout}=require('./shell-test-helpers.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),{_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs'),{openConversation}=require('./shell-test-helpers.cjs');
-const {addTrustedFixtureProject,backendFixtureAccount}=require('./project-trust-fixture.cjs');
+const {addTrustedFixtureProject,backendFixtureAccount,setFixtureAccountLinked}=require('./project-trust-fixture.cjs');
 async function main(){
  const root=path.resolve(__dirname,'..'),qa=path.resolve(process.env.FLOWRIUM_WORKSPACE_PROOF_DIR||path.join(root,'.flowrium-tmp/qa-261115_02'));await fs.mkdir(qa,{recursive:true});const temp=await fs.realpath(await fs.mkdtemp(path.join(qa,'workspace-')));let app,page;const proof={passed:false,layouts:[]};
  try{
   const store=new Store(path.join(temp,'profile'));await store.load();const projects=[];for(const name of ['검증 프로젝트 A','검증 프로젝트 B']){const folder=path.join(temp,name);await fs.mkdir(folder);projects.push(await addTrustedFixtureProject(store,folder,{account:backendFixtureAccount}))}
   const session=await store.createSession(projects[0].id,{title:'유지되는 우측 대화',messages:[{id:require('node:crypto').randomUUID(),role:'assistant',text:'왼쪽 화면과 독립적으로 보존하는 합성 대화입니다.',createdAt:new Date().toISOString()}]});await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
+  await setFixtureAccountLinked(path.join(temp,'profile'));
   const env={...process.env,FLOWRIUM_USER_DATA:path.join(temp,'profile'),CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(15000);const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});await page.locator('.workspace-side').waitFor();await openConversation(page,session.title);
   const draft=page.getByLabel('Codex에 보낼 작업 요청',{exact:true});await draft.fill('전송하지 않는 보존 초안');
   await page.locator('.workspace-side').hover();await page.locator('.side-project-list').getByRole('button',{name:projects[1].name,exact:true}).click();await page.locator('.main-shell[data-view=overview]').waitFor();assert(await page.locator('.conversation-dock').getByRole('heading',{name:session.title,exact:true}).isVisible());assert.equal(await draft.inputValue(),'전송하지 않는 보존 초안');

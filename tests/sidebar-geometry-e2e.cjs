@@ -4,7 +4,7 @@ const path = require('node:path');
 const {randomUUID}=require('node:crypto');
 const { _electron } = require('playwright');
 const { Store } = require('../electron/store.cjs');
-const {trustFixtureProject,backendFixtureAccount}=require('./project-trust-fixture.cjs');
+const {trustFixtureProject,backendFixtureAccount,setFixtureAccountLinked}=require('./project-trust-fixture.cjs');
 const {settledRail}=require('./shell-test-helpers.cjs');
 
 async function run() {
@@ -31,6 +31,7 @@ async function run() {
     fixtureRuns=[runningSession.id,decisionSession.id];
     await store.saveSettings({codexPath:path.join(__dirname, 'backend-fake-codex.cjs')});
     await trustFixtureProject(store,markerProject,{account:backendFixtureAccount});
+    await setFixtureAccountLinked(profile);
     const env = {...process.env, FLOWRIUM_USER_DATA:profile, CODEX_HOME:path.join(temp,'codex')};
     delete env.ELECTRON_RUN_AS_NODE;
     if(process.env.FLOWRIUM_TEST_RENDERER_URL)env.ELECTRON_RENDERER_URL=process.env.FLOWRIUM_TEST_RENDERER_URL;

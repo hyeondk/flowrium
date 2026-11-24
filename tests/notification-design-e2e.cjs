@@ -1,3 +1,4 @@
+const {waitForCodexConnection}=require('./shell-test-helpers.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path');
 const {_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs');
@@ -16,7 +17,7 @@ async function run(){
   await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temporary,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   app=await _electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();page.setDefaultTimeout(16000);
-  await page.setViewportSize({width:1440,height:900});await page.locator('.side-usage[data-connected=true]').waitFor();
+  await page.setViewportSize({width:1440,height:900});await waitForCodexConnection(page);
   await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'입력질문검증',mode:'plan'}),session.id);
   const questionNotice=page.locator('.flow-question-notice[data-tone=question]');await questionNotice.waitFor();
   assert.equal(await questionNotice.getByRole('status').innerText(),'어시스턴트가 질문이 있으니 결정 부탁드립니다.');

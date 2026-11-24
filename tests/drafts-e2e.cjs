@@ -4,6 +4,7 @@ const assert = require("node:assert/strict"),
   path = require("node:path");
 const { _electron } = require("playwright");
 const {openConversation}=require('./shell-test-helpers.cjs');
+const {setFixtureAccountLinked}=require('./project-trust-fixture.cjs');
 const { Store } = require("../electron/store.cjs");
 const { registerMemory } = require("../electron/memory.cjs");
 async function run() {
@@ -26,6 +27,7 @@ async function run() {
   await store.saveSettings({
     codexPath: path.join(__dirname, "backend-fake-codex.cjs"),
   });
+  await setFixtureAccountLinked(profile);
   const api = {};
   registerMemory((k, v) => (api[k] = v), store);
   const session = await api.openAssistant(p.id),

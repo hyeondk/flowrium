@@ -70,6 +70,7 @@ class Security extends EventEmitter {
       preferences: { ...DEFAULTS },
       failures: 0,
       retryAt: 0,
+      accountLinked: false,
     };
     this.locked = false;
     this.reason = "";
@@ -110,7 +111,13 @@ class Security extends EventEmitter {
       (!Number.isSafeInteger(disk.accountRevision) || disk.accountRevision < 0)
     )
       throw new Error("계정 구분 설정을 확인해 주세요.");
-    this.data = { ...disk, preferences: validatePrefs(disk.preferences) };
+    this.data = {
+      ...disk,
+      preferences: validatePrefs(disk.preferences),
+      accountLinked: typeof disk.accountLinked === 'boolean'
+        ? disk.accountLinked
+        : /^[a-f\d]{64}$/.test(disk.accountOwner || ''),
+    };
     this.accountRevision = disk.accountRevision || 0;
     if (disk.pin) this.lock("startup");
   }
@@ -141,7 +148,7 @@ class Security extends EventEmitter {
       retryAt: this.data.retryAt,
       reason: this.reason,
       accountRevision: this.accountRevision,
-      ...(!this.locked && { preferences: { ...this.data.preferences } }),
+      ...(!this.locked && { preferences: { ...this.data.preferences }, accountLinked: this.data.accountLinked }),
     };
   }
   changed() {
@@ -245,7 +252,7 @@ class Security extends EventEmitter {
       return this.changed();
     });
   }
-  accountOwner(account, force = false) {
+  accountOwner(account, force = false, linkAccount = false) {
     const identifier =
       account?.type === "chatgpt"
         ? String(account.email || account.accountId || "")
@@ -259,16 +266,20 @@ class Security extends EventEmitter {
           .digest("hex")
       : "signed-out";
     return this.serial(async () => {
-      if (!force && this.data.accountOwner === owner) return false;
-      const changed = force || this.data.accountOwner !== undefined;
+      const previousOwner = this.data.accountOwner;
+      const accountLinked = owner !== 'signed-out' && (linkAccount || (previousOwner === owner && this.data.accountLinked));
+      const linkChanged = accountLinked !== this.data.accountLinked;
+      if (!force && previousOwner === owner && !linkChanged) return false;
+      const changed = force || (previousOwner !== undefined && previousOwner !== owner);
       const revision = this.accountRevision + (changed ? 1 : 0);
       await this.save({
         ...this.data,
         accountOwner: owner,
         accountRevision: revision,
+        accountLinked,
       });
       this.accountRevision = revision;
-      if (changed) this.changed();
+      if (changed || linkChanged) this.changed();
       return changed;
     });
   }
@@ -544,6 +555,7 @@ function registerSecurity(
           throw new Error("진행 중인 로그인을 마친 뒤 로그아웃해 주세요.");
         controller.loginId = null;
       }
+      controller.loginPending = false;
       await controller.client.request("account/logout", {});
       controller.status = {
         available: true,

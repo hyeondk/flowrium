@@ -1,4 +1,4 @@
-const {settledRail,openProjectTab}=require('./shell-test-helpers.cjs');
+const {settledRail,openProjectTab,waitForCodexConnection}=require('./shell-test-helpers.cjs');
 const {trustRegisteredFixtureFolder} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -66,7 +66,7 @@ async function main() {
         "터미널",
       ],
     );
-    await page.locator('.side-usage[data-connected=true]').waitFor();
+    await waitForCodexConnection(page);
     const rail=page.locator('.workspace-side');
     if(await rail.getAttribute('data-pinned')==='true')await button('메뉴 자동 접기').click();
     await page.mouse.move(400,100);await settledRail(rail,{expanded:false,pinned:false},'기본 메뉴 접힘');

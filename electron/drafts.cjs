@@ -49,8 +49,8 @@ class Drafts {
     this.queue = Promise.resolve();
     this.migration = Promise.resolve();
     this.known = false;
-    controller.accountObserved = async (account) => {
-      const changed = await security.accountOwner(account);
+    controller.accountObserved = async (account, linkAccount = false) => {
+      const changed = await security.accountOwner(account, false, linkAccount);
       this.known = true;
       return changed;
     };

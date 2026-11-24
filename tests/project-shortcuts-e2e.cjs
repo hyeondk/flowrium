@@ -1,4 +1,4 @@
-const {openProjectTab}=require('./shell-test-helpers.cjs');
+const {openProjectTab,waitForCodexConnection}=require('./shell-test-helpers.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),{_electron:electron}=require('playwright');
 const {Store}=require('../electron/store.cjs');
 async function main(){
@@ -6,7 +6,7 @@ async function main(){
  async function close(){if(!app)return;const child=app.process();let timer;try{await Promise.race([app.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('바로가기 검사 앱 정상 종료 시간 초과')),15000);})]);}catch(error){child.kill('SIGKILL');throw error;}finally{clearTimeout(timer);app=null;}}
  try{
   await fs.mkdir(internal,{recursive:true});await fs.mkdir(external);await fs.writeFile(path.join(internal,'보존.txt'),'원래 파일');const store=new Store(profile);await store.load();const project=await store.addProject(folder);await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
-  async function launch(){app=await electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(12000);await page.locator('.side-usage[data-connected=true]').waitFor();await page.locator('.workspace-side').hover();await page.locator('.side-project').getByText(project.name,{exact:true}).click();await page.getByRole('heading',{name:project.name,exact:true}).waitFor();return page;}
+  async function launch(){app=await electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(12000);await waitForCodexConnection(page);await page.locator('.workspace-side').hover();await page.locator('.side-project').getByText(project.name,{exact:true}).click();await page.getByRole('heading',{name:project.name,exact:true}).waitFor();return page;}
   let page=await launch();const tab=name=>openProjectTab(page,name);await tab('프로젝트 설정');let panel=page.locator('.project-shortcuts[aria-label="프로젝트 바로가기 설정"]');await panel.waitFor();
   await app.evaluate(({dialog,shell},{internal})=>{globalThis.shortcutCalls=[];globalThis.shortcutPick=internal;dialog.showOpenDialog=async()=>({canceled:false,filePaths:[globalThis.shortcutPick]});shell.openPath=async target=>{globalThis.shortcutCalls.push(['folder',target]);return'';};shell.openExternal=async target=>{globalThis.shortcutCalls.push(['url',target]);};},{internal});
   await panel.getByLabel('새 바로가기 이름',{exact:true}).fill('운영 화면');await panel.getByLabel('새 바로가기 주소',{exact:true}).fill('https://example.invalid/operation');await panel.getByRole('button',{name:'주소 추가',exact:true}).click();await panel.getByLabel('바로가기 이름 1',{exact:true}).waitFor();

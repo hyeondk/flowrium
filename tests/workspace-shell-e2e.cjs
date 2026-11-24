@@ -7,7 +7,7 @@ const {_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs');
 const {randomUUID}=require('node:crypto');
 
-const {dockDismissButton,settledRail,settledLayout}=require('./shell-test-helpers.cjs');
+const {dockDismissButton,settledRail,settledLayout,waitForCodexConnection}=require('./shell-test-helpers.cjs');
 
 async function run(){
  const root=path.resolve(__dirname,'..'),temp=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-shell-ui-'));
@@ -30,7 +30,7 @@ async function run(){
  }
  async function projectList(){await dockHome();const picker=page.locator('.dock-project-picker');if(!await picker.evaluate(node=>node.open))await picker.locator('summary').click();await page.locator('.dock-project-row').filter({hasText:project.name}).click();await page.locator('.dock-session-list').waitFor();}
   app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(12000);page.on('pageerror',e=>errors.push(e.message));
-  await page.bringToFront();await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].focus());await page.setViewportSize({width:1440,height:1000});await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();await page.waitForFunction(()=>document.querySelector('.side-usage')?.dataset.connected==='true');
+  await page.bringToFront();await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].focus());await page.setViewportSize({width:1440,height:1000});await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();await waitForCodexConnection(page);
   await page.evaluate(async()=>{await document.fonts.load('400 14px NanumSquareRound','프로젝트');await document.fonts.ready;});
   const rail=page.locator('.workspace-side'),surface=page.locator('.sidebar-surface'),main=page.locator('.main-shell');
   if(await rail.getAttribute('data-pinned')==='true')await button('메뉴 자동 접기').click();

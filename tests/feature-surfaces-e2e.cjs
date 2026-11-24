@@ -1,4 +1,4 @@
-const {settledLayout,settledRail}=require('./shell-test-helpers.cjs');
+const {settledLayout,settledRail,waitForCodexConnection}=require('./shell-test-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
@@ -104,7 +104,7 @@ async function run() {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole('heading', { name: '프로젝트 대시보드', exact: true }).waitFor();
     if(await page.locator('.workspace-side').getAttribute('data-pinned')==='true')await page.getByRole('button',{name:'메뉴 자동 접기',exact:true}).click();
-    await page.waitForFunction(() => document.querySelector('.side-usage')?.dataset.connected === 'true');
+    await waitForCodexConnection(page);
     await page.evaluate(() => document.fonts.ready.then(() => true));
     await foldDock();
     await page.locator('.di-analysis>summary').click();

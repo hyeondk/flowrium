@@ -1,6 +1,6 @@
 const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path'),{randomUUID}=require('node:crypto'),{_electron}=require('playwright');
-const {Store}=require('../electron/store.cjs'),{openConversation,composer}=require('./shell-test-helpers.cjs');
+const {Store}=require('../electron/store.cjs'),{openConversation,composer,waitForCodexConnection}=require('./shell-test-helpers.cjs');
 const {closeInstalledApp}=require('./update-installed-ui.cjs');
 async function main(){const root=path.resolve(__dirname,'..'),qa=path.join(root,'.flowrium-tmp/qa-261115_03');await fs.mkdir(qa,{recursive:true});const temp=await fs.mkdtemp(path.join(qa,'decision-continuation-screen-'));let app;
  try{const folder=path.join(temp,'합성 프로젝트');await fs.mkdir(folder);const profile=path.join(temp,'profile'),store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount}),waiting=store.session((await store.createSession(project.id,{title:'검색 검증 대화'})).id),questions=await store.createSession(project.id,{title:'별도 질문 대화'});waiting.messages=[{id:randomUUID(),role:'user',text:'검색 기능을 검증해 주세요.',createdAt:new Date().toISOString()},{id:randomUUID(),role:'assistant',text:'검색 결과를 확인했습니다. 회귀 검사도 이어서 진행할까요?',createdAt:new Date().toISOString()}];await store.save();await store.saveSettings({codexPath:path.join(__dirname,'continuation-fake-codex.cjs'),model:'test-model',theme:'light'});const completed=store.session((await store.createSession(project.id,{title:'완료할 후속 대화'})).id);
@@ -10,7 +10,7 @@ async function main(){const root=path.resolve(__dirname,'..'),qa=path.join(root,
  const nextAnswer='분류표에서 원본과 번호가 다른 항목 3개를 확인했습니다.\n다음 단계: 번호가 다른 항목 3개를 원본 목록과 대조해 주세요.';
  const newRecommendation='번호가 다른 항목 3개를 원본 목록과 대조해줘';
  const followupTrace=path.join(temp,'synthetic-requests.log');await fs.writeFile(followupTrace,'');const env={...process.env,FLOWRIUM_TEST_FOLLOWUP_TRACE:followupTrace,FLOWRIUM_TEST_FOLLOWUP_ANSWER:nextAnswer,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
- app=await _electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();page.setDefaultTimeout(16000);await page.setViewportSize({width:1440,height:1000});await page.locator('.side-usage[data-connected=true]').waitFor();await openConversation(page,waiting.title);const input=composer(page);
+ app=await _electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();page.setDefaultTimeout(16000);await page.setViewportSize({width:1440,height:1000});await waitForCodexConnection(page);await openConversation(page,waiting.title);const input=composer(page);
  const expected='회귀 검사도 이어서 진행해줘';
  const recommendation=page.locator('.followup-accept[data-source="conversation"]');
  await recommendation.waitFor({timeout:10000});
@@ -61,7 +61,7 @@ async function main(){const root=path.resolve(__dirname,'..'),qa=path.join(root,
  await closeInstalledApp(app,'대기 완료 직후 실제 앱 종료');app=null;
  app=await _electron.launch({args:[root],env,timeout:45000});
  const reopened=await app.firstWindow();reopened.setDefaultTimeout(16000);
- await reopened.locator('.side-usage[data-connected=true]').waitFor();
+ await waitForCodexConnection(reopened);
  await openConversation(reopened,completed.title);
  await reopened.locator('.dock-status-tabs').getByRole('button',{name:'대기 상태 0개',exact:true}).waitFor();
  assert.equal(await reopened.locator('.followup-complete').count(),0);

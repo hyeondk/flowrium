@@ -1,4 +1,4 @@
-const {dockDismissButton,settledLayout} = require('./shell-test-helpers.cjs');
+const {dockDismissButton,settledLayout,waitForCodexConnection} = require('./shell-test-helpers.cjs');
 const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
@@ -41,7 +41,7 @@ async function run() {
     }
     async function waitDashboard() {
       await page.getByRole('heading', { name: '프로젝트 대시보드', exact: true }).waitFor();
-      await page.waitForFunction(() => document.querySelector('.side-usage')?.dataset.connected === 'true');
+      await waitForCodexConnection(page);
     }
     await launch();
     await focusApp();

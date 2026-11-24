@@ -5,7 +5,7 @@ const path = require('node:path');
 const { _electron } = require('playwright');
 const { expect } = require('playwright/test');
 const { Store } = require('../electron/store.cjs');
-const { addTrustedFixtureProject, backendFixtureAccount } = require('./project-trust-fixture.cjs');
+const { addTrustedFixtureProject, backendFixtureAccount, setFixtureAccountLinked } = require('./project-trust-fixture.cjs');
 const { closeSettings, composer, openConversation, settledLayout } = require('./shell-test-helpers.cjs');
 const { closeInstalledApp } = require('./update-installed-ui.cjs');
 
@@ -76,6 +76,7 @@ async function main() {
     const project = await addTrustedFixtureProject(store, folder, { account: backendFixtureAccount });
     const session = await store.createSession(project.id, { title: '관련 단어 전달 확인' });
     await store.saveSettings({ codexPath: fakeEngine, theme: 'light' });
+    await setFixtureAccountLinked(profile);
     const env = { ...process.env, FLOWRIUM_USER_DATA: profile, CODEX_HOME: path.join(temp, 'codex') };
     delete env.ELECTRON_RUN_AS_NODE;
     delete env.ELECTRON_RENDERER_URL;

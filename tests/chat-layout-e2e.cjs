@@ -1,4 +1,4 @@
-const {settledLayout}=require('./shell-test-helpers.cjs');
+const {settledLayout,waitForCodexConnection}=require('./shell-test-helpers.cjs');
 const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
@@ -14,7 +14,7 @@ async function verifyComposerResize(page, historyTitle, recommendationTitle) {
   const handle=page.getByRole('separator',{name:'입력창 높이 조절'});
   const history=page.locator('.messages');
   const height=async el=>Math.round((await el.boundingBox()).height);
-  await page.locator('.side-usage[data-connected=true]').waitFor();
+  await waitForCodexConnection(page);
   await openConversation(page,recommendationTitle);
   await page.setViewportSize({width:390,height:680});
   await input.focus();

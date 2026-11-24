@@ -6,6 +6,7 @@ const http = require('node:http');
 const {spawn} = require('node:child_process');
 const readline = require('node:readline');
 const {setTimeout:delay}=require('node:timers/promises');
+const fixtureAccount={type:'chatgpt',email:'test@example.invalid',planType:'pro'};
 
 async function waitForProcessExit(pid) {
   const deadline=Date.now()+10000;
@@ -32,7 +33,7 @@ function serveCodex() {
       })+'\n');
     }
     if(request.method==='account/read') {
-      process.stdout.write(JSON.stringify({id:request.id,result:{account:{type:'chatgpt',email:'test@example.invalid',planType:'pro'}}})+'\n');
+      process.stdout.write(JSON.stringify({id:request.id,result:{account:fixtureAccount}})+'\n');
     }else child.stdin.write(line+'\n');
   });
   lines.on('close',()=>child.stdin.end());
@@ -45,6 +46,7 @@ function serveCodex() {
 async function run() {
   const {_electron}=require('playwright');
   const {Store}=require('../electron/store.cjs');
+  const {Security}=require('../electron/security.cjs');
   const {composer,dockHome,openConversation,newProjectConversation}=require('./shell-test-helpers.cjs');
   const {closeInstalledApp,within}=require('./update-installed-ui.cjs');
   const windows=process.platform==='win32';
@@ -170,6 +172,9 @@ async function run() {
     const endpoint='http://127.0.0.1:'+server.address().port+'/v1';
     await fs.writeFile(path.join(codex,'config.toml'),['cli_auth_credentials_store = "file"','model = "gpt-5.5"','[model_providers.flowrium_test]','name = "Flowrium test"','base_url = '+JSON.stringify(endpoint),'wire_api = "responses"','env_key = "FLOWRIUM_OFFLINE_KEY"','supports_websockets = false','[analytics]','enabled = false'].join('\n'));
     const store=new Store(profile);await store.load();
+    const security=new Security(profile);
+    await security.load();
+    await security.accountOwner(fixtureAccount,false,true);
     for(const name of ['첫 프로젝트','두 번째 프로젝트']){
       const folder=path.join(temp,name);await fs.mkdir(folder);projects.push(await store.addProject(folder));
     }

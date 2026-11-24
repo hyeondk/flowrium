@@ -4,7 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { _electron } = require('playwright');
 const { Store } = require('../electron/store.cjs');
-const { composer, dockHome, openConversation, newProjectConversation } = require('./shell-test-helpers.cjs');
+const { composer, dockHome, openConversation, newProjectConversation,waitForCodexConnection} = require('./shell-test-helpers.cjs');
 
 async function main() {
   const root = path.resolve(__dirname, '..');
@@ -21,7 +21,7 @@ async function main() {
     page = await app.firstWindow();
     page.setDefaultTimeout(15000);
     await page.setViewportSize({width:1440,height:940});
-    await page.locator('.side-usage[data-connected=true]').waitFor();
+    await waitForCodexConnection(page);
     await app.evaluate(({dialog, BrowserWindow}, folders) => {
       const original = dialog.showMessageBox.bind(dialog);
       globalThis.trustUiTest = {calls:[], decider:null};

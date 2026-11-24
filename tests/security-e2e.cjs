@@ -1,4 +1,4 @@
-const {addTrustedFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
+const {addTrustedFixtureProject, backendFixtureAccount, setFixtureAccountLinked} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
@@ -22,6 +22,7 @@ async function run() {
   await store.saveSettings({
     codexPath: path.join(__dirname, "backend-fake-codex.cjs"),
   });
+  await setFixtureAccountLinked(profile);
   const env = {
     ...process.env,
     FLOWRIUM_USER_DATA: profile,

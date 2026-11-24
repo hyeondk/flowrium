@@ -1,3 +1,4 @@
+const {waitForCodexConnection}=require('./shell-test-helpers.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
@@ -32,7 +33,7 @@ async function main() {
     page=await app.firstWindow();
     page.setDefaultTimeout(14000);
     await page.setViewportSize({width:1440,height:970});
-    await page.locator('.side-usage[data-connected=true]').waitFor();
+    await waitForCodexConnection(page);
     await app.evaluate(({shell},moduleFile)=>{
       const runtime=process.mainModule.require(moduleFile);
       const {execFile}=process.mainModule.require('node:child_process');

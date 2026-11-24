@@ -1,7 +1,7 @@
 const {trustRegisteredFixtureFolder} = require('./project-trust-fixture.cjs');
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
 const {_electron}=require('playwright'),{Store}=require('../electron/store.cjs');
-const {openConversation}=require('./shell-test-helpers.cjs');
+const {openConversation,waitForCodexConnection}=require('./shell-test-helpers.cjs');
 async function main(){const root=path.resolve(__dirname,'..'),temp=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-copy-ui-')));let app,page;
  try{
   const profile=path.join(temp,'profile'),folder=path.join(temp,'합성 프로젝트'),fixture=path.join(temp,'source.json');await fs.mkdir(folder);
@@ -16,7 +16,7 @@ async function main(){const root=path.resolve(__dirname,'..'),temp=await fs.real
   app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();await page.setViewportSize({width:1440,height:1000});page.setDefaultTimeout(16000);
   // 프로젝트 발견 목록만 합성 위치로 공급합니다. 실제 IPC / 원문 조회 / 보관 / 대화 저장은 제품 코드를 사용합니다.
   await app.evaluate(({app},{folder,threadId})=>{const req=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json'),{CodexTransfer}=req('./electron/codex-transfer.cjs'),original=CodexTransfer.prototype.projects;CodexTransfer.prototype.projects=function(input){return original.call(this,{...input,projects:[{name:'합성 프로젝트',path:folder,threadIds:[threadId]}]});};},{folder,threadId});
-  await page.locator('.side-usage[data-connected=true]').waitFor();await page.getByRole('button',{name:'업무 연결 / 비서',exact:true}).click();await page.locator('.work-resources>summary').click();const panel=page.getByRole('region',{name:'Codex 프로젝트 대화 연결',exact:true});
+  await waitForCodexConnection(page);await page.getByRole('button',{name:'업무 연결 / 비서',exact:true}).click();await page.locator('.work-resources>summary').click();const panel=page.getByRole('region',{name:'Codex 프로젝트 대화 연결',exact:true});
   await panel.getByRole('button',{name:'Codex 대화 찾기',exact:true}).click();await panel.getByText(source.title,{exact:true}).waitFor();assert.equal(crypto.createHash('sha256').update(await fs.readFile(fixture)).digest('hex'),original,'미리보기 원본 불변');
   await app.evaluate(({app})=>{
     const req=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json');

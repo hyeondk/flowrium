@@ -7,6 +7,7 @@ const {randomUUID} = require('node:crypto');
 const {_electron} = require('playwright');
 const {expect} = require('playwright/test');
 const {Store} = require('../electron/store.cjs');
+const {setFixtureAccountLinked} = require('./project-trust-fixture.cjs');
 const {updateDetails} = require('../electron/project-details.cjs');
 const {openConversation} = require('./shell-test-helpers.cjs');
 const root = path.resolve(__dirname,'..');
@@ -198,6 +199,7 @@ async function run(){
   let app,page;const results={themes:[],lock:[],reading:{},errors:[]};
   try{
     await setup(store,temp);
+    await setFixtureAccountLinked(profile);
     const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex'),FLOWRIUM_TEST_PLAN:'plus'};
     delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
     if(baseline||installed){

@@ -1,6 +1,7 @@
 const readline = require("node:readline");
 let initialized = false;
 let loggedOut = false;
+let oauthCompleted = false;
 let acknowledged = false;
 let nextThread = 0;
 let nextTurn = 0;
@@ -76,7 +77,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     write({
       id,
       result: {
-        account: loggedOut || process.argv.includes("--no-account")
+        account: loggedOut || (process.argv.includes("--no-account") && !oauthCompleted)
           ? null
           : process.argv.includes("--api-account")
             ? { type: "apiKey" }
@@ -138,10 +139,23 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     return;
   }
   if (method === "account/login/start") {
+    const gate = process.env.FLOWRIUM_TEST_LOGIN_GATE;
+    const loginId = "316e11a8-d5ef-407d-88b8-a8046c8ce863";
     write({
       id,
-      result: { authUrl: "https://auth.openai.com/authorize?test=true" },
+      result: { authUrl: "https://auth.openai.com/authorize?test=true", ...(gate && {loginId}) },
     });
+    if (gate) {
+      const {existsSync} = require('node:fs');
+      const timer = setInterval(() => {
+        if (!existsSync(gate)) return;
+        clearInterval(timer);
+        oauthCompleted = true;
+        loggedOut = false;
+        notify("account/login/completed", {loginId, success:true, error:null});
+      },20);
+      timer.unref();
+    }
     return;
   }
   if (method === "config/read") {

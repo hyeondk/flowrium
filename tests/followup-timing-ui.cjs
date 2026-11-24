@@ -5,7 +5,7 @@ const path = require('node:path');
 const {randomUUID} = require('node:crypto');
 const {_electron} = require('playwright');
 const {Store} = require('../electron/store.cjs');
-const {openConversation, composer, settledLayout} = require('./shell-test-helpers.cjs');
+const {openConversation, composer, settledLayout,waitForCodexConnection} = require('./shell-test-helpers.cjs');
 const {closeInstalledApp} = require('./update-installed-ui.cjs');
 
 async function verifyContinuationRows(page) {
@@ -82,7 +82,7 @@ async function verifyFollowupTiming() {
     const page = await app.firstWindow();
     page.setDefaultTimeout(16000);
     await page.setViewportSize({width:1440,height:900});
-    await page.locator('.side-usage[data-connected=true]').waitFor();
+    await waitForCodexConnection(page);
     const accept = page.locator('.followup-accept[data-source="conversation"]');
     const input = composer(page);
     await page.evaluate(()=>{
