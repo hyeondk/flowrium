@@ -44,6 +44,18 @@ async function main() {
       message('assistant','월별 매출 분석을 마쳤습니다. 10월 매출은 전월 대비 14.3% 올랐고 주문 수와 평균 주문 금액이 함께 늘었습니다.'),
     ]});
     await saveArtifact(store,walking.id,walkingAnswer.id);
+    const artifactFolder = path.join(projects[0].path, 'docs');
+    const extraArtifacts = [
+      '현장 조사 결과와 추후 다시 확인할 상세 사항을 모두 정리한 보행 동선 최종 기록.md',
+      '공원 출입구 안내.md', '저녁 동선 기록.md', '이전 조사 기록.md',
+    ];
+    await fs.mkdir(artifactFolder);
+    for (const [index, filename] of extraArtifacts.entries()) {
+      const location = path.join(artifactFolder, filename);
+      const modified = new Date(Date.now() - (index + 1) * 60_000);
+      await fs.writeFile(location, '대시보드 산출물 목록 검증');
+      await fs.utimes(location, modified, modified);
+    }
     await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});
     const env = {...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};
     delete env.ELECTRON_RUN_AS_NODE;
@@ -129,7 +141,21 @@ async function main() {
     const review=tools.getByRole('region',{name:'프로젝트 검토',exact:true});
     await review.getByText('현장 확인 내역을 다음 안내서에 반영하기').waitFor();
     await review.getByText(task,{exact:true}).waitFor();
-    await review.locator('.dashboard-work-card').filter({hasText:'저장된 산출물'}).getByText(walking.title,{exact:true}).waitFor();
+    const artifacts = review.locator('.dashboard-work-card').filter({hasText:'저장된 산출물'});
+    await artifacts.getByText(walking.title,{exact:true}).waitFor();
+    assert.equal(await artifacts.locator('.dashboard-work-count').textContent(), '5');
+    assert.deepEqual(await artifacts.locator('li strong').allTextContents(), [walking.title, ...extraArtifacts.slice(0,2)]);
+    for (const width of [320, 390, 800, 1024, 1440]) {
+      await page.setViewportSize({width,height:1000});
+      const sizes = await review.locator('.dashboard-work-card').evaluateAll(cards => cards.map(card => ({
+        height: card.getBoundingClientRect().height,
+        count: card.querySelectorAll('li').length,
+        overflow: card.scrollWidth - card.clientWidth,
+      })));
+      assert.equal(sizes.length,4);
+      assert(sizes.every(card=>card.height===sizes[0].height && card.count<=3 && card.overflow<=1),JSON.stringify({width,sizes}));
+      assert.equal(sizes[2].count,0,'비어 있는 결정 카드도 같은 높이를 유지해야 합니다.');
+    }
     await snapshot('4-완료-전-점검.png');
     await tool('작업 묶음').click();
     await batch.getByRole('checkbox',{name:names[0]+' 초안 선택',exact:true}).uncheck();
@@ -142,6 +168,7 @@ async function main() {
     await tool('완료 전 점검').click();
     await review.getByRole('button',{name:'검토 초안 작성',exact:true}).click();
     await page.waitForFunction(()=>document.querySelector('[aria-label="Codex에 보낼 작업 요청"]')?.value.includes('아래 기록을 바탕으로 프로젝트를 검토해줘'));
+    assert.match(await composer(page).inputValue(), /이전 조사 기록\.md/);
     assert.equal((await storedMessages(walking.id)).length,2);
 
     for(const width of [320,390,800,1024,1440]){
@@ -154,6 +181,7 @@ async function main() {
       assert(frame.fit&&frame.gap>=6&&frame.padding>=6,JSON.stringify({width,frame}));
     }
     console.log('대시보드 작업 도구 / 원본 답변에서 체크리스트 저장 및 중복 방지 / 기존 대화 초안과 재개 / 선택한 프로젝트 1곳만 실제 시험 전송 / 산출물과 미완료 작업을 근거로 검토 초안 / 5개 창 폭 간격·가로 넘침 통과');
+    console.log('완료 전 점검 / 최신 산출물 3개와 전체 개수 / 비어 있는 카드를 포함한 네 카드의 같은 높이 / 검토 초안 전체 근거 보존 통과');
   } finally {
     await app?.close();
     await fs.rm(temp,{recursive:true,force:true,maxRetries:3});

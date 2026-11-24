@@ -36,7 +36,7 @@
 .dashboard-work-body :is(.dashboard-work-controls,.dashboard-work-grid) {
   display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; gap:8px;
 }
-.dashboard-work-body .dashboard-work-grid {align-items:stretch}
+.dashboard-work-body .dashboard-work-grid {align-items:stretch; grid-auto-rows:1fr}
 .dashboard-work-body .dashboard-work-field {display:grid; gap:6px; min-inline-size:0; color:var(--text)}
 .dashboard-work-field>span {display:flex; align-items:center; gap:6px; font-weight:700; overflow-wrap:anywhere}
 .dashboard-work-field textarea {
@@ -85,9 +85,29 @@
 .dashboard-work-body :is(.dashboard-work-row-heading strong,.dashboard-work-card li,.dashboard-work-resume-text) {
   min-inline-size:0; word-break:keep-all; overflow-wrap:anywhere;
 }
-.dashboard-work-card ul {display:grid; gap:4px; margin:0; padding-inline-start:19px; font-size:12px; line-height:19px}
-.dashboard-work-card li small {display:block; margin-block-start:3px; color:var(--muted)}
-.dashboard-work-card h4 {font-size:12px; line-height:19px}
+.dashboard-work-body .dashboard-work-card {
+  --review-row-height:41px;
+  --review-row-gap:5px;
+  grid-template-rows:auto minmax(calc(3 * var(--review-row-height) + 2 * var(--review-row-gap)),auto);
+}
+.dashboard-work-body .dashboard-work-card ul {
+  grid-auto-rows:var(--review-row-height); align-content:start; gap:var(--review-row-gap);
+  margin:0; padding-inline-start:19px; font-size:12px; line-height:19px;
+}
+.dashboard-work-card li :is(strong,small) {
+  display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.dashboard-work-card li:not(:has(small)) strong {
+  display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; white-space:normal;
+}
+.dashboard-work-card li small {margin-block-start:3px; color:var(--muted)}
+.dashboard-work-body .dashboard-work-card .dashboard-work-empty {
+  padding:0; border:0; border-radius:0; background:none;
+}
+.dashboard-work-review-notices {
+  display:grid; gap:5px; padding:8px 10px; border:1px solid var(--line-soft); border-radius:8px;
+  background:var(--card-subtle); font-size:12px; line-height:19px; word-break:keep-all; overflow-wrap:anywhere;
+}
 .dashboard-work-resume-list {grid-auto-rows:1fr; margin:0; padding:0; list-style:none}
 .dashboard-work-body .dashboard-work-resume-header {display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:8px}
 .dashboard-work-body .dashboard-work-resume-memo {

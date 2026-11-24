@@ -18,22 +18,22 @@ function displayName(card: PortfolioCard) {
   return card.details?.kickoff?.name || card.project.name;
 }
 
-function ReviewCard({ title, icon, rows, empty, pending = false, children }: {
-  title: string; icon: ReactNode; rows: Row[]; empty: string; pending?: boolean; children?: ReactNode;
+function ReviewCard({ title, icon, rows, empty, pending = false }: {
+  title: string; icon: ReactNode; rows: Row[]; empty: string; pending?: boolean;
 }) {
-  const visible = rows.slice(0, 5);
   return <section className="dashboard-work-card">
     <header>
       <h3>{icon}{title}</h3>
-      {!pending && rows.length > 0 && <span className="dashboard-work-count">{rows.length}</span>}
+      {!pending && <span className="dashboard-work-count" aria-label={`전체 ${rows.length}건`}>{rows.length}</span>}
     </header>
-    {visible.length > 0
+    {rows.length > 0
       ? <ul className="dashboard-work-list">
-          {visible.map(row => <li key={row.id}><strong>{row.title}</strong>{row.detail && <small>{row.detail}</small>}</li>)}
+          {rows.slice(0, 3).map(row => <li key={row.id}>
+            <strong title={row.title}>{row.title}</strong>
+            {row.detail && <small title={row.detail}>{row.detail}</small>}
+          </li>)}
         </ul>
       : <p className="dashboard-work-empty" role={pending ? 'status' : undefined}>{empty}</p>}
-    {rows.length > visible.length && <small className="dashboard-work-more">외 {rows.length - visible.length}건</small>}
-    {children}
   </section>;
 }
 
@@ -153,15 +153,17 @@ export default function DashboardReview({ cards, sessions, decisionSessionIds, o
       <ReviewCard title="필요한 결정" icon={<MessageCircleQuestion size={17} aria-hidden />} rows={decisions}
         empty="결정이 필요한 대화가 없습니다."/>
       <ReviewCard title="저장된 산출물" icon={<FileText size={17} aria-hidden />} rows={artifacts}
-        empty={artifactNotice} pending={!artifactResult}>
-        {withoutArtifacts.length > 0 && <div className="dashboard-work-missing">
+        empty={artifactNotice} pending={!artifactResult}/>
+    </div>
+    {(withoutArtifacts.length > 0 || (overview?.truncated && artifacts.length > 0)) &&
+      <aside className="dashboard-work-review-notices" aria-label="산출물 확인 사항">
+        {withoutArtifacts.length > 0 && <div>
           <strong>연결된 산출물을 찾지 못한 완료 업무 {withoutArtifacts.length}건</strong>
           <p>{withoutArtifacts.slice(0, 2).map(session => session.title).join(' / ')}
             {withoutArtifacts.length > 2 && ` 외 ${withoutArtifacts.length - 2}건`}</p>
         </div>}
-        {overview?.truncated && artifacts.length > 0 && <p className="dashboard-work-missing">검색 한도 내 산출물입니다.</p>}
-      </ReviewCard>
-    </div>
+        {overview?.truncated && artifacts.length > 0 && <p>검색 한도 내 산출물입니다.</p>}
+      </aside>}
     <div className="dashboard-work-actions">
       <button type="button" className="dashboard-work-open" onClick={() => onProject(selected.project.id)}>
         <FolderOpen size={16} aria-hidden />프로젝트 열기
