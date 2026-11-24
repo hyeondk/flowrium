@@ -13,6 +13,7 @@ const { Store } = require('../electron/store.cjs');
 const accountId = 'flowrium-test-workspace';
 const token = 'flowrium-test-access';
 const answer = '작업 공간 검증 응답';
+const model = 'gpt-5.5';
 const base64 = value => Buffer.from(JSON.stringify(value)).toString('base64url');
 
 function completion(emitter, event, accept) {
@@ -45,7 +46,10 @@ async function main() {
       if (route.endsWith('/wham/config/bundle')) return reply({});
       if (route.endsWith('/wham/accounts/check')) {
         assert.equal(req.headers['chatgpt-account-id'], accountId);
-        return reply({ accounts: [{ id: accountId, account_routing_override: 'NO_CONSTRAINT', workspace_backend_origin: 'https://chatgpt.com' }] });
+        return reply({ accounts: [{
+          id: accountId, account_routing_override: 'NO_CONSTRAINT',
+          workspace_backend_origin: `https://127.0.0.1:${server.address().port}`,
+        }] });
       }
       if (route.endsWith('/models')) return reply({ models: [] });
       if (req.method !== 'POST' || !route.endsWith('/backend-api/codex/responses')) return res.writeHead(404).end();
@@ -84,7 +88,7 @@ async function main() {
       'cli_auth_credentials_store = "file"',
       `chatgpt_base_url = "http://localhost:${port}/backend-api"`,
       `openai_base_url = "http://127.0.0.1:${port}/backend-api/codex"`,
-      'model = "gpt-5.5"', '[analytics]', 'enabled = false',
+      `model = "${model}"`, '[analytics]', 'enabled = false',
       '[features]', 'apps = false', 'plugins = false', '',
     ].join('\n');
     await fs.writeFile(path.join(codexHome, 'config.toml'), config);
@@ -113,10 +117,10 @@ async function main() {
     const params = await scopeThreadParams(controller, previous);
     const oldParams = structuredClone(params);
     delete oldParams.config.default_permissions;
-    const legacy = await client.request('thread/start', oldParams);
+    const legacy = await client.request('thread/start', {...oldParams,model});
     assert.equal(legacy.activePermissionProfile?.id, params.permissions);
     const failed = completion(client, 'notification', value => value.method === 'turn/completed' && value.params.threadId === legacy.thread.id);
-    await client.request('turn/start', {threadId:legacy.thread.id,cwd:params.cwd,permissions:params.permissions,input:[{type:'text',text:'이전 설정 재현'}]});
+    await client.request('turn/start', {threadId:legacy.thread.id,cwd:params.cwd,permissions:params.permissions,model,input:[{type:'text',text:'이전 설정 재현'}]});
     const failedTurn = (await failed).params.turn;
     assert.equal(failedTurn.status, 'failed');
     assert.match(failedTurn.error?.message ?? '', /failed to load workspace requirements: invalid input parameter/);
@@ -132,7 +136,7 @@ async function main() {
     ];
     for (const [target, text] of cases) {
       const finished = completion(controller, 'event', value => value.type === 'done' && value.sessionId === target.id);
-      await controller.send({sessionId:target.id,text,mode:'build'});
+      await controller.send({sessionId:target.id,text,mode:'build',model});
       const result = await finished;
       if (requestFailure) throw requestFailure;
       assert.equal(result.status,'completed',errors.get(target.id) ?? result.text);
@@ -143,6 +147,7 @@ async function main() {
     assert.deepEqual(history.thread.turns.map(turn => turn.status), ['failed','completed']);
     assert.equal(inputs.length, 3);
     for (const [index, input] of inputs.entries()) {
+      assert.equal(input.model, model);
       assert(JSON.stringify(input.input).includes(cases[index][1]));
       const names = (input.tools ?? []).flatMap(tool => (tool.tools ?? [tool]).map(value => value.name ?? value.type));
       for (const name of ['exec_command','shell','web_search','read_file','list_dir','view_image']) assert(!names.includes(name),name);
