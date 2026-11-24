@@ -207,7 +207,7 @@ const upsert = (items: Session[], session: Session) =>
 export default function App() {
   const security = useSecurity();
   const lockLayer=useRef<HTMLDivElement>(null);
-  const lockPresence=usePresence(security.state.loaded&&security.state.locked,360,lockLayer);
+  const lockPresence=usePresence(security.state.loaded&&security.state.locked,460,lockLayer);
   if (!security.state.loaded && security.error) return <main className="loading-page"><p role="alert">{security.error}</p><button onClick={()=>void security.refresh().catch(()=>{})}>연결 다시 확인</button></main>;
   if (!security.state.loaded) return <main className="loading-page"><LoadingProgress startup label="작업 공간을 준비하고 있습니다." /></main>;
   return <div className="security-stage">

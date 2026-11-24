@@ -51,13 +51,14 @@ async function run() {
         result.started = {
           name: event.animationName,
           duration: animation?.effect.getTiming().duration,
-          frames: animation?.effect.getKeyframes().map(frame => frame.transform),
+          frames: animation?.effect.getKeyframes().map(({transform,opacity})=>({transform,opacity})),
         };
         if(name==='ui-unlock'){
           const workspace=document.querySelector('.unlocked-stage');
+          const card=element.querySelector('.security-unlock').getAnimations().find(animation=>animation.animationName==='ui-unlock-card');
           result.release={
             hidden:element.getAttribute('aria-hidden'),inert:element.inert,
-            card:element.querySelector('.security-unlock').getAnimations().some(animation=>animation.animationName==='ui-unlock-card'),
+            cardFrames:card?.effect.getKeyframes().map(({transform,opacity})=>({transform,opacity})),
             workspace:workspace?.getAnimations().some(animation=>animation.animationName==='ui-unlocked-workspace'),
           };
         }
@@ -70,7 +71,11 @@ async function run() {
       const { started, ended, release } = await probe.jsonValue();
       if(name==='ui-unlock') {
         assert.ok(ended,'잠금 화면을 해제 애니메이션 마지막 프레임까지 유지합니다.');
-        assert.deepEqual(release,{hidden:'true',inert:true,card:true,workspace:true},'인증 뒤에만 위로 이동하는 카드와 뒤에서 드러나는 작업 공간을 함께 표시합니다.');
+        const {cardFrames,...visibility}=release;
+        assert.deepEqual(visibility,{hidden:'true',inert:true,workspace:true},'인증 뒤에만 잠금 화면을 조작할 수 없게 하고 작업 공간을 드러냅니다.');
+        assert(cardFrames?.some(frame=>/scale\(1\.\d+\)/.test(frame.transform)));
+        assert(cardFrames.every(frame=>!/(translate|matrix)/i.test(frame.transform || '')));
+        assert.equal(Number(cardFrames.at(-1).opacity),0,'중앙 카드가 마지막에 투명해져야 합니다.');
       }
       assert.ok(started, name + " 시작 이벤트가 필요합니다.");
       assert.equal(started.name, name);
@@ -82,8 +87,10 @@ async function run() {
   }
   async function unlock() {
     await page.getByLabel("잠금 번호", { exact: true }).fill("7904");
-    const frames = await closeWithMotion(page.locator('.security-lock-layer'), btn("잠금 해제"), "ui-unlock", 360);
-    assert.deepEqual(frames, ["translateY(0px)", "translateY(-100%)"]);
+    const frames = await closeWithMotion(page.locator('.security-lock-layer'), btn("잠금 해제"), "ui-unlock", 460);
+    assert(frames.every(frame=>!/(translate|matrix)/i.test(frame.transform || '')));
+    assert.equal(Number(frames[0].opacity),1);
+    assert.equal(Number(frames.at(-1).opacity),0);
     await page
       .locator(".pf-project-entry")
       .filter({ hasText: "잠금 검증 프로젝트" })
@@ -91,8 +98,13 @@ async function run() {
   }
   async function verifyPinBorder() {
     const pin=page.getByLabel('잠금 번호',{exact:true});
+    const entry=page.locator('.security-pin-entry');
+    const cells=entry.locator('.security-pin-cell');
+    assert.equal(await cells.count(),4);
+    assert.equal(await pin.getAttribute('type'),'password');
+    assert.equal(await pin.getAttribute('inputmode'),'numeric');
     await pin.focus();
-    const frame=await pin.evaluate(async element=>{
+    const frame=await entry.evaluate(async element=>{
       const sample=()=>{
         const computed=getComputedStyle(element);
         return {angle:computed.getPropertyValue('--security-pin-angle'),background:computed.backgroundImage};
@@ -100,11 +112,39 @@ async function run() {
       const first=sample();
       await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
       const styles=getComputedStyle(element);
-      return {first,last:sample(),outline:styles.outlineStyle,outlineWidth:styles.outlineWidth,focus:document.activeElement===element};
+      return {first,last:sample(),outline:styles.outlineStyle,outlineWidth:styles.outlineWidth,focus:element.matches(':focus-within')};
     });
     assert(frame.focus&&frame.outline==='solid'&&parseFloat(frame.outlineWidth)>=1,'잠금 번호 입력에 또렷한 키보드 초점을 표시합니다. '+JSON.stringify({focus:frame.focus,outline:frame.outline,width:frame.outlineWidth}));
-    assert.match(frame.first.background,/^linear-gradient\(.*conic-gradient\(/);
+    assert.match(frame.first.background,/conic-gradient\(/);
     assert.notEqual(frame.first.angle,frame.last.angle,'앞뒤 프레임 사이에 입력 테두리의 밝은 구간이 흐릅니다.');
+    await pin.pressSequentially('7a9');
+    assert.equal(await pin.inputValue(),'79');
+    assert.equal(await entry.locator('.security-pin-cell[data-filled="true"]').count(),2);
+    assert(!/\d/.test(await entry.innerText()),'잠금 번호의 숫자는 화면에 표시하지 않습니다.');
+    assert(await btn('잠금 해제').isDisabled());
+    await pin.press('Backspace');
+    assert.equal(await pin.inputValue(),'7');
+    await pin.selectText();
+    await pin.evaluate(element=>{
+      const data=new DataTransfer();
+      data.setData('text','79 0-4');
+      element.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data}));
+    });
+    assert.equal(await pin.inputValue(),'7904');
+    assert.equal(await entry.locator('.security-pin-cell[data-filled="true"]').count(),4);
+    assert(await btn('잠금 해제').isEnabled());
+    const cellSizes=await cells.evaluateAll(nodes=>nodes.map(cell=>[cell.offsetWidth,cell.offsetHeight]));
+    assert(cellSizes.every(([width,height])=>width<=51 && height<=41),JSON.stringify(cellSizes));
+    await page.setViewportSize({width:320,height:840});
+    const row=await cells.evaluateAll(nodes=>nodes.map(cell=>{
+      const rect=cell.getBoundingClientRect();
+      return {left:rect.left,right:rect.right,top:rect.top,width:rect.width};
+    }));
+    assert(row.every(cell=>cell.top===row[0].top && Math.abs(cell.width-row[0].width)<1));
+    const viewport=await page.evaluate(()=>document.documentElement.clientWidth);
+    assert(row[0].left>0 && row.at(-1).right<viewport, JSON.stringify({row,viewport}));
+    await page.setViewportSize({width:1440,height:1000});
+    await pin.fill('');
   }
   try {
     await launch();
@@ -260,7 +300,7 @@ async function run() {
     await page.evaluate(()=>window.flowrium.lockSecurity());
     const reducedLayer=page.locator('.security-lock-layer');
     await reducedLayer.waitFor();
-    const reducedPin=page.getByLabel('잠금 번호',{exact:true});
+    const reducedPin=page.locator('.security-pin-entry');
     assert.deepEqual(await reducedPin.evaluate(element=>{
       const computed=getComputedStyle(element);
       return {animation:computed.animationName,border:computed.backgroundImage.includes('conic-gradient')};

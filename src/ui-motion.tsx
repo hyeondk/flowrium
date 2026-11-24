@@ -20,7 +20,7 @@ export function useReducedMotion() {
 /** 닫힘 동작이 끝난 뒤 언마운트합니다. 열림 상태가 빠르게 바뀌면 이전 타이머를 취소합니다. */
 export function usePresence(open: boolean, durationMs = 240, exitElement?: RefObject<HTMLElement | null>) {
   const reduced = useReducedMotion();
-  const duration = reduced ? 1 : Math.max(200, Math.min(400, durationMs));
+  const duration = reduced ? 1 : Math.max(200, Math.min(exitElement ? 500 : 400, durationMs));
   const [state, setState] = useState<{ present: boolean; phase: MotionPhase }>(() => ({ present: open, phase: open ? 'enter' : 'exit' }));
   useLayoutEffect(() => {
     if (open) setState({ present: true, phase: 'enter' });

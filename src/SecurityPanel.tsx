@@ -1,6 +1,6 @@
 import { AnimatedSwitch } from './ui-motion';
 import ChoicePicker from './ChoicePicker';
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { LockKeyhole, ShieldCheck } from "lucide-react";
 import type {
   SecurityPreferences,
@@ -79,9 +79,12 @@ type Props = { security: ReturnType<typeof useSecurity> };
 export function LockScreen({ security,releasing=false }: Props&{releasing?:boolean}) {
   const { state } = security;
   const [pin, setPin] = useState("");
+  const [caret, setCaret] = useState(0);
   const [error, setError] = useState("");
   const [waiting, setWaiting] = useState(false);
   const [now, setNow] = useState(Date.now);
+  const pinField = useRef<HTMLInputElement>(null);
+  const errorId = useId();
   useEffect(() => {
     if (state.retryAt <= Date.now()) return;
     const id = window.setInterval(() => {
@@ -91,6 +94,11 @@ export function LockScreen({ security,releasing=false }: Props&{releasing?:boole
     return () => clearInterval(id);
   }, [state.retryAt]);
   const remaining = Math.max(0, Math.ceil((state.retryAt - now) / 1000));
+  const disabled = waiting || remaining > 0 || releasing;
+  const problem = error || security.error;
+  useEffect(() => {
+    if (error && !disabled) pinField.current?.focus();
+  }, [disabled, error]);
   const reasons: Record<string, string> = {
     idle: "자리를 비운 동안 화면을 잠갔습니다.",
     workday: "업무 마감 기록을 저장하고 화면을 잠갔습니다.",
@@ -114,10 +122,11 @@ export function LockScreen({ security,releasing=false }: Props&{releasing?:boole
           } finally {
             setWaiting(false);
             setPin("");
+            setCaret(0);
           }
         }}
       >
-        <LockKeyhole size={28} />
+        <span className="security-lock-icon" aria-hidden="true"><LockKeyhole size={25} /></span>
         <h1>{state.loaded ? "화면 잠금" : "작업 공간 열기"}</h1>
         <p>
           {!state.loaded
@@ -125,37 +134,64 @@ export function LockScreen({ security,releasing=false }: Props&{releasing?:boole
             : reasons[state.reason] || "계속하려면 화면 잠금을 해제하세요."}
         </p>
         {state.loaded && state.hasPin && (
-          <label>
-            잠금 번호
-            <input
-              className="security-pin-input"
-              type="password"
-              inputMode="numeric"
-              autoFocus
-              pattern="[0-9]{4}"
-              maxLength={4}
-              autoComplete="off"
-              required
-              disabled={waiting || remaining > 0 || releasing}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, ""))}
-            />
+          <label className="security-pin-label">
+            <span>잠금 번호</span>
+            <span className="security-pin-entry" data-error={Boolean(problem)}>
+              <input
+                ref={pinField}
+                className="security-pin-input"
+                type="password"
+                inputMode="numeric"
+                autoFocus
+                pattern="[0-9]{4}"
+                maxLength={4}
+                autoComplete="off"
+                required
+                disabled={disabled}
+                aria-invalid={Boolean(problem)}
+                aria-describedby={problem ? errorId : undefined}
+                value={pin}
+                onChange={({ currentTarget: field }) => {
+                  const digits = field.value.replace(/[^0-9]/g, "");
+                  const offset = field.selectionStart ?? field.value.length;
+                  setPin(digits);
+                  setCaret(field.value.slice(0, offset).replace(/[^0-9]/g, "").length);
+                }}
+                onSelect={({ currentTarget: field }) => setCaret(field.selectionEnd ?? pin.length)}
+                onPaste={(event) => {
+                  const text = event.clipboardData.getData("text");
+                  const field = event.currentTarget;
+                  const digits = text.replace(/[^0-9]/g, "");
+                  if (text === digits) return;
+                  event.preventDefault();
+                  const start = field.selectionStart ?? pin.length;
+                  const end = field.selectionEnd ?? start;
+                  const inserted = digits.slice(0, 4 - pin.length + end - start);
+                  if (!inserted) return;
+                  field.setRangeText(inserted, start, end, "end");
+                  setPin(field.value);
+                  setCaret(start + inserted.length);
+                }}
+              />
+              <span className="security-pin-cells" aria-hidden="true">
+                {[0, 1, 2, 3].map((index) => (
+                  <span key={index} className="security-pin-cell" data-filled={index < pin.length} data-current={index === Math.min(caret, 3)} />
+                ))}
+              </span>
+            </span>
           </label>
         )}
-        {(error || security.error) && (
-          <p role="alert">{error || security.error}</p>
+        {problem && (
+          <p id={errorId} role="alert">{problem}</p>
         )}
         {remaining > 0 && (
           <p role="status">{remaining}초 뒤에 다시 입력할 수 있습니다.</p>
         )}
         {(state.loaded || security.error) && (
           <button
+            type="submit"
             className="button primary"
-            disabled={
-              waiting || releasing ||
-              remaining > 0 ||
-              (state.loaded && state.hasPin && pin.length !== 4)
-            }
+            disabled={disabled || (state.loaded && state.hasPin && pin.length !== 4)}
           >
             {releasing ? "잠금 해제 중" : state.loaded ? "잠금 해제" : "다시 시도"}
           </button>
