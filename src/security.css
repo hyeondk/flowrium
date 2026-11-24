@@ -62,25 +62,25 @@
 
 .security-pin-entry {
   position: relative;
+  isolation: isolate;
   display: block;
   min-width: 0;
-  padding: 4px;
-  border: 2px solid transparent;
-  border-radius: 15px;
-  background:
-    linear-gradient(var(--panel),var(--panel)) padding-box,
-    conic-gradient(from var(--security-pin-angle),var(--lock-blue),var(--lock-teal) 28%,var(--lock-violet) 65%,var(--lock-blue)) border-box;
-  box-shadow: 0 4px 20px color-mix(in srgb,var(--lock-blue) 23%,transparent);
+  padding: 4px 2px;
+}
+
+.security-pin-entry::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 8px 4px;
+  border-radius: 50%;
+  background: conic-gradient(from var(--security-pin-angle),var(--lock-blue),var(--lock-teal) 28%,var(--lock-violet) 65%,var(--lock-blue));
+  filter: blur(13px);
+  opacity: .36;
   animation: security-pin-flow 3.8s linear infinite;
 }
 
-.security-pin-entry:focus-within {
-  outline: 2px solid var(--accent-ink);
-  outline-offset: 3px;
-}
-
-.security-pin-entry[data-error=true]:focus-within { outline-color: var(--danger); }
-.security-pin-entry:has(input:disabled) { animation-play-state: paused; }
+.security-pin-entry:has(input:disabled)::before { animation-play-state: paused; }
 
 .security-pin-input {
   position: absolute;
@@ -110,8 +110,11 @@
 }
 
 .security-pin-entry:focus-within .security-pin-cell[data-current=true] {
-  border-color: var(--lock-blue);
-  box-shadow: inset 0 0 0 1px var(--lock-blue);
+  background: color-mix(in srgb,var(--lock-blue) 19%,var(--input));
+}
+
+.security-pin-entry[data-error=true]:focus-within .security-pin-cell[data-current=true] {
+  background: color-mix(in srgb,var(--danger) 16%,var(--input));
 }
 
 .security-pin-cell::after {
@@ -155,13 +158,12 @@
 }
 
 @media (prefers-reduced-motion:reduce) {
-  .security-pin-entry,.security-lock-layer[data-phase=exit] .security-screen::after { animation:none; }
+  .security-pin-entry::before,.security-lock-layer[data-phase=exit] .security-screen::after { animation:none; }
   .security-pin-cell::after { transition:none; }
 }
 
 @media (forced-colors:active) {
-  .security-pin-entry { border-color:ButtonText; }
-  .security-pin-entry:focus-within { outline-color:Highlight; }
+  .security-pin-entry:focus-within .security-pin-cell[data-current=true] { outline:2px solid Highlight;outline-offset:2px; }
   .security-pin-cell::after { forced-color-adjust:none; background:CanvasText; }
 }
 

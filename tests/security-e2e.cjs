@@ -96,7 +96,7 @@ async function run() {
       .filter({ hasText: "잠금 검증 프로젝트" })
       .waitFor();
   }
-  async function verifyPinBorder() {
+  async function verifyPinEntry() {
     const pin=page.getByLabel('잠금 번호',{exact:true});
     const entry=page.locator('.security-pin-entry');
     const cells=entry.locator('.security-pin-cell');
@@ -106,17 +106,22 @@ async function run() {
     await pin.focus();
     const frame=await entry.evaluate(async element=>{
       const sample=()=>{
-        const computed=getComputedStyle(element);
+        const computed=getComputedStyle(element,'::before');
         return {angle:computed.getPropertyValue('--security-pin-angle'),background:computed.backgroundImage};
       };
       const first=sample();
       await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
       const styles=getComputedStyle(element);
-      return {first,last:sample(),outline:styles.outlineStyle,outlineWidth:styles.outlineWidth,focus:element.matches(':focus-within')};
+      const active=getComputedStyle(element.querySelector('.security-pin-cell[data-current=true]'));
+      const other=getComputedStyle(element.querySelector('.security-pin-cell[data-current=false]'));
+      return {first,last:sample(),outline:styles.outlineStyle,border:styles.borderTopWidth,focus:element.matches(':focus-within'),
+        cellOutline:active.borderColor,otherOutline:other.borderColor,currentFill:active.backgroundColor,otherFill:other.backgroundColor};
     });
-    assert(frame.focus&&frame.outline==='solid'&&parseFloat(frame.outlineWidth)>=1,'잠금 번호 입력에 또렷한 키보드 초점을 표시합니다. '+JSON.stringify({focus:frame.focus,outline:frame.outline,width:frame.outlineWidth}));
+    assert(frame.focus && frame.outline==='none' && frame.border==='0px','입력란에 초점을 줘도 바깥 테두리가 없어야 합니다.');
+    assert.equal(frame.cellOutline,frame.otherOutline,'네 칸의 테두리색은 일치해야 합니다.');
+    assert.notEqual(frame.currentFill,frame.otherFill,'입력 위치는 칸의 배경색으로 구분합니다.');
     assert.match(frame.first.background,/conic-gradient\(/);
-    assert.notEqual(frame.first.angle,frame.last.angle,'앞뒤 프레임 사이에 입력 테두리의 밝은 구간이 흐릅니다.');
+    assert.notEqual(frame.first.angle,frame.last.angle,'앞뒤 프레임 사이에 입력칸 주변의 빛이 흐릅니다.');
     await pin.pressSequentially('7a9');
     assert.equal(await pin.inputValue(),'79');
     assert.equal(await entry.locator('.security-pin-cell[data-filled="true"]').count(),2);
@@ -214,7 +219,7 @@ async function run() {
     );
     await side.hover();await btn("잠금").click();
     await page.getByRole("heading", { name: "화면 잠금" }).waitFor();
-    await verifyPinBorder();
+    await verifyPinEntry();
     assert(
       !(await page.locator("body").innerText()).includes("잠금 검증 프로젝트"),
     );
@@ -302,9 +307,9 @@ async function run() {
     await reducedLayer.waitFor();
     const reducedPin=page.locator('.security-pin-entry');
     assert.deepEqual(await reducedPin.evaluate(element=>{
-      const computed=getComputedStyle(element);
-      return {animation:computed.animationName,border:computed.backgroundImage.includes('conic-gradient')};
-    }),{animation:'none',border:true},'동작 줄이기 설정에서도 정적인 그라데이션 테두리를 유지합니다.');
+      const computed=getComputedStyle(element,'::before');
+      return {animation:computed.animationName,glow:computed.backgroundImage.includes('conic-gradient')};
+    }),{animation:'none',glow:true},'동작 줄이기 설정에서도 정적인 그라데이션 효과를 유지합니다.');
     const reducedProbe=await reducedLayer.evaluateHandle(el=>{
       const state={starts:0};
       el.addEventListener('animationstart',event=>{if(event.target===el&&event.animationName==='ui-unlock')state.starts++});
