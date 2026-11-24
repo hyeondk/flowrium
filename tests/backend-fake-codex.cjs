@@ -1,7 +1,8 @@
 const readline = require("node:readline");
+const {existsSync} = require("node:fs");
+const loginGate = process.env.FLOWRIUM_TEST_LOGIN_GATE;
 let initialized = false;
 let loggedOut = false;
-let oauthCompleted = false;
 let acknowledged = false;
 let nextThread = 0;
 let nextTurn = 0;
@@ -74,6 +75,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     return;
   }
   if (method === "account/read") {
+    const oauthCompleted = loginGate && existsSync(loginGate);
     write({
       id,
       result: {
@@ -139,18 +141,16 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     return;
   }
   if (method === "account/login/start") {
-    const gate = process.env.FLOWRIUM_TEST_LOGIN_GATE;
     const loginId = "316e11a8-d5ef-407d-88b8-a8046c8ce863";
     write({
       id,
-      result: { authUrl: "https://auth.openai.com/authorize?test=true", ...(gate && {loginId}) },
+      result: { authUrl: "https://auth.openai.com/authorize?test=true", ...(loginGate && {loginId}) },
     });
-    if (gate) {
-      const {existsSync} = require('node:fs');
+    if (loginGate) {
+      // Every client reads the same completed login, as with stored Codex credentials.
       const timer = setInterval(() => {
-        if (!existsSync(gate)) return;
+        if (!existsSync(loginGate)) return;
         clearInterval(timer);
-        oauthCompleted = true;
         loggedOut = false;
         notify("account/login/completed", {loginId, success:true, error:null});
       },20);

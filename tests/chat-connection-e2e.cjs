@@ -22,8 +22,9 @@ async function recordWeb(app) {
 }
 
 async function sidebarAccountAction(page, name) {
-  await page.locator('.workspace-side').hover();
-  const actions = page.locator('.side-account-actions');
+  const sidebar = page.locator('.workspace-side');
+  if (await sidebar.getAttribute('data-expanded') !== 'true') await sidebar.hover();
+  const actions = sidebar.locator('.side-account-actions');
   const action = actions.getByRole('button',{name,exact:true});
   await action.waitFor();
   const opposite = name === '로그인' ? '로그아웃' : '로그인';
