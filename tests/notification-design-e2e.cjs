@@ -3,7 +3,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=r
 const {_electron}=require('playwright');
 const {Store}=require('../electron/store.cjs');
 const currentVersion=require('../package.json').flowriumVersion,nextVersion=require('../electron/version.cjs').nextVersion(currentVersion);
-const {addTrustedFixtureProject,backendFixtureAccount}=require('./project-trust-fixture.cjs');
+const {addTrustedFixtureProject,backendFixtureAccount,setFixtureAccountLinked}=require('./project-trust-fixture.cjs');
 const {closeInstalledApp}=require('./update-installed-ui.cjs');
 async function run(){
  const root=path.resolve(__dirname,'..'),base=path.join(root,'.flowrium-tmp/qa-261115_03');
@@ -15,9 +15,11 @@ async function run(){
   const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store,folder,{account:backendFixtureAccount});
   const session=await store.createSession(project.id,{title:'상반기 매출 분석'});
   await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});
+  await setFixtureAccountLinked(profile);
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temporary,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   app=await _electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();page.setDefaultTimeout(16000);
   await page.setViewportSize({width:1440,height:900});await waitForCodexConnection(page);
+  await page.waitForFunction(async id=>(await window.flowrium.bootstrap()).projects.some(row=>row.id===id&&row.trustedForFileAccess),project.id);
   await page.evaluate(id=>window.flowrium.send({sessionId:id,text:'입력질문검증',mode:'plan'}),session.id);
   const questionNotice=page.locator('.flow-question-notice[data-tone=question]');await questionNotice.waitFor();
   assert.equal(await questionNotice.getByRole('status').innerText(),'어시스턴트가 질문이 있으니 결정 부탁드립니다.');

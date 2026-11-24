@@ -97,7 +97,7 @@ async function verifyFollowupTiming() {
         const previous=window.recommendationProgress.at(-1);
         if(previous?.value!==row.value||previous?.width!==row.width)window.recommendationProgress.push(row);
       });
-      observer.observe(document.querySelector('.app-shell'),{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['aria-valuenow']});
+      observer.observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['aria-valuenow']});
     });
     for(const width of [320,390,960,1440]){
       await page.setViewportSize({width,height:900});
