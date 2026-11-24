@@ -4,6 +4,7 @@ const { runStructuredAnalysis } = require('./structured-analysis.cjs');
 const { attachmentDisplayText } = require('./mobile/attachment-text.js');
 const {
   canOfferFollowup,
+  directFollowupText,
   isAdvisoryFollowup,
   latestFollowupAnswer,
   publicLines,
@@ -48,7 +49,9 @@ const prompt = [
   '사용자의 보존 조건이나 작업 범위를 완화하지 마세요. 외부 전송이나 삭제는 사용자가 해당 작업을 명시적으로 요청한 경우에만 제안할 수 있습니다.',
   '방법이나 순서를 설명해 달라는 문구, 일반적인 점검 목록, 대화에 이미 나온 요청이나 끝낸 작업, 답변 문장을 그대로 붙인 문구는 제안하지 마세요.',
   '사용자가 구체적인 결과물을 원하면 해당 결과물을 직접 만들도록 요청하세요. 실제 근거가 없거나 적절한 다음 작업을 고르기 어려우면 suggestions를 빈 배열로 반환하세요.',
-  '사용자의 언어와 말투를 따르세요. prompt는 평문 한두 문장, evidence는 최신 답변에서 그대로 옮긴 짧은 구절만 작성하세요.',
+  'prompt는 사용자가 어시스턴트에게 직접 보내는 짧은 명령형 문장으로 쓰세요. 한국어에서는 사용자의 기존 말투와 관계없이 존댓말 없이 “확인해줘”, “비교해줘”처럼 끝내세요. 영어는 동사로 시작하세요.',
+  '답변 속 “보내 주시면 제가 확인해 볼까요?” 같은 조건과 화자를 이어 붙이지 마세요. 예를 들어 여러 줄 메시지의 수신이 문제라면 “여러 줄로 작성한 메시지를 보내서 수신 후에도 줄바꿈이 유지되는지 확인해줘”처럼 실행할 행동을 쓰세요.',
+  'prompt는 평문 한두 문장, evidence는 최신 답변에서 그대로 옮긴 짧은 구절만 작성하세요.',
 ].join('\n');
 
 function accountOwner(account) {
@@ -98,10 +101,11 @@ function comparable(text) {
 function accepted(result, rows) {
   if (!Array.isArray(result?.suggestions) || result.suggestions.length !== 1) return null;
   const item = result.suggestions[0];
-  const text = typeof item?.prompt === 'string' ? item.prompt.trim() : '';
+  const raw = typeof item?.prompt === 'string' ? item.prompt.trim() : '';
+  if (raw.length < 14 || raw.length > 280 || /[\r\n\x00-\x1f]/.test(raw) || SENSITIVE.test(raw)) return null;
+  const text = directFollowupText(raw);
   const evidence = typeof item?.evidence === 'string' ? item.evidence.trim() : '';
-  if (text.length < 14 || text.length > 280 || /[\r\n\x00-\x1f]/.test(text) ||
-      SENSITIVE.test(text) || isAdvisoryFollowup(text) || TOO_GENERIC.test(text) || VAGUE_PLAN.test(text) || !DIRECT_ACTION.test(text) ||
+  if (!text || text.length < 14 || isAdvisoryFollowup(text) || TOO_GENERIC.test(text) || VAGUE_PLAN.test(text) || !DIRECT_ACTION.test(text) ||
       evidence.length < 6 || evidence.length > 120 || !rows.at(-1)?.text.includes(evidence)) return null;
   const target = comparable(text);
   if (rows.some(row => comparable(row.text).includes(target))) return null;

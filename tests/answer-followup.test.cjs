@@ -10,6 +10,26 @@ test('최근 답변의 구체적인 제안에서 편집 가능한 다음 요청�
   assert.equal(named.source, 'conversation');
 });
 
+test('줄바꿈 시험을 제안한 답변에서 사용자 관점의 반말 명령을 만들고 원본은 보존한다', async () => {
+  const {followupFromAnswer,originalAnswerFollowups,prepareAnswerFollowup} = await loaded;
+  const text='이어서 여러 줄로 작성한 메시지를 보내 주시면, 제가 받았을 때도 줄바꿈이 유지되는지 확인해 볼까요?';
+  const expected='여러 줄로 작성한 메시지를 보내서 수신 후에도 줄바꿈이 유지되는지 확인해줘';
+  const session={messages:[
+    {role:'user',text:'지난번에 맥 설치 앱을 확인해 주세요.'},
+    {role:'assistant',text:'맥 설치가 완료됐습니다.'},
+    {role:'user',text:'이번에는 채팅의 여러 줄 전송도 검사해 주세요.'},
+    {role:'assistant',text},
+  ]};
+  const original=JSON.stringify(session);
+  assert.equal(followupFromAnswer(text)?.prompt,expected);
+  assert.equal(originalAnswerFollowups(session)[0]?.prompt,expected);
+  assert.equal((await prepareAnswerFollowup(session,()=>{}))?.prompt,expected);
+  assert.equal(JSON.stringify(session),original);
+  assert.equal(followupFromAnswer('테스트 문구를 붙여넣어 주시면, 제가 수신했을 때 탭과 줄바꿈이 보존되는지 확인할까요?')?.prompt,
+    '테스트 문구를 붙여넣어서 수신 후에도 탭과 줄바꿈이 보존되는지 확인해줘');
+  assert.equal(followupFromAnswer('대상 파일을 알려 주시면, 제가 그 경로를 검토해 볼까요?'),undefined);
+});
+
 test('완료 보고, 열린 질문, 인용, 작성물, 코드 예시를 새 작업으로 제시하지 않는다', async () => {
   const {followupFromAnswer} = await loaded;
   for (const text of [
@@ -200,7 +220,7 @@ test('인사나 반복 채팅 수신 확인에 후속 과제를 만들어 넣지
   assert.deepEqual(originalAnswerFollowups(session),[]);
 });
 
-test('오래된 작업 목적과 말투를 적용하되 마지막 답변에 남은 과제를 고른다',async()=>{
+test('오래된 작업 목적을 참고해 마지막 답변에 남은 과제를 반말 명령으로 추천한다',async()=>{
   const {originalAnswerFollowups}=await loaded;
   const rest=Array.from({length:80},()=>({role:'system',text:'내부 검증 로그만 표시합니다.'}));
   const messages=[
@@ -211,7 +231,7 @@ test('오래된 작업 목적과 말투를 적용하되 마지막 답변에 남�
     {role:'assistant',text:'다음 단계\n- 관리자 화면 알림 색상을 검토해 주세요.\n- 아이폰에서 앱을 재실행하고 접속을 확인해 주세요.'},
   ];
   const before=JSON.stringify(messages);
-  assert.equal(originalAnswerFollowups({messages})[0]?.prompt,'아이폰에서 앱을 재실행하고 접속을 확인해 줄래요?');
+  assert.equal(originalAnswerFollowups({messages})[0]?.prompt,'아이폰에서 앱을 재실행하고 접속을 확인해줘');
   assert.equal(JSON.stringify(messages),before);
   messages[0].text='관리자 화면 알림의 색상부터 검토해줘';
   assert.equal(originalAnswerFollowups({messages})[0]?.prompt,'관리자 화면 알림 색상을 검토해줘');
@@ -230,7 +250,7 @@ test('최신 과제에 필요한 앞선 대상과 검증 범위를 담고 이미
     ...Array.from({length:20},()=>({role:'user',text:'좋습니다.'})),
     {role:'assistant',text:'다음 단계\n- 메뉴 아이콘 정렬을 검증해 주세요.\n- 도움말의 밝은 모드 대비를 점검해 주세요.'},
   ]};
-  assert.equal(originalAnswerFollowups(history)[0]?.prompt,'도움말의 밝은 모드 대비를 점검해 주세요');
+  assert.equal(originalAnswerFollowups(history)[0]?.prompt,'도움말의 밝은 모드 대비를 점검해줘');
 });
 
 test('인라인 요약 제목을 추천에 붙이지 않고 서로 합의해 미룬 일은 다시 권하지 않는다',async()=>{
@@ -267,7 +287,7 @@ test('이전 빌드 정리를 막은 실행 중 중계를 찾아 연결 보존�
   assert.equal((await prepareAnswerFollowup({messages},()=>{}))?.prompt,expected);
   assert(performance.now()-start<10000);
   messages[2].text='직전 버전 복구본만 남겨두고 이전 빌드는 전부 지워 주세요.';
-  assert.match(originalAnswerFollowups({messages})[0]?.prompt||'',/나머지 이전 빌드를 정리해 주세요$/);
+  assert.match(originalAnswerFollowups({messages})[0]?.prompt||'',/나머지 이전 빌드를 정리해줘$/);
   messages[2].text='캐시만 비우고 이전 빌드는 그대로 보존해줘.';
   assert.deepEqual(originalAnswerFollowups({messages}),[]);
   messages[2].text='이전 빌드를 정리해줘';
@@ -281,9 +301,9 @@ test('검증 보고의 완료 문구보다 답변에서 명시한 미완료 조�
   const {originalAnswerFollowups}=await loaded;
   const request={role:'user',text:'배포 안내를 확정하고 두 플랫폼에 적용해 주세요.'};
   const answer={role:'assistant',text:'맥 설치와 사이트 안내를 검증했습니다. 윈도우의 설치 안내 반영이 아직 남았습니다.'};
-  assert.equal(originalAnswerFollowups({messages:[request,answer]})[0]?.prompt,'윈도우의 설치 안내 반영해 주세요');
+  assert.equal(originalAnswerFollowups({messages:[request,answer]})[0]?.prompt,'윈도우의 설치 안내 반영해줘');
   answer.text='맥 배포를 완료했습니다. 윈도우 설치본은 아직 배포하지 못했습니다.';
-  assert.equal(originalAnswerFollowups({messages:[request,answer]})[0]?.prompt,'윈도우 설치본을 배포해 주세요');
+  assert.equal(originalAnswerFollowups({messages:[request,answer]})[0]?.prompt,'윈도우 설치본을 배포해줘');
   answer.text='맥과 윈도우 설치와 사이트 안내를 검증했습니다. 남은 사항은 없습니다.';
   assert.deepEqual(originalAnswerFollowups({messages:[request,answer]}),[]);
 });

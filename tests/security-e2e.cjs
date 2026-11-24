@@ -53,14 +53,25 @@ async function run() {
           duration: animation?.effect.getTiming().duration,
           frames: animation?.effect.getKeyframes().map(frame => frame.transform),
         };
+        if(name==='ui-unlock'){
+          const workspace=document.querySelector('.unlocked-stage');
+          result.release={
+            hidden:element.getAttribute('aria-hidden'),inert:element.inert,
+            card:element.querySelector('.security-unlock').getAnimations().some(animation=>animation.animationName==='ui-unlock-card'),
+            workspace:workspace?.getAnimations().some(animation=>animation.animationName==='ui-unlocked-workspace'),
+          };
+        }
       });
       return result;
     }, name);
     try {
       await button.click();
       await layer.waitFor({ state: "detached" });
-      const { started, ended } = await probe.jsonValue();
-      if(name==='ui-unlock') assert.ok(ended,'잠금 화면을 해제 애니메이션 마지막 프레임까지 유지합니다.');
+      const { started, ended, release } = await probe.jsonValue();
+      if(name==='ui-unlock') {
+        assert.ok(ended,'잠금 화면을 해제 애니메이션 마지막 프레임까지 유지합니다.');
+        assert.deepEqual(release,{hidden:'true',inert:true,card:true,workspace:true},'인증 뒤에만 위로 이동하는 카드와 뒤에서 드러나는 작업 공간을 함께 표시합니다.');
+      }
       assert.ok(started, name + " 시작 이벤트가 필요합니다.");
       assert.equal(started.name, name);
       assert.equal(started.duration, duration);
@@ -77,6 +88,23 @@ async function run() {
       .locator(".pf-project-entry")
       .filter({ hasText: "잠금 검증 프로젝트" })
       .waitFor();
+  }
+  async function verifyPinBorder() {
+    const pin=page.getByLabel('잠금 번호',{exact:true});
+    await pin.focus();
+    const frame=await pin.evaluate(async element=>{
+      const sample=()=>{
+        const computed=getComputedStyle(element);
+        return {angle:computed.getPropertyValue('--security-pin-angle'),background:computed.backgroundImage};
+      };
+      const first=sample();
+      await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+      const styles=getComputedStyle(element);
+      return {first,last:sample(),outline:styles.outlineStyle,outlineWidth:styles.outlineWidth,focus:document.activeElement===element};
+    });
+    assert(frame.focus&&frame.outline==='solid'&&parseFloat(frame.outlineWidth)>=1,'잠금 번호 입력에 또렷한 키보드 초점을 표시합니다. '+JSON.stringify({focus:frame.focus,outline:frame.outline,width:frame.outlineWidth}));
+    assert.match(frame.first.background,/^linear-gradient\(.*conic-gradient\(/);
+    assert.notEqual(frame.first.angle,frame.last.angle,'앞뒤 프레임 사이에 입력 테두리의 밝은 구간이 흐릅니다.');
   }
   try {
     await launch();
@@ -146,6 +174,7 @@ async function run() {
     );
     await side.hover();await btn("잠금").click();
     await page.getByRole("heading", { name: "화면 잠금" }).waitFor();
+    await verifyPinBorder();
     assert(
       !(await page.locator("body").innerText()).includes("잠금 검증 프로젝트"),
     );
@@ -231,6 +260,11 @@ async function run() {
     await page.evaluate(()=>window.flowrium.lockSecurity());
     const reducedLayer=page.locator('.security-lock-layer');
     await reducedLayer.waitFor();
+    const reducedPin=page.getByLabel('잠금 번호',{exact:true});
+    assert.deepEqual(await reducedPin.evaluate(element=>{
+      const computed=getComputedStyle(element);
+      return {animation:computed.animationName,border:computed.backgroundImage.includes('conic-gradient')};
+    }),{animation:'none',border:true},'동작 줄이기 설정에서도 정적인 그라데이션 테두리를 유지합니다.');
     const reducedProbe=await reducedLayer.evaluateHandle(el=>{
       const state={starts:0};
       el.addEventListener('animationstart',event=>{if(event.target===el&&event.animationName==='ui-unlock')state.starts++});

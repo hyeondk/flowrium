@@ -4,6 +4,29 @@
 .security-unlock label,.security-pin-form label{display:grid;gap:8px;min-width:0;font-size:13px;line-height:22px}
 .security-unlock input,.security-pin-form input,.security-panel select{height:40px;min-height:40px;padding:8px 12px;font:inherit;line-height:22px;border:1px solid var(--line);border-radius:8px;background:var(--input);color:inherit;min-width:0}
 .security-unlock input{width:100%}.security-unlock h1{font-size:24px;line-height:32px}.security-unlock p{font-size:13px;line-height:22px;color:var(--muted)}
+@property --security-pin-angle {
+  syntax:'<angle>';
+  inherits:false;
+  initial-value:0deg;
+}
+.security-unlock .security-pin-input {
+  --pin-ring-base:color-mix(in srgb,var(--accent-ink) 42%,var(--line));
+  --pin-ring-trail:color-mix(in srgb,var(--accent-ink) 60%,var(--blue-200));
+  border:2px solid transparent;
+  border-radius:10px;
+  background:
+    linear-gradient(var(--input),var(--input)) padding-box,
+    conic-gradient(from var(--security-pin-angle),var(--pin-ring-base) 0 15%,var(--pin-ring-trail) 35%,
+      var(--accent-fill) 52%,var(--accent-ink) 64%,var(--pin-ring-base) 86% 100%) border-box;
+  letter-spacing:.27em;
+  animation:security-pin-flow 3.8s linear infinite;
+}
+.security-unlock .security-pin-input:focus {outline:2px solid var(--accent-ink);outline-offset:3px}
+.security-unlock .security-pin-input:disabled {animation-play-state:paused}
+@keyframes security-pin-flow {to {--security-pin-angle:360deg}}
+
+@media(prefers-reduced-motion:reduce){.security-unlock .security-pin-input {animation:none}}
+
 .security-panel{display:flex;flex-direction:column;gap:0;word-break:keep-all;min-width:0}
 .security-panel header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;min-width:0}
 .security-panel header>div{min-width:0}.security-panel header>button{flex:none}

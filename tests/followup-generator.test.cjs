@@ -86,6 +86,7 @@ test('한 번의 격리 모델 요청으로 설명 대신 재현 가능한 명�
   assert.equal(params.approvalPolicy,'never');
   assert.equal(params.effort,'lowest-supported');
   assert.match(params.input[0].text,/놓친 검증/);
+  assert.match(params.input[0].text,/사용자의 기존 말투와 관계없이 존댓말 없이/);
   const context = params.additionalContext.flowrium_analysis_evidence;
   assert.equal(context.kind,'untrusted');
   assert.equal(JSON.parse(context.value).at(-1).text,answerText);
@@ -154,6 +155,7 @@ test('일반적인 방법 정리와 근거 없는 출력은 추천 후보에서 
   for(const [suggested,quote] of [
     ['입력창에 실제로 적용할 때 필요한 순서와 확인 방법을 정리해줘.',evidence],
     ['입력창을 검증하기 위한 구체적인 실행 계획을 정리해줘.',evidence],
+    ['작업 내역을 보내 주시면, 제가 새 이벤트의 위치를 검증해 볼까요?',evidence],
     [action,'대화에 실제로 들어 있지 않은 근거'],
     [action,'실시간 작업 과정에서 이전 문구'],
   ]) {
@@ -163,6 +165,24 @@ test('일반적인 방법 정리와 근거 없는 출력은 추천 후보에서 
     await f.finish(suggested,quote);
     assert.equal(await result,null);
   }
+});
+
+test('모델 후보의 공손한 요청을 반말 명령으로 바꾸고 영어 명령은 보존한다',async()=>{
+  const korean = fixture();
+  korean.session.messages[0].text='실시간 작업 과정의 위치를 점검해 주세요.';
+  const result = korean.generator.recommend(korean.session.id,korean.answer.id);
+  await korean.ready;
+  await korean.finish(action.replace(/줘\.$/, ' 주세요.'));
+  assert.equal((await result).prompt,action);
+
+  const english = fixture();
+  english.session.messages[0].text='Check that the composer sends a multiline message intact.';
+  english.answer.text='The composer keeps each line break before sending.';
+  const englishCommand='Send a sample with blank lines and compare the received line breaks.';
+  const englishResult=english.generator.recommend(english.session.id,english.answer.id);
+  await english.ready;
+  await english.finish(englishCommand,'keeps each line break');
+  assert.equal((await englishResult).prompt,englishCommand);
 });
 
 test('추천 전용 연결이 다른 계정으로 열린 경우 대화 내용을 전송하지 않는다',async()=>{

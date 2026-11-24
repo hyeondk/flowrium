@@ -32,6 +32,15 @@ export interface WorkflowReminder {
 export interface WorkflowDelivery {
   id:string;sourceId:string|null;targetId:string;text:string;createdAt:string;status:"queued"|"dispatching"|"sent"|"failed"|"held";error?:string;
 }
+export type WorkCloseReason = '점심' | '퇴근' | '회의' | '기타';
+export interface WorkCloseResume {
+  id: string;
+  reason: WorkCloseReason;
+  startedAt: string;
+  memo?: string;
+  notificationId?: string;
+  sessions: { sessionId: string; projectId: string; status: 'running' | 'completed' | 'failed' | 'interrupted' }[];
+}
 export interface WorkflowState {
   version:1;revision:number;preferences:WorkflowPreferences;
   notifications:WorkflowNotification[];proposals:WorkflowProposal[];reminders:WorkflowReminder[];deliveries:WorkflowDelivery[];
@@ -39,8 +48,13 @@ export interface WorkflowState {
   pending:FlowriumEvent[];
   projects:{id:string;name:string}[];
   sessions:{id:string;projectId:string;title:string;running:boolean}[];
+  workClose?: Omit<WorkCloseResume, 'memo'> & { returnPending: boolean };
 }
 export type WorkflowAction =
+  |{action:'beginWorkClose'|'finishWorkClose';batchId:string}
+  |{action:'armWorkClose';batchId:string;sessionId:string;submissionId:string;reason:WorkCloseReason;memo?:string}
+  |{action:'returnToWork'}
+  |{action:'readWorkClose';batchId:string}
   |{action:'completeContinuation';sessionId:string;messageId:string}
   |{action:'continueConversation';submissionId?:string;sessionId:string;messageId:string;text?:string;attachments?:string[];mode:Mode;model?:string;effort?:Effort}
   |{action:"preferences";value:Partial<WorkflowPreferences>}
@@ -61,5 +75,6 @@ export type WorkflowAction =
   |{action:"retryDelivery";id:string};
 export interface WorkflowAPI {
   workflowState():Promise<WorkflowState>;
+  workflowAction(input:{action:'returnToWork'}|{action:'readWorkClose';batchId:string}):Promise<WorkCloseResume|null>;
   workflowAction(input:WorkflowAction):Promise<unknown|Session>;
 }

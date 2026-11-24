@@ -377,6 +377,7 @@ function registerSecurity(
     Notification,
     ready,
     focus,
+    deferWorkCloseLock,
   },
 ) {
   const approvals = new Map();
@@ -455,8 +456,15 @@ function registerSecurity(
         security.data.preferences.lockAfterPause &&
         controller.store.state.sessions.find((s) => s.id === event.sessionId)
           ?.workflow?.kind === "pause"
-      )
-        security.lock("workday");
+      ) {
+        const epoch = security.epoch, owner = security.accountRevision;
+        const lock = () => {
+          if (security.epoch === epoch && security.accountRevision === owner &&
+              security.data.preferences.lockAfterPause && !security.loggingOut)
+            security.lock("workday");
+        };
+        if (!deferWorkCloseLock?.(event, lock)) lock();
+      }
     }
     syncPower();
     const pref = security.data.preferences;

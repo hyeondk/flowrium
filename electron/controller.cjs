@@ -603,6 +603,7 @@ class Controller extends EventEmitter {
     });
     if (!turn.turn?.id) throw new Error("Codex 작업을 시작하지 못했습니다.");
     run.turnId = turn.turn.id;
+    this.confirmWorkCloseTurn(run, currentSession);
     await this.applyInitialTitle(run,currentSession,client);
     const sent=this.store.session(run.sessionId).messages.find(m=>m.id===run.userMessageId);
     if(sent)sent.turnId=run.turnId;
@@ -612,6 +613,19 @@ class Controller extends EventEmitter {
         threadId: run.threadId,
         turnId: run.turnId,
       });
+  }
+  confirmWorkCloseTurn(run, session) {
+    if (run.workCloseObserved || !run.turnId || run.finalized || run.cancelled ||
+        session.workflow?.kind !== 'pause' || run.ownerRevision !== (this.options.queueOwner?.() ?? 'local')) return;
+    const user = session.messages.find(message => message.id === run.userMessageId && message.role === 'user');
+    if (!user) return;
+    run.workCloseObserved = true;
+    user.turnId = run.turnId;
+    user.workStartedAt ||= new Date().toISOString();
+    this.emit('workCloseTurnStarted', {
+      sessionId: session.id, submissionId: user.id, turnId: run.turnId, startedAt: user.workStartedAt,
+      ownerRevision: run.ownerRevision,
+    });
   }
   findRun(threadId, turnId) {
     return [...this.runs.values()].find((run) =>
@@ -746,6 +760,7 @@ class Controller extends EventEmitter {
         user.workStartedAt ||= new Date().toISOString();
         this.emitEvent({type:'session',sessionId:run.sessionId,session:structuredClone(session)});
       }
+      this.confirmWorkCloseTurn(run, session);
       this.emitEvent({
         type: "status",
         sessionId: run.sessionId,
@@ -999,6 +1014,7 @@ class Controller extends EventEmitter {
       type: "done",
       sessionId: session.id,
       status,
+      ...(session.workflow?.kind === 'pause' && {turnId:run.turnId, submissionId:run.userMessageId}),
       text: saveError
         ? "작업이 종료됐지만 기록을 저장하지 못했습니다. 대화를 내보내 주세요."
         : status === "completed"

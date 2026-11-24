@@ -5,16 +5,18 @@ import { CloseButton, AnimatedCheckbox } from './ui-motion';
 import type { Project, Session, Model, Effort } from '../shared/types';
 import { workKinds, type WorkInput } from '../shared/workbench';
 import { effortOptions } from '../shared/model-options';
+import type { WorkCloseReason } from '../shared/workflow';
 import { errorText, localDay } from './ProjectPortfolio';
 import './portfolio-reports.css';
 
 type Props = {
   kind: 'weekly' | 'pause'; projects: Project[]; sessions: Session[];
   onOpen(session: Session): void;
-  onStart(session: Session, request: string, options?: { model?: string; effort?: Effort }): Promise<void>;
-  onCreateProject(): void; onClose?(): void; authenticated: boolean;
+  onStart(session: Session, request: string, options?: { model?: string; effort?: Effort; submissionId?: string }): Promise<void>;
+  onCreateProject(): void; onClose?(): void; onBeginPause():void; authenticated: boolean;
 };
-export default function PortfolioReports({ kind, projects, sessions, onOpen, onStart, onCreateProject, onClose, authenticated }: Props) {
+const pauseReasons: WorkCloseReason[] = ['점심', '퇴근', '회의', '기타'];
+export default function PortfolioReports({ kind, projects, sessions, onOpen, onStart, onCreateProject, onClose, onBeginPause, authenticated }: Props) {
   const weekly = kind === 'weekly', title = workKinds[kind].label, today = new Date(), week = new Date(today);
   week.setDate(today.getDate() - ((today.getDay() + 6) % 7));
   const friday = new Date(week); friday.setDate(week.getDate() + 4);
@@ -23,11 +25,12 @@ export default function PortfolioReports({ kind, projects, sessions, onOpen, onS
   const [picked, setPicked] = useState<string[]>(() => weekly ? [] : projects.filter(p => recent.has(p.id)).slice(0, 64).map(p => p.id));
   const [destination, setDestination] = useState('');
   const [from, setFrom] = useState(localDay(week.toISOString())), [to, setTo] = useState(localDay(friday.toISOString())), [period, setPeriod] = useState('this');
-  const [name, setName] = useState(title + ' / ' + localDay(today.toISOString())), [brief, setBrief] = useState(''), [audience, setAudience] = useState(''), [reason, setReason] = useState('퇴근');
+  const [name, setName] = useState(title + ' / ' + localDay(today.toISOString())), [brief, setBrief] = useState(''), [audience, setAudience] = useState(''), [reason, setReason] = useState<WorkCloseReason>('퇴근');
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [created, setCreated] = useState<Session[]>([]), [success, setSuccess] = useState(false);
   const [models, setModels] = useState<Model[]>([]), [model, setModel] = useState(''), [effort, setEffort] = useState<Effort | ''>('');
   const [modelError, setModelError] = useState(''), [modelLoading, setModelLoading] = useState(true), [accountReady, setAccountReady] = useState(false);
   const alive = useRef(false), submitting = useRef(false), pending = useRef(new Map<string, Session>());
+  const workCloseBatch = useRef<{ id: string; reason: WorkCloseReason; memo: string; submissions: Map<string,string> }>(null);
   const selectedModel = models.find(m => m.id === model) || (!model ? models.find(m => m.isDefault) : undefined);
   const efforts = effortOptions(selectedModel);
   const loadModels = useCallback(async () => {
@@ -67,26 +70,50 @@ export default function PortfolioReports({ kind, projects, sessions, onOpen, onS
     } catch (error) {
       setError(errorText(error)); setBusy(false); submitting.current = false; return;
     }
-    for (const project of destinations) {
-      if (finished.has(project.id)) continue;
-      const seed: WorkInput = {
-        projectId: project.id, kind, title: name.trim(), role: workKinds[kind].role,
-        brief: weekly ? brief : [reason, brief].filter(Boolean).join(' / '), audience, from: weekly ? from : '', to: weekly ? to : '',
-        ...(model && { model }), ...(effort && { effort }), ...(weekly && { reportProjects: targets.map(item => item.id) }),
-      };
-      try {
-        const record = pending.current.get(project.id) || await window.flowrium.startWork(seed); pending.current.set(project.id, record);
-        await onStart(record, [name, seed.brief, '선택한 프로젝트 기록을 바탕으로 ' + title + ' 업무를 실행해 주세요.'].filter(Boolean).join('\n\n'), { model: model || undefined, effort: effort || undefined });
-        pending.current.delete(project.id); newEntries.push(record);
-      } catch (error) { issues.push(project.name + ': ' + errorText(error)); }
+    if (!weekly && !created.length && !pending.current.size) workCloseBatch.current = null;
+    const batch = weekly ? undefined : (workCloseBatch.current ??= { id: crypto.randomUUID(), reason, memo: brief, submissions: new Map() });
+    let began = false;
+    try {
+      if (batch) {
+        onBeginPause();
+        await window.flowrium.workflowAction({ action:'beginWorkClose', batchId:batch.id });
+        began = true;
+      }
+      for (const project of destinations) {
+        if (finished.has(project.id)) continue;
+        const seed: WorkInput = {
+          projectId: project.id, kind, title: name.trim(), role: workKinds[kind].role,
+          brief: batch?.reason ?? brief, audience, from: weekly ? from : '', to: weekly ? to : '',
+          ...(model && { model }), ...(effort && { effort }), ...(weekly && { reportProjects: targets.map(item => item.id) }),
+        };
+        try {
+          const record = pending.current.get(project.id) || await window.flowrium.startWork(seed); pending.current.set(project.id, record);
+          let submissionId: string | undefined;
+          if (batch) {
+            const id = batch.submissions.get(record.id) || crypto.randomUUID();
+            batch.submissions.set(record.id, id);
+            await window.flowrium.workflowAction({ action: 'armWorkClose', sessionId: record.id, batchId: batch.id, submissionId:id, reason: batch.reason, memo: batch.memo });
+            submissionId = id;
+          }
+          await onStart(record, [name, seed.brief, '선택한 프로젝트 기록을 바탕으로 ' + title + ' 업무를 실행해 주세요.'].filter(Boolean).join('\n\n'), { model: model || undefined, effort: effort || undefined, submissionId });
+          pending.current.delete(project.id); newEntries.push(record);
+        } catch (error) { issues.push(project.name + ' / ' + errorText(error)); }
+      }
+    } catch(error) {
+      issues.push(errorText(error));
+    } finally {
+      if (batch && began) {
+        try { await window.flowrium.workflowAction({ action:'finishWorkClose', batchId:batch.id }); }
+        catch(error) { if (alive.current) issues.push(errorText(error)); }
+      }
+      if (alive.current) {
+        setCreated(current => [...current, ...newEntries]); setError(issues.join('\n'));
+        const all = [...created, ...newEntries];
+        if (all.length === (weekly ? 1 : targets.length)) { setSuccess(true); if (weekly && !issues.length) onOpen(all[0]); }
+        setBusy(false);
+      }
+      submitting.current = false;
     }
-    if (alive.current) {
-      setCreated(current => [...current, ...newEntries]); setError(issues.join('\n'));
-      const all = [...created, ...newEntries];
-      if (all.length === (weekly ? 1 : targets.length)) { setSuccess(true); if (weekly && !issues.length) onOpen(all[0]); }
-      setBusy(false);
-    }
-    submitting.current = false;
   }
   const canStart = authenticated && accountReady && !modelLoading && !busy && !success && targets.length > 0 && name.trim();
   const close = <CloseButton aria-label={title + ' 닫기'} onClick={onClose} disabled={busy}/>;
@@ -100,7 +127,7 @@ export default function PortfolioReports({ kind, projects, sessions, onOpen, onS
           <div className="report-actions report-project-actions"><button type="button" disabled={created.length > 0 || pending.current.size > 0} onClick={() => setPicked(projects.slice(0, 64).map(p => p.id))}>전체 선택</button>{!weekly && <button type="button" disabled={created.length > 0 || pending.current.size > 0} onClick={() => setPicked(projects.filter(p => recent.has(p.id)).slice(0, 64).map(p => p.id))}>최근 12시간 작업 선택</button>}<button type="button" disabled={!picked.length || created.length > 0 || pending.current.size > 0} onClick={() => setPicked([])}>선택 해제</button></div>
           <div className="report-targets">{projects.map(project => <label key={project.id}><AnimatedCheckbox checked={picked.includes(project.id)} disabled={created.length > 0 || pending.current.size > 0 || (!picked.includes(project.id) && picked.length >= 64)} onChange={event => setPicked(current => event.target.checked ? [...current, project.id] : current.filter(id => id !== project.id))}/><span>{project.name}</span></label>)}</div>
           {weekly && targets.length > 1 && <label>보고서를 저장할 프로젝트<select value={output.id} onChange={event => setDestination(event.target.value)}>{targets.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>}
-          {weekly ? <div className="report-field"><span>기간</span><div className="report-segments" role="group" aria-label="보고 기간 선택">{[['this', '이번 주'], ['last', '지난 주'], ['custom', '직접 정하기']].map(([value, text]) => <button type="button" key={value} aria-pressed={period === value} onClick={() => choosePeriod(value)}>{text}</button>)}</div>{period === 'custom' && <div className="report-grid"><label>조회 시작일<input type="date" required value={from} max={to} onChange={event => setFrom(event.target.value)}/></label><label>조회 종료일<input type="date" required value={to} min={from} onChange={event => setTo(event.target.value)}/></label></div>}</div> : <div className="report-field"><span>마감 사유</span><div className="report-segments" role="group" aria-label="마감 사유">{['점심', '퇴근', '회의', '기타'].map(value => <button type="button" key={value} aria-pressed={reason === value} onClick={() => setReason(value)}>{value}</button>)}</div></div>}
+          {weekly ? <div className="report-field"><span>기간</span><div className="report-segments" role="group" aria-label="보고 기간 선택">{[['this', '이번 주'], ['last', '지난 주'], ['custom', '직접 정하기']].map(([value, text]) => <button type="button" key={value} aria-pressed={period === value} onClick={() => choosePeriod(value)}>{text}</button>)}</div>{period === 'custom' && <div className="report-grid"><label>조회 시작일<input type="date" required value={from} max={to} onChange={event => setFrom(event.target.value)}/></label><label>조회 종료일<input type="date" required value={to} min={from} onChange={event => setTo(event.target.value)}/></label></div>}</div> : <div className="report-field"><span>마감 사유</span><div className="report-segments" role="group" aria-label="마감 사유">{pauseReasons.map(value => <button type="button" key={value} aria-pressed={reason === value} onClick={() => setReason(value)}>{value}</button>)}</div></div>}
           <label>{weekly ? '덧붙일 말 선택 사항' : '복귀할 때 참고할 메모 선택 사항'}<textarea maxLength={11500} rows={2} placeholder={weekly ? '보고서에 반영할 요청을 입력하세요.' : '돌아와서 꼭 기억해야 할 내용을 입력하세요.'} value={brief} onChange={event => setBrief(event.target.value)}/></label>
           <div className="report-grid report-model-fields"><label>사용할 ChatGPT 모델<select aria-label="보고서 AI 모델" value={model} disabled={modelLoading} onChange={event => { setModel(event.target.value); setEffort(''); }}><option value="">계정 기본 모델</option>{models.map(item => <option key={item.id} value={item.id}>{modelDisplayName(item)}</option>)}</select></label><label>추론 강도<select aria-label="보고서 AI 추론 강도" value={effort} disabled={modelLoading} onChange={event => setEffort(event.target.value as Effort | '')}><option value="">계정 기본 강도</option>{efforts.map(row => <option key={row.reasoningEffort} value={row.reasoningEffort}>{effortDisplayName(row.reasoningEffort)}</option>)}</select></label></div>
           {modelLoading && <p className="report-model-status" role="status"><LoaderCircle className="spin" size={15}/>계정에서 사용 가능한 모델을 확인하고 있습니다.</p>}

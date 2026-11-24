@@ -31,6 +31,7 @@ import "./portfolio.css";
 import PortfolioBoard from "./PortfolioBoard";
 import ArtifactViewer from "./ArtifactViewer";
 import DashboardInsights from "./DashboardInsights";
+import DashboardWorkbench,{type DashboardWorkContext} from "./DashboardWorkbench";
 import ChoicePicker from "./ChoicePicker";
 
 const api = window.flowrium;
@@ -296,6 +297,7 @@ interface Props {
   onArchived?(id: string, value: boolean): void;
   onProjectMenu(event: React.MouseEvent, project: Project): void;
   categoryRevision: number;
+  dashboard: DashboardWorkContext;
   tools?: React.ReactNode;
 }
 type FileRow = Artifact & { project: Project };
@@ -476,6 +478,7 @@ export function ProjectPortfolio({
   onArchived,
   onProjectMenu,
   categoryRevision,
+  dashboard,
   tools,
 }: Props) {
   const [cards, setCards] = useState<PortfolioCard[]>([]),
@@ -695,6 +698,9 @@ export function ProjectPortfolio({
                 <strong>{complete.length}</strong>
               </button>
             </div>
+            <DashboardWorkbench key={dashboard.accountRevision} {...dashboard} cards={cards} sessions={records} onOpen={onOpenSession}
+              onProject={id=>{const project=projects.find(item=>item.id===id);if(project)onProject(project,"home");}}
+              onDetails={details=>setCards(previous=>previous.map(card=>card.project.id===details.projectId?{...card,details}:card))}/>
             <section className="dashboard-projects" aria-label="프로젝트 목록">
             <div className="pf-section-header">
               <h2>프로젝트 <small>{activeCards.length}</small></h2>

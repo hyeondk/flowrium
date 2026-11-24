@@ -382,6 +382,7 @@ async function launch() {
   securityRuntime = registerSecurity(register, security, {
     controller, powerMonitor, powerSaveBlocker, Notification,
     busy: () => codexTransfer?.isBusy() || teamGitBusy() || teamRuntime.isBusy() || workflowRuntime?.isBusy() || controller.runs.size > 0 || controller.editingSessions.size > 0 || controller.analysisRuns?.size > 0,
+    deferWorkCloseLock: (event, lock) => workflowRuntime.deferWorkCloseLock(event, lock),
     ready: async () => { await drafts.migration; await acknowledgeUpdateLaunch(app, "ready"); },
     focus: ensureWindow,
   });

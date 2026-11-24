@@ -5,7 +5,7 @@ const path = require('node:path');
 const {_electron} = require('playwright');
 const {Store} = require('../electron/store.cjs');
 const {trustFixtureProject, backendFixtureAccount} = require('./project-trust-fixture.cjs');
-const {composer, openConversation} = require('./shell-test-helpers.cjs');
+const {composer, openConversation, settledLayout} = require('./shell-test-helpers.cjs');
 
 async function main() {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'flowrium-chat-model-'));
@@ -81,7 +81,14 @@ async function main() {
     const open=button('Reasoning and speed');
     assert.equal(await open.getAttribute('data-speed'),'fast');
     assert.equal(await open.locator('svg + span').count(),1);
-    await open.click();
+    await open.hover();
+    const triggerBackground=()=>open.evaluate(element=>getComputedStyle(element).backgroundColor);
+    await settledLayout(page.locator('.conversation-dock'));
+    assert.equal(await triggerBackground(),'rgba(0, 0, 0, 0)','커서를 올려도 추론 버튼에 배경을 채우지 않습니다.');
+    await picker().focus();
+    await page.keyboard.press('Tab');
+    assert(await open.evaluate(element=>element===document.activeElement&&element.matches(':focus-visible')&&getComputedStyle(element).outlineStyle==='solid'),'추론 버튼은 키보드 초점을 표시합니다.');
+    await open.press('Enter');
     const controls=page.getByRole('group',{name:'Model controls',exact:true});
     await controls.waitFor();
     await page.waitForFunction(()=>{
@@ -110,6 +117,31 @@ async function main() {
     assert.equal(await speed.getByRole('button',{name:'Fast',exact:true}).getAttribute('aria-pressed'),'true');
     await speed.getByRole('button',{name:'Standard',exact:true}).click();
     assert.equal(await open.locator('svg').count(),0);
+    await slider.press('End');
+    assert.equal(await open.innerText(),'Ultra');
+    assert.equal(await triggerBackground(),'rgba(0, 0, 0, 0)','팝업을 열어도 추론 버튼에 배경을 채우지 않습니다.');
+    const geometry=await open.evaluate(element=>{
+      const chevron=element.closest('.chat-model-controls').querySelector('.choice-trigger>svg');
+      const label=element.querySelector('span').getBoundingClientRect();
+      return {gap:label.left-chevron.getBoundingClientRect().right,clickWidth:element.getBoundingClientRect().width,labelWidth:label.width};
+    });
+    assert(geometry.gap>=3&&geometry.gap<=11,'Standard 추론 문구를 모델 바로 옆에 배치합니다. '+geometry.gap);
+    assert(geometry.clickWidth-geometry.labelWidth<=8,'추론 문구 주변에 넓은 빈 클릭 영역을 만들지 않습니다. '+JSON.stringify(geometry));
+    for(const [width,height] of [[1280,900],[390,568],[320,260],[320,160]]){
+      await page.setViewportSize({width,height});
+      await settledLayout(page.locator('.conversation-dock'));
+      const fits=await controls.evaluate(element=>{
+        const {top,left,right,bottom}=element.getBoundingClientRect();
+        const buttons=[...element.querySelectorAll('.chat-speeds button')];
+        return getComputedStyle(element).overflow==='visible'&&top>=0&&left>=0&&right<=innerWidth+1&&bottom<=innerHeight+1&&buttons.every(button=>{
+          const {x,y,width,height}=button.getBoundingClientRect();
+          return button.contains(document.elementFromPoint(x+width/2,y+height/2));
+        });
+      });
+      assert(fits,`${width}×${height} 화면에서 불필요한 스크롤 없이 속도 버튼에 접근할 수 있습니다.`);
+    }
+    await page.setViewportSize({width:1280,height:900});
+    await settledLayout(page.locator('.conversation-dock'));
     await speed.getByRole('button',{name:'Ultrafast',exact:true}).click();
     assert.equal(await open.getAttribute('data-speed'),'ultrafast');
     assert.equal(await open.locator('svg + span').count(),1);

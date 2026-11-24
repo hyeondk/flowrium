@@ -87,10 +87,12 @@ function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disab
   }
 
   return <>
-    <button className="chat-performance-trigger" type="button" ref={trigger} popoverTarget={id} disabled={disabled}
-      aria-label="Reasoning and speed" title={speedLabels[speed]+' / '+label} data-speed={speed} onKeyDown={closeOnEscape}>
-      {speed!=='standard'&&<Zap size={12} aria-hidden="true"/>}<span>{label}</span>
-    </button>
+    <span className="chat-performance-slot">
+      <button className="chat-performance-trigger" type="button" ref={trigger} popoverTarget={id} disabled={disabled}
+        aria-label="Reasoning and speed" title={speedLabels[speed]+' / '+label} data-speed={speed} onKeyDown={closeOnEscape}>
+        {speed!=='standard'&&<Zap size={12} aria-hidden="true"/>}<span>{label}</span>
+      </button>
+    </span>
     <div id={id} ref={popup} className="chat-performance-popup" popover="auto" role="group" aria-label="Model controls"
       onKeyDown={closeOnEscape} onToggle={event=>{if(event.newState==='closed')clearPreview();else{setShowSpeed(false);onOpen?.();}}}>
       <div className="chat-performance-heading">

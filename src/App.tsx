@@ -22,7 +22,7 @@ import ConversationDock from "./ConversationDock";
 import ProjectCategoryLabel from "./ProjectCategoryLabel";
 import {ExecutionSummary} from "./ExecutionStatus";
 import {QUESTION_DECISION_NOTICE,sessionExecution,visibleProposals,type ExecutionActivity,type ExecutionState} from "../shared/execution-state";
-import type {WorkflowNotification,WorkflowProposal,WorkflowState} from "../shared/workflow";
+import type {WorkCloseResume,WorkflowNotification,WorkflowProposal,WorkflowState} from "../shared/workflow";
 import {usePresence,MotionOverlay,ModalPortal,Toast,AnimatedCheckbox,AnimatedSwitch,LikeButton,CloseButton} from "./ui-motion";
 import PortfolioReports from "./PortfolioReports";
 import WorkActionPopup,{type PopupWorkKind} from "./WorkActionPopup";
@@ -266,6 +266,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [chatExpanded,setChatExpanded]=useState(false);
   const [musicOpen,setMusicOpen]=useState(false),[attentionOpen,setAttentionOpen]=useState(false);
   const [attentionState,setAttentionState]=useState<WorkflowState>();
+  const [resumeNotice,setResumeNotice]=useState<Pick<WorkCloseResume,'id'|'reason'|'notificationId'>>();
+  const [revealResume,setRevealResume]=useState(false);
+  const waitingForResume=useRef(false);
+  const resumeRevealed=useCallback(()=>setRevealResume(false),[]);
+  function showWorkResume(){setAttentionOpen(false);setReportDialog(undefined);setView('dashboard');setRevealResume(true)}
   const musicPresence=usePresence(musicOpen);
   const [chatActive,setChatActive]=useState(false);
   const [creatingConversation,setCreatingConversation]=useState(false);
@@ -370,10 +375,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const conversationProject=session?[...data.projects,...(data.conversationProjects||[])].find(p=>p.id===session.projectId):project;
   const projectOnlySessions=data.sessions.filter(s=>!s.scope);
   const activeCounts={running:0,waiting:0,decision:0};
+  const dashboardDecisions=new Set<string>();
   const projectCounts:Record<string,{running:number;waiting:number;decision:number;total:number}>={};
   for(const item of data.sessions){
     const state=sessionExecution(item,activities[item.id],approvals,proposals);
     if(state) activeCounts[state]++;
+    if(state==='decision')dashboardDecisions.add(item.id);
     if(item.scope) continue;
     const counts=projectCounts[item.projectId]??={running:0,waiting:0,decision:0,total:0};
     counts.total++;
@@ -465,6 +472,42 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }, [attentionState]);
   useEffect(()=>{if(update?.status==="available")window.dispatchEvent(new Event("flowrium-attention-refresh"));},[update?.status,update?.latestVersion]);
   useEffect(()=>{if(!api)return;let alive=true;const refresh=()=>api.workflowState().then(value=>{if(alive){setProposals(value.proposals);setAttentionState(value)}}).catch(()=>{});void refresh();const timer=setInterval(refresh,5000);window.addEventListener("flowrium-attention-refresh",refresh);return()=>{alive=false;clearInterval(timer);window.removeEventListener("flowrium-attention-refresh",refresh)}},[]);
+  useEffect(()=>{
+    if(!api||!loaded||!connection.authenticated)return;
+    let active=true;
+    let busy=false;
+    let retry=false;
+    async function resume(){
+      if(!api||!active||!waitingForResume.current||document.visibilityState!=='visible'||!document.hasFocus())return;
+      if(busy){retry=true;return;}
+      busy=true;
+      try{
+        const result=await api.workflowAction({action:'returnToWork'});
+        if(active&&result){
+          waitingForResume.current=false;
+          setResumeNotice({id:result.id,reason:result.reason,notificationId:result.notificationId});
+          window.dispatchEvent(new Event('flowrium-attention-refresh'));
+        }
+      }catch{/* Account authentication may be changing as the window opens. */}
+      finally{
+        busy=false;
+        if(retry){retry=false;void resume();}
+      }
+    }
+    function onReturn(){waitingForResume.current=true;void resume();}
+    function onVisible(){if(document.visibilityState==='visible')onReturn();}
+    function onWorkCloseReady(){void resume();}
+    onReturn();
+    window.addEventListener('focus',onReturn);
+    document.addEventListener('visibilitychange',onVisible);
+    window.addEventListener('flowrium-work-close-started',onWorkCloseReady);
+    return()=>{
+      active=false;
+      window.removeEventListener('focus',onReturn);
+      document.removeEventListener('visibilitychange',onVisible);
+      window.removeEventListener('flowrium-work-close-started',onWorkCloseReady);
+    };
+  },[loaded,connection.authenticated]);
   useEffect(() => {
     if (!api) {
       setLoaded(true);
@@ -507,6 +550,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       if (!alive) return;
       if(restoringActivity&&event.sessionId&&['status','externalTurn','done'].includes(event.type))changedActivity.add(event.sessionId);
       if(["done","approval","input","inputResolved","error"].includes(event.type))window.dispatchEvent(new Event("flowrium-attention-refresh"));
+      if(event.type==='workCloseReady'){
+        window.dispatchEvent(new Event('flowrium-attention-refresh'));
+        window.dispatchEvent(new Event('flowrium-work-close-started'));
+      }
       if(event.type==='contextUsage'&&event.sessionId&&event.contextUsage){
         const context=event.contextUsage;
         setData(previous=>({...previous,sessions:previous.sessions.map(s=>
@@ -883,7 +930,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     if (!request) return;
     try { await sendWorkRequest(value,request,nextMode); } catch(error) { fail(error); }
   }
-  async function sendWorkRequest(value:Session,request:string,nextMode?:Mode,overrides?:{model?:string;effort?:Effort}) {
+  async function sendWorkRequest(value:Session,request:string,nextMode?:Mode,overrides?:{model?:string;effort?:Effort;submissionId?:string}) {
     rememberSession(value);
     if (!api) return;
     const mode = nextMode || "plan";
@@ -897,7 +944,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const requested=overrides?.effort||value.preferences?.effort||data.settings.effort;
     const supported=effortOptions(metadata);
     const chosenEffort=supported.some(row=>row.reasoningEffort===requested)?requested:metadata?.defaultReasoningEffort||supported[0]?.reasoningEffort;
-    await api.send({ sessionId: value.id, text: request, mode, model:chosenModel, effort:chosenEffort });
+    const result=await api.send({ sessionId: value.id, text: request, mode, model:chosenModel, effort:chosenEffort, submissionId:overrides?.submissionId });
+    if(!result.accepted)throw new Error('요청을 전송하지 못했습니다. 대화 초안은 보존했습니다.');
     setDrafts(prev => prev[key]?.text === request ? { ...prev, [key]: { text: "", mode } } : prev);
   }
   async function connect() {
@@ -1012,6 +1060,44 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const folders = new Set([projectId, ...(target?.workflow?.reportProjects || [])]);
     for (const id of folders) if (!await api.requestProjectTrust(id)) return false;
     return true;
+  }
+  async function openDashboardDraft(projectId:string,text:string,target?:Session) {
+    if(!api||!data.projects.some(project=>project.id===projectId)||archived[projectId])
+      throw Error('현재 작업할 프로젝트를 다시 선택해 주세요.');
+    const current=target ? data.sessions.find(session=>session.id===target.id&&session.projectId===projectId) : undefined;
+    if(target&&(!current||current.workflow?.status==='done'))throw Error('초안을 추가할 대화를 다시 선택해 주세요.');
+    const destination=current||await api.createSession(projectId);
+    if(!current){
+      const state=await api.securityState();
+      if(state.locked||state.accountRevision!==security.state.accountRevision)
+        throw Error('계정이나 잠금 상태가 바뀌었습니다. 초안을 다시 열어 주세요.');
+    }
+    const key='session:'+destination.id;
+    setDrafts(previous=>{
+      const prior=previous[key], existing=prior?.text||'';
+      if(existing===text||existing.endsWith('\n\n'+text))return previous;
+      return {...previous,[key]:{...prior,mode:prior?.mode||projectMode(destination),text:[existing,text].filter(Boolean).join('\n\n')}};
+    });
+    rememberSession(destination);
+    selectSession(destination);
+  }
+  async function sendDashboardDraft(target:Session,text:string,submissionId:string){
+    const current=data.sessions.find(session=>session.id===target.id&&session.projectId===target.projectId&&!session.scope);
+    if(!api||!current||current.workflow?.status==='done'||archived[current.projectId])
+      throw Error('보낼 수 있는 프로젝트 대화를 다시 선택해 주세요.');
+    const connection=await api.readChatConnection();
+    if(!connection.ready)throw Error(connection.message);
+    if(!await confirmChatFolders(current.projectId,current))throw Error('프로젝트 편집 권한을 확인해 주세요.');
+    const state=await api.securityState();
+    if(state.locked||state.accountRevision!==security.state.accountRevision)
+      throw Error('계정이나 잠금 상태가 바뀌었습니다. 대상 대화를 다시 확인해 주세요.');
+    const sent=await api.send({
+      sessionId:current.id,text,submissionId,
+      mode:projectMode(current,current.workflow?workKinds[current.workflow.kind].mode:undefined),
+      model:data.settings.model||undefined,effort:data.settings.effort,
+    });
+    if(!sent.accepted)throw Error('대화에 요청을 접수하지 못했습니다.');
+    return {queued:sent.queued,queueId:sent.queueId};
   }
   async function send(textOverride?:string, nextTurn=false) {
     const requestText=textOverride??input;
@@ -1342,7 +1428,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     <div>
                       <span className="eyebrow">
                         {session.scope?<MessageSquare size={13}/>:<ProjectCategoryLabel category={categories[session.projectId]}/>}
-                        {session.scope==='integrated'?'통합 채팅':session.scope==='general'?'일반 대화':project?.name||'프로젝트 대화'}
+                        {session.scope==='integrated'?'통합 채팅':session.scope==='general'?'일반 대화':conversationProject?.name||'프로젝트 대화'}
                       </span>
                       <h2 title={session.title}>{session.title}</h2>
                     </div>
@@ -1724,6 +1810,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           })}</div></div>
         ) : (view==="dashboard"||view==="kickoff"||view==="archive"||view==="outputs"||view==="timeline") ? (
           <ProjectPortfolio categoryRevision={categoryRevision} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} view={view} projects={navigation.projects} sessions={projectOnlySessions}
+            dashboard={{accountRevision:security.state.accountRevision,drafts,decisionSessionIds:dashboardDecisions,workClose:attentionState?.workClose,revealResume,onResumeRevealed:resumeRevealed,onDraft:openDashboardDraft,onSend:sendDashboardDraft}}
             onProjectMove={navigation.move}
             onNavigate={setView} onProject={selectProject} onOpenSession={openWork} onChooseProject={chooseProject}
             onSessionChange={rememberSession} onArchived={(id,value)=>setArchived(prev=>({...prev,[id]:value}))}
@@ -1904,7 +1991,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       <TrashPanel open={trashOpen} onClose={()=>setTrashOpen(false)} onRestored={reloadItems}/>
 
       <MotionOverlay open={musicOpen} persist onClose={()=>setMusicOpen(false)} label="뮤직" className="music-popup"><header className="utility-popup-heading"><div><Music2 size={20}/><h2>뮤직</h2></div><CloseButton aria-label="뮤직 닫기" onClick={()=>setMusicOpen(false)}/></header><MusicPanel visible={musicPresence.present} locked={security.state.locked}/></MotionOverlay>
-      <AttentionCenter open={attentionOpen} onClose={()=>setAttentionOpen(false)} data={attentionState} sessions={data.sessions} requests={approvals} onOpen={selectSession} onQuestion={openQuestion} onDecisions={()=>{setAttentionOpen(false);setView(visibleProposals(proposals).length?'workflow':'inbox')}} onUpdate={openUpdateSettings} onRefresh={refreshAttention}/>
+      <AttentionCenter open={attentionOpen} onClose={()=>setAttentionOpen(false)} data={attentionState} sessions={data.sessions} requests={approvals} onOpen={selectSession} onQuestion={openQuestion} onDecisions={()=>{setAttentionOpen(false);setView(visibleProposals(proposals).length?'workflow':'inbox')}} onUpdate={openUpdateSettings} onResume={showWorkResume} onRefresh={refreshAttention}/>
       {!dockPresence.present && <button type="button" className="dock-reopen-tab"
         aria-label="대화 패널 펼치기" aria-expanded={false} title="대화 패널 펼치기"
         onClick={() => setDockOpen(true)}>
@@ -1914,7 +2001,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       <WorkActionPopup kind={workPopup} projects={data.projects.filter(p=>!archived[p.id])} initialProject={view==="overview"?projectId:undefined} onClose={()=>setWorkPopup(null)} onStart={async(record,text,options)=>{await sendWorkRequest(record,text,record.workflow?.kind?workKinds[record.workflow.kind].mode:"plan",options)}} onOpen={selectSession}/>
       <MotionOverlay open={Boolean(reportDialog)} onClose={()=>setReportDialog(undefined)} label={reportDialog==='pause'?'업무 마감':'주간업무보고'} className="report-overlay">
         {reportDialog&&<PortfolioReports key={reportDialog} kind={reportDialog} projects={data.projects.filter(p=>!archived[p.id])} sessions={projectOnlySessions} authenticated={connection.authenticated}
-          onClose={()=>setReportDialog(undefined)} onStart={(record,request,options)=>sendWorkRequest(record,request,workKinds[record.workflow!.kind].mode,options)} onOpen={record=>{setReportDialog(undefined);selectSession(record);}} onCreateProject={()=>{setReportDialog(undefined);setView('kickoff');}}/>}
+          onClose={()=>setReportDialog(undefined)} onBeginPause={()=>{waitingForResume.current=false;}} onStart={(record,request,options)=>sendWorkRequest(record,request,workKinds[record.workflow!.kind].mode,options)} onOpen={record=>{setReportDialog(undefined);selectSession(record);}} onCreateProject={()=>{setReportDialog(undefined);setView('kickoff');}}/>}
       </MotionOverlay>
       <MotionOverlay open={logoutOpen} onClose={()=>setLogoutOpen(false)} label="계정 로그아웃" className="logout-overlay"><div className="pf-logout-content">
         <h2>로그아웃할까요?</h2><p>이 기기의 Codex에서 ChatGPT 계정을 로그아웃합니다. 같은 로그인 정보를 쓰는 Codex 앱과 명령줄에서도 다시 로그인해야 할 수 있습니다. 저장한 프로젝트와 대화는 보존됩니다.</p>
@@ -1937,6 +2024,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             void api?.workflowAction({action:"read",ids:[completionNotice.id]}).then(refreshAttention).catch(fail);
             setCompletionNotice(undefined);
           }} : {})}/>
+      <FlowNotice {...(resumeNotice?{noticeId:resumeNotice.id,tone:'success' as const,title:'업무를 다시 이어갈 시간이에요.',
+        summary:`${resumeNotice.reason} 전에 남긴 업무 마감 기록을 확인할 수 있습니다.`,action:'업무 재개',onOpen:()=>{
+          showWorkResume();
+          if(resumeNotice.notificationId)void api?.workflowAction({action:'read',ids:[resumeNotice.notificationId]}).then(refreshAttention).catch(fail);
+          setResumeNotice(undefined);
+        },onExpire:()=>setResumeNotice(undefined)}:{noticeId:undefined})}/>
       </div>
       {historyPresence.present && (
         <ModalPortal><div

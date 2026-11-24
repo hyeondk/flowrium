@@ -10,11 +10,23 @@ const actionVerb = '정리|비교|검토|작성|검증|분류|분석|확인|점�
 const actionNoun = new RegExp('(?:'+actionVerb+')$');
 const suggestedAction = new RegExp('^(.*?)('+actionVerb+')(?:(?:할|해\\s*볼)\\s*수\\s*(?:있습니다|있어요|있다)|해야\\s*(?:합니다|해요)|할\\s*필요가\\s*(?:있습니다|있어요)|하는\\s*(?:편이|것이|게)\\s*좋(?:습니다|아요|겠습니다))$');
 const advicePrompt = /(?:순서|절차|방법|(?:필요한|먼저\s*확인할)\s*조건)(?:을|를|만|도)?\s*(?:(?:간단히|자세히|차근차근|먼저|번호로|표로|목록으로|체크리스트로)\s+){0,2}(?:정리해|요약해|설명해|알려|안내해)(?:\s*(?:줘요?|주세요|줄래요?|주실래요|주실\s*수\s*있나요))?[.!?。？\s]*$/;
+const assistantPerspective = /(?:^|[\s,，])(?:제가|저는|저도|저에게|저한테|저희(?:가|는|도|에게)?)(?=$|[\s,，])|주(?:시면|신다면|시고|셔서|시기|시길)|드리(?:겠|는|면|고)|(?:할까요|볼까요|드릴까요|주실까요)|(?:^|[.!?]\s+)(?:would you like me to|shall i|should i|i (?:can|could|will|would)|if you (?:send|provide|type|paste|upload))\b/i;
+const formalEnding = /(?:습니다|겠습니다|합니다|이에요|예요|있어요|없어요|세요|해요|줘요|나요|래요|까요|시오)(?=[.!?。！？](?:\s|$)|$)/;
+const inputOffer = /^(?:(?:그럼|이어서|추가로)\s+)?([^,，]+?)\s+(보내|전송해|입력해|붙여넣어)\s*주(?:시면|신다면)\s*[,，]\s*제가\s+(?:받았을|수신했을)\s*때(?:도)?\s+(.+)$/;
 export function isAdvisoryFollowup(text) {
   return advicePrompt.test(text);
 }
+export function directFollowupText(text) {
+  // A test offered by the assistant becomes a request to perform that test.
+  const direct = text.replace(inputOffer, '$1 $2서 수신 후에도 $3')
+    .replace(/\s*(?:주세요|줘요|줄래요?|주실래요|주실\s*수\s*있나요)(?=[.!?。！？](?:\s|$)|$)/g, '줘');
+  if (assistantPerspective.test(direct) || formalEnding.test(direct)) return;
+  return direct;
+}
 function suggestion(text, reason='직전 답변의 다음 작업') {
-  if (text.length < 6 || text.length > 190 || isAdvisoryFollowup(text) || /https?:|[`<>\[\]{}"“”]|(?:어떤|무엇|어떻게|어느|아니면|또는)\s/.test(text)) return;
+  if (text.length < 6 || text.length > 190) return;
+  text = directFollowupText(text);
+  if (!text || isAdvisoryFollowup(text) || /https?:|[`<>\[\]{}"“”]|(?:어떤|무엇|어떻게|어느|아니면|또는)\s/.test(text)) return;
   if (text.split(/\s+/).length < 2 || /^(?:(?:이대로|그대로|계속|이어서|다음\s*단계(?:를|로)?)\s*)*(?:이어서\s*)?(?:진행|계속|시작)해줘$/.test(text)) return;
   return {source:'conversation', title:text, prompt:text, reason};
 }
@@ -24,7 +36,7 @@ function toRequest(sentence, inSection) {
   const requestEnd = /(?:할까요|해\s*드릴까요|해\s*볼까요)[?？]$/;
   if (requestEnd.test(text)) text = text.replace(requestEnd, '해줘');
   else if (!inSection) return;
-  else if (/해\s*(?:주세요|줘요|줘)[.!]?$/.test(text)) text = text.replace(/해\s*(?:주세요|줘요|줘)[.!]?$/, '해줘');
+  else if (/(?:주세요|줘요?|줄래요?|주실래요|주실\s*수\s*있나요)[.!?。！？]?$/.test(text)) text = text.replace(/\s*(?:주세요|줘요?|줄래요?|주실래요|주실\s*수\s*있나요)[.!?。！？]?$/, '줘');
   else {
     text = text.replace(/[.]$/, '').replace(/하기$/, '');
     if (!actionNoun.test(text)) return;
@@ -192,22 +204,11 @@ const shallowRequest = /^(?:(?:그(?:대|렇)로|앞서|같은|이어서|계속|
 function plainHistoryLines(text) {
   return publicLines(attachmentDisplayText(text)).filter(line=>line && !quietIntro.test(line) && !riskyLine.test(line));
 }
-function requestStyle(lines) {
-  const ending=lines.join('\n').match(/(?:해|봐|려|어|아|여|내|써|서|둬|줘|쳐|켜|와|돼|워|꿔|겨)(\s*(?:주실\s*수\s*있나요|주실래요|주세요|줄래요|줘요|줄래|줘))(?=[\s.!?。？！…]*(?:\n|$))/g)?.at(-1);
-  if (!ending) return;
-  const match=/(\s*(?:주실\s*수\s*있나요|주실래요|주세요|줄래요|줘요|줄래|줘))$/.exec(ending);
-  return match?.[1]+(/(?:나요|래요?|래)$/.test(match?.[1]||'')?'?':'');
-}
-function applyStyle(candidate,ending) {
-  if (!candidate || !ending || ending==='줘') return candidate;
-  const text=candidate.prompt.replace(/줘$/,ending);
-  return {...candidate,title:text,prompt:text};
-}
 function historyContext(session,answer,request) {
-  const terms=new Map(),previous=new Set(),styles=new Map(),prior=[];
+  const terms=new Map(),previous=new Set(),prior=[];
   const requestLines=plainHistoryLines(request),requestTerms=relevanceTerms(requestLines.join(' '));
   const usableRequest=requestLines.length && !requestLines.every(line=>pingRequest.test(line)||shallowRequest.test(line));
-  let latestStyle,seen=0;
+  let seen=0;
   for (let index=session.messages.lastIndexOf(answer)-1;index>=0;index--) {
     const row=session.messages[index];
     if (!row.text || row.sourceOnly || row.progressCommentary || !['user','assistant'].includes(row.role)) continue;
@@ -217,14 +218,7 @@ function historyContext(session,answer,request) {
     const input=row.text.length>6000 ? row.text.slice(0,3000)+'\n'+row.text.slice(-3000) : row.text;
     const lines=plainHistoryLines(input);
     if (!lines.length) continue;
-    if (row.role==='user') {
-      const style=requestStyle(lines);
-      if(style){
-        latestStyle ||= style;
-        styles.set(style,(styles.get(style)||0)+1+4/Math.sqrt(seen));
-      }
-      if (lines.length<7 && input.length<600) previous.add(normalized(lines.join(' ')));
-    }
+    if (row.role==='user' && lines.length<7 && input.length<600) previous.add(normalized(lines.join(' ')));
     const meaningful=lines.filter(line=>!pingRequest.test(line) && !shallowRequest.test(line) && !pingReply.test(line));
     if (!meaningful.length) continue;
     const importance=(row.role==='user'?1.5:1)*(1+4/Math.sqrt(seen));
@@ -234,8 +228,7 @@ function historyContext(session,answer,request) {
     }
     if (prior.length<14) prior.push({lines:meaningful,user:row.role==='user'});
   }
-  const frequent=[...styles].sort((a,b)=>b[1]-a[1])[0]?.[0];
-  return {terms,previous,prior,requestLines,requestTerms,usableRequest,style:requestStyle(requestLines)||frequent||latestStyle};
+  return {terms,previous,prior,requestLines,requestTerms,usableRequest};
 }
 function isPing(lines,requestLines) {
   if (!requestLines.length || !requestLines.every(line=>pingRequest.test(line))) return false;
@@ -316,7 +309,7 @@ function *followupSteps(session) {
   const candidate=dependency&&!history.previous.has(normalized(dependency.prompt)) ? dependency
     : best(candidates)||(canInferNext?best(contextualCandidates(answer,request)):undefined);
   yield 75;
-  const result=applyStyle(specifyScope(candidate,history),history.style);
+  const result=specifyScope(candidate,history);
   yield 100;
   return result?[result]:[];
 }

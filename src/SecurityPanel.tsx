@@ -128,6 +128,7 @@ export function LockScreen({ security,releasing=false }: Props&{releasing?:boole
           <label>
             잠금 번호
             <input
+              className="security-pin-input"
               type="password"
               inputMode="numeric"
               autoFocus

@@ -49,7 +49,7 @@ export function noticePreview(notification:WorkflowNotification){
  return (boundary>39?head.slice(0,boundary):head)+'…';
 }
 
-export default function AttentionCenter({open,onClose,data,sessions,requests,onOpen,onQuestion,onDecisions,onUpdate,onRefresh}:{open:boolean;onClose():void;data?:WorkflowState;sessions:Session[];requests:FlowriumEvent[];onOpen(s:Session):void;onQuestion?:(event:FlowriumEvent)=>void;onDecisions():void;onUpdate():void;onRefresh():Promise<void>}){
+export default function AttentionCenter({open,onClose,data,sessions,requests,onOpen,onQuestion,onDecisions,onUpdate,onResume,onRefresh}:{open:boolean;onClose():void;data?:WorkflowState;sessions:Session[];requests:FlowriumEvent[];onOpen(s:Session):void;onQuestion?:(event:FlowriumEvent)=>void;onDecisions():void;onUpdate():void;onResume():void;onRefresh():Promise<void>}){
  const [error,setError]=useState(''),[busy,setBusy]=useState(false),[unreadOnly,setUnreadOnly]=useState(false);
  const [selected,setSelected]=useState<string[]>([]);
  const [deleted,setDeleted]=useState<string[]>([]);
@@ -99,6 +99,7 @@ export default function AttentionCenter({open,onClose,data,sessions,requests,onO
    {(requests.length>0||decisions.length>0)&&<button className="attention-decision" onClick={()=>{onClose();onDecisions();}}><span><strong>확인이 필요한 결정</strong><small>프로젝트 요청과 추가 질문 {requests.length+decisions.length}건</small></span><ChevronRight size={18}/></button>}
    {visible.map(n=>{
     const session=sessions.find(s=>s.id===n.sessionId),answer=n.kind==='done'||n.kind==='error';
+    const resume=n.kind==='work-resume'&&n.id===data?.workClose?.notificationId;
     const title=answer?answerNoticeTitle(n,session?.title):n.title,summary=noticePreview(n);
     return <article className="attention-item" key={n.id} data-notification-id={n.id} data-unread={!n.readAt}>
      <AnimatedCheckbox aria-label={title+' 선택'} checked={selected.includes(n.id)} disabled={busy} onChange={e=>setSelected(old=>e.target.checked?[...old,n.id]:old.filter(id=>id!==n.id))}/>
@@ -106,7 +107,8 @@ export default function AttentionCenter({open,onClose,data,sessions,requests,onO
       <strong>{title}</strong>
       {summary&&<p>{summary}</p>}
       <div className="attention-item-meta"><time dateTime={n.createdAt}>{new Date(n.createdAt).toLocaleString('ko-KR')}</time>
-       {session&&<button className="attention-open-label" onClick={()=>{if(!n.readAt)void change('read',[n.id]);onOpen(session);onClose();}}>대화에서 자세히 보기 <ChevronRight size={13}/></button>}
+       {resume&&<button className="attention-open-label" onClick={()=>{if(!n.readAt)void change('read',[n.id]);onResume();}}>업무 재개 <ChevronRight size={13}/></button>}
+       {!resume&&session&&<button className="attention-open-label" onClick={()=>{if(!n.readAt)void change('read',[n.id]);onOpen(session);onClose();}}>대화에서 자세히 보기 <ChevronRight size={13}/></button>}
        {n.kind==='update'&&<button className="attention-open-label" onClick={()=>{if(!n.readAt)void change('read',[n.id]);onClose();onUpdate();}}>업데이트 열기 <ChevronRight size={13}/></button>}
       </div>
      </div>

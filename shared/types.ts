@@ -176,8 +176,9 @@ export interface FlowriumEvent {
   removedSessionIds?: string[];
   restoredSessions?: Session[];
   turnId?: string;
+  submissionId?: string;
   turnMessages?: Message[];
-  type: "contextUsage" | "externalTurn" | "sessionList" | "sessionTitle" | "delta" | "status" | "error" | "done" | "approval" | "session" | "input" | "inputResolved";
+  type: "contextUsage" | "externalTurn" | "sessionList" | "sessionTitle" | "delta" | "status" | "error" | "done" | "approval" | "session" | "input" | "inputResolved" | "workCloseReady";
   sessionId?: string;
   title?: string;
   text?: string;

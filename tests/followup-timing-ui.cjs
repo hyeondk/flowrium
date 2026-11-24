@@ -57,6 +57,8 @@ async function verifyFollowupTiming() {
     const finished = await add('고정 작업 줄의 배포 결과','작업 과정은 같은 한 줄에서 계속 수정해서 보여줘.',
       '입력창 위의 현재 작업은 같은 자리에서 갱신됩니다. 이전 과정은 작업 내역에서 펼쳐 볼 수 있고, 위쪽 기록을 읽는 중에 새 작업이 들어와도 스크롤 위치가 유지됩니다.\n맥 설치 파일을 새 버전으로 배포했습니다.');
     const lowSignal = await add('완료 사실만 있는 답변','표를 확인해줘','판매표를 확인했습니다.');
+    const lineBreaks = await add('여러 줄 메시지 수신 시험','채팅의 여러 줄 전송을 확인해 주세요.',
+      '이어서 여러 줄로 작성한 메시지를 보내 주시면, 제가 받았을 때도 줄바꿈이 유지되는지 확인해 볼까요?');
     const model = await add('주문 정산에서 찾은 다음 작업','정산표 항목에 맞게 검토해줘',
       '반품과 쿠폰은 서로 다른 열로 들어 있습니다. 결제 수수료가 빠진 주문도 있었습니다.');
     const retained = await add('이전 중계가 남은 설치','기존 QR을 다시 안 찍어도 되도록 유지하고 이전 빌드 파일을 지워줘.',
@@ -125,8 +127,13 @@ async function verifyFollowupTiming() {
     await page.locator('.messages').getByText('판매표를 확인했습니다.',{exact:true}).waitFor();
     await page.getByRole('progressbar',{name:'작업 추천 중'}).waitFor({state:'hidden'});
     assert.equal(await accept.count(),0,'구체적 근거가 없는 완료 문구로 순서 안내를 만들지 않는다');
+    await openConversation(page,lineBreaks.title);
+    const lineBreakCommand='여러 줄로 작성한 메시지를 보내서 수신 후에도 줄바꿈이 유지되는지 확인해줘';
+    await accept.filter({hasText:lineBreakCommand}).waitFor({timeout:10000});
+    await input.press('Tab');
+    assert.equal(await input.inputValue(),lineBreakCommand);
     await openConversation(page,contextual.title);
-    await accept.filter({hasText:'아이폰 연결 유지를 확인해 주세요'}).waitFor({timeout:10000});
+    await accept.filter({hasText:'아이폰 연결 유지를 확인해줘'}).waitFor({timeout:10000});
     const contextChangedAt=Date.now();
     await app.evaluate(({BrowserWindow},session)=>BrowserWindow.getAllWindows()[0].webContents.send(
       'flowrium:event',{type:'session',sessionId:session.id,session}

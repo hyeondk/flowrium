@@ -6,12 +6,12 @@
 .app-shell .main-shell[data-view=overview]>.topbar{display:none}
 .app-shell .topbar .breadcrumbs:has(.dashboard-back) {display:flex}
 .dashboard-back {
-  display:inline-flex; align-items:center; justify-content:center; flex:none; gap:5px;
-  min-height:28px; padding:0; border:0; background:transparent; color:var(--muted);
-  font:inherit; line-height:1; white-space:nowrap;
+  display:inline-flex; align-items:center; justify-content:center; flex:none; gap:7px;
+  min-height:28px; padding:0 8px; border:1px solid var(--line); border-radius:8px;
+  background:transparent; color:var(--muted); font:inherit; font-size:12px; line-height:18px; white-space:nowrap;
 }
 .dashboard-back>svg {flex:none}
-.dashboard-back:is(:hover,:focus-visible) {color:var(--accent)}
+.dashboard-back:is(:hover,:focus-visible) {background:var(--accent-bg); color:var(--accent)}
 .workspace-utilities {
   display:flex; align-items:center; justify-content:flex-end; flex:none; gap:4px; margin-inline-start:auto;
 }

@@ -7,6 +7,7 @@ const { UUID, readJSON } = require("./project-store.cjs");
 const {visibleProposals,QUESTION_DECISION_NOTICE}=require('./execution-state.js');
 const {completionSummary,completionPreview}=require('./notification-summary.cjs');
 const {newer}=require('./version.cjs');
+const workClose=require('./work-close.cjs');
 const run = promisify(execFile);
 const copy = value => structuredClone(value);
 const invalid = () => new Error("업무 연결과 알림 요청의 형식을 확인해 주세요.");
@@ -68,6 +69,18 @@ class WorkflowRuntime {
       if(["done","approval","input"].includes(e.type))void this.serial(()=>this.onEvent(e)).catch(error=>this.noticeError(error));
     };
     controller.on("event",this.listener);
+    this.workCloseStarted=event=>{
+      if (event.ownerRevision !== this.account()) return;
+      void this.serial(async()=>{
+        if (event.ownerRevision !== this.owner) return;
+        const before=this.record.workClose;
+        const next=workClose.start(before,event);
+        await this.saveWorkClose(next);
+        if(next?.current?.id && before?.current?.id!==next.current.id && event.ownerRevision===this.account())
+          this.controller.emitEvent({type:'workCloseReady',sessionId:event.sessionId});
+      }).catch(error=>this.noticeError(error));
+    };
+    controller.on('workCloseTurnStarted',this.workCloseStarted);
     this.timer=setInterval(()=>{void this.tick().catch(error=>this.noticeError(error));},options.intervalMs||15000);
     this.timer.unref?.();
   }
@@ -80,6 +93,8 @@ class WorkflowRuntime {
     const account=this.account();
     if(account===this.owner&&this.record)return;
     integer(account,0,Number.MAX_SAFE_INTEGER);
+    if(this.workCloseSubmission && this.workCloseSubmission.owner!==account)
+      this.finishWorkCloseSubmission(this.workCloseSubmission,false);
     this.owner=account;
     try{
       const record=await readJSON(this.file());
@@ -88,8 +103,11 @@ class WorkflowRuntime {
       record.recommendations ||= [];record.goalFirings ||= [];record.toolCalls ||= [];
       if(!Array.isArray(record.dismissedNotificationKeys))record.dismissedNotificationKeys=[];
       for(const field of ["notifications","proposals","deliveries","reminders","reports"])for(const value of record[field])id(value.id);
+      record.workClose=workClose.validate(record.workClose);
       this.record=record;
       let changed=false;
+      const recovered=workClose.recover(record.workClose,this.store,this.controller.runs);
+      if (recovered !== record.workClose) { record.workClose=recovered; changed=true; }
       for(const p of record.proposals)if(p.status==="running"){
         p.status="held";p.result="이전 실행이 종료되기 전에 중단됐습니다. 중복 실행을 피하기 위해 직접 결과를 확인해 주세요.";p.revision++;changed=true;
       }
@@ -119,18 +137,73 @@ class WorkflowRuntime {
     this.queue=next.catch(()=>{});
     return next.finally(()=>this.transitions--);
   }
-  notification(kind,title,body,sessionId,group,eventKey,preview){
+  notification(kind,title,body,sessionId,group,eventKey,preview,publish=true){
     if(eventKey){const existing=this.record.notifications.find(n=>n.eventKey===eventKey);if(existing)return existing;}
     if(eventKey && this.record.dismissedNotificationKeys?.includes(eventKey))return;
     const record={id:randomUUID(),kind,title:String(title).slice(0,200),body:String(body||"").slice(0,6000),sessionId:sessionId||null,
       group:group||sessionId||kind,createdAt:this.stamp(),readAt:null,...(eventKey?{eventKey}:{}),...(preview?{preview}:{})};
     this.record.notifications.unshift(record);
     this.record.notifications=this.record.notifications.slice(0,2000);
-    try{Promise.resolve(this.options.notify?.(record)).catch(error=>this.noticeError(error));}catch(error){this.noticeError(error);}
+    if(publish){
+      try{Promise.resolve(this.options.notify?.(record)).catch(error=>this.noticeError(error));}catch(error){this.noticeError(error);}
+    }
     return record;
   }
+  async saveWorkClose(next){
+    const previous=this.record.workClose;
+    if(next===previous)return;
+    this.record.workClose=next;
+    try{await this.save();}catch(error){this.record.workClose=previous;throw error;}
+  }
+  requireWorkCloseAccount(){
+    if(this.controller.status?.authenticated!==true || !/^[\da-f]{64}$/.test(this.controller.options?.modelAccount?.()||''))
+      throw Error('같은 ChatGPT 계정에 연결한 뒤 업무 복귀 기록을 확인해 주세요.');
+  }
+  beginWorkCloseSubmission(batchId){
+    this.requireWorkCloseAccount();
+    const previous=this.workCloseSubmission;
+    if(previous?.id===batchId&&previous.owner===this.owner)return true;
+    if(previous?.timer&&previous.owner===this.owner)throw Error('앞선 업무 마감 제출을 마친 뒤 다시 시도해 주세요.');
+    const submission={id:batchId,owner:this.owner};
+    submission.timer=setTimeout(()=>this.finishWorkCloseSubmission(submission),this.options.workCloseSubmissionMs??15_000);
+    submission.timer.unref?.();
+    this.workCloseSubmission=submission;
+    return true;
+  }
+  finishWorkCloseSubmission(submission,pendingLock=true){
+    if(!submission?.timer || this.workCloseSubmission!==submission)return;
+    clearTimeout(submission.timer);
+    submission.timer=undefined;
+    if(pendingLock && submission.lock && submission.owner===this.account())setImmediate(submission.lock);
+    submission.lock=undefined;
+  }
+  deferWorkCloseLock(event,lock){
+    const submission=this.workCloseSubmission;
+    if(this.closed || !submission?.timer || submission.owner!==this.account() ||
+      !workClose.belongsTo(this.record?.workClose,submission.id,event))return false;
+    submission.lock ||= lock;
+    return true;
+  }
+  async returnToWork(){
+    this.requireWorkCloseAccount();
+    const batch=this.record.workClose?.current;
+    const view=workClose.resumeView(batch);
+    if(!view||batch.returnedAt)return null;
+    const notifications=this.record.notifications.slice();
+    const record=this.notification('work-resume','업무를 다시 이어갈 시간이에요.',
+      '직전에 남긴 업무 마감 기록을 확인하고 이어갈 수 있습니다.',
+      view.sessions[0].sessionId,'업무 복귀','work-resume:'+view.id,undefined,false);
+    const next=copy(this.record.workClose);
+    next.current.returnedAt=this.stamp();
+    if(record)next.current.notificationId=record.id;
+    try{await this.saveWorkClose(next);}catch(error){this.record.notifications=notifications;throw error;}
+    return workClose.resumeView(next.current);
+  }
   async state(){
-    return this.serial(async()=>{this.ready();await this.syncUpdateNotice();const record=copy(this.record);delete record.dismissedNotificationKeys;delete record.latestUpdateNotified;return{...record,pending:await this.options.pending?.()||[],
+    return this.serial(async()=>{this.ready();await this.syncUpdateNotice();const record=copy(this.record);delete record.dismissedNotificationKeys;delete record.latestUpdateNotified;delete record.workClose;
+      const batch=this.record.workClose?.current;
+      const resume=this.controller.status?.authenticated===true?workClose.resumeView(batch):undefined;
+      return{...record,...(resume&&{workClose:{...resume,returnPending:!batch.returnedAt}}),pending:await this.options.pending?.()||[],
       projects:this.store.state.projects.map(p=>({id:p.id,name:p.name})),
       sessions:this.store.state.sessions.slice(0,200).map(s=>({id:s.id,projectId:s.projectId,title:s.title,running:this.controller.runs.has(s.id)}))};});
   }
@@ -332,6 +405,26 @@ class WorkflowRuntime {
     return this.serial(async()=>{
       this.ready();if(!input||typeof input!=="object")throw invalid();
       switch(input.action){
+        case 'beginWorkClose':return this.beginWorkCloseSubmission(id(input.batchId));
+        case 'finishWorkClose':{
+          if(this.workCloseSubmission?.id===id(input.batchId)&&this.workCloseSubmission.owner===this.owner)
+            this.finishWorkCloseSubmission(this.workCloseSubmission);
+          return true;
+        }
+        case 'armWorkClose':{
+          this.requireWorkCloseAccount();
+          const session=this.store.session(id(input.sessionId));
+          await this.store.requireProjectTrust(session.projectId);
+          this.ready();
+          await this.saveWorkClose(workClose.prepare(this.record.workClose,input,session));
+          return true;
+        }
+        case 'returnToWork':return this.returnToWork();
+        case 'readWorkClose':{
+          this.requireWorkCloseAccount();
+          const batch=this.record.workClose?.current;
+          return batch?.id===id(input.batchId)?workClose.resumeView(batch,true)||null:null;
+        }
         case 'completeContinuation':{
           const deciding=visibleProposals(this.record.proposals,this.now()).some(p=>p.sourceId===input.sessionId||p.targetId===input.sessionId);
           if(deciding)throw Error('이 대화의 결정 요청에 먼저 응답해 주세요.');
@@ -492,12 +585,14 @@ class WorkflowRuntime {
   async onEvent(event){
     if(event.type==="done"){
       const session=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===event.sessionId);if(!session)return;
+      if (session.workflow?.kind === 'pause' && event.submissionId)
+        await this.saveWorkClose(workClose.finish(this.record.workClose,event));
       const body=session.messages.findLast(m=>m.role==="assistant")?.text||event.text||"";
       const latestUser=session.messages.findLastIndex(m=>m.role==="user");
       const currentAnswer=session.messages.slice(latestUser+1).findLast(m=>m.role==="assistant")?.text||"";
       const secretAnswer=this.secretAnswerSessions.delete(session.id);
       const turnKey=event.turnId||session.messages.at(-1)?.id;
-      const visibleAnswer=secretAnswer?"":currentAnswer;
+      const visibleAnswer=secretAnswer||session.workflow?.kind==='pause'?"":currentAnswer;
       this.notification(event.status==="completed"?"done":"error",session.title,completionSummary(visibleAnswer,event.status),session.id,session.workflow?.teamSlot?.runId||session.id,turnKey?`done:${session.id}:${turnKey}:${event.status}`:undefined,completionPreview(visibleAnswer,event.status));
       for(const delivery of this.record.deliveries.filter(d=>d.targetId===session.id&&d.reportId&&d.status==="sent"&&!d.completedAt)){
         const report=this.record.reports.find(r=>r.id===delivery.reportId);if(!report||report.status!=="writing")continue;
@@ -588,7 +683,9 @@ class WorkflowRuntime {
     });}finally{this.tickRunning=false;}
   }
   isBusy(){return this.transitions>0||this.tickRunning;}
-  async shutdown(){this.closed=true;clearInterval(this.timer);this.controller.off("event",this.listener);await this.queue;}
+  async shutdown(){this.closed=true;clearInterval(this.timer);this.controller.off("event",this.listener);
+    this.controller.off('workCloseTurnStarted',this.workCloseStarted);
+    this.finishWorkCloseSubmission(this.workCloseSubmission,false);await this.queue;}
 }
 function registerWorkflow(register,store,controller,options={}){
   const runtime=new WorkflowRuntime(store,controller,options);

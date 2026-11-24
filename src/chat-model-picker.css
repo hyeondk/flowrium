@@ -20,19 +20,24 @@
   align-items:center;
   max-inline-size:100%;
   min-inline-size:0;
-  column-gap:2px;
+}
+
+.chat-performance-slot {
+  anchor-name:--composer-performance;
+  display:flex;
+  align-items:center;
+  flex:none;
+  inline-size:59px;
 }
 
 .chat-performance-trigger {
-  anchor-name:--composer-performance;
   display:inline-flex;
   align-items:center;
-  justify-content:center;
+  justify-content:flex-start;
   gap:3px;
   flex:none;
-  inline-size:59px;
   min-height:26px;
-  padding:2px 3px;
+  padding:2px 3px 2px 2px;
   border:1px solid transparent;
   border-radius:6px;
   background:transparent;
@@ -45,14 +50,17 @@
 
 .chat-performance-trigger:hover:not(:disabled),
 .chat-model-controls:has(.chat-performance-popup:popover-open) .chat-performance-trigger {
-  background:var(--accent-bg);
-  border-color:var(--line-soft);
+  background:transparent;
+  color:var(--accent-ink);
 }
+.chat-performance-trigger:focus-visible {outline-offset:1px}
 
 .chat-performance-popup {
   position:fixed;
   inset:auto 10px 58px auto;
   inline-size:min(270px,calc(100vw - 20px));
+  max-block-size:calc(100dvh - 12px);
+  overflow:visible;
   box-sizing:border-box;
   margin:0;
   padding:11px 13px 13px;
@@ -70,10 +78,34 @@
   .chat-performance-popup {
     position-anchor:--composer-performance;
     position-area:block-start span-inline-start;
-    position-try-fallbacks:flip-inline,flip-block,flip-block flip-inline;
+    position-try-fallbacks:flip-inline,flip-block,flip-block flip-inline,--chat-performance-align-edge,--chat-performance-in-view;
     inset:auto;
     margin-block:6px;
   }
+}
+
+@position-try --chat-performance-align-edge {
+  position-area:none;
+  inset:auto 10px max(6px,calc(anchor(top) + 6px)) auto;
+  margin:0;
+}
+
+@position-try --chat-performance-in-view {
+  position-area:none;
+  inset:6px 10px auto auto;
+  margin:0;
+}
+
+@media (max-height:200px) {
+  .chat-performance-popup {
+    position-area:none;
+    inset:6px 10px auto auto;
+    margin:0;
+  }
+}
+
+@media (max-height:156px) {
+  .chat-performance-popup {overflow:auto}
 }
 
 .chat-performance-popup:popover-open {

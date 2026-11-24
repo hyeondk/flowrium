@@ -99,6 +99,7 @@ async function main() {
     const recent = page.locator('.pf-recent-cards');
     const summary = page.locator('.pf-dashboard-summary');
     await cards.locator('button').nth(3).waitFor();
+    assert.equal(await page.locator('.dashboard-back').count(),0);
     const cols = list => list.evaluate(node=>getComputedStyle(node).gridTemplateColumns.split(' ').length);
     assert.equal(await cols(cards),3);
     assert.equal(await cols(recent),2);
@@ -165,6 +166,18 @@ async function main() {
         (await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'));
       await fs.writeFile(process.env.FLOWRIUM_DASHBOARD_SCREENSHOT, Buffer.from(shot, 'base64'));
     }
+    await card.click();
+    const back = page.locator('.project-document-toolbar').getByRole('button',{name:'대시보드로 돌아가기',exact:true});
+    await back.waitFor();
+    const backGeometry = await back.evaluate(button=>{
+      const style=getComputedStyle(button);
+      const center=element=>{const rect=element.getBoundingClientRect();return rect.y+rect.height/2;};
+      return {border:parseFloat(style.borderTopWidth),radius:parseFloat(style.borderTopLeftRadius),delta:Math.abs(center(button.querySelector('svg'))-center(button.querySelector('span')))};
+    });
+    assert(backGeometry.border>0&&backGeometry.radius>=7&&backGeometry.delta<1,JSON.stringify(backGeometry));
+    await back.click();
+    await card.waitFor();
+    assert.equal(await page.locator('.dashboard-back').count(),0);
     await card.click();
     await page.getByRole('button',{name:'프로젝트 메뉴',exact:true}).click();
     await page.getByRole('navigation',{name:'프로젝트 상세 탭'}).getByRole('button',{name:'프로젝트 설정'}).click();
