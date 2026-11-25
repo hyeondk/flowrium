@@ -13,6 +13,7 @@ type Props = {
   aiFollowups: boolean;
   busy: boolean;
   active: boolean;
+  showClear: boolean;
   draft: string;
   placeholder: string;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
@@ -29,7 +30,7 @@ function errorText(error: unknown) {
 }
 
 export default function ChatContinuation({
-  session, running, authenticated, aiFollowups, busy, active, draft, placeholder, textareaRef,
+  session, running, authenticated, aiFollowups, busy, active, showClear, draft, placeholder, textareaRef,
   onChange, onSend, onChoose, onContinue,
 }: Props) {
   const last = latestFollowupAnswer(session);
@@ -115,6 +116,7 @@ export default function ChatContinuation({
     <ResizableComposerInput textareaRef={textareaRef} aria-label="Codex에 보낼 작업 요청" value={draft}
       placeholder={preview || placeholder} data-inline-suggestion={Boolean(preview)}
       onTextChange={onChange}
+      onClear={showClear && draft ? () => onChange('') : undefined}
       onCompositionStart={()=>{composing.current=true;}}
       onCompositionEnd={()=>{composing.current=false;}}
       onKeyDown={e => {

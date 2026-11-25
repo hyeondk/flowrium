@@ -37,7 +37,8 @@ test('다른 창이 개정 쓰기 중에 열려도 완성된 개정만 읽는다
   const writing = Promise.withResolvers(), resume = Promise.withResolvers();
   t.mock.method(fs, 'open', async (file, flags, ...rest) => {
     const handle = await realOpen(file, flags, ...rest);
-    if (path.dirname(file) === history && flags === 'wx') {
+    const staging = path.dirname(file);
+    if (path.dirname(staging) === history && path.basename(staging).startsWith('.flowrium-write-') && flags === 'wx') {
       const write = handle.writeFile.bind(handle);
       handle.writeFile = async data => {
         const cut = Math.floor(data.length / 2);

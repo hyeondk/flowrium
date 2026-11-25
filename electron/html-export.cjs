@@ -1,5 +1,10 @@
 const { randomUUID } = require('node:crypto');
-function isolatedHTML(source){return '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\';script-src \'none\';connect-src \'none\';img-src data: blob:;style-src \'unsafe-inline\';font-src data:;base-uri \'none\';form-action \'none\';frame-src \'none\'">'+source.replace(/^\s*<!doctype[^>]*>/i,'');}
+const { writePresentation } = require('./work-presentation.cjs');
+const isolatedHead = '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\';script-src \'none\';connect-src \'none\';img-src data: blob:;style-src \'unsafe-inline\';font-src data:;base-uri \'none\';form-action \'none\';frame-src \'none\'">' +
+  '<style>body :is(address,article,blockquote,caption,code,dd,div,dt,figcaption,h1,h2,h3,h4,h5,h6,li,p,pre,section,span,td,th),body{word-break:keep-all!important;overflow-wrap:normal!important}</style>';
+function isolatedHTML(source){
+  return source.startsWith(isolatedHead) ? source : isolatedHead + source.replace(/^\s*<!doctype[^>]*>/i,'');
+}
 function color(value){const m=/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(value||'');return m&&m[4]!=='0'?m.slice(1,4).map(s=>Number(s).toString(16).padStart(2,'0')).join('').toUpperCase():null;}
 async function exportHTML(format,title,source){
   const {BrowserWindow}=require('electron');if(typeof BrowserWindow!=='function')throw Error('HTML 변환은 데스크톱 앱에서 사용할 수 있습니다.');
@@ -39,7 +44,7 @@ async function exportHTML(format,title,source){
       for(const image of layout.images){try{const png=await win.webContents.capturePage({x:Math.max(0,Math.round(image.left)),y:Math.max(0,Math.round(image.top)),width:Math.max(1,Math.min(1280,Math.round(image.w))),height:Math.max(1,Math.min(720,Math.round(image.h)))});slide.addImage({data:png.toDataURL(),...bounds(image)});}catch{}}
       if(layout.notes)slide.addNotes(layout.notes);
     }
-    return deck.write({outputType:'nodebuffer',compression:true});
+    return writePresentation(deck);
   }finally{if(!win.isDestroyed())win.destroy();}
 }
 module.exports={isolatedHTML,exportHTML};

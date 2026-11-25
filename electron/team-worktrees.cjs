@@ -5,6 +5,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const execute = promisify(execFile);
 const { UUID, createJSON, readJSON, projectDirectory } = require('./project-store.cjs');
+const { createOperationCache } = require('./operation-cache.cjs');
 
 const jobs = new Map();
 const hash = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
@@ -310,12 +311,12 @@ function registerTeamWorktrees(register,store,controller,canChange=()=>true) {
           if (typeof input.title!=='string'||!input.title.trim()||input.title.length>250||typeof input.body!=='string'||input.body.length>10000) throw invalid();
           const refs=await git(ctx.root,['ls-remote','--heads','origin','refs/heads/'+current.branch]);
           if (refs.split(/\s/)[0]!==head) throw new Error('검토한 통합 커밋을 먼저 푸시해 주세요.');
-          const tmp=await fs.mkdtemp(path.join(require('node:os').tmpdir(),'flowrium-pr-'));
+          const cache=await createOperationCache('flowrium-pr-');
           try {
-            const body=path.join(tmp,'body.md');await fs.writeFile(body,input.body,{mode:0o600});
+            const body=path.join(cache.directory,'body.md');await fs.writeFile(body,input.body,{mode:0o600});
             return (await gh(dir,['pr','create','--repo',repository,'--head',current.branch,'--base',ctx.baseBranch,
               '--title',input.title.trim(),'--body-file',body])).trim();
-          } finally { await fs.rm(tmp,{recursive:true,force:true}); }
+          } finally { await cache.cleanup(); }
         }
         if (!status.pr || status.pr.state!=='OPEN' || status.pr.number!==input.number || status.pr.headRefOid!==head) throw changed();
         await gh(dir,['pr','merge',String(input.number),'--repo',repository,'--merge','--match-head-commit',head]);

@@ -2,6 +2,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomUUID } = require("node:crypto");
 const { validDetail } = require('./work-step.cjs');
+const { createOperationCache } = require('./operation-cache.cjs');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const copy = (value) => structuredClone(value);
@@ -120,14 +121,15 @@ async function readJSON(file,options={}) {
 }
 async function createJSON(file, value,options={}) {
   const limit=jsonLimit(options);
-  const data = JSON.stringify(value, null, 2);
+  const data = JSON.stringify(value, null, options.compact ? 0 : 2);
   if (Buffer.byteLength(data, "utf8") > limit)
     throw new Error(
       "대화 기록이 허용 크기에 도달했습니다. 현재 대화를 내보내고 새 대화를 시작해 주세요.",
     );
-  const stage = path.join(path.dirname(file), '.flowrium-write-' + randomUUID() + '.tmp');
-  const handle = await fs.open(stage, 'wx', 0o600);
+  const cache = await createOperationCache('.flowrium-write-', path.dirname(file));
+  const stage = path.join(cache.directory, 'record.tmp');
   try {
+    const handle = await fs.open(stage, 'wx', 0o600);
     try {
       await handle.writeFile(data);
       await handle.sync();
@@ -138,7 +140,9 @@ async function createJSON(file, value,options={}) {
     // simultaneous first open can never replace another device's project ID.
     await publishNewFile(stage, file);
   } finally {
-    await fs.rm(stage, {force:true}).catch(() => {});
+    // Publication is already durable even if an external scanner temporarily
+    // locks the staging file. Never report that successful commit as failed.
+    await cache.cleanup().catch(() => {});
   }
 }
 
@@ -150,7 +154,7 @@ async function publishNewFile(stage, file) {
     if (error.code === 'EEXIST' || !['darwin','win32'].includes(process.platform)) throw error;
   }
   // Some external and cloud volumes disallow hard links. Use an exclusive,
-  // same-directory move on those volumes; plain rename can replace a winner.
+  // same-volume move on those volumes; plain rename can replace a winner.
   const run = require('node:util').promisify(require('node:child_process').execFile);
   try {
     if (process.platform === 'darwin') {
@@ -379,7 +383,7 @@ class ProjectStore {
       await createJSON(
         path.join(this.history, `${change.id}--${revision}.json`),
         record,
-        {maxBytes:SESSION_REVISION_BYTES},
+        {maxBytes:SESSION_REVISION_BYTES,compact:true},
       );
       this.heads.set(change.id, revision);
       if (change.session) this.saved.set(change.id, copy(change.session));
@@ -402,4 +406,4 @@ async function projectDirectory(directory) {
     await fs.mkdir(directory, { recursive: true });
   }
 }
-module.exports = { ProjectStore, portableSession, validateSession, validateDate, UUID, readJSON, createJSON, projectDirectory, DEFAULT_JSON_BYTES, SESSION_REVISION_BYTES };
+module.exports = { ProjectStore, portableSession, validateSession, validateDate, UUID, readJSON, createJSON, projectDirectory, publishNewFile, DEFAULT_JSON_BYTES, SESSION_REVISION_BYTES };

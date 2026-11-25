@@ -121,15 +121,16 @@ class Controller extends EventEmitter {
         throw Error('신뢰한 프로젝트 안의 실제 작업 폴더를 선택해 주세요.');
     }
     const prefs = require('./chat-preferences.cjs').resolved(this.store.state.settings.chatDefaults,session.preferences);
-    const approvalPolicy = prefs.approval || (slot.sharedReview ? 'never' : 'on-request');
+    const approvalPolicy = prefs.approval === 'never' || (!prefs.approval && slot.sharedReview) ? 'never' : 'on-request';
+    const approvalsReviewer = approvalPolicy === 'on-request' && prefs.approval !== 'manual' ? 'auto_review' : 'user';
     const sandbox = slot.sharedReview ? 'read-only' : 'workspace-write';
-    return {key:trusted.key, prefs, cwd, sandbox, approvalPolicy};
+    return {key:trusted.key, prefs, cwd, sandbox, approvalPolicy, approvalsReviewer};
   }
   async conversationThreadParams(session) {
     if (session.scope) return require('./conversation-scopes.cjs').scopeThreadParams(this,session);
     const mode = require('./mobile/project-mode.js').projectMode(session);
-    const {cwd,sandbox,approvalPolicy} = await this.projectAccess(session,mode);
-    return {cwd,sandbox,approvalPolicy,approvalsReviewer:'user'};
+    const {cwd,sandbox,approvalPolicy,approvalsReviewer} = await this.projectAccess(session,mode);
+    return {cwd,sandbox,approvalPolicy,approvalsReviewer};
   }
   cancelStructuredAnalyses(){for(const analysis of this.analysisRuns?.values()||[])analysis.cancel?.();}
   runStructuredAnalysis(input){return require("./structured-analysis.cjs").runStructuredAnalysis(this,input);}
@@ -492,17 +493,17 @@ class Controller extends EventEmitter {
     if (account.account?.type !== "chatgpt")
       throw new Error("작업하려면 ChatGPT 계정으로 로그인해 주세요.");
     const access = await this.projectAccess(this.store.session(run.sessionId),input.mode);
-    const {cwd,prefs,sandbox,approvalPolicy} = access;
+    const {cwd,prefs,sandbox,approvalPolicy,approvalsReviewer} = access;
     const verifyAccess = async () => {
       const current = await this.projectAccess(this.store.session(run.sessionId),input.mode);
-      if (access.key!==current.key || !samePath(cwd,current.cwd) || sandbox!==current.sandbox || approvalPolicy!==current.approvalPolicy)
+      if (access.key!==current.key || !samePath(cwd,current.cwd) || sandbox!==current.sandbox || approvalPolicy!==current.approvalPolicy || approvalsReviewer!==current.approvalsReviewer)
         throw Error('프로젝트 작업 폴더나 권한이 변경됐습니다. 폴더를 확인하고 다시 보내 주세요.');
     };
-    run.approvalsAllowed=approvalPolicy === "on-request";
+    run.approvalsAllowed=approvalPolicy === "on-request" && approvalsReviewer === "user";
     const threadParams = {
       cwd,
       approvalPolicy,
-      approvalsReviewer: "user",
+      approvalsReviewer,
       sandbox,
     };
     const windowsSandbox = await require('./windows-project-sandbox.cjs').windowsProjectSandbox(client, cwd);
@@ -520,11 +521,11 @@ class Controller extends EventEmitter {
         .catch(error=>{throw require('./codex-transfer-client.cjs').linkedError(error);});
       if(resumed.thread?.id!==run.threadId)throw Error('원래 대화 식별자를 확인하지 못했습니다. 새 요청을 보내지 않았습니다.');
     }
-    return {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model,verifyAccess,plan:account.account.planType};
+    return {client,linked,cwd,prefs,sandbox,approvalPolicy,approvalsReviewer,dynamicTools,threadParams,model,verifyAccess,plan:account.account.planType};
   }
   async startRun(run,input,message,project) {
     if(this.store.session(run.sessionId).scope)return require('./conversation-scopes.cjs').startScopedRun(this,run,input,message,project);
-    const {client,linked,cwd,prefs,sandbox,approvalPolicy,dynamicTools,threadParams,model,verifyAccess,plan}=
+    const {client,linked,cwd,prefs,sandbox,approvalPolicy,approvalsReviewer,dynamicTools,threadParams,model,verifyAccess,plan}=
       run.prepared || await this.prepareProjectRun(run,input,project);
     let restoredContext = "";
     if (!run.threadId) {
@@ -599,7 +600,7 @@ class Controller extends EventEmitter {
       input: [{type:"text",text:request}, ...run.attachments.filter(a=>a.image).map(a=>({type:"localImage",path:a.path}))],
       cwd,
       approvalPolicy,
-      approvalsReviewer: "user",
+      approvalsReviewer,
       sandboxPolicy:
         sandbox === "workspace-write"
           ? {
@@ -659,7 +660,7 @@ class Controller extends EventEmitter {
           : false,
     );
   }
-  noteRequest(run, key, label, state = 'running') {
+  noteRequest(run, key, label, state = 'running', kind = key.startsWith('approval:') ? 'approval' : 'question') {
     if (!run.userMessageId) return;
     const user = this.store.peekSession(run.sessionId).messages.find(message => message.id === run.userMessageId);
     if (!user) return;
@@ -667,7 +668,7 @@ class Controller extends EventEmitter {
     const previous = steps.find(step => step.id === key);
     if (previous?.state === state) return;
     const now = new Date().toISOString();
-    const step = {id:key, label, state, kind:key.startsWith('approval:')?'approval':'question',
+    const step = {id:key, label, state, kind,
       createdAt:previous?.createdAt || now, ...(state !== 'running' && {completedAt:now})};
     if (previous) Object.assign(previous,step);
     else steps.push(step);
@@ -775,6 +776,15 @@ class Controller extends EventEmitter {
     }
     if(run.scope&&method==='item/started'&&['commandExecution','fileChange','webSearch','mcpToolCall','collabAgentToolCall'].includes(params.item?.type)){
       run.cancelled=true;await client.request('turn/interrupt',{threadId:run.threadId,turnId:run.turnId},2500).catch(()=>{});return this.finish(run,'failed','일반 대화와 통합 채팅의 허용 범위를 벗어난 실행을 차단했습니다.');
+    }
+    if (method === 'item/autoApprovalReview/started' || method === 'item/autoApprovalReview/completed') {
+      if (!params.reviewId || typeof params.reviewId !== 'string' || params.reviewId.length > 250 ||
+          run.cancelled || (run.turnId && run.turnId !== params.turnId)) return;
+      const key = 'auto-approval:' + params.reviewId;
+      if (method.endsWith('/started')) this.noteRequest(run, key, '실행 권한 자동 검토 중', 'running', 'tool');
+      else if (params.review?.status === 'approved') this.noteRequest(run, key, '실행 권한 자동 승인', 'completed', 'tool');
+      else this.noteRequest(run, key, '실행 권한 자동 검토 종료', 'interrupted', 'tool');
+      return;
     }
     if (method === "turn/started") {
       run.turnId = params.turn?.id;

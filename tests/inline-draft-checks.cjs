@@ -107,6 +107,15 @@ async function checkInlineDraft(page,input,draft) {
   await input.press('Shift+Enter');
   assert.equal(await input.inputValue(),'```\n* \n','코드 블록의 별표는 목록으로 바꾸지 않음');
 
+  const dividerDraft='**강조**\n====\n\n——\n\n----\n\n1. 목록';
+  await input.fill(dividerDraft);
+  const renderedDividers=await ink.innerText();
+  for(const divider of ['====','——','----'])assert(renderedDividers.includes(divider),divider+' 구분 문자 표시');
+  assert.equal(await input.inputValue(),dividerDraft);
+  assert.equal(await ink.locator('.md-strong').textContent(),'강조');
+  assert.equal(await ink.locator('.md-bullet').textContent(),'1.');
+  assert(await visiblyHidden(),'굵게 표시 기호는 숨김');
+
   await input.fill(draft);
   await ink.waitFor();
   assert.equal(await page.getByText('서식 미리보기',{exact:true}).count(),0);

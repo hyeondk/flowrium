@@ -1,4 +1,5 @@
 const MarkdownIt = require("markdown-it");
+const { writePresentation } = require("./work-presentation.cjs");
 const html = new MarkdownIt({ html: false, linkify: false, breaks: true });
 const escape = (v) => html.utils.escapeHtml(v);
 // 산출물을 열 때 외부 서버로 이미지 요청이 나가지 않도록 대체 텍스트만 남긴다.
@@ -6,7 +7,7 @@ html.renderer.rules.image = (tokens, index) => escape(tokens[index].content || "
 function htmlDocument(title, body) {
   return '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\';style-src \'unsafe-inline\';base-uri \'none\';form-action \'none\'">' +
-    '<title>' + escape(title) + '</title><style>@page{size:A4;margin:18mm}body{font-family:-apple-system,BlinkMacSystemFont,"Malgun Gothic",sans-serif;color:#222;font-size:11pt;line-height:1.65;word-break:keep-all;overflow-wrap:break-word;max-width:800px;margin:32px auto;padding:0 20px}h1,h2,h3{line-height:1.3;break-after:avoid}h1{font-size:23pt}h2{font-size:17pt;margin-top:1.6em}pre,code{white-space:pre-wrap;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:5px 8px}blockquote{margin-left:0;border-left:2px solid #aaa;padding-left:14px}a{color:inherit}@media print{body{margin:0;max-width:none;padding:0}}</style></head><body><h1>' +
+    '<title>' + escape(title) + '</title><style>@page{size:A4;margin:18mm}body{font-family:-apple-system,BlinkMacSystemFont,"Malgun Gothic",sans-serif;color:#222;font-size:11pt;line-height:1.65;word-break:keep-all;overflow-wrap:normal;max-width:800px;margin:32px auto;padding:0 20px}h1,h2,h3{line-height:1.3;break-after:avoid}h1{font-size:23pt}h2{font-size:17pt;margin-top:1.6em}pre,code{white-space:pre-wrap}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:5px 8px}blockquote{margin-left:0;border-left:2px solid #aaa;padding-left:14px}a{color:inherit}@media print{body{margin:0;max-width:none;padding:0}}</style></head><body><h1>' +
     escape(title) + '</h1>' + html.render(body) + '</body></html>';
 }
 async function printPDF(title, body) {
@@ -22,7 +23,7 @@ async function printPDF(title, body) {
     return await win.webContents.printToPDF({ printBackground: true, preferCSSPageSize: true });
   } finally { if (!win.isDestroyed()) win.destroy(); }
 }
-// 슬라이드 텍스트는 원문 순서를 유지한다. 긴 어절·코드 줄만 마지막 수단으로 나눈다.
+// 슬라이드 텍스트는 원문 순서를 유지하며 어절 사이에서만 줄을 바꾼다.
 function slidesOf(title, body) {
   const slides = [];
   let heading = title;
@@ -49,11 +50,12 @@ function slidesOf(title, body) {
     }
     if (!raw.trim()) continue;
     let line = "";
-    for (const word of plain(raw).split(/\s+/)) {
-      if (line && line.length + word.length > 90) { add(line); line = ""; }
-      const chunks = Array.from(word);
-      while (chunks.length > 90) add(chunks.splice(0, 90).join(""));
-      line += (line ? " " : "") + chunks.join("");
+    for (const word of plain(raw).trim().split(/\s+/)) {
+      if (line && line.length + 1 + word.length > 90) {
+        add(line);
+        line = "";
+      }
+      line += (line ? " " : "") + word;
     }
     if (line) add(line);
   }
@@ -75,7 +77,7 @@ async function presentation(title, body) {
     slide.addText(page.body, { ...base, x: 0.7, y: 1.75, w: 11.95, h: 4.94, fontSize: 18, paraSpaceAfterPt: 4 });
     slide.addText(String(index + 1) + " / " + slides.length, { ...base, x: 10.8, y: 7.02, w: 1.82, h: 0.26, align: "right", fontSize: 10, color: "656565" });
   });
-  return deck.write({ outputType: "nodebuffer", compression: true });
+  return writePresentation(deck);
 }
 async function renderDocument(format, title, body) {
   if (format === "md") return Buffer.from("# " + title.replace(/[\r\n]+/g, " ") + "\n\n" + body.trim() + "\n");

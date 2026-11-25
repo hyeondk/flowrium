@@ -18,7 +18,7 @@ function preferences(input) {
     require('./model-speed.cjs').serviceTier(input.speed);
     result.speed = input.speed;
   }
-  const enums={answerLength:["short","normal","detailed"],sandbox:["read-only","workspace-write","danger-full-access"],approval:["on-request","never"]};
+  const enums={answerLength:["short","normal","detailed"],sandbox:["read-only","workspace-write","danger-full-access"],approval:["on-request","manual","never"]};
   for(const [key,values] of Object.entries(enums))if(input[key]!==undefined){if(!values.includes(input[key]))throw Error("대화 동작 설정을 확인해 주세요.");result[key]=input[key];}
   for(const key of ["testing","askNext","autoCompact","networkAccess"])if(input[key]!==undefined){if(typeof input[key]!=="boolean")throw Error("대화 설정의 켜짐 여부를 확인해 주세요.");result[key]=input[key];}
   if(input.compactAt!==undefined){if(!Number.isInteger(input.compactAt)||input.compactAt<50||input.compactAt>95)throw Error("압축 기준은 50%부터 95%까지 정할 수 있습니다.");result.compactAt=input.compactAt;}

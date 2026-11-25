@@ -48,3 +48,15 @@ test('PC 입력기와 번들 모바일 입력기가 물결표 및 기존 마크�
     const ranges=desktop.markdownRanges(input);assert(ranges.length>0);assert.deepEqual(mobile.markdownRanges(input),ranges);
   }
 });
+
+test('마크다운 입력기에서 구분선의 원래 글자는 숨기지 않는다',async()=>{
+  const desktop=await import('../shared/composer-markdown-syntax.mjs');
+  const mobile=await import('../electron/mobile/composer-syntax.js');
+  const input='**강조**\n====\n\n——\n\n----\n\n_ _ _\n\n* * *\n\n1. 번호 목록';
+  for(const syntax of [desktop,mobile]){
+    const ranges=syntax.markdownRanges(input);
+    assert.deepEqual(ranges.filter(([,style])=>style==='marker').map(([offset])=>offset),[0,4]);
+    assert(ranges.some(([,style])=>style==='strong'));
+    assert(ranges.some(([,style])=>style==='bullet'));
+  }
+});

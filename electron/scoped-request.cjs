@@ -38,7 +38,7 @@ async function* legacyParts(file,guard) {
     let text='';
     for(let part=index;part<Math.min(index+4,file.index.pages.length);part++){
       guard();
-      text+=await filePage(file,part);
+      text+=await filePage(file,part,guard);
     }
     yield text;
   }
@@ -70,7 +70,7 @@ async function legacyNotes(controller, run, file, model, guard) {
 async function scopedRequest(controller, run, session, message, model, guard) {
   if (!run.requestSource && message.length <= projectInlineLimit) return message;
   const source=run.requestSource || await storeRequestSource(controller.store,session.projectId,message,{guard});
-  const file=await sourceRecord(controller.store,session.projectId,source.id);
+  const file=await sourceRecord(controller.store,session.projectId,source.id,false,guard);
   if(file.sha256!==source.sha256)throw Error('저장한 긴 요청의 원본이 달라졌습니다.');
   guard();
   const sent = session.messages.find(m => m.id === run.userMessageId);
@@ -83,7 +83,7 @@ async function scopedRequest(controller, run, session, message, model, guard) {
       length:file.index.pages.length,
       async read(index){
         guard();
-        const text=await filePage(file,index);
+        const text=await filePage(file,index,guard);
         guard();
         return text;
       }

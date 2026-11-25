@@ -12,6 +12,8 @@ const { startWork } = require("../electron/workbench.cjs");
 const Zip = createRequire(require.resolve("pptxgenjs"))("jszip");
 
 async function run() {
+  const narrowWord = "계약조건변경이력자료검토";
+  const oversizedWord = "문서어절전체를보존".repeat(16);
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), "flowrium-format-"));
   const profile = path.join(temp, "profile");
   const directory = path.join(temp, "검증 프로젝트");
@@ -23,7 +25,7 @@ async function run() {
     const p = await addTrustedFixtureProject(store, directory);
     const s = await startWork(store, { projectId: p.id, kind: "document", title: "한글 출력 검증" });
     const answer = { id: randomUUID(), createdAt: new Date().toISOString(), role: "assistant",
-      text: "## 검증 결과\n\n내용 확인 기준 ABC123\n\n## 다음 작업\n\n<html>원문 보존</html>" };
+      text: "## 검증 결과\n\n내용 확인 기준 ABC123\n\n" + narrowWord + "\n\n## 다음 작업\n\n<html>원문 보존</html>" };
     store.session(s.id).messages.push(answer);
     await store.save();
     const env = { ...process.env, FLOWRIUM_USER_DATA: profile, CODEX_HOME: path.join(temp, "codex") };
@@ -52,15 +54,21 @@ async function run() {
     const pdf = await pdfTask.promise;
     try {
       assert.ok(pdf.numPages >= 1);
-      const text = (await (await pdf.getPage(1)).getTextContent()).items.map((item) => item.str).join("").replace(/\s/g, "");
+      const items = (await (await pdf.getPage(1)).getTextContent()).items;
+      const text = items.map((item) => item.str).join("").replace(/\s/g, "");
       assert.match(text, /내용확인기준ABC123/);
+      assert.ok(items.some((item) => item.str === narrowWord), "PDF에서 어절 전체가 한 줄에 표시됩니다.");
     } finally { await pdfTask.destroy(); }
     const zip = await Zip.loadAsync(await fs.readFile(file("pptx")), { checkCRC32: true });
     assert.ok(zip.file("ppt/presentation.xml") && zip.file("[Content_Types].xml"));
     const slides = zip.file(/^ppt\/slides\/slide\d+\.xml$/);
     assert.equal(slides.length, 2);
     assert.match(await slides[0].async("string"), /내용 확인 기준 ABC123/);
+    assert.match(await slides[0].async("string"), /<a:pPr[^>]+eaLnBrk="0" latinLnBrk="0"/);
     assert.match(await slides[1].async("string"), /원문 보존/);
+    const { renderDocument } = require("../electron/work-documents.cjs");
+    const longDeck = await Zip.loadAsync(await renderDocument("pptx", "긴 어절 확인", "앞 문장 " + oversizedWord + " 뒤 문장"));
+    assert.ok((await longDeck.file("ppt/slides/slide1.xml").async("string")).includes("<a:t>" + oversizedWord + "</a:t>"));
     // 설치된 오피스 변환기가 있는 검증 환경에서는 실제로 열어 다시 PDF로 내보낸다.
     if (process.env.FLOWRIUM_OFFICE_BIN) {
       const output = path.join(temp, "office-output");
@@ -80,12 +88,19 @@ async function run() {
     await page.getByRole("status").filter({ hasText: "문서 1개 추가" }).waitFor();
     const payload = await page.evaluateHandle(() => {
       const data = new DataTransfer();
-      data.items.add(new File(["끌어놓은 원문"], "드롭.txt", { type: "text/plain" }));
+      data.items.add(new File(["끌어놓은 원문 " + "문서어절중간에줄을넣지않음".repeat(30)], "드롭.txt", { type: "text/plain" }));
       return data;
     });
     await page.locator(".wb-drop").dispatchEvent("drop", { dataTransfer: payload });
     await page.locator(".wb-line-item").filter({ hasText: "드롭.txt" }).click();
-    await page.locator(".wb-preview").filter({ hasText: "끌어놓은 원문" }).waitFor();
+    const preview = page.locator(".wb-preview").filter({ hasText: "끌어놓은 원문" });
+    await preview.waitFor();
+    assert.ok(await preview.evaluate((el) => {
+      const word = document.createRange();
+      word.setStart(el.firstChild, "끌어놓은 원문 ".length);
+      word.setEndAfter(el.firstChild);
+      return word.getClientRects().length === 1 && el.scrollWidth > el.clientWidth;
+    }), "폭보다 긴 어절은 한 줄에 유지하고 미리보기 안에서 가로 스크롤합니다.");
     await payload.dispose();
     console.log("파일 선택 / 끌어놓기 / 미리보기 통과. 실제 앱 화면에서 네 형식 저장 / 마크다운 및 HTML 내용 / PDF 한글 본문 / 발표자료 두 장의 본문과 구조 재열기 통과");
   } finally {

@@ -21,6 +21,7 @@ async function run() {
   const session = await store.createSession(project.id);
   await store.saveSettings({
     codexPath: path.join(__dirname, "backend-fake-codex.cjs"),
+    chatDefaults:{approval:"manual"},
   });
   await setFixtureAccountLinked(profile);
   const env = {

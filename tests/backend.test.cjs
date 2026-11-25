@@ -167,8 +167,9 @@ test("동시 대화 실행을 구분하고 실행 중 추가 지시는 대기시
   assert.equal(store.session(session.id).messages.at(-1).role, "system");
 });
 
-test("계획 작업의 기본 승인 요청도 사용자의 결정을 프로토콜에 전달한다", async (t) => {
+test("계획 작업에서 직접 승인을 선택하면 사용자의 결정을 프로토콜에 전달한다", async (t) => {
   const { controller, session, store } = await fixture(t);
+  store.session(session.id).preferences={approval:'manual'};
   const approval = eventOnce(controller, (event) => event.type === "approval");
   const done = eventOnce(controller, (event) => event.type === "done");
   await controller.send({
@@ -188,6 +189,19 @@ test("계획 작업의 기본 승인 요청도 사용자의 결정을 프로토�
     () => controller.client.decide(request.requestId, "accept"),
     /이미 종료/,
   );
+});
+
+test("기본 자동 심사는 직접 승인으로 넘어온 요청을 대신 승인하거나 표시하지 않는다", async (t) => {
+  const { controller, session, store } = await fixture(t);
+  const approvalRequests = [];
+  controller.on('event', event => {
+    if (event.type === 'approval') approvalRequests.push(event);
+  });
+  const done = eventOnce(controller, event => event.type === 'done');
+  await controller.send({sessionId:session.id,text:'승인검증',mode:'plan'});
+  assert.equal((await done).status,'completed');
+  assert.equal(approvalRequests.length,0);
+  assert.equal(store.session(session.id).messages.at(-1).text,'확인한 결과입니다. / decline');
 });
 
 test("하위 프로세스 종료는 실행 잠금과 요청을 정리하고 실패를 기록한다", async (t) => {

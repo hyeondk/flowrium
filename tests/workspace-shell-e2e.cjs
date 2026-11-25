@@ -17,7 +17,7 @@ async function run(){
  await fs.mkdir(folder);const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store, folder, {account: backendFixtureAccount});
  const waiting=await store.createSession(project.id,{title:'계속할지 기다리는 대화',messages:[{id:randomUUID(),role:'assistant',text:'현재 업무를 정리했습니다.\n\n다음 작업을 계속할까요?',createdAt:new Date().toISOString()}]});
  const running=await store.createSession(project.id,{title:'실행 검증 대화'}),decision=await store.createSession(project.id,{title:'결정 검증 대화'});
- await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});
+ await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light',chatDefaults:{approval:'manual'}});
  const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
  const check=(value,label,detail)=>{if(!value)failures.push({label,detail});};
  const sameBox=(a,b)=>['x','y','width','height'].every(key=>Math.abs(a[key]-b[key])<1);

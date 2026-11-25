@@ -139,7 +139,8 @@ class Migration {
     if(existing){await F.directory(destination);const files=await F.walk(destination);staged[staged.length-1].existingChecks=files;for(const e of files)await F.writeEntry(folder,e.path,await F.content(e));}
     const sourceFiles=snapshot.entries.filter(e=>e.group===p.key);
     for(const e of sourceFiles){let relative=e.path,data=await F.content(e);
-     if(relative.endsWith('.json')&&relative.startsWith('.flowrium/')){
+     const originalArchive=/^\.flowrium\/codex-source\/[a-f0-9]{64}\/[a-f0-9]{64}\.json$/.test(relative);
+     if(relative.endsWith('.json')&&relative.startsWith('.flowrium/')&&!originalArchive){
       let record=remap(JSON.parse(data.toString()),ids,paths);
       if(relative==='.flowrium/project.json'){record.id=ids[p.id];if(existing)continue;}
       if(relative.startsWith('.flowrium/sessions/')){relative='.flowrium/sessions/'+record.sessionId+'--'+record.revision+'.json';if(record.session)record.session=inactive(record.session);}

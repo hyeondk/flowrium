@@ -12,10 +12,9 @@
   background:var(--panel);box-shadow:0 0 0 2px color-mix(in srgb,var(--selected) 28%,transparent);overflow:visible;
 }
 .app-shell .conversation-dock .composer:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 10%,transparent)}
-.conversation-dock .has-session .composer:not(.working) .composer-topline{display:none}
+.conversation-dock .has-session .composer-topline{display:none}
 .conversation-dock .composer-topline{padding:0 2px 4px;min-height:21px}
 .conversation-dock .composer-topline>span{font-size:11px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px}
-.conversation-dock .composer.working .composer-topline{justify-content:flex-end}
 .app-shell .conversation-dock .composer textarea.composer-input[data-height-mode]{
   height:auto;min-height:26px;max-height:min(104px,var(--composer-limit));display:block;width:100%;
   padding:2px 1px;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none;
@@ -23,6 +22,8 @@
 }
 .app-shell .conversation-dock .composer textarea.composer-input[data-height-mode=manual]{field-sizing:fixed;max-height:var(--composer-limit)}
 .app-shell .conversation-dock .composer textarea.composer-input[data-height-mode=auto][data-large-draft]{field-sizing:fixed;height:min(104px,var(--composer-limit))}
+.app-shell .conversation-dock .composer .markdown-input:has(>.composer-clear)>textarea.composer-input[data-height-mode]{padding-inline-end:28px}
+.conversation-dock .composer .composer-clear{position:absolute;z-index:2;inset-block-start:0;inset-inline-end:0;width:24px;height:24px;padding:0}
 .composer-draft-pages{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px;margin:2px 4px;color:var(--muted);font-size:12px}
 .composer-draft-pages button{border:0;border-radius:6px;padding:3px 6px;background:var(--selected);color:var(--accent)}
 .composer .composer-resize-handle{position:absolute;z-index:2;top:-6px;left:50%;width:66px;height:14px;transform:translateX(-50%);cursor:row-resize;touch-action:none;display:grid;place-items:center;border-radius:12px}

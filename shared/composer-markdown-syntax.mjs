@@ -9,9 +9,9 @@ const styles = {
   blockQuote:'quote', codeTextData:'code', codeFlowValue:'code',
   labelText:'link', literalAutolink:'link', autolinkProtocol:'link', autolinkEmail:'link',
   resourceDestination:'destination', taskListCheck:'task',
-  listItemPrefix:'bullet', blockQuoteMarker:'marker', thematicBreak:'marker',
+  listItemPrefix:'bullet', blockQuoteMarker:'marker',
   tableDelimiterMarker:'marker', tableDelimiterFiller:'marker', tableDelimiter:'marker',
-  codeFencedFence:'marker', atxHeadingSequence:'marker', setextHeadingLine:'marker',
+  codeFencedFence:'marker', atxHeadingSequence:'marker',
   strongSequence:'marker', emphasisSequence:'marker',
   codeTextSequence:'marker', labelMarker:'marker', resourceMarker:'marker',
 };

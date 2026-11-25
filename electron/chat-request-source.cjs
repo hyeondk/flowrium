@@ -10,6 +10,7 @@ const {samePath} = require('./path-boundary.cjs');
 const PAGE = 12000;
 const indices = new Map();
 const invalid = () => Error('저장한 긴 요청 원문이 변경됐거나 올바르지 않습니다.');
+const staleIndex = () => Object.assign(invalid(),{code:'REQUEST_SOURCE_INDEX_STALE'});
 const invalidText = () => Error('입력한 글에 저장할 수 없는 문자가 있습니다.');
 function sourceId(hash) {
   return [hash.slice(0,8),hash.slice(8,12),'8'+hash.slice(13,16),'a'+hash.slice(17,20),hash.slice(20,32)].join('-');
@@ -83,7 +84,7 @@ function remember(filename,entry) {
   indices.set(filename,entry);
   while(indices.size>8) indices.delete(indices.keys().next().value);
 }
-async function sourceRecord(store,projectId,id,includeBytes=false) {
+async function sourceRecord(store,projectId,id,includeBytes=false,guard) {
   if(!UUID.test(id))throw invalid();
   const project=store.project(projectId);
   const root=await attachmentRoot(store,projectId);
@@ -99,12 +100,20 @@ async function sourceRecord(store,projectId,id,includeBytes=false) {
     const handle=await fs.open(filename,'r');
     try{
       if(version(await handle.stat({bigint:true}))!==identity)throw invalid();
-      const value=await indexBytes(handle.createReadStream({autoClose:false}));
+      const value=await indexBytes(handle.createReadStream({autoClose:false}),null,guard);
       if(value.sha256!==ref.sha256 || value.size!==ref.size || version(await handle.stat({bigint:true}))!==identity)throw invalid();
       index={...value,version:identity};remember(filename,index);
     }finally{await handle.close();}
   }
-  const file={...ref,path:filename,index};
+  const file={...ref,path:filename,index,async refreshIndex(check){
+    await check?.();
+    if(store.project(projectId)!==project)throw invalid();
+    const current=await sourceRecord(store,projectId,id,false,check);
+    if(!samePath(current.path,filename) || current.sha256!==ref.sha256 || current.size!==ref.size)throw invalid();
+    await check?.();
+    if(store.project(projectId)!==project)throw invalid();
+    file.index=current.index;
+  }};
   if(includeBytes){
     const bytes=await fs.readFile(filename);
     if(createHash('sha256').update(bytes).digest('hex')!==ref.sha256)throw invalid();
@@ -113,12 +122,12 @@ async function sourceRecord(store,projectId,id,includeBytes=false) {
   if(store.project(projectId)!==project)throw invalid();
   return file;
 }
-async function filePage(file,number) {
-  const page=file.index.pages[number];
+async function readIndexedPage(filename,index,number) {
+  const page=index.pages[number];
   if(!page)throw invalid();
-  const handle=await fs.open(file.path,'r');
+  const handle=await fs.open(filename,'r');
   try{
-    if(version(await handle.stat({bigint:true}))!==file.index.version)throw invalid();
+    if(version(await handle.stat({bigint:true}))!==index.version)throw staleIndex();
     const data=Buffer.allocUnsafe(page.bytes);
     let filled=0;
     while(filled<data.length){
@@ -126,9 +135,25 @@ async function filePage(file,number) {
       if(!bytesRead)throw invalid();
       filled+=bytesRead;
     }
+    if(version(await handle.stat({bigint:true}))!==index.version)throw staleIndex();
     if(createHash('sha256').update(data).digest('hex')!==page.hash)throw invalid();
     return data.toString('utf8');
   }finally{await handle.close();}
+}
+async function filePage(file,number,guard) {
+  const index=file.index;
+  try{return await readIndexedPage(file.path,index,number);}
+  catch(error){
+    if(error.code!=='REQUEST_SOURCE_INDEX_STALE')throw error;
+    // Cloud sync can replace a file with identical bytes. Share the full
+    // digest check before retrying simultaneous page reads against it.
+    if(file.index===index){
+      file.refreshing ??= file.refreshIndex(guard).finally(()=>{file.refreshing=undefined;});
+      await file.refreshing;
+    }
+    await guard?.();
+    return readIndexedPage(file.path,file.index,number);
+  }
 }
 // Unsent mobile uploads belong to the local app profile. Only confirmed requests
 // enter the portable project. Startup holds Electron's single-instance lock.
@@ -146,8 +171,14 @@ async function cleanupMobileRequestStages(store) {
     const directory=path.join(root,entry.name);
     if(activeStages.has(directory))continue;
     const files=await fs.readdir(directory,{withFileTypes:true});
-    if(files.every(file=>file.isFile() && (file.name==='request.txt' || file.name==='attachment.json' ||
-        (file.name.startsWith('.flowrium-write-') && file.name.endsWith('.tmp') && UUID.test(file.name.slice(16,-4))))))
+    const owned=await Promise.all(files.map(async file=>{
+      if(file.isFile())return file.name==='request.txt'||file.name==='attachment.json'||
+        file.name.startsWith('.flowrium-write-')&&file.name.endsWith('.tmp')&&UUID.test(file.name.slice(16,-4));
+      if(!file.isDirectory()||!/^\.flowrium-write-[a-z0-9]{6}$/i.test(file.name))return false;
+      const records=await fs.readdir(path.join(directory,file.name),{withFileTypes:true});
+      return records.every(record=>record.isFile()&&record.name==='record.tmp');
+    }));
+    if(owned.every(Boolean))
       await fs.rm(directory,{recursive:true,force:true});
   }
 }

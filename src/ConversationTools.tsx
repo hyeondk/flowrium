@@ -47,7 +47,7 @@ export function ConversationTools({session,models,running,onOpen,onChange,notify
    <label className="preference-check"><AnimatedSwitch disabled={linked} checked={!linked&&!!prefs.autoCompact} onChange={e=>set('autoCompact',e.target.checked)}/>문맥 자동 압축</label>
    <label>자동 압축 시작 기준<select disabled={linked} value={prefs.compactAt} onChange={e=>set('compactAt',Number(e.target.value))}>{[50,60,70,80,90,95].map(n=><option key={n} value={n}>{n}%</option>)}</select></label>
    {!session.scope&&<>
-   <label>범위 밖 실행 승인<select value={prefs.approval||''} onChange={e=>set('approval',(e.target.value||undefined) as ChatPreferences['approval'])}><option value="">대화 기본값</option><option value="on-request">필요할 때 묻기</option><option value="never">범위 밖 실행 거절</option></select></label>
+   <label>범위 밖 실행 승인<select value={prefs.approval||'on-request'} onChange={e=>set('approval',e.target.value as ChatPreferences['approval'])}><option value="on-request">나 대신 승인</option><option value="manual">직접 승인</option><option value="never">범위 밖 실행 거절</option></select></label>
    <label className="preference-check"><AnimatedSwitch checked={!!prefs.networkAccess} onChange={e=>set('networkAccess',e.target.checked)}/>명령의 네트워크 사용 허용</label>
 </>}
   </fieldset>

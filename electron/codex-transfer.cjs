@@ -6,6 +6,7 @@ const {projectDirectory,createJSON,readJSON,UUID}=require('./project-store.cjs')
 const D=require('./codex-transfer-data.cjs');
 const {mergeMessages}=require('./codex-transfer-merge.cjs');
 const {materialize}=require('./codex-transfer-attachments.cjs');
+const {readArchive,writeArchive}=require('./codex-transfer-archive.cjs');
 const clone=v=>structuredClone(v),now=()=>new Date().toISOString();
 const roots=['cli','vscode','appServer','unknown'];
 const {importedSession,checkImportSize:importSize}=require('./codex-transfer-record.cjs');
@@ -126,8 +127,8 @@ class CodexTransfer {
  }finally{this.busy=false;}}
  getPlan(id){const plan=this.plans.get(id);if(!plan||Date.now()-plan.at>3600000)throw Error('연결 미리보기 시간이 지났습니다. 다시 확인해 주세요.');this.guard(plan.owner,plan.revision,plan.epoch);return plan;}
  async historyThread(threadId,data,context){this.guard(context.owner,context.revision,context.epoch);const account=await this.client.request('account/read',{refreshToken:false});if(await this.controller.accountObserved?.(account.account))throw Error('연결 계정이 바뀌었습니다. 다시 대화를 선택해 주세요.');this.guard(context.owner,context.revision,context.epoch);const response=await this.client.request('thread/read',{threadId:D.id(threadId),includeTurns:false}),thread=response.thread;if(!thread||![threadId,data.thread.id].includes(thread.id)||!samePath(thread.cwd,data.thread.cwd)||thread.ephemeral||D.isSubagent(thread))throw Error('선택한 대화의 기반 기록인지 확인하지 못했습니다.');this.guard(context.owner,context.revision,context.epoch);return thread;}
- async archive(project,data){const root=path.join(project.path,'.flowrium');await projectDirectory(root);const base=path.join(root,'codex-source');await projectDirectory(base);const dir=path.join(base,D.hash(data.thread.id));await projectDirectory(dir);const file=path.join(dir,data.sha256+'.json');try{await fs.writeFile(file,data.data,{flag:'wx',mode:0o600});}catch(error){if(error.code!=='EEXIST')throw error;if(D.hash(await this.readArchive(file))!==data.sha256)throw Error('보관한 대화 원문이 변경됐습니다.');}return path.relative(project.path,file).split(path.sep).join('/');}
- async readArchive(file){const real=await fs.realpath(file);if(!sameFilesystemPath(real,path.resolve(file)))throw Error('대화 원문 경로가 다른 위치를 가리킵니다.');const stat=await fs.lstat(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>512*1024*1024)throw Error('대화 원문의 형식과 크기를 확인해 주세요.');const handle=await fs.open(file,require('node:fs').constants.O_RDONLY|(require('node:fs').constants.O_NOFOLLOW||0));try{const opened=await handle.stat();if(opened.dev!==stat.dev||opened.ino!==stat.ino||opened.size!==stat.size)throw Error('대화 원문이 읽는 중 바뀌었습니다.');return await handle.readFile();}finally{await handle.close();}}
+ async archive(project,data){const root=path.join(project.path,'.flowrium');await projectDirectory(root);const base=path.join(root,'codex-source');await projectDirectory(base);const dir=path.join(base,D.hash(data.thread.id));await projectDirectory(dir);const file=path.join(dir,data.sha256+'.json');await writeArchive(file,data.data,data.sha256);return path.relative(project.path,file).split(path.sep).join('/');}
+ async readArchive(file){return readArchive(file);}
  async apply(input){const context=await this.ready(),plan=this.getPlan(input.planId);const mode=input.mode||'linked';if(input.retryAttachments!==undefined&&typeof input.retryAttachments!=='boolean')throw Error('첨부 다시 확인 형식을 확인해 주세요.');if(!['linked','copy'].includes(mode))throw Error('대화 연결 방식을 확인해 주세요.');
   if(input.threadIds!==undefined&&!Array.isArray(input.threadIds))throw Error('연결할 대화 목록을 확인해 주세요.');
   const ids=input.threadIds===undefined?(input.projectKeys===undefined?plan.plan.entries.map(e=>e.threadId):[]):[...new Set(input.threadIds.map(D.id))];

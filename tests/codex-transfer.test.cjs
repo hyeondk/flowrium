@@ -117,6 +117,25 @@ client.turns.set('원본대화',[{id:'첫작업',status:'completed',startedAt:17
 t.after(async()=>{await runtime.shutdown();await store.queue;await fs.rm(root,{recursive:true,force:true})});return{root,folder,store,project,client,controller,runtime,setRevision:v=>revision=v,setEpoch:v=>epoch=v,setOwner:v=>owner=v,setAllowed:v=>allowed=v,preview:()=>runtime.action({action:'preview',projects:[{name:'지정한 프로젝트 이름',path:folder,threadIds:['원본대화']}]})};}
 test('프로젝트 대화의 본문 / 도구 / 첨부 참조 / 모든 항목을 읽고 원문 사본과 원래 실행 연결을 보존한다',async t=>{const f=await fixture(t),plan=await f.preview();assert.equal(plan.entries[0].messages,5);assert.equal(plan.entries[0].attachments,1);assert(f.client.calls.every(c=>['account/read','thread/read','thread/turns/list','thread/items/list'].includes(c.method)));const original=JSON.stringify(f.client.turns.get('원본대화'));const result=await f.runtime.action({action:'apply',planId:plan.id});assert.equal(result.imported,1);assert.equal(result.failed,0);assert.equal(f.store.state.projects[0].name,'지정한 프로젝트 이름');const session=f.store.state.sessions[0];assert.equal(session.threadId,'원본대화');assert.equal(session.sourceThreadId,'원본대화');assert.equal(session.title,'원래 대화 제목');assert.equal(session.messages[1].text.includes('원래 도구 결과'),true);assert.equal(session.createdAt,'2023-11-14T22:13:20.000Z');const raw=await f.runtime.action({action:'readOriginal',receiptId:result.id,threadId:'원본대화'});assert(raw.text.includes('원래첨부.png'));assert.equal(JSON.stringify(f.client.turns.get('원본대화')),original);assert.equal(f.client.calls.some(c=>['thread/resume','thread/fork','turn/start','thread/archive','thread/delete'].includes(c.method)),false);const reload=new Store(path.join(f.root,'설정'));await reload.load();assert.equal(reload.state.sessions[0].threadId,'원본대화');assert.equal(reload.state.sessions[0].messages.length,5);});
 test('동일 대화 재시도는 중복을 만들지 않고 원본 추가 본문은 명시적 새로고침으로 반영한다',async t=>{const f=await fixture(t);let p=await f.preview();await f.runtime.apply({planId:p.id});p=await f.preview();const repeated=await f.runtime.apply({planId:p.id});assert.equal(repeated.skipped,1);assert.equal(f.store.state.sessions.length,1);const session=f.store.state.sessions[0],oldArchive=session.codexLink.archivePath;f.client.turns.get('원본대화').push({id:'외부작업',status:'completed',startedAt:1700000050,completedAt:1700000051,itemsView:'full',items:[{type:'agentMessage',id:'외부답변',text:'다른 앱에서 추가한 답변'}]});f.client.threads.get('원본대화').updatedAt=1700000051;f.controller.loadedThreads.add('원본대화');await f.runtime.beforeSend(session.id);assert.equal(session.messages.at(-1).text,'다른 앱에서 추가한 답변');assert.equal(session.threadId,'원본대화');assert.equal(f.controller.loadedThreads.has('원본대화'),false);assert.notEqual(session.codexLink.archivePath,oldArchive);await fs.access(path.join(f.folder,oldArchive));});
+test('큰 보관 원문은 압축해도 같은 대화 링크와 원문 바이트를 유지한다', async t => {
+  const f = await fixture(t);
+  const large = '긴 회의록에서 사용할 원문 😊\n'.repeat(22000);
+  f.client.turns.get('원본대화')[0].items[2].text = large;
+  const plan = await f.preview();
+  const receipt = await f.runtime.apply({planId:plan.id});
+  assert.equal(receipt.imported,1);
+  const session = f.store.state.sessions[0];
+  const file = path.join(f.folder,session.codexLink.archivePath);
+  await assert.rejects(fs.access(file),{code:'ENOENT'});
+  assert((await fs.stat(file+'.gz')).size < Buffer.byteLength(large)*0.1);
+  const original = await f.runtime.readOriginal(receipt.id,'원본대화');
+  assert.equal(original.sha256,path.basename(file,'.json'));
+  assert.equal(JSON.parse(original.text).turns[0].items[2].item.text,large);
+  const restored = new Store(path.dirname(f.store.file));
+  await restored.load();
+  assert.equal(restored.session(session.id).codexLink.archivePath,session.codexLink.archivePath);
+  assert.equal(restored.session(session.id).messages[2].text,large);
+});
 test('실행 중에 연결한 대화는 실제 작업 종료를 확인한 뒤 별도 버튼 없이 이어 쓴다',async t=>{
  const f=await fixture(t),p=await f.runtime.preview({projects:[{name:'프로젝트',path:f.folder,threadIds:['원본대화']}],activeThreadIds:['원본대화']});
  await f.runtime.apply({planId:p.id});const session=f.store.state.sessions[0],source=f.client.threads.get('원본대화');

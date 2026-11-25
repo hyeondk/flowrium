@@ -1623,13 +1623,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 </div>}
                 <AttachmentComposer key={voiceContinuity.current.generation} projectId={project?.id} items={attachments} onChange={setAttachments} disabled={security.state.locked} report={notify}>{attachmentControl=>(
                 <div className={`composer ${workActive ? "working" : ""}`}>
-                  {(!workActive || input) && <div className="composer-topline">
-                    {!workActive && <span>
+                  {!workActive && <div className="composer-topline">
+                    <span>
                       <span
                         className={`status-dot ${connection.authenticated ? "online" : ""}`}
                       />
                       {project ? `${project.name} 작업 요청` : "작업 요청"}
-                    </span>}
+                    </span>
                     {input && (
                       <button
                         className="icon-button"
@@ -1644,7 +1644,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     authenticated={connection.authenticated} aiFollowups={data.settings.aiFollowups===true} busy={submitting || !!modelPreview} draft={input} textareaRef={composer}
                     active={chatActive && dockOpen && !settingsOpen && !attentionOpen}
                     placeholder={project ? "어떤 작업을 함께 해볼까요?" : "만들고 싶은 것, 풀고 싶은 문제를 적어 주세요."}
-                    onChange={setInput} onSend={() => void send()} onContinue={continueWaitingSession}
+                    onChange={setInput} onSend={() => void send()} onContinue={continueWaitingSession} showClear={workActive}
                     onChoose={prompt => {
                       setDrafts(previous => {
                         const draft = previous[draftKey];

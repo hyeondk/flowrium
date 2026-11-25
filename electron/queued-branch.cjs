@@ -50,7 +50,7 @@ async function forkQueuedRequest(controller, session, entry, check) {
     guard();
     const fork = await forkClient.request('thread/fork', {
       threadId: source, lastTurnId: anchor.id, excludeTurns: true, cwd,
-      sandbox: access.sandbox, approvalPolicy: access.approvalPolicy, approvalsReviewer: 'user',
+      sandbox: access.sandbox, approvalPolicy: access.approvalPolicy, approvalsReviewer: access.approvalsReviewer,
       ...(entry.model && {model: entry.model}),
     });
     guard();

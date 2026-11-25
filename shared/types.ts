@@ -32,7 +32,7 @@ export interface ChatPreferences {
   autoCompact?: boolean;
   compactAt?: number;
   sandbox?: "read-only" | "workspace-write" | "danger-full-access";
-  approval?: "on-request" | "never";
+  approval?: "on-request" | "manual" | "never";
   networkAccess?: boolean;
 }
 export type ConversationEdit =

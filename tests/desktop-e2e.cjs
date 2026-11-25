@@ -25,7 +25,7 @@ async function run() {
   const store = new Store(profile);
   await fs.mkdir(project);
   await store.load();
-  await store.saveSettings({ codexPath: path.join(__dirname, "backend-fake-codex.cjs") });
+  await store.saveSettings({ codexPath: path.join(__dirname, "backend-fake-codex.cjs"), chatDefaults:{approval:"manual"} });
   await setFixtureAccountLinked(profile);
   const env = { ...process.env, FLOWRIUM_USER_DATA: profile, CODEX_HOME: path.join(temp, "codex") };
   delete env.ELECTRON_RUN_AS_NODE;

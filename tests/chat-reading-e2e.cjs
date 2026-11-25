@@ -106,6 +106,18 @@ async function checkWorkProgress(page,input,popup,gate,title) {
   const current=page.locator('[data-work-current]');
   await expect(current).toHaveText('명령을 실행하고 있습니다 / node');
   await current.evaluate(element=>{window.firstWorkLine=element;});
+  const editorOffset=()=>input.evaluate(element=>
+    element.getBoundingClientRect().top-element.closest('.composer').getBoundingClientRect().top);
+  const offsetBeforeInput=await editorOffset();
+  const toolbar=page.locator('.composer-toolbar');
+  const toolbarHeight=(await toolbar.boundingBox()).height;
+  await input.fill('추가 요청 검증');
+  await expect(page.getByRole('button',{name:'현재 작업에 추가 지시 보내기',exact:true})).toBeEnabled();
+  await expect(current).toBeVisible();
+  assert(Math.abs(await editorOffset()-offsetBeforeInput)<=1,'추가 지시를 써도 입력창 위에 빈 줄을 추가하지 않음');
+  assert(Math.abs((await toolbar.boundingBox()).height-toolbarHeight)<=1,'입력 지우기 표시가 도구막대 높이도 바꾸지 않음');
+  await page.getByRole('button',{name:'입력 지우기',exact:true}).click();
+  await expect(input).toHaveValue('');
   const liveToggle=page.getByRole('button',{name:'작업 내역',exact:true});
   const live=page.getByRole('list',{name:'실시간 작업 과정',exact:true});
   await expect(live).toBeHidden();

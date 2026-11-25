@@ -81,10 +81,10 @@ async function main() {
       return method==='account/read'?Promise.resolve({account:{type:'chatgpt',planType:'test'}}):request(method,...args);
     };
     const store=new Store(path.join(temp,'flowrium')); await store.load();
-    const project=await store.addProject(cwd); await store.saveSettings({model:'gpt-5.5'});
+    const project=await store.addProject(cwd); await store.saveSettings({model:'gpt-5.5',chatDefaults:{approval:'manual'}});
     controller=new Controller(store,{client,canRun:()=>true}); await controller.connect();
     const baseline=process.argv.includes('--baseline');
-    const legacy = await store.createSession(project.id,{preferences:{sandbox:'read-only',approval:'on-request'}});
+    const legacy = await store.createSession(project.id,{preferences:{sandbox:'read-only',approval:'manual'}});
     delete store.session(legacy.id).defaultProjectMode;
     await store.save();
     const beforeTrust = await fs.readFile(path.join(profile,'config.toml'),'utf8');

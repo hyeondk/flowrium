@@ -24,8 +24,15 @@ async function main(){
     assert(namespace || body.tools.some(t=>t.name===name));
     if(!longProbe.sent){
      const prompt=JSON.stringify(body.input);
-     assert(!prompt.includes(longProbe.head) && !prompt.includes('.flowrium/attachments/'));
+     assert(!prompt.includes(longProbe.head) && !prompt.includes('request.txt'));
      if(longProbe.probes) assert(prompt.includes(longProbe.digest));
+     if(longProbe.synchronize){
+      assert(prompt.includes('회의록.md'),'모델에 실제 회의록 첨부도 전달합니다.');
+      const id=require('../electron/chat-request-source.cjs').sourceId(longProbe.digest);
+      const file=path.join(folder,'.flowrium','attachments',id,'request.txt');
+      await fs.copyFile(file,file+'.synced');
+      await fs.rename(file+'.synced',file);
+     }
     }
     for(const receipt of body.input.filter(row=>row.type==='function_call_output' && row.call_id.startsWith('read_project_'))){
      if(longProbe.seen.has(receipt.call_id))continue;
@@ -83,7 +90,7 @@ async function main(){
   await controller.connect();const handlers=new Map();registerConversationTools((name,fn)=>handlers.set(name,fn),controller);const edit=handlers.get('editConversation');
   const png=require('./chat-fixtures.cjs').png;
   const attachments=await addAttachments(store,project.id,[{name:'검증화면.png',type:'image/png',bytes:png},{name:'근거.txt',type:'text/plain',bytes:Buffer.from('합성 근거')}]);
-  async function send(id,text,extra={}){const completed=done(controller,id,longProbe?120000:20000);await controller.send({sessionId:id,text,mode:'plan',...extra},{fromComposer:true});await completed;if(failure)throw failure;}
+  async function send(id,text,extra={}){const completed=done(controller,id,longProbe?120000:20000);await controller.send({sessionId:id,text,mode:'plan',...extra},{fromComposer:true});await completed.catch(error=>{throw failure||error;});if(failure)throw failure;}
   await send(session.id,'원본첫요청',{attachments:attachments.map(a=>a.id)});
   assert.doesNotMatch(JSON.stringify(bodies[0].input),/미완료 작업/,'실제 모델 입력에 추천용 지시를 덧붙이지 않습니다.');
   assert.equal(store.session(session.id).messages.find(row=>row.role==='user').text,'원본첫요청');
@@ -104,6 +111,17 @@ async function main(){
   const names=(bodies.at(-1).tools||[]).flatMap(t=>t.tools?t.tools.map(x=>x.name):[t.name||t.type]);
   for(const name of ['exec_command','write_stdin','shell','spawn_agent','web_search','flowrium_memory_save'])assert(!names.includes(name),'분석 전용 대화에 외부 실행 도구가 없어야 합니다: '+name);
   assert.equal(controller.analysisRuns.size,0);assert.equal(controller.editingSessions.size,0);
+  const meeting=await store.createSession(project.id);
+  const meetingSource='회의 요청 시작\r\n'+'내용을 보완할 회의 안건 🪴\r\n'.repeat(2600)+'요청 끝';
+  const meetingDigest=require('node:crypto').createHash('sha256').update(meetingSource).digest('hex');
+  const [meetingAttachment]=await addAttachments(store,project.id,[{name:'회의록.md',type:'text/markdown',bytes:Buffer.from('# 합성 회의록\n확인할 내용')}]);
+  longProbe={head:'회의 요청 시작',pages:4,sent:0,seen:new Set(),parts:[],digest:meetingDigest,synchronize:true};
+  await send(meeting.id,meetingSource,{attachments:[meetingAttachment.id]});
+  assert.equal(longProbe.parts.join(''),meetingSource);
+  assert.equal(longProbe.seen.size,4);
+  assert.equal(store.session(meeting.id).messages.find(row=>row.role==='user').attachments[0].sha256,meetingAttachment.sha256);
+  console.log('회의록 첨부와 네 부분의 한글 원문 / 모델의 첫 원문 도구 호출 직전 동기화 교체 / 전체 내용과 해시 일치');
+  longProbe=null;
   const large=await store.createSession(project.id);
   const edge='START_REQUEST_LONG__',mid='MIDDLE_REQUEST____',end='END_REQUEST_________';
   const source=[edge,' '.repeat(1_070_000),mid,' '.repeat(1_070_000),end].join('\n');

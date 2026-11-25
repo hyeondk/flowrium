@@ -1,15 +1,20 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
 const {EventEmitter} = require('node:events');
 const {runStructuredAnalysis} = require('../electron/structured-analysis.cjs');
 
 function fixture(t, background=false) {
   const analysis = new EventEmitter();
   const ready = Promise.withResolvers();
+  let directory;
   analysis.start = async () => {};
   analysis.close = () => analysis.emit('disconnect', Error('Codex 연결을 종료했습니다.'));
   analysis.request = async (method, params) => {
-    if (method === 'thread/start') return {thread:{id:'test'},activePermissionProfile:{id:params.permissions}};
+    if (method === 'thread/start') {
+      directory = params.cwd;
+      return {thread:{id:'test'},activePermissionProfile:{id:params.permissions}};
+    }
     assert.equal(method, 'turn/start');
     ready.resolve();
     return {turn:{id:'turn'}};
@@ -22,7 +27,7 @@ function fixture(t, background=false) {
   const result = runStructuredAnalysis(controller, {prompt:'합성 추천 자료',schema:{type:'object'},background});
   result.catch(() => {});
   return {
-    controller, ready:ready.promise, result,
+    controller, ready:ready.promise, result, get directory() {return directory;},
     cancel:() => [...controller.analysisRuns.values()][0]?.cancel(),
     notify:(method, params) => analysis.emit('notification', {method, params:{threadId:'test', ...params}})
   };
@@ -39,6 +44,7 @@ test('추천 중 계획과 중간 설명을 받아도 마지막 답변만 해석
   f.notify('item/completed', {item:{id:'comment',type:'agentMessage',phase:'commentary',text:'자료를 확인하겠습니다.'}});
   complete(f);
   assert.deepEqual(await f.result, {ok:true});
+  await assert.rejects(fs.access(f.directory),{code:'ENOENT'});
 });
 
 test('추론이 진행 중이면 전체 45초를 넘어서도 추천을 받는다', async t => {
@@ -59,6 +65,7 @@ test('응답 지연과 취소는 연결 종료 문구에 가려지지 않는다'
   await assert.rejects(idle.result, /대기 시간/);
   const cancelled = fixture(t); await cancelled.ready; cancelled.cancel();
   await assert.rejects(cancelled.result, /취소/);
+  await assert.rejects(fs.access(cancelled.directory),{code:'ENOENT'});
 });
 
 test('실행 도구 이벤트는 차단하고 그 이유를 표시한다', async t => {

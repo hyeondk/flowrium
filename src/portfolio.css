@@ -402,6 +402,8 @@
   padding: 14px;
   font-size: 13px;
   white-space: pre-wrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
   max-height: 60vh;
   overflow: auto;
 }

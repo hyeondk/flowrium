@@ -108,9 +108,9 @@ test('계획·검토·새 대화·재개에서 과거 권한과 관계없이 실
     await f.controller.send({sessionId:record.id,text:'폴더 확인',mode});
     assert.equal((await done).status,'completed');
     const current=calls.findLast(row=>row.method==='thread/start'||row.method==='thread/resume').params;
-    assert.equal(current.sandbox,'workspace-write');assert.equal(current.cwd,sub);assert.equal(current.approvalPolicy,'on-request');
+    assert.equal(current.sandbox,'workspace-write');assert.equal(current.cwd,sub);assert.equal(current.approvalPolicy,'on-request');assert.equal(current.approvalsReviewer,'auto_review');
     const turn=calls.findLast(row=>row.method==='turn/start').params;
-    assert.equal(turn.cwd,sub);assert.equal(turn.approvalPolicy,'on-request');
+    assert.equal(turn.cwd,sub);assert.equal(turn.approvalPolicy,'on-request');assert.equal(turn.approvalsReviewer,'auto_review');
     assert.deepEqual(turn.sandboxPolicy,{type:'workspaceWrite',writableRoots:[sub],excludeSlashTmp:true,excludeTmpdirEnvVar:true,networkAccess:false});
   }
   f.controller.options.resolveProjectDirectory=async()=>f.root;

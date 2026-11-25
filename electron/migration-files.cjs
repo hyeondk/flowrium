@@ -31,7 +31,7 @@ async function walk(root,{filter=()=>true,excluded=[],prefix=''}={}){
  }
  await visit(canonical,'');return result;
 }
-function fileFilter(rel,ent){const name=ent.name;if(ignored.has(name)||secret.test(name)||secret.test(name.replace(/\.(?:json5?|toml|ya?ml|ini|cfg|conf)$/i,'')))return false;return true;}
+function fileFilter(rel,ent){const name=ent.name;if(ent.isDirectory()&&rel.startsWith('.flowrium/')&&/^\.flowrium-(?:write|archive)-[a-z0-9]{6}$/i.test(name))return false;if(ignored.has(name)||secret.test(name)||secret.test(name.replace(/\.(?:json5?|toml|ya?ml|ini|cfg|conf)$/i,'')))return false;return true;}
 function objectEntry(relative,data){const b=Buffer.isBuffer(data)?data:Buffer.from(typeof data==='string'?data:JSON.stringify(data,null,2));return{path:safe(relative),sha256:digest(b),size:b.length,data:b};}
 async function content(entry){const data=entry.data||await bytes(entry.source);if(data.length!==entry.size||digest(data)!==entry.sha256)throw Error('미리보기 이후 원본이 바뀌었습니다. 이관 미리보기를 다시 진행해 주세요.');return data;}
 function publicManifest(snapshot){const result=structuredClone({...snapshot,entries:undefined,sourceChecks:undefined});delete result.entries;delete result.sourceChecks;result.files=snapshot.entries.map(({group,path,sha256,size})=>({group,path,sha256,size}));return result;}

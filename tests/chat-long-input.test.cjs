@@ -83,6 +83,44 @@ test('긴 프로젝트 요청은 재동기화 및 재기동해도 원문 하나�
   assert.equal((await readRequestSource(loaded,session.id,row.id,'full')).text,text);
 });
 
+test('회의록과 함께 보낸 네 부분의 원문은 파일 재동기화 뒤에도 읽고 내용 변경은 거절한다',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-source-refresh-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:4}));
+  const store=new Store(path.join(root,'profile')),folder=path.join(root,'project');
+  await fs.mkdir(folder);await store.load();
+  const project=await store.addProject(folder);
+  const session=store.session((await store.createSession(project.id)).id);
+  const {addAttachments}=require('../electron/chat-attachments.cjs');
+  const attachments=await addAttachments(store,project.id,[{
+    name:'회의록.txt',type:'text/plain',bytes:Buffer.from('합성 회의록'),
+  }]);
+  const text='회의록을 살펴봐 줘.\r\n'+'회의 안건과 맡은 사람 🪴\r\n'.repeat(2500)+'끝A';
+  const threadId=randomUUID(),userMessageId=randomUUID();
+  session.requestReaderThreadId=threadId;
+  session.messages.push({id:userMessageId,role:'user',text,attachments,createdAt:new Date().toISOString()});
+  const run={sessionId:session.id,threadId,userMessageId};
+  await scopedRequest({store},run,session,text,null,()=>{});
+  assert.equal(run.requestPages.length,4);
+  const ref=session.messages[0].requestSource;
+  const filename=path.join(folder,'.flowrium','attachments',ref.id,ref.name);
+  const {readPage}=require('../electron/scoped-request.cjs');
+  const readAll=()=>Promise.allSettled([1,2,3,4].map(page=>readPage(run,{page})));
+
+  // A sync provider can atomically replace the original with identical bytes.
+  await fs.copyFile(filename,filename+'.synced');
+  await fs.rename(filename+'.synced',filename);
+  const refreshed=await readAll();
+  assert.deepEqual(refreshed.map(row=>row.reason?.message??row.status),['fulfilled','fulfilled','fulfilled','fulfilled']);
+  assert.equal(refreshed.map(row=>row.value.text).join(''),text);
+  assert(refreshed.every(row=>row.value.sha256===ref.sha256));
+
+  // Changing a later part with the same byte length must also block earlier parts.
+  await fs.writeFile(filename,text.slice(0,-1)+'B');
+  const modified=await readAll();
+  assert(modified.every(row=>row.status==='rejected'&&/원문이 변경됐거나/.test(row.reason.message)));
+  assert.equal(session.messages[0].attachments[0].id,attachments[0].id);
+});
+
 test('20MiB 초과 UTF-8 원문은 청크 경계를 넘어도 한 번 저장되고 모델과 다시 연 화면에서 페이지별로 복원된다',async t=>{
   const {createHash}=require('node:crypto');
   const {sourceRecord, filePage}=require('../electron/chat-request-source.cjs');
@@ -175,6 +213,9 @@ test('모바일 미전송 원문은 취소·프로필 재시작에서만 정리�
   for(const dir of [old,unrelated,unknown])await fs.mkdir(dir);
   await fs.writeFile(path.join(old,'request.txt'),'중단된 전송 일부');
   await fs.writeFile(path.join(old,'.flowrium-write-'+randomUUID()+'.tmp'),'작성 중 메타데이터');
+  const current=path.join(old,'.flowrium-write-a1B2c3');
+  await fs.mkdir(current);
+  await fs.writeFile(path.join(current,'record.tmp'),'새 형식의 작성 중 메타데이터');
   await fs.writeFile(path.join(unknown,'사용자 자료.md'),'보존');
   await cleanupMobileRequestStages(restored);
   await assert.rejects(fs.stat(old),{code:'ENOENT'});

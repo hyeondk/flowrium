@@ -14,7 +14,7 @@ async function run(){
   const profile=path.join(temporary,'profile'),folder=path.join(temporary,'온라인 스토어 매출 분석');await fs.mkdir(folder);
   const store=new Store(profile);await store.load();const project=await addTrustedFixtureProject(store,folder,{account:backendFixtureAccount});
   const session=await store.createSession(project.id,{title:'상반기 매출 분석'});
-  await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light'});
+  await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs'),theme:'light',chatDefaults:{approval:'manual'}});
   await setFixtureAccountLinked(profile);
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temporary,'codex')};delete env.ELECTRON_RUN_AS_NODE;delete env.ELECTRON_RENDERER_URL;
   app=await _electron.launch({args:[root],env,timeout:45000});const page=await app.firstWindow();page.setDefaultTimeout(16000);

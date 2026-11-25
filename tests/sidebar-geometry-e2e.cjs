@@ -29,7 +29,7 @@ async function run() {
     const runningSession=await store.createSession(markerProject.id,{title:'진행 상태 검증'});
     const decisionSession=await store.createSession(markerProject.id,{title:'결정 상태 검증'});
     fixtureRuns=[runningSession.id,decisionSession.id];
-    await store.saveSettings({codexPath:path.join(__dirname, 'backend-fake-codex.cjs')});
+    await store.saveSettings({codexPath:path.join(__dirname, 'backend-fake-codex.cjs'),chatDefaults:{approval:'manual'}});
     await trustFixtureProject(store,markerProject,{account:backendFixtureAccount});
     await setFixtureAccountLinked(profile);
     const env = {...process.env, FLOWRIUM_USER_DATA:profile, CODEX_HOME:path.join(temp,'codex')};
