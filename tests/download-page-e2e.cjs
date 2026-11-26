@@ -174,7 +174,7 @@ async function run() {
         },
       }});
     });
-    await page.getByRole("button", {name: "윈도우 내려받기 명령 복사"}).click();
+    await page.getByRole("button", {name: "Windows 내려받기 명령 복사"}).click();
     await page.getByRole("status").filter({hasText:"명령을 클립보드에 복사했습니다"}).waitFor();
     assert.equal(await page.evaluate(()=>window.copiedCommand),await page.locator("#win-download-command").textContent());
     await page.evaluate(()=>window.rejectClipboard=true);
