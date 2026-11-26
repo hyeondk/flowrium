@@ -182,7 +182,13 @@ class ChatQueue {
     }catch(error){
       if(q.status==='cancelled' || q.nativeDelivery)return;
       q.status='queued';
-      if(c.shuttingDown && !s.messages.some(m=>m.id===q.id))return;
+      if(!s.messages.some(m=>m.id===q.id)){
+        if(c.shuttingDown)return;
+        if(c.options.canRun?.()===false && c.canContinueWork()){
+          this.schedule(id);
+          return;
+        }
+      }
       if(error.code==='THREAD_WRITER_BUSY'||error.code==='THREAD_ACTIVE'){
         const offer=q.nativeQueueAvailable===undefined && native.eligible(s,q);
         const changed=!q.waitingForWriter || offer;

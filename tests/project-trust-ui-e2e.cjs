@@ -129,7 +129,7 @@ async function main() {
     await page.getByRole('navigation',{name:'주 메뉴'}).getByRole('button',{name:'주간업무보고',exact:true}).click();
     const report=page.getByRole('dialog',{name:'주간업무보고'});
     await report.getByRole('button',{name:'전체 선택',exact:true}).click();
-    await report.getByLabel('보고서를 저장할 프로젝트').selectOption(project.id);
+    await report.getByLabel('보고 대화를 둘 프로젝트').selectOption(project.id);
     const instructions=report.getByLabel('덧붙일 말 선택 사항');
     await instructions.fill('두 폴더의 주간 보고');
     await report.getByRole('button',{name:'ChatGPT로 보고서 작성',exact:true}).click();

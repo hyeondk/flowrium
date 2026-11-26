@@ -255,7 +255,12 @@ class WorkflowRuntime {
     this.record.quota.push({sourceId,at:now});
   }
   async sendMessage(sourceId,targetId,body,options={}){
-    this.ready();const source=sourceId?this.store.session(id(sourceId)):null,target=this.store.session(id(targetId));
+    if(options.kind==='result'){
+      // A completed, previously approved task can persist its reply while the
+      // screen is locked. The delivery itself waits for an unlocked account.
+      if(this.closed||this.owner!==this.account()||this.controller.canContinueWork?.()===false)throw stale();
+    }else this.ready();
+    const source=sourceId?this.store.session(id(sourceId)):null,target=this.store.session(id(targetId));
     if(source?.id===target.id)throw new Error("같은 대화에는 추가 지시 입력창을 사용해 주세요.");
     if(this.record.deliveries.filter(d=>d.targetId===targetId&&d.status==="queued").length>=100)throw new Error("받는 대화의 대기 지시가 많습니다. 먼저 처리해 주세요.");
     if(this.record.deliveries.filter(d=>["queued","dispatching"].includes(d.status)).length>=500)throw new Error("먼저 전달 대기 중인 업무를 처리해 주세요.");
@@ -275,6 +280,7 @@ class WorkflowRuntime {
     let target;
     try{target=this.store.session(targetId);}catch{message.status="failed";message.error="받는 대화가 삭제됐습니다.";await this.save();return;}
     if(!target.scope && !await this.store.isProjectTrusted(target.projectId))return;
+    if(this.closed||this.options.canRun?.()===false)return;
     if(target.workflow?.status==="done"){message.status="held";message.error="완료된 업무는 재개한 뒤 전달해 주세요.";await this.save();return;}
     const source=message.sourceId&&(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===message.sourceId);
     message.status="dispatching";message.before=target.messages.length;
@@ -284,7 +290,15 @@ class WorkflowRuntime {
     try{
       await this.controller.send({sessionId:targetId,text:`[Flowrium 업무 전달 / ${source?.title||"사용자"}]\n${message.text}`,mode:message.kind==='request'&&source?.scope==='integrated'?'build':target.workflow?.teamSlot?.mode||"plan"});
       message.status="sent";message.sentAt=this.stamp();
-    }catch(error){message.status="failed";message.error=String(error.message).slice(0,2000);if(report){report.status="failed";report.error=message.error;}}
+    }catch(error){
+      if(this.options.canRun?.()===false&&this.controller.canContinueWork?.()===true&&this.owner===this.account()&&target.messages.length===message.before){
+        message.status="queued";delete message.before;
+        if(report){report.status="queued";delete report.deliveryId;}
+      }else{
+        message.status="failed";message.error=String(error.message).slice(0,2000);
+        if(report){report.status="failed";report.error=message.error;}
+      }
+    }
     await this.save();
   }
   async collect(){

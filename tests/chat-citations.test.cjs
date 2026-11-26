@@ -3,10 +3,12 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
 const os=require('node:os');
 const path=require('node:path');
+const {pathToFileURL}=require('node:url');
 const {randomUUID}=require('node:crypto');
 const {Store}=require('../electron/store.cjs');
 const {readChatCitation}=require('../electron/chat-citations.cjs');
 const {presentCitations}=require('../electron/mobile/file-citations.js');
+const {chatFileLinkTarget}=require('../electron/chat-file-links.js');
 const source=':codex-file-citation{path="outputs/표지.png" artifactId="report"}';
 const document=':codex-file-citation{path="outputs/보고서.pptx" artifactId="report"}';
 test('스트리밍 경계, 코드와 인용, 파일별 식별 관계 및 원문 보존',()=>{
@@ -37,6 +39,46 @@ test('답변에 포함된 같은 프로젝트의 실제 산출물만 읽고 원�
   assert.equal((await readChatCitation(store,chat.id,message.id,1,'download')).name,'보고서.pptx');
   await assert.rejects(readChatCitation(store,chat.id,message.id,2,'download'));
   await assert.rejects(readChatCitation(store,chat.id,randomUUID(),0,'preview'));
+});
+
+test('마크다운 파일 링크는 로컬 경로만 디코딩하고 겹친 퍼센트 표현을 그대로 둔다',()=>{
+  assert.equal(chatFileLinkTarget('/프로젝트/회의%20록%2520.hwp'),'/프로젝트/회의 록%20.hwp');
+  assert.equal(chatFileLinkTarget('file:///C:/프로젝트/회의%20록.pdf'),'C:/프로젝트/회의 록.pdf');
+  assert.equal(chatFileLinkTarget('C:%5C프로젝트%5C회의.pdf'),'C:/프로젝트/회의.pdf');
+  for(const href of ['#제목','https://example.com/회의.pdf','javascript:alert(1)','file://nas/회의.pdf','//nas/회의.pdf','%5C%5Cnas%5C회의.pdf','outputs/%00회의.pdf']){
+    assert.equal(chatFileLinkTarget(href),null,href);
+  }
+});
+
+test('저장한 답변의 마크다운 파일 링크와 한글 파일 참조만 같은 프로젝트에서 표시한다',async t=>{
+  const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-markdown-file-')));
+  t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5}));
+  const folder=path.join(root,'프로젝트'),docs=path.join(folder,'회의 자료 (검토)'),external=path.join(root,'다른 폴더');
+  await fs.mkdir(docs,{recursive:true});
+  await fs.mkdir(external);
+  const hwp=path.join(docs,'회의록 최종.hwp'),pdf=path.join(docs,'보고서 %20.pdf'),offsite=path.join(external,'외부.pdf');
+  await Promise.all([hwp,pdf,offsite].map(file=>fs.writeFile(file,'fixture')));
+  await fs.symlink(external,path.join(folder,'연결'),'junction');
+  const store=new Store(path.join(root,'profile'));await store.load();
+  const project=await store.addProject(folder);
+  const portable=file=>file.split(path.sep).join('/');
+  const paths=[portable(hwp),pathToFileURL(pdf).href,portable(offsite),'연결/외부.pdf','회의 자료 (검토)/누락.pdf'];
+  const picked=[];
+  const body=paths.map(link=>`[회의 파일](<${link}>)`).join('\n');
+  const forged='`[다른 파일](<'+portable(hwp)+'>)`';
+  const messages=[{role:'assistant',id:randomUUID(),text:body+'\n:codex-file-citation{path='+JSON.stringify(portable(hwp))+'}',createdAt:new Date().toISOString()},
+    {role:'assistant',id:randomUUID(),text:forged,createdAt:new Date().toISOString()},
+    {role:'user',id:randomUUID(),text:body,createdAt:new Date().toISOString()}];
+  const chat=await store.createSession(project.id,{messages});
+  const show=(index,message=messages[0])=>readChatCitation(store,chat.id,message.id,index,'reveal',file=>picked.push(file));
+  assert.equal((await show(paths[0])).name,'회의록 최종.hwp');
+  assert.equal((await show(paths[1])).name,'보고서 %20.pdf');
+  assert.equal((await show(0)).name,'회의록 최종.hwp');
+  for(const link of [...paths.slice(2),portable(hwp.replace('.hwp','.xlsx'))])await assert.rejects(show(link));
+  await assert.rejects(show(paths[0],messages[1]));
+  await assert.rejects(show(paths[0],messages[2]));
+  await assert.rejects(readChatCitation(store,chat.id,messages[0].id,paths[1],'download'));
+  assert.deepEqual(picked.map(file=>file.normalize('NFC')),[hwp,pdf,hwp].map(file=>file.normalize('NFC')));
 });
 
 test('PC 입력기와 번들 모바일 입력기가 물결표 및 기존 마크다운 문법을 동일하게 처리한다',async()=>{

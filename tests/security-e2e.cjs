@@ -5,6 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { _electron } = require("playwright");
 const {expect} = require("playwright/test");
+const {randomUUID} = require('node:crypto');
 const {closeSettings,settledRail}=require("./shell-test-helpers.cjs");
 const { Store } = require("../electron/store.cjs");
 
@@ -24,10 +25,12 @@ async function run() {
     chatDefaults:{approval:"manual"},
   });
   await setFixtureAccountLinked(profile);
+  const lockGate = path.join(tmp, '응답 진행');
   const env = {
     ...process.env,
     FLOWRIUM_USER_DATA: profile,
     CODEX_HOME: path.join(tmp, "codex"),
+    FLOWRIUM_TEST_LOCK_GATE: lockGate,
   };
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.ELECTRON_RENDERER_URL;
@@ -205,6 +208,54 @@ async function run() {
     await app.evaluate(({dialog})=>{dialog.showSaveDialog=globalThis.flowriumSaveTest.original;delete globalThis.flowriumSaveTest;});
     await page.evaluate(()=>window.flowrium.unlockSecurity('7904'));
     await page.locator('.pf-project-entry').filter({hasText:'잠금 검증 프로젝트'}).waitFor();
+
+    const savedAnswer = async (root,id,marker) => {
+      const directory = path.join(root,'.flowrium','sessions');
+      for (const name of await fs.readdir(directory)) {
+        if (!name.startsWith(id+'--')) continue;
+        const revision = JSON.parse(await fs.readFile(path.join(directory,name),'utf8'));
+        if(revision.session?.messages.some(m=>m.role==='assistant' && m.text==='잠금 실행 완료 / '+marker))return true;
+      }
+      return false;
+    };
+    const submit = async (sessionId,kind,submissionId) => {
+      await page.evaluate(value=>window.flowrium.send(value),{sessionId,mode:'plan',text:'잠금 실행 검증 '+kind,submissionId});
+      await expect.poll(()=>page.evaluate(async id=>{
+        const session=(await window.flowrium.bootstrap()).sessions.find(item=>item.id===id);
+        return Boolean(session?.messages.findLast(m=>m.role==='user')?.turnId);
+      },sessionId)).toBe(true);
+    };
+    const checkLocked = async (root,id,marker) => {
+      await page.getByRole('heading',{name:'화면 잠금'}).waitFor();
+      await assert.rejects(page.evaluate(sessionId=>window.flowrium.send({sessionId,text:'잠금 중 새 작업'}),id),/잠겼습니다/);
+      await fs.writeFile(lockGate+'.'+marker,'');
+      await expect.poll(()=>savedAnswer(root,id,marker)).toBe(true);
+      assert(!await page.getByText('잠금 실행 완료 / '+marker,{exact:true}).isVisible());
+      await page.evaluate(()=>window.flowrium.unlockSecurity('7904'));
+      await page.locator('.security-lock-layer').waitFor({state:'detached'});
+      const restored=await page.evaluate(id=>window.flowrium.bootstrap().then(data=>data.sessions.find(item=>item.id===id)),id);
+      assert(restored?.messages.some(m=>m.role==='assistant'&&m.text==='잠금 실행 완료 / '+marker));
+    };
+    for (const scope of ['general','integrated']) {
+      const active=await page.evaluate(scope=>window.flowrium.createHubConversation({scope,title:'잠금 실행 시험'}),scope);
+      await submit(active.id,scope);
+      const root=await page.evaluate(id=>window.flowrium.bootstrap().then(data=>data.conversationProjects.find(project=>project.id===id).path),active.projectId);
+      await page.evaluate(()=>window.flowrium.lockSecurity());
+      await checkLocked(root,active.id,scope);
+    }
+    await submit(session.id,'project');
+    const pause=await page.evaluate(projectId=>window.flowrium.startWork({projectId,kind:'pause',title:'잠금 업무 마감 시험'}),project.id);
+    const batchId=randomUUID(), submissionId=randomUUID();
+    await page.evaluate(async input=>{
+      await window.flowrium.workflowAction({action:'beginWorkClose',batchId:input.batchId});
+      await window.flowrium.workflowAction({action:'armWorkClose',...input,reason:'퇴근',memo:''});
+    },{sessionId:pause.id,batchId,submissionId});
+    await submit(pause.id,'pause',submissionId);
+    await page.evaluate(batchId=>window.flowrium.workflowAction({action:'finishWorkClose',batchId}),batchId);
+    await fs.writeFile(lockGate+'.pause','');
+    await checkLocked(folder,session.id,'project');
+    await expect.poll(()=>page.evaluate(async()=> (await window.flowrium.workflowState()).workClose?.sessions[0].status)).toBe('completed');
+
     await page.evaluate(async (id) => {
       await window.flowrium.send({
         sessionId: id,
@@ -272,7 +323,7 @@ async function run() {
       async (id) =>
         (await window.flowrium.bootstrap()).sessions
           .find((s) => s.id === id)
-          ?.messages.some((m) => m.role === "assistant"),
+          ?.messages.some((m) => m.role === "assistant" && m.text.includes('decline')),
       session.id,
     );
     await side.hover();await btn("로그아웃").click();

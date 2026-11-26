@@ -93,6 +93,7 @@ test('일반 / 통합 대화의 계정별 영속 저장과 실행 범위 격리'
   await controller.finish(run,'completed');
   const loaded=new Store(path.join(temp,'app'));await loaded.load();loaded.conversations.getOwner=()=>owner;await loaded.syncConversationOwner();assert.equal(loaded.session(g.id).threadId,g.threadId);assert.equal(loaded.session(g.id).messages[0].text,'일반 질문');
   const hub=store.session(integrated.id),hubRun={sessionId:hub.id,ownerRevision:owner};
+  controller.runs.set(hub.id,hubRun);
   const value=await callScopeTool(controller,hubRun,{tool:'flowrium_hub_snapshot',arguments:{query:''}});assert(value.projects.some(p=>p.id===project.id));assert(JSON.stringify(value).includes('프로젝트 현황 근거'));assert(!JSON.stringify(value).includes(original));
   await callScopeTool(controller,hubRun,{tool:'flowrium_hub_delegate',arguments:{projectId:project.id,title:'변경 제안',text:'검증 후 구현'}});assert.equal(proposals.length,1);assert.equal(proposals[0].action,'request');assert.equal(store.state.sessions.length,1,'승인 전에 업무 대화를 만들지 않는다.');
   await assert.rejects(callScopeTool(controller,hubRun,{tool:'flowrium_chat_send',arguments:{targetId:work.id,text:'실행'}}),/허용되지/);
@@ -104,7 +105,7 @@ test('일반 / 통합 대화의 계정별 영속 저장과 실행 범위 격리'
   let emitted=false;controller.on('event',e=>{if(e.sessionId===g.id)emitted=true;});controller.emitEvent({type:'session',sessionId:g.id,session:g});assert.equal(emitted,false);
   owner=0;await store.syncConversationOwner();assert.equal(store.session(g.id).id,g.id);assert.equal(store.snapshot().sessions.length,3);await assert.rejects(store.addProject(store.project(g.projectId).path),/개인 대화 저장소/);
   await assert.rejects(store.createSession(g.projectId,{workflow:{kind:'research'}}),/프로젝트 업무/);
-  assert.equal((await snapshot(controller)).projects.length,1);
+  assert.equal((await snapshot(controller)).projects.length,1);controller.runs.delete(hub.id);
   await controller.saveSettings({codexPath:path.join(temp,'다른 실행 파일')});assert.equal(scoped[0].ready,false);assert.equal(controller.scopeClients.size,0);assert.equal(controller.loadedThreads.size,0);
  }finally{await controller?.shutdown();await fs.rm(temp,{recursive:true,force:true,maxRetries:4,retryDelay:100});}
 });
@@ -127,20 +128,26 @@ test('통합 현황의 검색 일치 수와 등록 전체 수를 구분하고 �
 test('통합 업무 제안은 실제 결정함 승인 뒤 프로젝트에서 실행하고 결과를 원대화에 회신한다',async()=>{
  const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-hub-workflow-'));let workflow;
  try{
-  let revision=0,account='계정-가';const store=new Store(path.join(temporary,'app'));await store.load();const folder=path.join(temporary,'project');await fs.mkdir(folder);const project=await require('./project-trust-fixture.cjs').addTrustedFixtureProject(store,folder);
+  let revision=0,account='계정-가',locked=false;const store=new Store(path.join(temporary,'app'));await store.load();const folder=path.join(temporary,'project');await fs.mkdir(folder);const project=await require('./project-trust-fixture.cjs').addTrustedFixtureProject(store,folder);
   class WorkController extends EventEmitter{
    constructor(){super();this.store=store;this.options={queueOwner:()=>revision,canRun:()=>true};this.runs=new Map();this.editingSessions=new Set();this.sent=[];}
+   canExecuteRun(run){return Controller.prototype.canExecuteRun.call(this,run);}
    async send(input){const s=store.session(input.sessionId);s.messages.push({id:require('node:crypto').randomUUID(),role:'user',text:input.text,createdAt:new Date().toISOString()});await store.save();this.sent.push(input);this.runs.set(s.id,{sessionId:s.id});return{accepted:true};}
    async finish(id){const s=store.session(id);s.messages.push({id:require('node:crypto').randomUUID(),role:'assistant',text:'실제 프로젝트 검증 결과',createdAt:new Date().toISOString()});await store.save();this.runs.delete(id);this.emit('event',{type:'done',sessionId:id,status:'completed'});}
   }
-  const controller=new WorkController(),apis=new Map();workflow=new(require('../electron/workflow.cjs').WorkflowRuntime)(store,controller,{canRun:()=>true,accountRevision:()=>revision,intervalMs:3600000});await workflow.state();
+  const controller=new WorkController(),apis=new Map();workflow=new(require('../electron/workflow.cjs').WorkflowRuntime)(store,controller,{canRun:()=>!locked,accountRevision:()=>revision,intervalMs:3600000});await workflow.state();
   registerConversationScopes((n,f)=>apis.set(n,f),store,controller,{accountRevision:()=>revision,accountOwner:()=>account,workflowAction:input=>workflow.action(input)});
   const integrated=await apis.get('createHubConversation')({scope:'integrated'}),run={sessionId:integrated.id,ownerRevision:revision};
+  controller.runs.set(integrated.id,run);
   const proposed=await callScopeTool(controller,run,{tool:'flowrium_hub_delegate',arguments:{projectId:project.id,title:'프로젝트 구현',text:'명시한 범위의 변경을 구현하고 검증해 주세요.'}});
+  controller.runs.delete(integrated.id);
   assert.equal(proposed.status,'pending');assert.equal(controller.sent.length,0);assert.equal(store.state.sessions.length,0);
   const row=(await workflow.state()).proposals[0];await workflow.action({action:'approve',id:row.id,revision:row.revision});
   assert.equal(controller.sent.length,1);assert.equal(controller.sent[0].mode,'build');const target=store.session(controller.sent[0].sessionId);assert.equal(target.projectId,project.id);assert(!target.scope);
-  await controller.finish(target.id);
+  locked=true;await controller.finish(target.id);await workflow.queue;
+  assert.equal(controller.sent.length,1,'잠금 중 별도 작업으로 시작하지 않습니다.');
+  assert(workflow.record.deliveries.some(row=>row.kind==='result'&&row.status==='queued'&&row.targetId===integrated.id));
+  locked=false;await workflow.tick();
   for(let i=0;i<100&&controller.sent.length<2;i++)await new Promise(r=>setTimeout(r,10));
   assert.equal(controller.sent.length,2);assert.equal(controller.sent[1].sessionId,integrated.id);assert.match(controller.sent[1].text,/실제 프로젝트 검증 결과/);assert.equal(controller.sent[1].mode,'plan');
   revision=1;await store.syncConversationOwner();assert.equal(store.session(integrated.id).scope,'integrated','같은 계정의 재로그인은 기존 대화를 보존한다.');

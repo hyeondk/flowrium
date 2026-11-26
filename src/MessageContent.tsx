@@ -1,6 +1,6 @@
 import {useMemo,useState,type ReactNode} from 'react';
 import {CheckCheck,CircleAlert,ChevronDown,Copy,FileText,TerminalSquare} from 'lucide-react';
-import ReactMarkdown, {type Components} from 'react-markdown';
+import ReactMarkdown, {defaultUrlTransform,type Components} from 'react-markdown';
 import type {Processor} from 'unified';
 import type {Extension} from 'micromark-util-types';
 import remarkGfm from 'remark-gfm';
@@ -8,6 +8,7 @@ import {messageContent,safeLogPreview} from './message-content';
 import './message-content.css';
 import ChatCitation from './ChatCitation';
 import {presentCitations} from '../electron/mobile/file-citations.js';
+import {chatFileLinkTarget} from '../electron/chat-file-links.js';
 
 type Props={sessionId?:string;messageId?:string;text:string;role:'user'|'assistant'|'system';streaming?:boolean;hasLaterRequest?:boolean;retryAction?:ReactNode};
 function failureTitle(text:string,previous:boolean){
@@ -18,15 +19,31 @@ function preserveTildes(this:Processor) {
  const data=this.data() as {micromarkExtensions?: Extension[]};
  (data.micromarkExtensions ||= []).push({disable:{null:['strikethrough']}});
 }
+type FileLinkSource={sessionId:string;messageId:string};
 const markdownComponents: Components = {
-  a: ({node: _, href, children, ...props}) =>
-    <a {...props} href={href} target={href?.startsWith('#') ? undefined : '_blank'} rel="noopener noreferrer">{children}</a>,
   table: ({node: _, ...props}) =>
     <div className="message-table-wrap" role="region" aria-label="답변 표" tabIndex={0}><table {...props}/></div>,
 };
-function Markdown({text}:{text:string}){
+function MarkdownFileLink({sessionId,messageId,href,children}:FileLinkSource&{href:string;children:ReactNode}) {
+ const [error,setError]=useState(false);
+ async function reveal(){
+  try{await window.flowrium!.readChatCitation(sessionId,messageId,href,'reveal');setError(false);}
+  catch{setError(true);}
+ }
+ return <><a href="#파일-위치" title="파일 위치 열기" onClick={event=>{event.preventDefault();void reveal();}}>{children}</a>
+  {error&&<span className="message-file-link-error" role="status">파일 위치를 열 수 없습니다. 프로젝트 폴더에서 파일을 확인해 주세요.</span>}</>;
+}
+function Markdown({text,sessionId,messageId}:{text:string;sessionId?:string;messageId?:string}){
+ const enableFiles=Boolean(window.flowrium&&sessionId&&messageId);
+ const components=useMemo<Components>(()=>({
+  ...markdownComponents,
+  a:({node:_,href,children,...props})=>enableFiles&&sessionId&&messageId&&href&&chatFileLinkTarget(href)
+   ? <MarkdownFileLink sessionId={sessionId} messageId={messageId} href={href}>{children}</MarkdownFileLink>
+   : <a {...props} href={href} target={href?.startsWith('#')?undefined:'_blank'} rel="noopener noreferrer">{children}</a>,
+ }),[enableFiles,sessionId,messageId]);
  return <div className="markdown message-prose">
-  <ReactMarkdown remarkPlugins={[remarkGfm, preserveTildes]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={markdownComponents}>
+  <ReactMarkdown remarkPlugins={[remarkGfm, preserveTildes]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={components}
+    urlTransform={(url,key,element)=>enableFiles&&key==='href'&&element.tagName==='a'&&chatFileLinkTarget(url)?url:defaultUrlTransform(url)}>
     {text}
   </ReactMarkdown>
  </div>;
@@ -63,8 +80,9 @@ function LogDetails({raw,title,failed=false,pending=false,requestFailure,childre
 export default function MessageContent({text,role,sessionId,messageId,streaming=false,hasLaterRequest=false,retryAction}:Props){
  const citations=useMemo(()=>presentCitations(text,role,streaming),[text,role,streaming]);
  const blocks=useMemo(()=>messageContent(citations.text,role,streaming),[citations.text,role,streaming]);
+ const linkSession=role==='assistant'?sessionId:undefined;
  return <div className="message-content">
-  {blocks.map((block,index)=>block.kind==='markdown'?<Markdown key={index} text={block.text}/>:
+  {blocks.map((block,index)=>block.kind==='markdown'?<Markdown key={index} text={block.text} sessionId={linkSession} messageId={messageId}/>:
    block.kind==='question-reply'?<section key={index} className="message-question-reply" aria-label="보낸 질문 답변">
     <div className="message-question-reply-label"><CheckCheck size={14} aria-hidden="true"/>응답 보냄</div>
     <dl>{block.answers.map((row,i)=><div key={i}><dt>{row.question}</dt><dd>{row.answer}</dd></div>)}</dl>
@@ -72,7 +90,7 @@ export default function MessageContent({text,role,sessionId,messageId,streaming=
    block.kind==='literal'?<pre key={index} className="message-literal"><code>{block.raw}</code></pre>:
    block.kind==='writing'?<section className="message-writing" aria-label="작성 내용" key={index}>
     <div className="message-writing-label"><FileText size={13} aria-hidden="true"/>작성 내용</div>
-    <Markdown text={block.text}/>
+    <Markdown text={block.text} sessionId={linkSession} messageId={messageId}/>
     <LogDetails raw={block.raw} title="작성 서식 원문"/>
    </section>:role==='system'&&block.failed
     ?<LogDetails key={index} raw={block.raw} title={failureTitle(block.raw,hasLaterRequest)} failed requestFailure={hasLaterRequest?'previous':'failed'}>{retryAction}</LogDetails>

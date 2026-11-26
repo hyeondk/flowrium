@@ -23,3 +23,11 @@
 .portfolio-report-dialog .report-history-row { padding:16px; margin:0 0 8px; min-height:64px; border-color:var(--line-soft); border-radius:10px; background:var(--card-subtle); }
 .portfolio-report-dialog .report-empty { padding:32px 20px; }.portfolio-report-dialog .report-more { padding-top:16px; border-color:var(--line-soft); }
 @media(max-width:600px) { .portfolio-report-dialog .report-dialog-heading { padding:20px 16px; }.portfolio-report-dialog .report-dialog-tabs { padding:12px 16px 0; }.portfolio-report-dialog .report-dialog-body { padding:16px; }.portfolio-report-dialog .report-dialog-footer { padding:16px; }.portfolio-report-dialog .report-dialog-heading h1 { font-size:20px; line-height:28px; } }
+
+.weekly-report-file { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; margin-top:10px; padding:8px 10px; min-width:0; border:1px solid var(--line-soft); border-radius:9px; background:var(--panel); word-break:keep-all; }
+.weekly-report-file > svg { flex:none; color:var(--accent); }
+.weekly-report-file > div { flex:1 1 130px; min-width:0; }
+.weekly-report-file :is(strong,small) { display:block; overflow-wrap:anywhere; }
+.weekly-report-file small,.weekly-report-file-status { color:var(--muted); font-size:12px; }
+.weekly-report-file button { margin-left:auto; white-space:nowrap; }
+.weekly-report-file-error { width:100%; margin:0; color:var(--danger); }

@@ -30,9 +30,10 @@ function createRunClient(controller,run){
  client.on('inputResolved',request=>controller.forwardInputResolved(request));
  client.on('tool',async({requestId,params})=>{
   try{
-   if(controller.runs.get(run.sessionId)!==run||run.finalized||run.cancelled||params.threadId!==run.threadId||(run.turnId&&params.turnId!==run.turnId)||controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('이 작업의 도구 요청은 종료됐습니다.');
+   if(params.threadId!==run.threadId||(run.turnId&&params.turnId!==run.turnId)||!controller.canExecuteRun(run))throw Error('이 작업의 도구 요청은 종료됐습니다.');
    const request=require('./scoped-request.cjs');
    if(params.tool===request.reader.name){client.answerTool(requestId,await request.projectPage(controller.store.session(run.sessionId),run,params.arguments));return;}
+   if(controller.options.canRun?.()===false)throw Error('잠금 해제 후 앱 기능을 이용해 주세요.');
    const tools=await controller.options.applicationTools?.(controller.store.session(run.sessionId))||[];
    if(!tools.some(tool=>tool.name===params.tool))throw Error('원래 앱 전용 도구를 Flowrium에서 실행할 수 없습니다. 이 도구가 필요한 작업은 원래 앱에서 이어가 주세요.');
    const result=await controller.options.callApplicationTool?.({sessionId:run.sessionId,name:params.tool,arguments:params.arguments,callId:params.callId});

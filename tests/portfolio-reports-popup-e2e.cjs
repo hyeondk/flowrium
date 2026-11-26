@@ -81,6 +81,17 @@ async function run() {
     await dialog.getByRole('button', { name: 'ChatGPT로 보고서 작성', exact: true }).click(); await dialog.waitFor({ state: 'detached' });
     await page.waitForFunction(async () => (await window.flowrium.bootstrap()).sessions.some(session => session.title === '팝업 검증 주간보고' && session.messages.some(message => message.role === 'assistant')));
     let data = await snapshot(); const report = data.sessions.find(session => session.title === '팝업 검증 주간보고'); assert.equal(report.preferences.model, 'test-model'); assert.equal(report.preferences.effort, 'xhigh'); assert.deepEqual(report.workflow.reportProjects, projects.map(project => project.id)); assert.equal(report.workflow.from, '2026-11-01'); assert.equal(report.workflow.to, '2026-11-06');
+    const answerId = report.messages.find(message => message.role === 'assistant').id;
+    const reportFile = path.join(profile, 'weekly-report-files', report.id + '--' + answerId + '.xlsx');
+    const saveWeekly = () => page.getByRole('button', { name: '엑셀 저장', exact: true });
+    await saveWeekly().waitFor();
+    const reportBytes = await fs.readFile(reportFile);
+    assert.equal(reportBytes.subarray(0, 2).toString(), 'PK');
+    await assert.rejects(fs.access(path.join(projects[0].path, '산출물')), { code:'ENOENT' });
+    await app.evaluate(({ dialog }) => { dialog.showSaveDialog = async () => ({ canceled:true }); });
+    await saveWeekly().click();
+    await saveWeekly().waitFor();
+    assert.deepEqual(await fs.readFile(reportFile), reportBytes);
     dialog = await open('주간업무보고'); await dialog.getByRole('button', { name: '작성된 보고', exact: true }).click(); await dialog.getByRole('button').filter({ hasText: '팝업 검증 주간보고' }).click(); await dialog.waitFor({ state: 'detached' });
     const memo='회의 후 검증 결과 이어서 확인', closeTitle='팝업 검증 업무마감', resumeTitle='업무를 다시 이어갈 시간이에요.';
     dialog = await open('업무 마감'); await dialog.getByRole('button', { name: '전체 선택', exact: true }).click(); await dialog.getByRole('button', { name: '회의', exact: true }).click();
@@ -220,6 +231,18 @@ async function run() {
     await page.getByRole('button',{name:'잠금 해제',exact:true}).click();
     await page.locator('.security-lock-layer').waitFor({state:'detached'});
     await waitDashboard();
+    assert(await page.evaluate(({ id, answerId }) => window.flowrium.readWeeklyReportFile(id, answerId), { id:report.id, answerId }));
+    dialog = await open('주간업무보고');
+    await dialog.getByRole('button', { name: '작성된 보고', exact: true }).click();
+    await dialog.getByRole('button').filter({ hasText: '팝업 검증 주간보고' }).click();
+    await dialog.waitFor({ state: 'detached' });
+    const saved = path.join(temp, '직접 선택한 주간보고.xlsx');
+    await app.evaluate(({ dialog }, filePath) => { dialog.showSaveDialog = async () => ({ canceled:false, filePath }); }, saved);
+    await saveWeekly().click();
+    await page.getByText('엑셀 보고서를 저장했습니다.', { exact:true }).waitFor();
+    assert.deepEqual(await fs.readFile(saved), reportBytes);
+    await assert.rejects(fs.access(reportFile), { code:'ENOENT' });
+    if (await closeChat().isVisible()) await closeChat().click();
     await toolbar().getByRole('button',{name:'업무 재개',exact:true}).click();
     await pauseRows().first().waitFor();
     assert.equal(await pauseRows().count(),2);
@@ -230,6 +253,7 @@ async function run() {
     assert.equal((await workflow()).notifications.filter(item=>item.kind==='work-resume').length,1);
     assert.deepEqual(errors, []);
     console.log('보고와 마감 실제 앱 팝업 / 중앙 위치와 본문 포털 / 원래 화면 유지 / 1440·800·390폭 / 계정 실제 모델·지원 추론 강도 / 모델 변경 초기화 / AI 보고 생성 / 기록 열기 / 프로젝트별 AI 마감 / 실제 요청 전달 검증 통과');
+    console.log('주간보고 완료 뒤 대화에 엑셀 표시 / 프로젝트 폴더에 자동 저장 0건 / 저장 취소 및 앱 재실행 보존 / 직접 선택한 위치에 실제 파일 저장 / 임시 파일 제거 통과');
     console.log('마감 사유와 모델 요청 분리 / 창 복귀 알림 '+Math.round(latency)+'ms'+(nativeReturn?' (실제 포커스·가시성 이벤트)':' (자동화 포커스 이벤트 재현)')+' / 동일 높이 '+JSON.stringify(closedHeights)+' / 두 원본 마감 기록 / 메모 명시 조회·잠금 차단·재시작 보존 / 알림 한 건 확인');
   } catch (error) { if (page && !page.isClosed()) console.error('실패 시 실제 화면', await page.locator('body').innerText().catch(() => '')); throw error; }
   finally { if (app) await app.close().catch(() => {}); await fs.rm(temp, { recursive: true, force: true, maxRetries: 8, retryDelay: 150 }); }

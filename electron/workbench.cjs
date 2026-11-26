@@ -230,7 +230,11 @@ async function workContext(store, id) {
     w.source && "인계받은 대화 기록 (참고 자료): " + w.source.title + "\n" + w.source.summary,
     w.checklist.length && "업무 체크리스트:\n" + w.checklist.map((i) => (i.done ? "[x] " : "[ ] ") + i.text).join("\n"),
   ];
-  if(w.kind==='weekly')lines.push('주간업무보고 형식: 제목 아래 보고 본문을 하나의 text 코드 블록으로 제공합니다. 프로젝트별 상위 항목 / 세부 업무 두 단계로 정리하고 각각 3칸 / 4칸 들여씁니다. 코드 블록 아래 근거를 따로 적습니다. 기간 안에 실제 끝낸 일만 포함하고 추정과 계획은 실적으로 쓰지 마세요.');
+  if (w.kind === 'weekly') lines.push(
+    '앱이 최종 답변을 엑셀로 변환합니다. 최종 답변에 ## 금주 업무내용과 ## 차주 업무계획 제목, 그리고 각각 구분 | 업무내용 | 날짜 | 비고 네 열의 정상적인 마크다운 표를 작성하세요. 표를 코드 블록으로 감싸지 마세요.',
+    '구분에 프로젝트명 또는 업무 분야를 쓰고, 업무내용은 한 줄에 한 건씩 ‘대시보드 알림 설정 점검’ 또는 ‘주문 관리 개선 진행’ 같은 명사형으로 짧게 작성하세요. 확인된 날짜만 YYYY-MM-DD 형식으로 쓰고 모르면 날짜 칸을 비워 두세요. 근거는 표 아래 ## 근거에 적으세요.',
+    '금주 표는 선택한 기간에 실제 한 일과 검증된 진행 업무를 기록합니다. 차주 표는 기록에서 확인된 다음 업무를 정리합니다. 실제 진행과 다음 계획을 구분하고 근거가 없으면 각 표를 비워 두세요. 프로젝트에 별도 사본을 저장하는 도구는 호출하지 마세요.',
+  );
   if(w.kind==='pause')lines.push('업무 마감은 업무 완료 처리가 아닙니다. 파일이나 서비스 상태를 바꾸지 말고, 하다 만 일 / 손대고 올리지 않은 변경 / 결정과 확인 사항 / 복귀하면 시작할 순서 3~5개 / 오늘 끝낸 일을 구분해 작성하세요.');
   if(w.kind==='briefing')lines.push('브리핑 구성: 한 줄 요약 / 현재 상태 / 이번 기간에 한 일 / 다음 할 일 / 결정과 위험. 진행 문서와 커밋, 변경 요청 및 최근 AI 대화의 실제 근거를 함께 확인하세요. 완성한 결과는 flowrium_project_artifact_create 도구로 새 마크다운 산출물에 저장하세요. 이 업무에서는 프로젝트 원본과 Git 및 서비스 상태를 변경하지 마세요.');
   if(w.kind==='document')lines.push('문서 작성: 프로젝트 근거를 확인한 뒤 완성된 보고서 또는 발표자료를 생성하세요. 앱의 flowrium_project_artifact_create 도구로 HTML 원문을 저장하면 PDF와 발표자료 변환을 앱이 수행합니다. 보고서는 A4 문서 HTML로, 발표자료는 1280x720 크기의 section.slide 요소들로 구성하세요. 외부 스크립트는 포함하지 마세요.');
@@ -255,7 +259,7 @@ async function workContext(store, id) {
         dayHere(item.workflow.completion.at) + " / " + item.title + " / " + compact(item.workflow.completion.summary, 400)).join("\n") || "해당 기간 기록 없음";
       const evidenceLimit = ids.length > 1 ? Math.max(50, Math.floor((perProject - 240) / 2)) : 48000;
       lines.push("프로젝트의 실제 완료 기록:\n" + summaries.slice(0, evidenceLimit));
-      if (w.kind !== "weekly") lines.push("진행 중인 업무:\n" +
+      lines.push((w.kind === 'weekly' ? "차주 계획 참고 / 확인된 미완료 업무:\n" : "진행 중인 업무:\n") +
         (active.slice(0, 30).map((item) => item.title + " / " + dayHere(item.updatedAt) +
           (item.workflow?.checklist?.length ? " / 남은 항목: " + item.workflow.checklist.filter((i) => !i.done).map((i) => i.text).join(", ").slice(0, 300) : "")).join("\n") || "없음"));
       const recentActivity=others.flatMap(item=>item.messages.filter(m=>inPeriod(m.createdAt,w)&&recentEnough(m.createdAt)).slice(-4).map(m=>m.createdAt+' / '+item.title+' / '+(m.role==='user'?'지시':'응답')+' / '+compact(m.text,450))).sort().slice(-40);
@@ -321,6 +325,12 @@ async function startWork(store, input, teamSlot) {
 async function autoSaveWorkArtifact(store,id) {
   const session=store.session(id);
   if(!session.workflow || !lastAnswer(session))return null;
+  if (session.workflow.kind === 'weekly') {
+    const latestRequest = session.messages.findLastIndex(message => message.role === 'user');
+    const answer = session.messages.slice(latestRequest + 1).findLast(message => message.role === 'assistant' && message.text.trim());
+    if (answer) await require('./weekly-reports.cjs').weeklyReportFiles(store).generate(id, answer.id);
+    return null;
+  }
   const root=await projectRoot(store.project(session.projectId)),lastUser=session.messages.findLast(m=>m.role==='user');
   const existing=(await listArtifacts(root)).artifacts.filter(a=>a.sessionId===id&&Date.parse(a.modifiedAt)>=Date.parse(lastUser?.createdAt||session.createdAt));
   if(existing.length)return existing[0];
@@ -358,6 +368,7 @@ function registerWorkbench(register, store, { reveal, isRunning = () => false })
     }
     if(input?.action==='create'){
       const session=store.session(input.sessionId);if(session.projectId!==projectId||!['md','html'].includes(input.format)||typeof input.body!=='string'||!input.body.trim()||Buffer.byteLength(input.body)>2*1024*1024)throw invalid();
+      if (session.workflow?.kind === 'weekly') throw Error('주간업무보고는 최종 답변을 앱의 임시 엑셀 파일로 준비합니다. 답변에 두 표를 작성하세요.');
       const title=required(input.title,160),parts=['산출물',definitions[session.workflow?.kind||'task'].label,safeTitle(session.title)+'--'+session.id],dir=await checkedDirectory(root,parts,true);
       const name=safeTitle(title)+'--'+randomUUID()+'.'+input.format,relative=[...parts,name].join('/'),body=input.format==='html'?require('./html-export.cjs').isolatedHTML(input.body):input.body;
       await fs.writeFile(path.join(dir,name),body,{flag:'wx',mode:0o600});const artifact=artifactInfo(relative,await fs.stat(path.join(dir,name))),exports=[];

@@ -96,6 +96,8 @@ export interface WorkbenchAPI {
     messageId: string,
     format?: WorkFormat,
   ): Promise<Artifact>;
+  readWeeklyReportFile(sessionId: string, messageId: string): Promise<{ name: string; expiresAt: string } | null>;
+  saveWeeklyReportFile(sessionId: string, messageId: string): Promise<boolean>;
   importWorkFiles(
     projectId: string,
     files: { name: string; body: Uint8Array }[],

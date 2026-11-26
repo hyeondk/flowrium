@@ -65,12 +65,15 @@ test("공식 질문과 답변의 구조를 유지하고 허용되지 않은 보�
   const client = new CodexClient(),
     wire = [];
   client._write = (v) => wire.push(v);
-  const controller = new Controller({ state: { settings: {} } }, { client });
+  let locked = true;
+  const controller = new Controller({ state: { settings: {} } }, { client, canRun: () => !locked, canContinue: () => true });
   controller.runs.set("session", {
     sessionId: "session",
     threadId: "thread",
     turnId: "turn",
     mode: "plan",
+    ownerRevision: "local",
+    accepted: true,
   });
   let event, resolved;
   controller.on("event", (e) => {
@@ -83,6 +86,9 @@ test("공식 질문과 답변의 구조를 유지하고 허용되지 않은 보�
   assert.equal(client.approvals.size, 0);
   assert.equal(client.inputs.size, 1);
   assert.throws(() => client.decide(event.requestId, "accept"), /종료/);
+  assert.throws(() => controller.answerInput({ requestId: event.requestId, answers }), /종료/);
+  assert.deepEqual(wire, []);
+  locked = false;
   controller.answerInput({ requestId: event.requestId, answers });
   assert.deepEqual(wire, [{ id: 91, result: { answers } }]);
   assert.equal(client.inputs.size, 0);
@@ -110,6 +116,8 @@ test("서버가 해결하거나 다른 턴에서 발생한 질문과 종료된 �
     threadId: "thread",
     turnId: "turn",
     mode: "build",
+    ownerRevision: "local",
+    accepted: true,
   });
   client._message({
     id: 1,
@@ -119,6 +127,7 @@ test("서버가 해결하거나 다른 턴에서 발생한 질문과 종료된 �
   assert.equal(client.inputs.size, 0);
   assert.equal(wire[0].error.code, -32800);
   client._message({ id: 2, method: "item/tool/requestUserInput", params });
+  assert.equal(client.inputs.size, 1);
   await controller.notification({
     method: "serverRequest/resolved",
     params: { requestId: 2 },
@@ -131,6 +140,7 @@ test("서버가 해결하거나 다른 턴에서 발생한 질문과 종료된 �
   });
   assert.equal(wire.at(-1).error.code, -32602);
   client._message({ id: 4, method: "item/tool/requestUserInput", params });
+  assert.equal(client.inputs.size, 1);
   controller.runs.clear();
   client._fail(new Error("연결 종료"));
   assert.equal(client.inputs.size, 0);

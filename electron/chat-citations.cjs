@@ -1,15 +1,48 @@
 const fs=require('node:fs/promises');
 const path=require('node:path');
+const MarkdownIt=require('markdown-it');
+const {chatFileLinkTarget}=require('./chat-file-links.js');
 const {presentCitations}=require('./mobile/file-citations.js');
 const {UUID}=require('./project-store.cjs');
 const {artifactFile,projectRoot}=require('./workbench.cjs');
 const {resolveAttachments,MAX_FILE}=require('./chat-attachments.cjs');
 const {relativePath}=require('./path-boundary.cjs');
 const imageTypes={'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp'};
+const markdown = new MarkdownIt();
+const defaultValidateLink = markdown.validateLink.bind(markdown);
+markdown.validateLink = href => Boolean(chatFileLinkTarget(href)) || defaultValidateLink(href);
+
+function linkedMarkdownFile(message,target) {
+  return markdown.parse(message.text, {}).some(token => token.children?.some(child =>
+    child.type === 'link_open' && chatFileLinkTarget(child.attrGet('href')) === target));
+}
+
+async function projectFile(root,target) {
+  const foreign = process.platform === 'win32' ? /^[/\\]/.test(target) : /^(?:[a-z]:[\\/]|\\)/i.test(target);
+  if (foreign) throw Error('이 운영체제에서 열 수 있는 프로젝트 경로인지 확인해 주세요.');
+  if (target.split(/[\\/]/).includes('..')) throw Error('현재 프로젝트 폴더에 있는 파일만 열 수 있습니다.');
+  const relative = path.isAbsolute(target) ? relativePath(root,target) : target.replace(/^\.\//,'');
+  const parts = relative.split(/[\\/]/);
+  if (parts.some(part => !part || part.startsWith('.') || /[:\x00-\x1f]/.test(part)))
+    throw Error('현재 프로젝트 폴더에 있는 파일만 열 수 있습니다.');
+  const file = path.join(root,...parts);
+  const stat = await fs.lstat(file);
+  if (!stat.isFile() || stat.isSymbolicLink() || relativePath(file,await fs.realpath(file)) !== '')
+    throw Error('현재 프로젝트 폴더에 있는 일반 파일만 열 수 있습니다.');
+  return file;
+}
+
 async function readChatCitation(store,sessionId,messageId,index,action,reveal) {
-  if(!UUID.test(sessionId)||!UUID.test(messageId)||!Number.isSafeInteger(index)||index<0||!['preview','download','reveal'].includes(action))throw Error('요청한 파일 참조를 확인해 주세요.');
+  const target = action==='reveal' ? chatFileLinkTarget(index) : null;
+  if(!UUID.test(sessionId)||!UUID.test(messageId)||(!target&&(!Number.isSafeInteger(index)||index<0))||!['preview','download','reveal'].includes(action))throw Error('요청한 파일 참조를 확인해 주세요.');
   const session=store.session(sessionId);
   const message=session.messages.find(m=>m.id===messageId&&m.role==='assistant');
+  if (target) {
+    if (!message || !reveal || !linkedMarkdownFile(message,target)) throw Error('이 답변에 연결된 파일을 찾지 못했습니다.');
+    const file = await projectFile(await projectRoot(store.project(session.projectId)),target);
+    await reveal(file);
+    return {name:path.basename(file)};
+  }
   const ref=message && presentCitations(message.text).references[index];
   if(!ref)throw Error('이 답변에 연결된 파일을 찾지 못했습니다.');
   const registered=message.attachments?.find(a=>ref.attachmentId===a.id);
@@ -19,8 +52,11 @@ async function readChatCitation(store,sessionId,messageId,index,action,reveal) {
     file=row.path;stat=await fs.lstat(file);
   }else{
     const root=await projectRoot(store.project(session.projectId));
-    const relative=(path.isAbsolute(ref.path)?relativePath(root,ref.path):ref.path).split(path.sep).join('/');
-    ({file,stat}=await artifactFile(root,relative,true));
+    if(action==='reveal')file=await projectFile(root,ref.path);
+    else {
+      const relative=(path.isAbsolute(ref.path)?relativePath(root,ref.path):ref.path).split(path.sep).join('/');
+      ({file,stat}=await artifactFile(root,relative,true));
+    }
   }
   if(action==='reveal') {
     if(!reveal)throw Error('이 기기에서 파일 위치를 열 수 없습니다.');

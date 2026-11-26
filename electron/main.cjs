@@ -268,8 +268,9 @@ async function launch() {
   const music = require("./music.cjs").registerMusic(register, app.getPath("userData"));
   require("./lyrics.cjs").registerLyrics(register);
   app.on("will-quit", () => { void music.shutdown(); });
-  const canUseAccount = () => !quitting && !migrationTransition && !importRestartRequired &&
-    !security.locked && !security.loggingOut && !updater?.isInstalling();
+  const canContinueAccountWork = () => !quitting && !migrationTransition && !importRestartRequired &&
+    !security.loggingOut && !updater?.isInstalling();
+  const canUseAccount = () => !security.locked && canContinueAccountWork();
   const {Dictionary}=require('./dictionary.cjs');
   dictionary=new Dictionary(app.getPath('userData'),{
     context:()=>canUseAccount() && controller?.status.authenticated ? {
@@ -280,6 +281,7 @@ async function launch() {
   register('dictionaryAction',input=>dictionary.action(input));
   controller = new Controller(store, {
     canRun: canUseAccount,
+    canContinue: canContinueAccountWork,
     queueOwner: () => security.accountRevision,
     modelAccount: () => security.data.accountOwner,
     dictionaryReference: input=>dictionary.reference(input),
@@ -300,7 +302,14 @@ async function launch() {
   });
   register('readChatRecommendation',(sessionId,answerId)=>followupGenerator.recommend(sessionId,answerId));
   require("./chat-attachments.cjs").registerChatAttachments(register, store);
-  register('readChatCitation',(sessionId,messageId,index,action)=>require('./chat-citations.cjs').readChatCitation(store,sessionId,messageId,index,action,file=>shell.showItemInFolder(file)));
+  register('readChatCitation',(sessionId,messageId,index,action)=>{
+    const epoch=security.epoch,revision=security.accountRevision;
+    return require('./chat-citations.cjs').readChatCitation(store,sessionId,messageId,index,action,file=>{
+      if(security.locked||security.loggingOut||security.epoch!==epoch||security.accountRevision!==revision)
+        throw Error('계정이나 잠금 상태가 바뀌었습니다. 파일 위치 열기를 다시 시도해 주세요.');
+      shell.showItemInFolder(file);
+    });
+  });
   register("listQueuedMessages", id => controller.listQueuedMessages(id));
   register("cancelQueuedMessage", (id, queued) => controller.cancelQueuedMessage(id, queued));
   register("sendQueuedToCodex", (id, queued) => controller.messageQueue.sendToCodex(id, queued));
@@ -394,6 +403,23 @@ async function launch() {
   registerWorkbench(register, store, {
     reveal: (file) => shell.showItemInFolder(file),
     isRunning: (id) => controller.runs.has(id) || controller.editingSessions.has(id),
+  });
+  require('./weekly-reports.cjs').registerWeeklyReportFiles(register, store, {
+    async chooseDestination(filename) {
+      const result = await dialog.showSaveDialog(window, {
+        title: '주간업무보고 엑셀 저장',
+        defaultPath: filename,
+        filters: [{ name: '엑셀 문서', extensions: ['xlsx'] }],
+      });
+      return result.canceled ? null : result.filePath;
+    },
+    savePermission() {
+      const revision = security.accountRevision, epoch = security.epoch;
+      return () => {
+        if (security.locked || security.loggingOut || revision !== security.accountRevision || epoch !== security.epoch)
+          throw Error('계정과 잠금 상태가 바뀌었습니다. 보고서 저장을 다시 시작해 주세요.');
+      };
+    },
   });
   securityRuntime = registerSecurity(register, security, {
     controller, powerMonitor, powerSaveBlocker, Notification,

@@ -63,6 +63,7 @@ import RepositoryPanel from "./RepositoryPanel";
 import { ConversationTools } from "./ConversationTools";
 import ChatModelPicker,{AccountSpeedPreference,type ChatModelSelection} from './ChatModelPicker';
 import Workbench, { WorkSessionControls } from "./Workbench";
+import WeeklyReportFile from "./WeeklyReportFile";
 import { UpdatePanel, useDesktopUpdate } from "./UpdatePanel";
 import { workKinds } from "../shared/workbench";
 import packageInfo from "../package.json";
@@ -1519,6 +1520,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                 onClick={()=>restoreFailedRequest(failedRequest)}>입력창에 다시 담기</button>}/>}
                             {message.sourceOnly && <RequestSource sessionId={session.id} messageId={message.id}/>}
                           </div>
+                          {!workActive && typingId !== message.id && session.workflow?.kind === "weekly" && message.role === "assistant" &&
+                            <WeeklyReportFile sessionId={session.id} messageId={message.id}/>}
                           </div>
                           </div>
                             <span className="message-meta-actions">

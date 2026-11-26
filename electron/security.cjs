@@ -396,7 +396,8 @@ function registerSecurity(
   let accountRevision = security.accountRevision;
   let screenLocked = false;
   function onSecurityState(state) {
-    if (state.locked || state.accountRevision !== accountRevision) controller.cancelStructuredAnalyses?.();
+    if (state.accountRevision !== accountRevision) controller.cancelStructuredAnalyses?.();
+    else if (state.locked) controller.cancelStructuredAnalyses?.({backgroundOnly:true});
     if (state.accountRevision !== accountRevision) {
       accountRevision = state.accountRevision;
       approvals.clear();

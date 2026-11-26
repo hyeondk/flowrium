@@ -80,6 +80,8 @@ contextBridge.exposeInMainWorld(
     startWork: (input) => invoke("startWork", input),
     updateWork: (id, change) => invoke("updateWork", id, change),
     saveWorkArtifact: (id, messageId, format) => invoke("saveWorkArtifact", id, messageId, format),
+    readWeeklyReportFile: (id, messageId) => invoke("readWeeklyReportFile", id, messageId),
+    saveWeeklyReportFile: (id, messageId) => invoke("saveWeeklyReportFile", id, messageId),
     readWorkArtifact: (projectId, path) => invoke("readWorkArtifact", projectId, path),
     revealWorkArtifact: (projectId, path) => invoke("revealWorkArtifact", projectId, path),
     repositoryAction: (id, input) => invoke("repositoryAction", id, input),

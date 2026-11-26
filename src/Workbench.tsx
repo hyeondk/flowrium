@@ -254,12 +254,12 @@ function SessionTools({ session, onSessionChange, running }: { session: Session;
       {status === "active" && <button disabled={busy || running} onClick={() => update({ action: "status", status: "review" })}>검토로 이동</button>}
       {status !== "active" && <button disabled={busy || running} onClick={() => update({ action: "status", status: "active" })}>업무 재개</button>}
       {status !== "done" && <button disabled={busy || running} onClick={() => update({ action: "status", status: "done" })}><Check size={14}/>업무 완료</button>}
-      {picked && <select className="wb-format" aria-label="산출물 형식" value={format} onChange={(e) => setFormat(e.target.value as WorkFormat)}><option value="md">마크다운</option><option value="html">HTML</option><option value="pdf">PDF</option><option value="pptx">발표자료 (PPTX)</option></select>}
-      {picked && <button disabled={busy || running} onClick={save}><FileText size={14}/>답변을 산출물로 저장</button>}
+      {picked && w?.kind !== "weekly" && <select className="wb-format" aria-label="산출물 형식" value={format} onChange={(e) => setFormat(e.target.value as WorkFormat)}><option value="md">마크다운</option><option value="html">HTML</option><option value="pdf">PDF</option><option value="pptx">발표자료 (PPTX)</option></select>}
+      {picked && w?.kind !== "weekly" && <button disabled={busy || running} onClick={save}><FileText size={14}/>답변을 산출물로 저장</button>}
     </div>
     {expanded && <div className="wb-session-body">
       <div className="wb-role"><strong>{w?.role || "프로젝트 실무 담당자"}</strong>{w?.brief && <p>{w.brief}</p>}{w?.audience && <small>대상: {w.audience}</small>}{w?.from && <small>조회 기간: {w.from} ~ {w.to}</small>}{w?.source && <small>인계받은 대화: {w.source.title}</small>}</div>
-      {!!answers.length && <label className="wb-answer-select">저장할 답변<select value={picked?.id || ""} onChange={(e) => setMessageId(e.target.value)}>{answers.map((m, i) =>
+      {!!answers.length && w?.kind !== "weekly" && <label className="wb-answer-select">저장할 답변<select value={picked?.id || ""} onChange={(e) => setMessageId(e.target.value)}>{answers.map((m, i) =>
         <option value={m.id} key={m.id}>{i + 1}번째 답변: {m.text.replace(/\s+/g, " ").slice(0, 38)}</option>)}</select></label>}
       <h3>체크리스트</h3>
       {w?.checklist.map((item) => <div key={item.id} className="wb-check"><label><AnimatedCheckbox checked={item.done} disabled={busy || status === "done"} onChange={() => update({ action: "toggle", id: item.id })}/><span>{item.text}</span></label>

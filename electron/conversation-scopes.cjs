@@ -43,18 +43,19 @@ async function snapshot(controller,query=''){
  return result;
 }
 async function callScopeTool(controller,run,params){
- if(controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
+ if(!controller.canExecuteRun(run))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
  const session=controller.store.session(run.sessionId);assertScope(controller.store,session);
- if(params.tool===currentRequest.reader.name && controller.runs.get(session.id)===run && !run.cancelled && !run.finalized) return currentRequest.readPage(run,params.arguments);
+ if(params.tool===currentRequest.reader.name)return currentRequest.readPage(run,params.arguments);
  if(session.scope!=='integrated')throw Error('일반 대화에서는 프로젝트 도구를 사용할 수 없습니다.');
  const args=params.arguments;
  if(!args||typeof args!=='object'||Array.isArray(args))throw Error('앱 도구 입력을 확인해 주세요.');
  if(params.tool==='flowrium_hub_snapshot'){
   if(typeof args.query!=='string'||args.query.length>1000||Object.keys(args).some(k=>k!=='query'))throw Error('현황 조회 입력을 확인해 주세요.');
   const value=await snapshot(controller,args.query);
-  assertScope(controller.store,session);if(run.ownerRevision!==(controller.options.queueOwner?.()??'local')||controller.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다.');return value;
+  assertScope(controller.store,session);if(!controller.canExecuteRun(run))throw Error('현재 대화의 작업을 확인해 주세요.');return value;
  }
  if(params.tool==='flowrium_hub_delegate'){
+  if(controller.options.canRun?.()===false)throw Error('잠금 해제 후 업무를 제안해 주세요.');
   if(Object.keys(args).some(k=>!['projectId','title','text'].includes(k)))throw Error('업무 제안 입력을 확인해 주세요.');
   const project=controller.store.state.projects.find(p=>p.id===args.projectId);if(!project)throw Error('등록된 프로젝트를 선택해 주세요.');
   const title=text(args.title,'업무 제목',180),body=text(args.text,'업무 내용',16000);
@@ -100,7 +101,7 @@ async function scopeClient(controller,session){
   });
   client.on('disconnect',error=>{for(const run of controller.runs.values())if(run.client===client&&!run.claimingWriter)void controller.finish(run,'failed',error);for(const id of entry.threads)controller.loadedThreads.delete(id);controller.scopeClients.delete(key);});
   await client.start(controller.store.state.settings.codexPath);
-  if(owner!==controller.store.conversations.owner()||controller.options.canRun?.()===false){client.close();throw Error('계정이나 잠금 상태가 바뀌었습니다.');}
+  if(owner!==controller.store.conversations.owner()||!controller.canContinueWork()){client.close();throw Error('계정이나 작업 상태가 바뀌었습니다.');}
   client.flowriumAccountPlan=account.account.planType;
   return client;
  })();
@@ -112,8 +113,7 @@ async function prepareScopedRun(controller,run,input,session){
  const client=await scopeClient(controller,session);run.client=client;run.scope=session.scope;run.approvalsAllowed=false;
  const check=()=>{
   assertScope(controller.store,session);
-  if(controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
-  if(run.cancelled||run.finalized)throw Error('종료한 대화의 작업입니다.');
+  if(!controller.canExecuteRun(run))throw Error('계정이나 작업 상태가 바뀌었습니다.');
  };
  const params=await scopeThreadParams(controller,session);
  check();
@@ -134,15 +134,14 @@ async function startScopedRun(controller,run,input,message,project){
  const session=controller.store.session(run.sessionId);
  const {client,params}=run.prepared||await prepareScopedRun(controller,run,input,session);
  if(run.cancelled||run.finalized)return controller.finish(run,'interrupted');
- if(run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('계정이 바뀌었습니다. 대화를 다시 선택해 주세요.');
+ if(!controller.canExecuteRun(run))throw Error('계정이나 작업 상태가 바뀌었습니다. 대화를 다시 선택해 주세요.');
  const prefs=require('./chat-preferences.cjs').resolved(controller.store.state.settings.chatDefaults,session.preferences);
  let model=input.model;
  // An inherited preference may belong to a different account or an earlier model catalog.
  if(model && run.useAvailableDefaultModel){
   const catalog=await client.request('model/list',{limit:100,includeHidden:true},5000).catch(()=>undefined);
   if(run.cancelled||run.finalized)return controller.finish(run,'interrupted');
-  if(run.ownerRevision!==(controller.options.queueOwner?.()??'local')||controller.options.canRun?.()===false)
-   throw Error('계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.');
+  if(!controller.canExecuteRun(run))throw Error('계정이나 작업 상태가 바뀌었습니다. 다시 보내 주세요.');
   const entries=Array.isArray(catalog?.data)?catalog.data:[];
   const fallback=entries.find(row=>row?.isDefault);
   const preferredDefault=fallback?.model||fallback?.id;
@@ -170,11 +169,11 @@ async function startScopedRun(controller,run,input,message,project){
  const context=session.scope==='integrated'?'\n\n현재 전체 업무 현황(참고 자료):\n'+JSON.stringify(await snapshot(controller)):'';
  const guard=()=>{
   assertScope(controller.store,session);
-  if(controller.runs.get(session.id)!==run || run.cancelled || run.finalized || run.ownerRevision!==(controller.options.queueOwner?.()??'local') || controller.options.canRun?.()===false) throw Error('현재 대화의 긴 요청 읽기를 중단했습니다.');
+  if(!controller.canExecuteRun(run))throw Error('현재 대화의 긴 요청 읽기를 중단했습니다.');
  };
  const request=await currentRequest.scopedRequest(controller,run,session,message,model,guard);
  if(run.cancelled||run.finalized)return controller.finish(run,'interrupted');
- assertScope(controller.store,session);if(controller.options.canRun?.()===false||run.ownerRevision!==(controller.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다.');
+ guard();
  const dictionary=await controller.dictionaryReference(message,run.requestPages);
  guard();
  const definition=dictionary?.();

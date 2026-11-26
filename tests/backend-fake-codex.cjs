@@ -194,6 +194,17 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     write({ id, result: { turn: { id: turnId, status: "inProgress" } } });
     notify("turn/started", { threadId, turn: { id: turnId } });
     const prompt = params.input[0].text;
+    const lockMarker = /잠금 실행 검증 (general|integrated|project|pause)/.exec(prompt)?.[1];
+    if (process.env.FLOWRIUM_TEST_LOCK_GATE && lockMarker) {
+      const gate = process.env.FLOWRIUM_TEST_LOCK_GATE + '.' + lockMarker;
+      const timer = setInterval(() => {
+        if (!turns.has(turnId)) { clearInterval(timer); return; }
+        if (!existsSync(gate)) return;
+        clearInterval(timer);
+        complete(threadId, turnId, '잠금 실행 완료 / ' + lockMarker);
+      }, 20);
+      return;
+    }
     if (process.env.FLOWRIUM_TEST_FOLLOWUP_ANSWER && prompt.includes('분류표를 확인해줘')) {
       setTimeout(() => complete(threadId, turnId, process.env.FLOWRIUM_TEST_FOLLOWUP_ANSWER), 150);
       return;

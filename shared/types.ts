@@ -231,7 +231,7 @@ export interface FlowriumAPI
   addChatAttachments(projectId:string,files:{name:string;type:string;bytes:Uint8Array}[]):Promise<ChatAttachment[]>;
   readRequestSource(sessionId:string,messageId:string,offset:number|"full"):Promise<{text:string;next:number|null}>;
   copyRequestSource(sessionId:string,messageId:string):Promise<void>;
-  readChatCitation(session:string,message:string,index:number,action:'preview'|'download'|'reveal'):Promise<{name:string;dataUrl?:string}>;
+  readChatCitation(session:string,message:string,index:number|string,action:'preview'|'download'|'reveal'):Promise<{name:string;dataUrl?:string}>;
   readChatRecommendation(sessionId:string,answerId:string):Promise<import('../electron/mobile/answer-followup.js').LocalFollowup|null>;
   readChatAttachment(projectId:string,id:string):Promise<{attachment:ChatAttachment;dataUrl?:string}>;
   listQueuedMessages(sessionId:string):Promise<QueuedMessage[]>;
