@@ -58,10 +58,6 @@ button:disabled {
   opacity: 0.52;
   cursor: default;
 }
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-}
 .bar {
   display: flex;
   align-items: center;
@@ -330,7 +326,6 @@ button,select,a{transition:background-color 200ms var(--ease-enter),color 200ms 
 .ui-checkbox-control path{fill:none;stroke:var(--panel);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset 240ms ease-in-out}
 .ui-checkbox-control>input:checked+svg rect{fill:var(--focus);stroke:var(--focus)}
 .ui-checkbox-control>input:checked+svg path{stroke-dashoffset:0}
-.ui-checkbox-control:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:4px;border-radius:5px}
 .ui-checkbox-control>input:disabled+svg{opacity:.45}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important;transition-duration:1ms!important;scroll-behavior:auto!important}}
 .mobile-execution{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:16px 0 24px}

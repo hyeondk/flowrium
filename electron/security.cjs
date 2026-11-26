@@ -31,6 +31,7 @@ const accountCommands = new Set([
   "workflowAction", "exportMemory", "previewMemoryImport", "applyMemoryImport", "moveMemory",
   "portfolioAction", "repositoryFlow", "artifactAction", "storageAction", "analyzeSystemProcesses", "stopSystemProcesses",
   "configureMacPim", "prepareMacEvent", "commitMacEvent",
+  "googleConnectionAction", "readGoogleConnection", "readGoogleData",
   "configureLinkDelivery", "connectKakao", "disconnectKakao", "sendKakaoLink", "sendLinkMail", "checkLinkMail", "webPushAction",
   "configureVoicePreferences", "configureVoice", "allowVoiceCapture", "transcribeVoice", "cancelVoiceCapture", "speakVoice",
   "connect", "listAvailableModels", "readChatConnection",

@@ -11,7 +11,6 @@
   position:relative;padding:6px 8px 5px;border:1px solid var(--line);border-radius:10px;
   background:var(--panel);box-shadow:0 0 0 2px color-mix(in srgb,var(--selected) 28%,transparent);overflow:visible;
 }
-.app-shell .conversation-dock .composer:focus-within{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 10%,transparent)}
 .conversation-dock .has-session .composer-topline{display:none}
 .conversation-dock .composer-topline{padding:0 2px 4px;min-height:21px}
 .conversation-dock .composer-topline>span{font-size:11px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:6px}
@@ -22,8 +21,6 @@
 }
 .app-shell .conversation-dock .composer textarea.composer-input[data-height-mode=manual]{field-sizing:fixed;max-height:var(--composer-limit)}
 .app-shell .conversation-dock .composer textarea.composer-input[data-height-mode=auto][data-large-draft]{field-sizing:fixed;height:min(104px,var(--composer-limit))}
-.app-shell .conversation-dock .composer .markdown-input:has(>.composer-clear)>textarea.composer-input[data-height-mode]{padding-inline-end:28px}
-.conversation-dock .composer .composer-clear{position:absolute;z-index:2;inset-block-start:0;inset-inline-end:0;width:24px;height:24px;padding:0}
 .composer-draft-pages{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px;margin:2px 4px;color:var(--muted);font-size:12px}
 .composer-draft-pages button{border:0;border-radius:6px;padding:3px 6px;background:var(--selected);color:var(--accent)}
 .composer .composer-resize-handle{position:absolute;z-index:2;top:-6px;left:50%;width:66px;height:14px;transform:translateX(-50%);cursor:row-resize;touch-action:none;display:grid;place-items:center;border-radius:12px}
@@ -50,7 +47,6 @@ html[data-composer-resizing],html[data-composer-resizing] *{cursor:row-resize!im
   border-color:color-mix(in srgb,var(--accent) 30%,var(--line));
   background:var(--accent-bg); color:var(--accent);
 }
-.chat-run-controls>.chat-delivery:hover:not(:disabled) {border-color:var(--accent)}
 .chat-run-controls>.chat-delivery:disabled {color:var(--muted);opacity:.8}
 .app-shell .conversation-dock .composer .send-button{width:30px;height:30px;min-width:30px;min-height:30px;padding:0;border-radius:50%;display:grid;place-items:center;background:var(--primary-gradient);color:var(--on-primary);border:0;box-shadow:none}
 .conversation-dock .composer .send-button svg{width:18px;height:18px}
@@ -99,7 +95,6 @@ html[data-composer-resizing],html[data-composer-resizing] *{cursor:row-resize!im
 .composer-live-work-heading button[aria-expanded=true] svg{rotate:180deg}
 .composer-live-work-history{position:absolute;inset-inline:0;inset-block-end:calc(100% + 5px);padding:5px;border:1px solid var(--line);box-shadow:0 6px 16px var(--shadow)}
 .composer-work-timeline{position:relative;display:grid;align-content:start;gap:5px;list-style:none;margin:0;padding:5px 8px;block-size:clamp(72px,24dvh,188px);overflow:auto;overflow-anchor:none;overscroll-behavior:contain;scrollbar-gutter:stable}
-.composer-work-timeline:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
 .work-timeline-commentary .message-prose :is(pre,code){max-width:100%;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
 .work-timeline-commentary .message-prose img{max-width:100%;height:auto}
 .conversation-dock[data-minimized=true] .composer-live-work{display:none}

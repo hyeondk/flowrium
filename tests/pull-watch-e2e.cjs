@@ -52,8 +52,8 @@ async function main() {
       shell.openExternal=async url=>{globalThis.flowriumPullTestUrl=url;};
     },path.join(root,'electron','pull-watch.cjs'));
     await page.locator('.workspace-side').hover();
-    await page.getByRole('button',{name:'업무 연결 / 비서',exact:true}).click();
-    const hub=page.getByRole('region',{name:'업무 연결과 비서',exact:true});
+    await page.getByRole('button',{name:'업무 센터',exact:true}).click();
+    const hub=page.getByRole('region',{name:'업무 센터',exact:true});
     await hub.getByRole('button',{name:'비서와 예약',exact:true}).click();
     const monitor=hub.getByRole('region',{name:'깃허브 변경 요청 감시',exact:true});
     const toggle=monitor.getByRole('switch',{name:'새 변경 요청 알림 받기',exact:true});

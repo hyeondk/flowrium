@@ -12,7 +12,6 @@
 }
 .composer .chat-model-picker .choice-trigger>span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .composer .chat-model-picker .choice-trigger>svg {width:12px;height:12px;flex:none}
-.composer .chat-model-picker:focus-within {outline:2px solid var(--accent);outline-offset:-2px}
 .composer .chat-model-picker:hover {background:var(--accent-bg)}
 
 .chat-model-controls {
@@ -53,7 +52,6 @@
   background:transparent;
   color:var(--accent-ink);
 }
-.chat-performance-trigger:focus-visible {outline-offset:1px}
 
 .chat-performance-popup {
   position:fixed;

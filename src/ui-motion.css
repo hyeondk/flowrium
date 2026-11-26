@@ -101,7 +101,6 @@ dialog[data-phase=exit]::backdrop{animation:ui-fade-out var(--motion-duration) v
 .ui-checkbox-control path{fill:none;stroke:var(--bg);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1;stroke-dashoffset:1;transition:stroke-dashoffset 240ms var(--ease-check)}
 .ui-checkbox-control>input:checked+svg rect{fill:var(--accent-bright);stroke:var(--accent-bright)}
 .ui-checkbox-control>input:checked+svg path{stroke-dashoffset:0}
-.ui-checkbox-control:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:4px;border-radius:5px}
 .ui-checkbox-control>input:disabled{cursor:default}.ui-checkbox-control>input:disabled+svg{opacity:.45}
 .ui-checkbox-control>input:indeterminate+svg path{d:path('M5 10 L15 10');stroke-dashoffset:0}
 

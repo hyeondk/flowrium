@@ -29,7 +29,6 @@
 .mobile-switch-track::before {content: ''; width: 16px; height: 16px; border-radius: 50%; background: var(--panel); box-shadow: 0 1px 3px #1233; transition: transform .2s ease-in-out;}
 .mobile-switch-control > input:checked + .mobile-switch-track {background: var(--accent-fill); border-color: var(--accent-fill);}
 .mobile-switch-control > input:checked + .mobile-switch-track::before {transform: translateX(16px);}
-.mobile-switch-control > input:focus-visible + .mobile-switch-track {outline: 2px solid var(--focus); outline-offset: 3px;}
 @media (prefers-reduced-motion:reduce) {.mobile-switch-track, .mobile-switch-track::before {transition: none;}}
 
 html:has(#install-guide[open], #confirmation-sheet[open]) {overflow:hidden;}

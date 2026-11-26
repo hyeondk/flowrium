@@ -98,14 +98,6 @@ a {
     color 0.15s,
     border-color 0.15s;
 }
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
-}
 button:disabled:hover {
   background: inherit;
 }
@@ -628,8 +620,7 @@ kbd {
   background: var(--panel-alt);
 }
 .workflow-card.selected {
-  border-color: var(--accent);
-  background: var(--panel);
+  background: var(--selected);
 }
 .workflow-icon {
   width: 30px;
@@ -680,9 +671,6 @@ kbd {
   overflow: hidden;
   transition: border-color 0.2s;
 }
-.composer:focus-within {
-  border-color: var(--accent);
-}
 .composer.working {
   border-color: var(--line);
 }
@@ -700,10 +688,6 @@ kbd {
   align-items: center;
   gap: 6px;
 }
-.composer-topline > .icon-button {
-  height: 20px;
-  width: 20px;
-}
 .composer textarea {
   display: block;
   width: 100%;
@@ -713,7 +697,6 @@ kbd {
   resize: vertical;
   background: none;
   border: 0;
-  outline: none !important;
   padding: 12px 15px 6px;
   color: var(--text);
   font-size: 12px;
@@ -1093,7 +1076,6 @@ kbd {
   flex-direction: column;
 }
 .template-card:hover {
-  border-color: var(--accent);
   background: var(--panel-alt);
 }
 .template-category {
@@ -1150,9 +1132,6 @@ kbd {
   outline: none;
   color: var(--text);
   font-size: 12px;
-}
-.search-field:focus-within {
-  border-color: var(--accent);
 }
 .history-list {
   margin-top: 22px;

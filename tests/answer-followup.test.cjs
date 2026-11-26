@@ -134,7 +134,7 @@ test('명시적인 후속 작업이 없을 때도 직전 답변에 맞춘 초안
   const completed=session('맥과 윈도우 새 버전을 배포했고 설치 버튼을 눌러 내려받았습니다.','새 버전을 배포해줘');
   const stages=[],start=performance.now();
   const result=await prepareAnswerFollowup(completed,percent=>stages.push(percent.toFixed(1)));
-  assert.equal(result.prompt,'공식 홈페이지의 맥·윈도우 설치 버튼이 공개 최신 태그와 같은 버전을 가리키는지 자동으로 검사해줘');
+  assert.equal(result.prompt,'공식 홈페이지의 Mac·Windows 설치 버튼이 공개 최신 태그와 같은 버전을 가리키는지 자동으로 검사해줘');
   assert.deepEqual(stages,['0.0','25.0','50.0','75.0','100.0']);
   assert(performance.now()-start<10000);
   assert.equal(result.prompt,originalAnswerFollowups(completed)[0].prompt);

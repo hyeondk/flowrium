@@ -10,6 +10,7 @@ import {attachmentDisplayText} from './attachment-text.js';
 import {messageBody,groupMobileHistory,progressButton,clearProgressChoices} from './chat-reader.js';
 import {chatClock} from './chat-clock.js';
 import {installDatePicker} from './date-picker.js';
+import {installKeyboardFocus} from './keyboard-focus.js';
 import {settingsGuides, reconnectForm} from './install.js';
 import {mobileUpdateSection, resetUpdate, resumeUpdateSettings} from './mobile-update.js';
 import {confirmationButton, reconcileConfirmation} from './confirmation.js';
@@ -20,6 +21,7 @@ const loadingTemplate = content.querySelector('.mobile-skeleton').cloneNode(true
 const navigation = document.querySelector("#nav");
 const connection = document.querySelector("#status");
 installDatePicker();
+installKeyboardFocus();
 const notice = document.querySelector("#notice");
 const keyStorage = "flowrium.mobile.key";
 const rememberedKeyStorage="flowrium.mobile.rememberedKey",rememberFlag="flowrium.mobile.remember";
@@ -1818,7 +1820,7 @@ function assistantPreferences(root) {
   root.append(form);
 }
 function assistantPage(root){
-  root.append(node('h1','업무 연결 / 비서'),action('비서 상태 새로 고침',()=>loadExtras()));
+  root.append(node('h1','업무 센터'),action('업무 센터 새로고침',()=>loadExtras()));
   if(!workflowData){root.append(loadingRegion('비서 상태'));return}
   const tabs=node('div',undefined,'tabs');for(const [id,title]of [['decisions','결정'],['messages','대화 연결'],['reminders','예약 알림'],['reports','보고'],['preferences','비서 설정']]){const b=action(title,()=>{workflowTab=id;render()});if(workflowTab===id)b.setAttribute('aria-current','page');tabs.append(b)}root.append(tabs);
   if(workflowTab==='decisions'){

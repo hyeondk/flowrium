@@ -19,8 +19,6 @@
   border:0; border-radius:6px; padding:0; background:transparent; color:var(--muted);
 }
 .choice-picker .choice-chevron:hover,.choice-picker .choice-trigger:hover {background:var(--card-subtle)}
-.choice-picker :is(.choice-trigger,.choice-edit):is([aria-expanded=true],[data-expanded=true]) {border-color:var(--accent)}
-.choice-picker .choice-edit:focus-within {outline:2px solid var(--accent); outline-offset:2px}
 .choice-picker .choice-trigger[aria-expanded=true]>svg,.choice-picker .choice-edit[data-expanded=true]>.choice-chevron>svg {rotate:180deg}
 .choice-options {
   position:fixed; inset:auto; z-index:1400; display:grid; gap:2px; margin:0; padding:4px;box-sizing:border-box;

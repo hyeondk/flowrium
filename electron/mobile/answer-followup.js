@@ -143,7 +143,7 @@ function contextualCandidates(body,request) {
   }
   if (/다운로드\s*버튼|설치\s*버튼/.test(body) && /맥|Mac/i.test(body) && /윈도우|Windows/i.test(body)
       && /최신\s*(?:버전|판)|새\s*(?:버전|설치본)|배포/.test(body) && !/이전\s*(?:버전|판)\s*링크|버전\s*갱신\s*회귀/.test(body)) {
-    result.push(suggestion('공식 홈페이지의 맥·윈도우 설치 버튼이 공개 최신 태그와 같은 버전을 가리키는지 자동으로 검사해줘','최신 답변의 두 플랫폼 다운로드 링크 교차 검사'));
+    result.push(suggestion('공식 홈페이지의 Mac·Windows 설치 버튼이 공개 최신 태그와 같은 버전을 가리키는지 자동으로 검사해줘','최신 답변의 두 플랫폼 다운로드 링크 교차 검사'));
   }
   if (/매출/.test(body) && /월별|채널별|기간별|주문|온라인|스토어|쇼핑몰|판매/.test(context)
       && /(?:분석|집계|비교|정리)[^.!?\n]{0,30}(?:마쳤|완료|했습니다|했어요|끝냈)/.test(body)) {

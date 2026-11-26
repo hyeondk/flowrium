@@ -87,7 +87,14 @@ async function main() {
     assert.equal(await triggerBackground(),'rgba(0, 0, 0, 0)','커서를 올려도 추론 버튼에 배경을 채우지 않습니다.');
     await picker().focus();
     await page.keyboard.press('Tab');
-    assert(await open.evaluate(element=>element===document.activeElement&&element.matches(':focus-visible')&&getComputedStyle(element).outlineStyle==='solid'),'추론 버튼은 키보드 초점을 표시합니다.');
+    await page.waitForFunction(()=>document.activeElement?.matches('.chat-performance-trigger')&&
+      getComputedStyle(document.activeElement).boxShadow.includes('rgb(66, 66, 66)'));
+    const keyboardFocus=await open.evaluate(element=>{
+      const style=getComputedStyle(element);
+      return {active:element===document.activeElement,visible:element.matches(':focus-visible'),keyboard:document.documentElement.hasAttribute('data-keyboard-focus'),outline:style.outlineStyle,shadow:style.boxShadow};
+    });
+    assert(keyboardFocus.active&&keyboardFocus.visible&&keyboardFocus.outline==='none'&&
+      keyboardFocus.shadow.includes('rgb(66, 66, 66)'),'추론 버튼은 무채색으로 키보드 초점을 표시합니다. '+JSON.stringify(keyboardFocus));
     await open.press('Enter');
     const controls=page.getByRole('group',{name:'Model controls',exact:true});
     await controls.waitFor();

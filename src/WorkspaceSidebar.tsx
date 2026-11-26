@@ -26,7 +26,7 @@ export default function WorkspaceSidebar({categories,current,mobileOpen,projects
   <div className="sidebar-surface"><div className="sidebar-content">
    <div className="side-brand-row"><button className="side-brand" onClick={()=>onGo('dashboard')} aria-label="Flowrium 홈"><img src="./flowrium.png" width="32" height="32" alt=""/><span>Flowrium</span></button>{narrow&&mobileOpen?<CloseButton aria-label="메뉴 닫기" onClick={onClose}/>:<button type="button" className="side-collapse" aria-label={pinned?'메뉴 자동 접기':'메뉴 고정'} title={pinned?'마우스를 벗어나면 접기':'메뉴 펼친 상태로 고정'} aria-pressed={pinned} onClick={()=>setPinned(!pinned)}>{pinned?<PinOff size={16}/>:<Pin size={16}/>}</button>}</div>
    <nav aria-label="주 메뉴">{row('dashboard','대시보드',LayoutDashboard)}
-    <section className="side-projects" aria-label="프로젝트"><div className="side-project-head"><Folders className="side-project-section-icon" size={18} strokeWidth={1.7} aria-hidden="true"/><h2>프로젝트</h2><button type="button" className="side-project-add" title="프로젝트 추가" aria-label="프로젝트 추가" aria-hidden={!expanded} tabIndex={expanded?0:-1} aria-current={current==='kickoff'?'page':undefined} onClick={()=>onGo('kickoff')}><Plus size={18}/></button></div>
+    <section className="side-projects" aria-label="프로젝트"><div className="side-project-head"><Folders className="side-project-section-icon" size={18} strokeWidth={1.7} aria-hidden="true"/><h2>프로젝트</h2><button type="button" className="side-project-add" title="프로젝트 추가" aria-label="프로젝트 추가" aria-hidden={!expanded} tabIndex={expanded?0:-1} aria-current={current==='kickoff'?'page':undefined} onClick={()=>{setHovered(false);onGo('kickoff');}}><Plus size={18}/></button></div>
      <div className="side-project-list project-order-list">{projects.map(p=>{
       const n=counts[p.id],total=n?.total||0;
       const states=(['running','waiting','decision'] as const).filter(state=>(n?.[state]||0)>0);
@@ -39,7 +39,7 @@ export default function WorkspaceSidebar({categories,current,mobileOpen,projects
     </section>
     <div className="side-lower-nav">
      <MenuGroup label="보관">{row('outputs','산출물',FileText)}{row('archive','완료한 업무',Archive)}<MenuRow label="휴지통" icon={Trash2} onClick={onTrash}/></MenuGroup>
-     <MenuGroup label="도구">{row('workflow','업무 연결 / 비서',MessagesSquare)}{row('weekly','주간업무보고',ClipboardList)}{row('pause','업무 마감',Coffee)}{row('dictionary','사전',BookOpenText)}{row('terminal','터미널',SquareTerminal)}</MenuGroup>
+     <MenuGroup label="도구">{row('workflow','업무 센터',MessagesSquare)}{row('weekly','주간업무보고',ClipboardList)}{row('pause','업무 마감',Coffee)}{row('dictionary','사전',BookOpenText)}{row('terminal','터미널',SquareTerminal)}</MenuGroup>
     </div>
    </nav>
    <div className="side-foot"><SidebarUsage usage={accountUsage} expanded={expanded}/><div className="side-account-actions"><MenuRow label="설정" icon={Settings2} onClick={onSettings} extraClass="settings-button"/><MenuRow label="잠금" icon={LockKeyhole} onClick={onLock}/><MenuRow label={accountLinked?"로그아웃":"로그인"} icon={accountLinked?LogOut:LogIn} onClick={accountLinked?onLogout:onLogin}/></div><div className="side-account" title="제작자 hyeondk"><span className="side-copyright-icon">©</span><span><span className="side-copyright-year">2026 </span>hyeondk</span></div></div>

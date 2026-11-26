@@ -99,6 +99,7 @@ async function checkWorkProgress(page,input,popup,gate,title) {
     watch.observe(history,{childList:true,subtree:true});
   });
   await input.fill('작업 단계 스트림 시험');
+  await expect(page.getByRole('button',{name:'입력 지우기',exact:true})).toHaveCount(0);
   await expect(send).toBeEnabled();
   await input.press('Enter');
   const historyButton=page.locator('.turn-progress-trigger').last();
@@ -115,8 +116,9 @@ async function checkWorkProgress(page,input,popup,gate,title) {
   await expect(page.getByRole('button',{name:'현재 작업에 추가 지시 보내기',exact:true})).toBeEnabled();
   await expect(current).toBeVisible();
   assert(Math.abs(await editorOffset()-offsetBeforeInput)<=1,'추가 지시를 써도 입력창 위에 빈 줄을 추가하지 않음');
-  assert(Math.abs((await toolbar.boundingBox()).height-toolbarHeight)<=1,'입력 지우기 표시가 도구막대 높이도 바꾸지 않음');
-  await page.getByRole('button',{name:'입력 지우기',exact:true}).click();
+  assert(Math.abs((await toolbar.boundingBox()).height-toolbarHeight)<=1,'추가 지시를 써도 도구막대 높이가 유지됨');
+  await expect(page.getByRole('button',{name:'입력 지우기',exact:true})).toHaveCount(0);
+  await input.fill('');
   await expect(input).toHaveValue('');
   const liveToggle=page.getByRole('button',{name:'작업 내역',exact:true});
   const live=page.getByRole('list',{name:'실시간 작업 과정',exact:true});
@@ -290,6 +292,28 @@ async function run() {
     await popupButton.click();
     await popup.waitFor({state:'hidden'});
     const input=page.getByRole('textbox',{name:'Codex에 보낼 작업 요청'});
+    const focusStyle=()=>input.evaluate(element=>{
+      const panel=getComputedStyle(element.closest('.composer'));
+      return {border:panel.borderColor, shadow:panel.boxShadow, outline:getComputedStyle(element).outlineStyle};
+    });
+    const unfocused = await focusStyle();
+    await input.click();
+    assert.deepEqual(await focusStyle(),unfocused,'입력창을 클릭해도 테두리나 그림자가 생기지 않습니다.');
+    assert.equal(unfocused.outline,'none');
+    if(process.argv.includes('--composer-controls')) {
+      const clearButton=page.getByRole('button',{name:'입력 지우기',exact:true});
+      await input.fill('대기검증');
+      await expect(clearButton).toHaveCount(0);
+      await input.press('Enter');
+      await page.getByRole('button',{name:'작업 중지',exact:true}).waitFor();
+      await input.fill('추가 요청 검증');
+      await expect(clearButton).toHaveCount(0);
+      await input.press(process.platform==='darwin'?'Meta+a':'Control+a');
+      await input.press('Backspace');
+      await expect(input).toHaveValue('');
+      console.log('채팅 작성과 작업 중 추가 요청의 지우기 버튼 제거 / 직접 삭제 / 클릭 테두리 확인');
+      return;
+    }
     if(process.argv.includes('--work-progress')) {
       await checkWorkProgress(page,input,popup,gate,title);
       return;

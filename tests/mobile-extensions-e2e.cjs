@@ -66,6 +66,15 @@ async function main(){
   await checkReading(page,reading,origin,key,project.path);
   await require('./mobile-large-upload-checks.cjs').checkLargeMobileUpload(page,store,project,controller,origin);
   await page.getByRole('button',{name:/휴대폰 요청/}).click();
+  const requestInput=page.getByLabel('요청',{exact:true});
+  const requestStyle=()=>requestInput.evaluate(element=>{
+    const style=getComputedStyle(element);
+    return {border:style.borderColor,shadow:style.boxShadow,outline:style.outlineStyle};
+  });
+  const unfocused=await requestStyle();
+  await requestInput.click();
+  assert.equal(unfocused.outline,'none');
+  assert.deepEqual(await requestStyle(),unfocused,'휴대폰에서 입력창을 선택해도 강조 테두리가 생기지 않습니다.');
   await checkDraftImages(page,png);
   await page.getByLabel('요청',{exact:true}).fill('대기검증');await btn('요청 보내기').click();await btn('추가 지시 대기열에 넣기').waitFor();assert.equal(store.session(chat.id).messages.find(m=>m.role==='user').attachments[0].name,'현장.png');
   assert.equal(await page.locator('article .mobile-photo-strip li').count(),7);
@@ -229,7 +238,7 @@ async function main(){
   // Both batch decisions require a second, explicit action. Review and cancel
   // approval first, then reject the same selected item in the synthetic store.
   const sample=await workflow.action({action:'propose',kind:'next',sourceId:chat.id,title:'선택 확인용 결정',text:'합성 작업 확인'});
-  await btn('비서 상태 새로 고침').click();
+  await btn('업무 센터 새로고침').click();
   const checkbox=page.getByRole('checkbox',{name:'선택 확인용 결정 선택'});
   await checkbox.check();
   await btn('선택 승인').click();

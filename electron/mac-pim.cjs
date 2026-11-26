@@ -29,7 +29,7 @@ function registerMacPim(register,{directory,platform=process.platform,spawnImpl=
  const file=path.join(directory,'native-pim.json'),tickets=new Map();let config,queue=Promise.resolve();
  async function read(){if(config)return config;try{config=JSON.parse(await fs.readFile(file,'utf8'));}catch(e){if(e.code!=='ENOENT')throw Error('기본 앱 연결 설정을 읽지 못했습니다.');config={enabled:false};}return config;}
  const status=async()=>({available:platform==='darwin',enabled:!!((await read()).enabled&&(await read()).owner===accountRevision())});
- async function allowed(){if(platform!=='darwin')throw Error('맥 기본 앱 연결은 Mac에서 사용할 수 있습니다.');if(!canRun()||!(await status()).enabled)throw Error('설정에서 맥 메일 / 캘린더 연결을 먼저 켜 주세요.');}
+ async function allowed(){if(platform!=='darwin')throw Error('Mac 기본 앱 연결은 Mac에서 사용할 수 있습니다.');if(!canRun()||!(await status()).enabled)throw Error('설정에서 Mac 메일 / 캘린더 연결을 먼저 켜 주세요.');}
  async function native(input){await allowed();const owner=accountRevision();
   const helper=path.join(__dirname,'native','flowrium-pim').replace(/app\.asar([/\\])/,'app.asar.unpacked$1');
   const mail=['mails','mail','send','markRead'].includes(input.action);

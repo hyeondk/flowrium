@@ -136,7 +136,6 @@
 .app-shell .conversation-dock .dock-browser .dock-search {
   height:32px;min-height:32px;margin:0 0 7px;padding:0 8px;border:1px solid var(--line-soft);border-radius:7px;
 }
-.app-shell .conversation-dock .dock-browser .dock-search:focus-within {border-color:var(--accent)}
 .app-shell .conversation-dock .dock-browser .dock-search input {
   height:100%;min-height:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;outline:0;font-size:12px;line-height:20px;
 }
@@ -160,7 +159,6 @@
 .conversation-dock[data-chat-active=true] .session-heading h2{font-size:15px;line-height:19px;font-weight:700;letter-spacing:-.2px;white-space:normal;word-break:keep-all;margin:0}
 .conversation-dock .session-actions{flex:none;align-items:center;gap:4px}
 .chat-token-summary{display:grid;place-items:center;flex:none;inline-size:44px;block-size:28px;border-radius:7px;cursor:help}
-.chat-token-summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .chat-token-track{display:block;inline-size:36px;block-size:5px;overflow:hidden;border-radius:999px;background:var(--line);}
 .chat-token-fill{display:block;block-size:100%;border-radius:inherit;background:var(--accent)}
 .chat-token-summary[data-available=false] .chat-token-track{background:repeating-linear-gradient(to right,var(--line) 0 4px,transparent 4px 7px)}

@@ -1,6 +1,7 @@
 const { relativePath } = require('./path-boundary.cjs');
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { randomUUID } = require("node:crypto");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const {
@@ -160,6 +161,38 @@ async function notes(root, spec) {
 }
 function registerPortfolio(register, store, { chooseFolder, reveal, getRuntime }) {
   const serialize = require("./portfolio-operations.cjs").registerPortfolioOperations(register,store,{chooseFolder,getRuntime});
+  let selectedLocation;
+  const chooseLocation = async (createFolder) => {
+    const runtime = getRuntime?.();
+    const context = runtime?.context();
+    const checkAccount = () => {
+      if (context) runtime.guard(context.owner, context.revision, context.epoch);
+    };
+    checkAccount();
+    const picked = await chooseFolder(createFolder);
+    if (!picked) return null;
+    checkAccount();
+    const canonical = await fs.realpath(picked);
+    const identity = await fs.lstat(canonical, { bigint: true });
+    if (!identity.isDirectory()) throw new Error("작업 폴더를 선택해 주세요.");
+    return { token: randomUUID(), path: canonical, name: path.basename(canonical), createFolder, identity, checkAccount };
+  };
+  const checkLocation = async (location) => {
+    location.checkAccount();
+    const stat = await fs.lstat(location.path, { bigint: true }).catch(() => null);
+    const canonical = await fs.realpath(location.path).catch(() => null);
+    if (!stat?.isDirectory() || stat.dev !== location.identity.dev || stat.ino !== location.identity.ino ||
+        !canonical || relativePath(location.path, canonical))
+      throw new Error("선택한 폴더의 위치가 바뀌었습니다. 폴더를 다시 선택해 주세요.");
+    location.checkAccount();
+  };
+  register("selectKickoffLocation", async (createFolder) => {
+    if (typeof createFolder !== "boolean") throw new Error("프로젝트 폴더 선택 방식을 확인해 주세요.");
+    const location = await chooseLocation(createFolder);
+    if (!location) return null;
+    selectedLocation = location;
+    return { token: location.token, path: location.path, name: location.name };
+  });
   register("readPortfolio", async () =>
     Promise.all(
       store.state.projects.map(async (project) => {
@@ -198,67 +231,55 @@ function registerPortfolio(register, store, { chooseFolder, reveal, getRuntime }
     if (createFolder) safeName(settings.name);
     if (clone && !settings.repository)
       throw new Error("복제할 GitHub 저장소를 입력해 주세요.");
-    const picked = await chooseFolder(createFolder);
-    if (!picked) return null;
-    const parent = await fs.realpath(picked);
-    const folder = createFolder ? path.join(parent, settings.name) : parent;
-    if (createFolder) {
-      try {
-        await fs.mkdir(folder);
-      } catch (e) {
-        if (e.code === "EEXIST")
-          throw new Error(
-            "같은 이름의 폴더가 있습니다. 기존 폴더 사용을 선택하세요.",
-          );
-        throw e;
+    const location = input.locationToken === undefined ? await chooseLocation(createFolder) : selectedLocation;
+    if (!location && input.locationToken === undefined) return null;
+    return serialize(async () => {
+      if (!location || (input.locationToken !== undefined &&
+          (location !== selectedLocation || input.locationToken !== location.token || createFolder !== location.createFolder)))
+        throw new Error("사용할 프로젝트 폴더를 다시 선택해 주세요.");
+      await checkLocation(location);
+      const folder = createFolder ? path.join(location.path, settings.name) : location.path;
+      if (createFolder) {
+        try { await fs.mkdir(folder); }
+        catch (error) {
+          if (error.code === "EEXIST") throw new Error("같은 이름의 폴더가 있습니다. 기존 폴더 사용을 선택하세요.");
+          throw error;
+        }
       }
-    }
-    if (clone) {
-      if ((await fs.readdir(folder)).length)
-        throw new Error("저장소를 복제할 폴더가 비어 있어야 합니다.");
-      try {
-        await run(
-          "git",
-          [
-            "-c",
-            "protocol.file.allow=never",
-            "clone",
-            "--",
-            settings.repository,
-            folder,
-          ],
-          {
+      if (clone) {
+        if ((await fs.readdir(folder)).length) throw new Error("저장소를 복제할 폴더가 비어 있어야 합니다.");
+        location.checkAccount();
+        try {
+          await run("git", ["-c", "protocol.file.allow=never", "clone", "--", settings.repository, folder], {
             timeout: 180000,
             maxBuffer: 2 * 1024 * 1024,
             windowsHide: true,
             env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-          },
-        );
-      } catch {
-        if (createFolder) await fs.rmdir(folder).catch(() => {});
-        throw new Error(
-          "GitHub 저장소를 복제하지 못했습니다. Git 설치와 저장소 접근 권한을 확인하세요.",
-        );
+          });
+        } catch {
+          if (createFolder) await fs.rmdir(folder).catch(() => {});
+          throw new Error("GitHub 저장소를 복제하지 못했습니다. Git 설치와 저장소 접근 권한을 확인하세요.");
+        }
       }
-    }
-    const project = await store.addProject(folder);
-    const existing = await readDetails(store, project.id);
-    if (existing.revision)
-      throw new Error(
-        "상세 정보가 있는 프로젝트입니다. 프로젝트 설정에서 킥오프 정보를 수정하세요.",
-      );
-    if (input.scaffold === true)
-      for (const spec of Object.values(categories))
-        await descend(folder, spec.roots[0].split("/"), true);
-    await updateDetails(store, project.id, null, {
-      action: "kickoff",
-      input: settings,
+      location.checkAccount();
+      const project = store.project((await store.addProject(folder)).id);
+      const existing = await readDetails(store, project.id);
+      if (existing.revision) {
+        if (input.locationToken === undefined)
+          throw new Error("상세 정보가 있는 프로젝트입니다. 프로젝트 설정에서 킥오프 정보를 수정하세요.");
+      } else {
+        location.checkAccount();
+        if (input.scaffold === true)
+          for (const spec of Object.values(categories)) await descend(folder, spec.roots[0].split("/"), true);
+        await updateDetails(store, project.id, null, { action: "kickoff", input: settings });
+        if (project.name !== settings.name) {
+          project.name = settings.name;
+          await store.save();
+        }
+      }
+      if (selectedLocation === location) selectedLocation = undefined;
+      return structuredClone(project);
     });
-    if (project.name !== settings.name) {
-      project.name = settings.name;
-      await store.save();
-    }
-    return project;
   });
   register("listProjectNotes", (id, kind) =>
     checkedRoot(store, id).then((root) => notes(root, group(kind))),

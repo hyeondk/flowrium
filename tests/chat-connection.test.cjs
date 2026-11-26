@@ -96,7 +96,7 @@ test('서버·운영체제 오류의 알려진 원인을 현지화하고 알 수
     [{code:'PROTOCOL_FRAME_TOO_LARGE'},'response-size',/수신 한도/],
     [{code:'RPC_TIMEOUT'},'timeout',/시간 안에 응답하지 않았습니다/],
     [Error('Invalid request: missing field `threadId`'),'thread',/식별자가 빠져/],
-    [Error('Windows sandbox setup failed'),'permission',/윈도우/],
+    [Error('Windows sandbox setup failed'),'permission',/Windows/],
     [Error('fetch failed ECONNREFUSED'),'connection',/네트워크/],
     [Error('Codex 요청을 처리하지 못했습니다. Private upstream response: token x-secret'), 'other', /구체적인 원인/],
   ];

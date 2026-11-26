@@ -93,7 +93,6 @@
 .workspace-side[data-expanded=false] .side-project-list>p{visibility:hidden}
 .workspace-side[data-expanded=false] .side-usage-refresh>strong{position:absolute;top:25px;left:0;width:38px;font-size:10px;line-height:12px;text-align:center}
 .workspace-side[data-expanded=false] .side-usage-refresh progress{position:absolute;top:39px;left:7px;width:24px;height:3px}
-.workspace-side :is(button,[tabindex]):focus-visible{outline:2px solid var(--accent-ink);outline-offset:-2px}
 @media(max-height:960px) and (pointer:fine){
   .app-shell .workspace-side .sidebar-surface .side-group .side-row{height:26px;min-height:26px}
   .sidebar-content{padding-block:4px 6px}

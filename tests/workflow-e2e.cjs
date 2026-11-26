@@ -40,7 +40,7 @@ async function main(){
     let popup=await integratedNotifications();
     await popup.getByText('아직 도착한 알림이 없습니다.',{exact:true}).waitFor();
     await popup.getByRole('button',{name:'알림 닫기'}).click();await popup.waitFor({state:'hidden'});
-    await button("업무 연결 / 비서").click();await page.getByRole("heading",{name:"업무 연결과 비서",exact:true}).waitFor();
+    await button("업무 센터").click();await page.getByRole("heading",{name:"업무 센터",exact:true}).waitFor();
     const refresh=button("새로고침");
     assert(await refresh.locator('svg.lucide-refresh-cw').count());
     await refresh.click();
@@ -92,7 +92,7 @@ async function main(){
     assert.match(await fs.readFile(path.join(folder,data.reports[0].artifactPath),"utf8"),/결정할 사항/);
     const when=new Date(Date.now()+120000);when.setSeconds(0,0);const local=new Date(when.getTime()-when.getTimezoneOffset()*60000).toISOString().slice(0,16);
     await page.getByLabel("알릴 시각",{exact:true}).fill(local);await page.getByLabel("알릴 내용",{exact:true}).fill("검증 예약 알림");await button("예약 알림 등록").click();await page.getByRole("heading",{name:"검증 예약 알림",exact:true}).waitFor();
-    await app.close();app=null;await launch();await button("업무 연결 / 비서").click();data=await state();assert.equal(data.proposals[0].status,"completed");assert(data.reminders.some(r=>r.text==="검증 예약 알림"));assert.match(data.reports[0].body,/현황 보고/);
+    await app.close();app=null;await launch();await button("업무 센터").click();data=await state();assert.equal(data.proposals[0].status,"completed");assert(data.reminders.some(r=>r.text==="검증 예약 알림"));assert.match(data.reports[0].body,/현황 보고/);
     await button("대시보드").click();await page.locator(".pf-project-entry").filter({hasText:project.name}).click();await openProjectTab(page,'규칙');
     await page.getByText("메모 백업과 가져오기",{exact:true}).click();const output=path.join(temp,"기억 백업.json");
     await app.evaluate(({session},destination)=>{session.defaultSession.once("will-download",(_event,item)=>item.setSavePath(destination));},output);
@@ -103,7 +103,7 @@ async function main(){
     await page.getByRole("heading",{name:"적용할 메모 선택",exact:true}).waitFor();await button("선택한 메모 가져오기").click();await page.getByRole("status").filter({hasText:"메모 1개를 적용"}).waitFor();
     await page.locator(".memory-list button").filter({hasText:"보관할 기준"}).click();assert.equal(await page.getByLabel("지시와 메모",{exact:true}).inputValue(),"가져오기 후 메모 본문");
     await button("기기 전체로 옮기기").click();await page.locator(".memory-list button").filter({hasText:"이 기기 전체"}).waitFor();
-    await button("업무 연결 / 비서").click();
+    await button("업무 센터").click();
     for(const width of [390,768,1280]){
       await page.setViewportSize({width,height:900});
       await settledLayout(page.locator('body'));

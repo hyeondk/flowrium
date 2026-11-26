@@ -40,6 +40,6 @@ export function UpdatePanel({ state, settings = false, fail }: {
     </div></section>{settings&&changes&&<section className="settings-section update-history" aria-label="최신 변경점">
       <h3>최신 변경점 <small>{state.currentVersion}</small></h3>
       <ul>{changes.map(change=><li key={change}>{change}</li>)}</ul>
-      <button type="button" className="text-link" onClick={()=>api.openExternal('downloads').catch(fail)}>맥에서 수동으로 설치하는 방법</button>
+      <button type="button" className="text-link" onClick={()=>api.openExternal('downloads').catch(fail)}>Mac에서 수동으로 설치하는 방법</button>
     </section>}</>;
 }

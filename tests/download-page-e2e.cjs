@@ -178,7 +178,7 @@ async function run() {
     await page.getByRole("status").filter({hasText:"명령을 클립보드에 복사했습니다"}).waitFor();
     assert.equal(await page.evaluate(()=>window.copiedCommand),await page.locator("#win-download-command").textContent());
     await page.evaluate(()=>window.rejectClipboard=true);
-    await page.getByRole("button", {name: "맥 설치 명령 복사"}).click();
+    await page.getByRole("button", {name: "Mac 설치 명령 복사"}).click();
     await page.getByRole("status").filter({hasText:"선택한 명령을 키보드로 복사"}).waitFor();
     assert.equal(await page.evaluate(()=>window.getSelection().toString()),"bash Flowrium-install.sh");
     await page.evaluate(() => {

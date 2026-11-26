@@ -52,7 +52,7 @@ function chatFailure(error, fallback = 'Codex가 작업을 마치지 못했고 �
   if (kind === 'contextwindowexceeded' || /context.?window|context_length_exceeded|maximum context|too many tokens/i.test(message))
     return known('context','요청과 대화 기록이 모델의 문맥 한도를 넘었습니다. 대화 설정에서 문맥을 정리하거나 요청을 나누어 보내 주세요.');
   if (/windows sandbox|sandbox.*(?:setup|elevat|access denied)/i.test(message) || kind === 'sandboxerror' && process.platform === 'win32')
-    return known('permission','윈도우에서 Codex 작업용 샌드박스를 시작하지 못했습니다. 윈도우 보안 정책과 프로젝트 폴더 접근 권한을 확인해 주세요.');
+    return known('permission','Windows에서 Codex 작업용 샌드박스를 시작하지 못했습니다. Windows 보안 정책과 프로젝트 폴더 접근 권한을 확인해 주세요.');
   if (kind === 'sandboxerror' || kind === 'toomanydenials')
     return known('permission','Codex 작업에 필요한 접근이나 실행이 제한됐습니다. 작업 범위와 권한을 확인해 주세요.');
   if (status === 403 || /forbidden|permission.?denied|access.{0,12}denied/i.test(message))

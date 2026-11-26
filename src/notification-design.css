@@ -16,7 +16,6 @@
 .flow-question-notice[data-tone=success] .flow-notice-symbol {height:22px;}
 .flow-question-notice[data-tone=success] .flow-notice-action {min-height:26px;padding-block:2px;}
 .flow-notice-action:hover {background:color-mix(in srgb,currentColor 15%,transparent);}
-.flow-notice-action:focus-visible {outline:2px solid currentColor;outline-offset:2px;}
 :is(.ui-notification [data-motion=toast],.flow-question-notice)[data-phase=enter] {animation:ui-toast-rise 240ms var(--ease-enter) both;}
 :is(.ui-notification [data-motion=toast],.flow-question-notice)[data-phase=exit] {animation:ui-toast-fall 220ms var(--ease-exit) both;pointer-events:none;}
 @media(prefers-reduced-motion:reduce) {.flow-question-notice {animation:none!important;}}

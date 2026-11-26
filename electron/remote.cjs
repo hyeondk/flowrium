@@ -696,6 +696,8 @@ function registerRemote(
       "/date-picker.js": "date-picker.js",
       "/date-picker.css": "date-picker.css",
       "/close-button.css": "close-button.css",
+      "/keyboard-focus.js": "keyboard-focus.js",
+      "/keyboard-focus.css": "keyboard-focus.css",
       "/confirmation.js": "confirmation.js",
       "/decision-notice.js": "decision-notice.js",
       "/chatgpt.svg": "chatgpt.svg",

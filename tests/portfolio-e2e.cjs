@@ -59,7 +59,7 @@ async function main() {
         "산출물",
         "완료한 업무",
         "휴지통",
-        "업무 연결 / 비서",
+        "업무 센터",
         "주간업무보고",
         "업무 마감",
         "사전",
@@ -83,6 +83,27 @@ async function main() {
     await rail.hover();
     await settledRail(rail,{expanded:true,pinned:false,width:236},'프로젝트 추가 전 메뉴 펼치기');
     await nav.getByRole("button",{name:"프로젝트 추가",exact:true}).click();
+    await settledRail(rail,{expanded:false,pinned:false,width:56},'프로젝트 폴더 선택 앞에서 메뉴가 접힘');
+    const workingFolder = page.getByRole('group', { name:'작업 폴더', exact:true });
+    await workingFolder.waitFor();
+    assert.equal(await button('프로젝트 만들기').isDisabled(), true);
+    await app.evaluate(({ dialog }, folder) => {
+      const native = { titles:[] };
+      globalThis.kickoffNativeFolder = native;
+      dialog.showOpenDialog = async (_, options) => {
+        native.titles.push(options.title);
+        return { canceled:false, filePaths:[folder] };
+      };
+    }, parent);
+    await workingFolder.getByRole('radio',{name:'기존 프로젝트 폴더 사용',exact:true}).check();
+    await workingFolder.getByRole('button',{name:'폴더 선택',exact:true}).click();
+    await page.waitForFunction(value=>document.querySelector('.pf-kickoff-path small')?.textContent===value, await fs.realpath(parent));
+    assert.equal(await page.getByLabel('프로젝트 이름',{exact:true}).inputValue(), path.basename(await fs.realpath(parent)));
+    assert.deepEqual(await fs.readdir(parent), [], '폴더 선택만으로 프로젝트 파일을 쓰지 않음');
+    await workingFolder.getByRole('radio',{name:'상위 폴더에 새 폴더 만들기',exact:true}).check();
+    assert.equal(await button('프로젝트 만들기').isDisabled(), true);
+    await workingFolder.getByRole('button',{name:'폴더 선택',exact:true}).click();
+    await page.waitForFunction(value=>document.querySelector('.pf-kickoff-path small')?.textContent===value, await fs.realpath(parent));
     await page.getByLabel("프로젝트 이름", { exact: true }).fill(name);
     await page.getByLabel("프로젝트 구분", { exact: true }).fill("개인");
     const startDate=page.getByLabel("시작일",{exact:true}), dueDate=page.getByLabel("목표일",{exact:true});
@@ -106,7 +127,7 @@ async function main() {
     // Exercise a native close event that arrives while the next field receives
     // input. Windows can post the event on a later rendering frame.
     await calendar.evaluate(dialog => {
-      const goal = document.querySelector(".pf-form textarea[required]");
+      const goal = document.querySelector(".pf-form textarea");
       function holdClose(event) {
         if (event.target !== dialog) return;
         document.removeEventListener("close", holdClose, true);
@@ -122,7 +143,7 @@ async function main() {
     await page.keyboard.press("ArrowRight");await page.keyboard.press("Enter");
     assert.equal(await dueDate.inputValue(),"2026-11-20");
     await page.waitForFunction(() => window.flowriumDateCloseHeld);
-    const goalField = page.locator(".pf-form textarea[required]");
+    const goalField = page.locator(".pf-form textarea").first();
     const goalText = "동네 안내 자료를 발간합니다.";
     await page.getByLabel("프로젝트 목표", {exact:true}).fill(goalText);
     await page.waitForFunction(() => window.flowriumDateCloseReplayed);
@@ -133,14 +154,10 @@ async function main() {
       .getByLabel("킥오프 메모")
       .fill("현장 답사 전 검토사항을 기록합니다.");
     await page.getByLabel("규칙과 디자인, 회의록 폴더 만들기").check();
-    await app.evaluate(({ dialog }, folder) => {
-      dialog.showOpenDialog = async () => ({
-        canceled: false,
-        filePaths: [folder],
-      });
-    }, parent);
-    await button("폴더 선택 후 킥오프").click();
+    await button("프로젝트 만들기").click();
     await page.getByRole("heading", { name, exact: true }).waitFor();
+    assert.deepEqual(await app.evaluate(()=>globalThis.kickoffNativeFolder.titles),
+      ['기존 프로젝트 폴더 선택','새 프로젝트를 만들 상위 폴더 선택']);
     const savedGoal = await page.evaluate(async title => {
       const cards = await window.flowrium.readPortfolio();
       return cards.find(card => card.project.name === title)?.details?.goal;

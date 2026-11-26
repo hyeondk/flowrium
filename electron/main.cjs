@@ -87,7 +87,7 @@ async function invokeRegistered(name,handler,args){
   if(['send','startWork','logoutSecurity','installUpdate','lockSecurity'].includes(name)||
     (name==='workflowAction'&&args[0]?.action==='continueConversation')||
     (name==='saveSettings'&&(args[0]?.aiFollowups===false||Object.hasOwn(args[0]??{},'codexPath'))))followupGenerator?.invalidate();
-  const independent=/^(read|list)/.test(name)||['bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','dictionaryState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name);
+  const independent=/^(read|list)/.test(name)||['bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','dictionaryState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState','selectKickoffLocation'].includes(name);
   const query=args[0];
   // 실행 파일과 프로젝트를 바꾸는 작업은 기존 동기화를 기다린다.
   const settingsOnly=(name==='saveSettings'&&!Object.hasOwn(query??{},'codexPath')) ||
@@ -271,6 +271,27 @@ async function launch() {
   const canContinueAccountWork = () => !quitting && !migrationTransition && !importRestartRequired &&
     !security.loggingOut && !updater?.isInstalling();
   const canUseAccount = () => !security.locked && canContinueAccountWork();
+  const googleConnection = require('./google-connection.cjs').registerGoogleConnection(register,{
+    directory:app.getPath('userData'),secretStorage:require('electron').safeStorage,
+    getContext:()=>canUseAccount() ? (security.data.accountOwner || 'signed-out') : null,
+    openExternal:url=>shell.openExternal(url),
+    async chooseClient(){
+      const result = await dialog.showOpenDialog(window,{
+        title:'Google 데스크톱 앱 OAuth 파일 선택',properties:['openFile'],
+        filters:[{name:'OAuth 설정 파일',extensions:['json']}],
+      });
+      return result.canceled ? null : result.filePaths[0] || null;
+    },
+  });
+  let googleOwner = security.accountRevision, googleEpoch = security.epoch;
+  security.on('state',state=>{
+    if (googleOwner !== state.accountRevision || googleEpoch !== security.epoch) {
+      googleOwner = state.accountRevision;
+      googleEpoch = security.epoch;
+      googleConnection.invalidate();
+    }
+  });
+  app.on('will-quit',googleConnection.invalidate);
   const {Dictionary}=require('./dictionary.cjs');
   dictionary=new Dictionary(app.getPath('userData'),{
     context:()=>canUseAccount() && controller?.status.authenticated ? {
@@ -391,6 +412,7 @@ async function launch() {
   const portfolio=require("./portfolio.cjs").registerPortfolio(register, store, {
     getRuntime:()=>codexTransfer,
     chooseFolder: async (createFolder) => {
+      dotsRuntime?.hide();
       const choice = await dialog.showOpenDialog(window, {
         title: createFolder ? "새 프로젝트를 만들 상위 폴더 선택" : "기존 프로젝트 폴더 선택",
         properties: ["openDirectory", "createDirectory"],

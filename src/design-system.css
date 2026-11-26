@@ -9,7 +9,7 @@
 :is(.app-shell,.security-screen,.motion-overlay,.modal-backdrop,dialog) :is(button.primary,button.pf-primary,button.wb-primary,button[type=submit],.composer-send){background:var(--primary-gradient);background-color:#163869;color:var(--on-primary);border-color:transparent;box-shadow:0 6px 18px -12px #16386988;font-weight:700}
 :is(.app-shell,.security-screen,.motion-overlay,.modal-backdrop,dialog) :is(button.primary,button.pf-primary,button.wb-primary,button[type=submit],.composer-send):hover:not(:disabled){filter:brightness(1.07);background-color:#163869}
 :is(.app-shell,.security-screen,.motion-overlay,.modal-backdrop,dialog) :is(.button.secondary,.pf-secondary,.wb-secondary){border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 70%,transparent);color:var(--text);box-shadow:0 1px 2px #081f4805}
-:is(.app-shell,.security-screen,.motion-overlay,.modal-backdrop,dialog) :is(.button.secondary,.pf-secondary,.wb-secondary):hover:not(:disabled){background:var(--panel-alt);border-color:var(--blue-400)}
+:is(.app-shell,.security-screen,.motion-overlay,.modal-backdrop,dialog) :is(.button.secondary,.pf-secondary,.wb-secondary):hover:not(:disabled){background:var(--panel-alt)}
 :is(.app-shell,.security-screen,.motion-overlay,.modal-backdrop,dialog) :is(.button.subtle,.text-link,.wb-back,.pf-back){border-color:transparent;background:transparent;color:var(--muted);box-shadow:none}
 :is(.app-shell,.security-screen,.motion-overlay,.modal-backdrop,dialog) :is(.button.subtle,.text-link,.wb-back,.pf-back):hover:not(:disabled){background:var(--panel-alt);color:var(--text);border-color:transparent}
 :is(.app-shell,.security-screen,.motion-overlay,.modal-backdrop,dialog) button:disabled{opacity:.48;box-shadow:none}
@@ -66,14 +66,13 @@
 .conversation-management .conversation-popover {min-inline-size:0;margin:0;overflow:visible}
 .conversation-management :is(fieldset,label) {min-inline-size:0}
 .conversation-management label:has(> :is(input:not([type=checkbox]),select)) {grid-template-columns:minmax(0,1fr)}
-.conversation-management :is(input:not([type=checkbox]),select):focus-visible {outline:2px solid var(--accent);outline-offset:-2px}
 @media(max-width:600px){.settings-modal{max-height:calc(100dvh - 24px)}.settings-modal .modal-header{padding:18px 16px}.settings-modal .modal-content{padding:16px;gap:16px}.settings-modal .modal-content>:is(.settings-section,.migration-panel),.settings-modal .settings-section{padding:16px}.settings-modal .modal-footer{padding:12px 16px}.settings-modal .update-settings{align-items:flex-start;flex-direction:column;gap:14px}.settings-modal .update-settings>:is(button,.update-settings-actions){align-self:flex-end}.settings-modal .appearance{align-items:flex-start;flex-direction:column}.settings-modal .appearance>.segmented{align-self:flex-end}}
 .ui-switch-control{position:relative;display:inline-flex;vertical-align:middle;flex:0 0 46px;width:46px;height:28px;line-height:0}
 .ui-switch-control>input[type=checkbox]{position:absolute;inset:0;z-index:1;appearance:none;opacity:0;width:46px!important;height:28px!important;min-height:28px!important;margin:0;padding:0;cursor:pointer}
 .ui-switch-track{display:block;width:46px;height:28px;padding:3px;border:1px solid var(--line);border-radius:20px;background:color-mix(in srgb,var(--muted) 26%,var(--panel));transition:background-color 240ms var(--ease-check),border-color 240ms var(--ease-check);pointer-events:none}
 .ui-switch-thumb{display:block;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #081f4833;transition:transform 240ms var(--ease-check)}
 .ui-switch-control>input:checked+.ui-switch-track{background:var(--blue-600);border-color:var(--blue-600)}.ui-switch-control>input:checked+.ui-switch-track>.ui-switch-thumb{transform:translateX(18px)}
-.ui-switch-control:has(input:focus-visible){outline:2px solid var(--accent);outline-offset:4px;border-radius:20px}.ui-switch-control:has(input:disabled){opacity:.48}
+.ui-switch-control:has(input:disabled){opacity:.48}
 label:has(>.ui-switch-control){display:flex!important;align-items:center!important;justify-content:space-between!important;gap:16px!important;min-height:44px;line-height:24px;text-align:left}label>.ui-switch-control{order:2;margin-left:auto}
 .message-meta-actions{display:inline-flex;align-items:center;gap:6px;margin-left:auto}.message-meta .ui-like-button{font-size:11px;min-height:30px;padding:2px 8px;border-radius:16px;color:var(--muted)}.message-meta .ui-like-button[aria-pressed=true]{color:var(--accent-bright);background:var(--selected)}
 .ui-spring-glyph{display:inline-flex}.ui-spring-glyph[data-pulse=true]{animation:ui-like-spring 360ms cubic-bezier(.2,.8,.3,1) both}
@@ -155,7 +154,6 @@ label:has(>.ui-switch-control){display:flex!important;align-items:center!importa
   color:var(--text);
 }
 :is(.motion-overlay .dialog-actions,.settings-modal :is(.settings-buttons,.update-settings-actions),.assistant-dialog .pf-actions)>button:where(:not(.primary,.danger,.popup-close-button,[type=submit])):hover:enabled {
-  border-color:var(--blue-400);
   background:var(--panel-alt);
 }
 @media(max-width:400px) {
@@ -193,7 +191,6 @@ body input[type=checkbox]:not(.ui-switch-control>input):not(.ui-checkbox-control
   content:""; position:absolute; left:3px; right:3px; top:7px; border-top:2px solid currentColor;
 }
 body input[type=checkbox]:disabled {opacity:.55; cursor:default}
-body input[type=checkbox]:focus-visible {outline:2px solid var(--accent); outline-offset:3px}
 @supports (appearance:base-select) and selector(::picker(select)) {
   :is(.app-shell,.motion-overlay,.modal-backdrop) select:not([multiple]),
   :is(.app-shell,.motion-overlay,.modal-backdrop) select:not([multiple])::picker(select) {appearance:base-select}

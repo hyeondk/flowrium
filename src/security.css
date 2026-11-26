@@ -163,7 +163,6 @@
 }
 
 @media (forced-colors:active) {
-  .security-pin-entry:focus-within .security-pin-cell[data-current=true] { outline:2px solid Highlight;outline-offset:2px; }
   .security-pin-cell::after { forced-color-adjust:none; background:CanvasText; }
 }
 

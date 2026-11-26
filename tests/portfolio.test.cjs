@@ -157,6 +157,47 @@ test("취소·중복·잘못된 경로 및 기간을 거절하고 기존 폴더�
   assert.equal((await f.api.readProjectDetails(p.id)).goal, input.goal);
 });
 
+test("먼저 선택한 경로에만 이름으로 프로젝트를 등록하고 기존 폴더의 자료와 상세 정보를 보존한다", async (t) => {
+  const f = await fixture(t);
+  const selected = await f.api.selectKickoffLocation(false);
+  const canonical = await fs.realpath(f.parent);
+  assert.equal(selected.path, canonical);
+  assert.equal(selected.name, path.basename(canonical));
+  assert.deepEqual(f.store.state.projects, []);
+  assert.deepEqual(await fs.readdir(canonical), []);
+  await fs.writeFile(path.join(canonical, "기존 문서.txt"), "원본");
+  f.pick(null);
+  assert.equal(await f.api.selectKickoffLocation(false), null);
+  await assert.rejects(f.api.kickoffProject({ name: "미승인", createFolder: true, locationToken: selected.token }), /다시 선택/);
+  const connected = await f.api.kickoffProject({ name: "표시 이름", createFolder: false, locationToken: selected.token });
+  assert.equal(connected.path, canonical);
+  assert.equal(connected.name, "표시 이름");
+  const reopened = new Store(path.dirname(f.store.file));
+  await reopened.load();
+  assert.equal(reopened.project(connected.id).name, "표시 이름");
+  await assert.rejects(f.api.kickoffProject({ name: "또 연결", locationToken: selected.token }), /다시 선택/);
+  f.pick(f.parent);
+  const selectedAgain = await f.api.selectKickoffLocation(false);
+  const existing = await f.api.kickoffProject({ name: "덮어쓸 이름", goal: "덮어쓸 목표", locationToken: selectedAgain.token });
+  assert.equal(existing.id, connected.id);
+  assert.equal(existing.name, "표시 이름");
+  assert.equal((await f.api.readProjectDetails(existing.id)).goal, "");
+  assert.equal(await fs.readFile(path.join(canonical, "기존 문서.txt"), "utf8"), "원본");
+});
+
+test("선택 이후 위치가 교체된 상위 폴더에는 새 프로젝트를 만들지 않는다", async (t) => {
+  const f = await fixture(t);
+  const selected = await f.api.selectKickoffLocation(true);
+  await fs.rename(f.parent, path.join(f.root, "다른 위치"));
+  await fs.mkdir(f.parent);
+  await assert.rejects(f.api.kickoffProject({ name: input.name, createFolder: true, locationToken: selected.token }), /위치가 바뀌었습니다/);
+  assert.deepEqual(await fs.readdir(f.parent), []);
+  assert.deepEqual(f.store.state.projects, []);
+  const latest = await f.api.selectKickoffLocation(true);
+  const project = await f.api.kickoffProject({ name: input.name, createFolder: true, locationToken: latest.token });
+  assert.equal(project.path, await fs.realpath(path.join(f.parent, input.name)));
+});
+
 test("규칙·디자인·회의록은 선택한 분류 안의 실제 문서만 생성하고 심볼릭 링크·중복·상위경로를 차단한다", async (t) => {
   const f = await fixture(t);
   const p = await f.api.kickoffProject(input);

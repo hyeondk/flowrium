@@ -16,8 +16,7 @@
 :is(.app-shell,.settings-modal,.motion-overlay) .input-request fieldset>p {margin-bottom:3px;color:var(--text);}
 :is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option {align-items:flex-start;padding:8px 10px;border:1px solid var(--line-soft);border-radius:8px;background:var(--panel);cursor:pointer;}
 :is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option:hover {background:var(--panel-alt);}
-:is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option:has(input:checked) {border-color:var(--accent);background:var(--accent-bg);}
-:is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option:has(input:focus-visible) {outline:2px solid var(--accent);outline-offset:2px;}
+:is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option:has(input:checked) {background:var(--accent-bg);}
 :is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option>input {flex:none;margin:3px 0 0;accent-color:var(--accent);}
 :is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option:has(input:disabled) {cursor:default;}
 :is(.app-shell,.settings-modal,.motion-overlay) .input-request .input-option span,
@@ -30,5 +29,4 @@
 .input-request-footer>span {display:flex;align-items:center;gap:5px;color:var(--accent);}
 :is(.app-shell,.settings-modal,.motion-overlay) .input-request-footer>.button {min-height:32px;padding:5px 10px;font-size:12px;line-height:1.5;margin-inline-start:auto;}
 .conversation-question {min-width:0;scroll-margin:14px;}
-.conversation-question:focus-visible {outline:2px solid var(--accent);outline-offset:3px;border-radius:12px;}
 @media(max-width:600px) { :is(.app-shell,.settings-modal,.motion-overlay) .input-request {padding:12px;} :is(.app-shell,.settings-modal,.motion-overlay) .input-request header {flex-wrap:wrap;} :is(.app-shell,.settings-modal,.motion-overlay) .input-request header>button {margin-left:auto;} }

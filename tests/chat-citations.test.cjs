@@ -50,7 +50,7 @@ test('마크다운 파일 링크는 로컬 경로만 디코딩하고 겹친 퍼�
   }
 });
 
-test('저장한 답변의 마크다운 파일 링크와 한글 파일 참조만 같은 프로젝트에서 표시한다',async t=>{
+test('답변의 절대 파일 링크를 표시하고 상대 경로, 미리보기 및 다운로드는 기존 경계를 지킨다',async t=>{
   const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-markdown-file-')));
   t.after(()=>fs.rm(root,{recursive:true,force:true,maxRetries:5}));
   const folder=path.join(root,'프로젝트'),docs=path.join(folder,'회의 자료 (검토)'),external=path.join(root,'다른 폴더');
@@ -62,7 +62,8 @@ test('저장한 답변의 마크다운 파일 링크와 한글 파일 참조만 
   const store=new Store(path.join(root,'profile'));await store.load();
   const project=await store.addProject(folder);
   const portable=file=>file.split(path.sep).join('/');
-  const paths=[portable(hwp),pathToFileURL(pdf).href,portable(offsite),'연결/외부.pdf','회의 자료 (검토)/누락.pdf'];
+  const paths=[portable(hwp),pathToFileURL(pdf).href,portable(offsite),'연결/외부.pdf',
+    '회의 자료 (검토)/누락.pdf','../다른 폴더/외부.pdf',portable(path.join(folder,'연결','외부.pdf'))];
   const picked=[];
   const body=paths.map(link=>`[회의 파일](<${link}>)`).join('\n');
   const forged='`[다른 파일](<'+portable(hwp)+'>)`';
@@ -73,12 +74,14 @@ test('저장한 답변의 마크다운 파일 링크와 한글 파일 참조만 
   const show=(index,message=messages[0])=>readChatCitation(store,chat.id,message.id,index,'reveal',file=>picked.push(file));
   assert.equal((await show(paths[0])).name,'회의록 최종.hwp');
   assert.equal((await show(paths[1])).name,'보고서 %20.pdf');
+  assert.equal((await show(paths[2])).name,'외부.pdf');
   assert.equal((await show(0)).name,'회의록 최종.hwp');
-  for(const link of [...paths.slice(2),portable(hwp.replace('.hwp','.xlsx'))])await assert.rejects(show(link));
+  for(const link of [...paths.slice(3),portable(hwp.replace('.hwp','.xlsx'))])await assert.rejects(show(link));
+  await assert.rejects(readChatCitation(store,chat.id,messages[0].id,paths[2],'reveal'));
   await assert.rejects(show(paths[0],messages[1]));
   await assert.rejects(show(paths[0],messages[2]));
   await assert.rejects(readChatCitation(store,chat.id,messages[0].id,paths[1],'download'));
-  assert.deepEqual(picked.map(file=>file.normalize('NFC')),[hwp,pdf,hwp].map(file=>file.normalize('NFC')));
+  assert.deepEqual(picked.map(file=>file.normalize('NFC')),[hwp,pdf,offsite,hwp].map(file=>file.normalize('NFC')));
 });
 
 test('PC 입력기와 번들 모바일 입력기가 물결표 및 기존 마크다운 문법을 동일하게 처리한다',async()=>{

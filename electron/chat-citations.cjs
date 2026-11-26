@@ -17,19 +17,38 @@ function linkedMarkdownFile(message,target) {
     child.type === 'link_open' && chatFileLinkTarget(child.attrGet('href')) === target));
 }
 
-async function projectFile(root,target) {
+function fileParts(target) {
   const foreign = process.platform === 'win32' ? /^[/\\]/.test(target) : /^(?:[a-z]:[\\/]|\\)/i.test(target);
   if (foreign) throw Error('이 운영체제에서 열 수 있는 프로젝트 경로인지 확인해 주세요.');
-  if (target.split(/[\\/]/).includes('..')) throw Error('현재 프로젝트 폴더에 있는 파일만 열 수 있습니다.');
-  const relative = path.isAbsolute(target) ? relativePath(root,target) : target.replace(/^\.\//,'');
-  const parts = relative.split(/[\\/]/);
-  if (parts.some(part => !part || part.startsWith('.') || /[:\x00-\x1f]/.test(part)))
-    throw Error('현재 프로젝트 폴더에 있는 파일만 열 수 있습니다.');
+  const base = path.parse(target).root;
+  const parts = (base ? target.slice(base.length) : target.replace(/^\.\//,'')).split(/[\\/]/);
+  const invalidPart = part => !part || part.startsWith('.') || /[:\x00-\x1f]/.test(part) ||
+    (process.platform === 'win32' && (/[<>"|?*]|[. ]$/.test(part) ||
+      /^(?:CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³])(?:\.|$)/i.test(part)));
+  if (parts.some(invalidPart)) throw Error('이 링크의 경로에서 일반 파일을 찾을 수 없습니다.');
+  return {base,parts};
+}
+
+async function revealableFile(root,parts) {
   const file = path.join(root,...parts);
-  const stat = await fs.lstat(file);
-  if (!stat.isFile() || stat.isSymbolicLink() || relativePath(file,await fs.realpath(file)) !== '')
-    throw Error('현재 프로젝트 폴더에 있는 일반 파일만 열 수 있습니다.');
-  return file;
+  try {
+    const stat = await fs.lstat(file);
+    if (stat.isFile() && relativePath(file,await fs.realpath(file)) === '') return file;
+  } catch (error) {
+    if (['ENOENT','ENOTDIR'].includes(error.code)) throw Error('연결된 파일이 현재 위치에 없습니다.');
+    if (['EACCES','EPERM'].includes(error.code)) throw Error('이 파일 위치에 접근할 수 없습니다.');
+    throw error;
+  }
+  throw Error('이 링크의 경로에서 일반 파일을 찾을 수 없습니다.');
+}
+
+async function projectFile(root,target) {
+  const {base,parts} = fileParts(target);
+  if (!base) return revealableFile(root,parts);
+  const relative = relativePath(root,path.join(base,...parts));
+  if (path.isAbsolute(relative) || relative === '..' || relative.startsWith('..'+path.sep))
+    throw Error('현재 프로젝트 폴더에 있는 파일만 열 수 있습니다.');
+  return revealableFile(root,relative.split(path.sep));
 }
 
 async function readChatCitation(store,sessionId,messageId,index,action,reveal) {
@@ -39,7 +58,11 @@ async function readChatCitation(store,sessionId,messageId,index,action,reveal) {
   const message=session.messages.find(m=>m.id===messageId&&m.role==='assistant');
   if (target) {
     if (!message || !reveal || !linkedMarkdownFile(message,target)) throw Error('이 답변에 연결된 파일을 찾지 못했습니다.');
-    const file = await projectFile(await projectRoot(store.project(session.projectId)),target);
+    const {base,parts} = fileParts(target);
+    // 절대 경로는 사용자가 누른 링크의 위치만 데스크톱에서 표시한다.
+    // 상대 경로와 파일 다운로드는 기존 프로젝트 경계를 사용한다.
+    const root = base || await projectRoot(store.project(session.projectId));
+    const file = await revealableFile(root,parts);
     await reveal(file);
     return {name:path.basename(file)};
   }

@@ -29,7 +29,7 @@ function registerLinkDelivery(register,{directory,secretStorage,accountRevision=
   if(input.autoKakao!==undefined){if(typeof input.autoKakao!=='boolean')throw Error('자동 전달 설정을 확인해 주세요.');c.autoKakao=input.autoKakao;}
   if(input.mail){const m=input.mail;if(typeof m.enabled!=='boolean'||m.provider!=='mac'||!Array.isArray(m.senders)||m.senders.length>5||m.senders.some(v=>!validEmail(v))||typeof m.phrase!=='string'||!m.phrase.trim()||m.phrase.length>80||/[\r\n\0]/.test(m.phrase))throw Error('허용 메일 주소와 요청 제목을 확인해 주세요.');
    if(m.enabled&&!m.senders.length)throw Error('답장할 메일 주소를 하나 이상 지정해 주세요.');
-   if(m.enabled&&platform!=='darwin')throw Error('메일 요청 연결은 맥의 기본 메일 앱에서 사용할 수 있습니다.');
+   if(m.enabled&&platform!=='darwin')throw Error('메일 요청 연결은 Mac의 기본 메일 앱에서 사용할 수 있습니다.');
    c.mail={...c.mail,enabled:m.enabled,provider:m.provider,senders:[...new Set(m.senders.map(email))],phrase:m.phrase.trim(),enabledAt:m.enabled&&!c.mail.enabled?now():c.mail.enabledAt};}
   await save(c,s);return state();
  });

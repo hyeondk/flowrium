@@ -25,13 +25,21 @@ const markdownComponents: Components = {
     <div className="message-table-wrap" role="region" aria-label="답변 표" tabIndex={0}><table {...props}/></div>,
 };
 function MarkdownFileLink({sessionId,messageId,href,children}:FileLinkSource&{href:string;children:ReactNode}) {
- const [error,setError]=useState(false);
+ const [error,setError]=useState('');
  async function reveal(){
-  try{await window.flowrium!.readChatCitation(sessionId,messageId,href,'reveal');setError(false);}
-  catch{setError(true);}
+  try{await window.flowrium!.readChatCitation(sessionId,messageId,href,'reveal');setError('');}
+  catch(reason){
+   const message=reason instanceof Error?reason.message:'';
+   const explanation=[
+    '연결된 파일이 현재 위치에 없습니다.',
+    '이 파일 위치에 접근할 수 없습니다.',
+    '이 운영체제에서 열 수 있는 프로젝트 경로인지 확인해 주세요.',
+   ].find(value=>message.endsWith(value));
+   setError('파일 위치를 열 수 없습니다. '+(explanation||'원본 파일과 접근 권한을 확인해 주세요.'));
+  }
  }
  return <><a href="#파일-위치" title="파일 위치 열기" onClick={event=>{event.preventDefault();void reveal();}}>{children}</a>
-  {error&&<span className="message-file-link-error" role="status">파일 위치를 열 수 없습니다. 프로젝트 폴더에서 파일을 확인해 주세요.</span>}</>;
+  {error&&<span className="message-file-link-error" role="status">{error}</span>}</>;
 }
 function Markdown({text,sessionId,messageId}:{text:string;sessionId?:string;messageId?:string}){
  const enableFiles=Boolean(window.flowrium&&sessionId&&messageId);

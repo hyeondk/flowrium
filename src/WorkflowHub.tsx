@@ -123,14 +123,14 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
   if(!api)return <p>데스크톱 앱에서 작업 공간을 열어 주세요.</p>;
   const pending=(data?.proposals||[]).filter(p=>(showHidden||!p.hidden)&&(showHistory||p.status==="pending"||p.status==="running"||p.status==="held")&&(showHidden||!p.snoozedUntil||p.snoozedUntil<=Date.now()));
   const unread=data?.notifications.filter(n=>!n.readAt).length||0;
-  return <section className="workflow-hub" aria-label="업무 연결과 비서">
-    <header><div className="ui-title-stagger"><h2>업무 연결과 비서</h2><p>대화 사이의 요청과 결과, 필요한 결정과 알림을 한곳에서 확인합니다.</p></div>
+  return <section className="workflow-hub" aria-label="업무 센터">
+    <header><div className="ui-title-stagger"><h2>업무 센터</h2><p>대화 사이의 요청과 결과, 필요한 결정과 알림을 한곳에서 확인합니다.</p></div>
       <button type="button" className="button primary workflow-refresh" disabled={busy} onClick={()=>void refresh().catch(e=>setError(describe(e)))}><RefreshCw size={15} aria-hidden="true"/>새로고침</button></header>
-    <nav aria-label="업무 연결 화면">{([
+    <nav aria-label="업무 센터 화면">{([
       ["decisions","결정과 보고"],["notifications",`알림 ${unread}`],["messages","대화에 전달"],["assistant","비서와 예약"]
     ] as const).map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</nav>
     {error&&<p role="alert">{error}</p>}{notice&&<p role="status">{notice}</p>}
-    {!data&&<p>업무 연결 기록을 불러오고 있습니다.</p>}
+    {!data&&<p>업무 센터를 불러오고 있습니다.</p>}
     {data&&tab==="decisions"&&<>
       <div className="workflow-actions"><label><AnimatedSwitch checked={showHidden} onChange={e=>setShowHidden(e.target.checked)}/>숨긴 항목과 미룬 항목</label>
         <label><AnimatedSwitch checked={showHistory} onChange={e=>setShowHistory(e.target.checked)}/>처리한 기록</label>

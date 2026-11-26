@@ -1,16 +1,23 @@
 import {useEffect,useState} from 'react';
 import { CloseButton, AnimatedCheckbox } from './ui-motion';
-import type {MigrationAPI,MigrationPlan,MigrationReceipt} from '../shared/migration';
+import type {MigrationAPI,MigrationPlan,MigrationStatus} from '../shared/migration';
 import './MigrationPanel.css';
 const size=(n:number)=>n>=1073741824?(n/1073741824).toFixed(2)+'GB':(n/1048576).toLocaleString('ko-KR',{maximumFractionDigits:1})+'MB';
-export default function MigrationPanel(){
+export default function MigrationSettings(){
+ const [visited,setVisited]=useState(false);
+ return <details className="settings-backup" onToggle={event=>{if(event.currentTarget.open)setVisited(true);}}>
+  <summary>Flowrium 백업 및 복원</summary>
+  {visited&&<MigrationPanel/>}
+ </details>;
+}
+function MigrationPanel(){
  const api=window.flowrium as typeof window.flowrium & MigrationAPI;
- const [status,setStatus]=useState<any>(),[plan,setPlan]=useState<MigrationPlan>(),[selected,setSelected]=useState<string[]>([]),[settings,setSettings]=useState(true),[files,setFiles]=useState(false),[policy,setPolicy]=useState<'copy'|'skip'>('copy'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[receipts,setReceipts]=useState<MigrationReceipt[]>([]),[inspect,setInspect]=useState<any>(),[original,setOriginal]=useState<any>();
- async function load(){setStatus(await api!.migrationAction({action:'status'}));setReceipts(await api!.migrationAction({action:'receipts'}));}
+ const [status,setStatus]=useState<MigrationStatus>(),[plan,setPlan]=useState<MigrationPlan>(),[selected,setSelected]=useState<string[]>([]),[settings,setSettings]=useState(true),[files,setFiles]=useState(false),[policy,setPolicy]=useState<'copy'|'skip'>('copy'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
+ async function load(){setStatus(await api!.migrationAction({action:'status'}));}
  async function run(fn:()=>Promise<void>){if(busy)return;setBusy(true);setError('');setNotice('');try{await fn();}catch(e){setError(e instanceof Error?e.message:String(e));await load().catch(()=>{});}finally{setBusy(false);}}
  function show(p:MigrationPlan|null){setPlan(p||undefined);setSelected(p?.projects.map(v=>v.key)||[]);}
  useEffect(()=>{void run(load);},[]);
- return <section className="migration-panel" aria-label="전체 자료 이관"><header><div><h3>전체 자료 이관</h3><p>프로젝트와 대화를 새 위치로 옮깁니다. 첨부와 실행 도구 기록, 기억과 설정도 함께 보관합니다.</p></div><button disabled={busy} onClick={()=>void run(load)}>다시 확인</button></header>
+ return <section className="migration-panel" aria-label="Flowrium 백업 및 복원"><header><div><h3>백업 파일 가져오기와 내보내기</h3><p>프로젝트와 대화, 첨부, 실행 도구 기록, 기억, 설정을 옮깁니다.</p></div><button disabled={busy} onClick={()=>void run(load)}>다시 확인</button></header>
   <div className="migration-note"><strong>원본은 읽기만 합니다.</strong><p>이전 계정의 인증과 암호, 키체인 비밀은 제외합니다. 각 사용자는 본인 계정으로 연결해야 합니다. 기록을 보존하며 이전 엔진의 실행 문맥을 복원하지 않습니다. 옮긴 대화에서 새 요청을 시작할 수 있습니다.</p><p>실행 중이던 도구와 예약은 자동으로 다시 실행하지 않습니다. 적용 전 백업을 만들며 적용이 끝나면 앱을 다시 시작합니다.</p></div>
   {status?.restartRequired?<div className="migration-restart" role="status"><strong>이관 결과를 읽으려면 앱을 다시 시작해 주세요.</strong><button className="primary" onClick={()=>void run(async()=>{await api!.migrationAction({action:'restart'});})}>Flowrium 다시 시작</button></div>:<>
   <div className="migration-options"><label><AnimatedCheckbox checked={files} disabled={busy} onChange={e=>setFiles(e.target.checked)}/>프로젝트 작업 파일도 포함</label><p>기본으로 앱 기록과 첨부를 옮깁니다. 작업 파일을 포함하면 선택한 폴더의 소스와 문서도 복사합니다. 저장소 내부 기록과 설치 의존성, 인증 파일은 제외 목록에 표시됩니다.</p><div className="migration-actions"><button disabled={busy} onClick={()=>void run(async()=>show(await api!.migrationAction({action:'previewExport',includeFiles:files,includePrivate:true,includeSettings:true})))}>현재 자료 내보내기 미리보기</button></div></div>
@@ -28,7 +35,5 @@ export default function MigrationPanel(){
   </section>}
   </>}
   {busy&&<p className="migration-busy" role="status">자료를 검증하고 있습니다. 파일 수와 크기에 따라 시간이 걸릴 수 있습니다.</p>}{error&&<p className="migration-error" role="alert">{error}</p>}{notice&&<p className="migration-notice" role="status">{notice}</p>}
-  <section className="migration-history"><h4>이관 결과와 보존 원문</h4>{!receipts.length&&<p>아직 이관한 자료가 없습니다.</p>}{receipts.map(r=><div className="migration-path" key={r.id}><span><strong>{new Date(r.at).toLocaleString('ko-KR')} ({r.status==='completed'?'이관 완료':r.status==='rolled-back'?'실패 후 되돌림':'복구 확인 필요'})</strong><small>{r.path}</small><small>프로젝트와 대화 공간 {r.projects?.length||0}개</small></span><button disabled={busy} onClick={()=>void run(async()=>{setInspect(await api!.migrationAction({action:'inspectReceipt',id:r.id}));setOriginal(undefined);})}>결과와 원문</button></div>)}</section>
-  {inspect&&<section className="migration-archive" aria-label="이관 보관 원문"><header><h4>보존한 원문</h4><CloseButton aria-label="보존한 원문 닫기" onClick={()=>{setInspect(undefined);setOriginal(undefined);}}/></header><p>{inspect.error||'변환 전 파일과 도구 기록을 검증값과 함께 보관했습니다.'}</p>{inspect.warnings?.map((w:string,i:number)=><p key={i}>{w}</p>)}{inspect.rollbackErrors?.map((w:string,i:number)=><p role="alert" key={i}>{w}</p>)}<label>원문 파일<select aria-label="보존 원문 파일" value={original?.index??''} onChange={e=>{const index=Number(e.target.value);void run(async()=>setOriginal({...await api!.migrationAction({action:'readOriginal',id:inspect.id,index}),index}));}}><option value="" disabled>파일 선택</option>{inspect.files?.map((f:any)=><option key={f.index} value={f.index}>{f.path} ({f.group})</option>)}</select></label>{original&&<pre>{original.text}</pre>}</section>}
  </section>;
 }

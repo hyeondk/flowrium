@@ -104,15 +104,15 @@
           <h3 id="mac-terminal-title">Mac 터미널</h3>
           <p>Apple Silicon에서 <strong>터미널</strong>을 열고 설치기를 내려받으세요. <code>less</code>에서 내용을 확인하고 <kbd>q</kbd>로 나옵니다.</p>
           <div class="command-block">
-            <div class="command-header"><h4>내려받기와 확인</h4><button type="button" data-copy-command="mac-download-command" aria-label="맥 내려받기 명령 복사" hidden>복사</button></div>
-            <pre tabindex="0" aria-label="맥 설치기 내려받기 명령"><code id="mac-download-command">curl --fail --location --proto '=https' --proto-redir '=https' \
+            <div class="command-header"><h4>내려받기와 확인</h4><button type="button" data-copy-command="mac-download-command" aria-label="Mac 내려받기 명령 복사" hidden>복사</button></div>
+            <pre tabindex="0" aria-label="Mac 설치기 내려받기 명령"><code id="mac-download-command">curl --fail --location --proto '=https' --proto-redir '=https' \
   --output Flowrium-install.sh \
   https://github.com/hyeondk/flowrium/releases/latest/download/install.sh
 less Flowrium-install.sh</code></pre>
           </div>
           <div class="command-block">
-            <div class="command-header"><h4>확인한 설치기 실행</h4><button type="button" data-copy-command="mac-run-command" aria-label="맥 설치 명령 복사" hidden>복사</button></div>
-            <pre tabindex="0" aria-label="맥 설치 명령"><code id="mac-run-command">bash Flowrium-install.sh</code></pre>
+            <div class="command-header"><h4>확인한 설치기 실행</h4><button type="button" data-copy-command="mac-run-command" aria-label="Mac 설치 명령 복사" hidden>복사</button></div>
+            <pre tabindex="0" aria-label="Mac 설치 명령"><code id="mac-run-command">bash Flowrium-install.sh</code></pre>
           </div>
           <p class="command-location">기본 설치 위치 <code>~/Applications/Flowrium.app</code></p>
         </article>
@@ -120,15 +120,15 @@ less Flowrium-install.sh</code></pre>
           <h3 id="windows-terminal-title">Windows PowerShell</h3>
           <p>64비트 Intel 또는 AMD 컴퓨터에서 <strong>PowerShell</strong>을 일반 사용자로 열고 설치기를 내려받으세요. 출력된 내용을 확인합니다.</p>
           <div class="command-block">
-            <div class="command-header"><h4>내려받기와 확인</h4><button type="button" data-copy-command="win-download-command" aria-label="윈도우 내려받기 명령 복사" hidden>복사</button></div>
-            <pre tabindex="0" aria-label="윈도우 설치기 내려받기 명령"><code id="win-download-command">Invoke-WebRequest &#96;
+            <div class="command-header"><h4>내려받기와 확인</h4><button type="button" data-copy-command="win-download-command" aria-label="Windows 내려받기 명령 복사" hidden>복사</button></div>
+            <pre tabindex="0" aria-label="Windows 설치기 내려받기 명령"><code id="win-download-command">Invoke-WebRequest &#96;
   -Uri 'https://github.com/hyeondk/flowrium/releases/latest/download/install.ps1' &#96;
   -OutFile '.\Flowrium-install.ps1' -UseBasicParsing
 Get-Content '.\Flowrium-install.ps1'</code></pre>
           </div>
           <div class="command-block">
-            <div class="command-header"><h4>확인한 설치기 실행</h4><button type="button" data-copy-command="win-run-command" aria-label="윈도우 설치 명령 복사" hidden>복사</button></div>
-            <pre tabindex="0" aria-label="윈도우 설치 명령"><code id="win-run-command">&amp; '.\Flowrium-install.ps1'</code></pre>
+            <div class="command-header"><h4>확인한 설치기 실행</h4><button type="button" data-copy-command="win-run-command" aria-label="Windows 설치 명령 복사" hidden>복사</button></div>
+            <pre tabindex="0" aria-label="Windows 설치 명령"><code id="win-run-command">&amp; '.\Flowrium-install.ps1'</code></pre>
           </div>
           <p class="command-location">기본 설치 위치 <code>%LOCALAPPDATA%\Programs\Flowrium\Flowrium.exe</code></p>
         </article>
@@ -159,7 +159,7 @@ Get-Content '.\Flowrium-install.ps1'</code></pre>
           <details id="security-help">
             <summary>설치나 실행 중 보안 확인이 나타나요</summary>
             <div class="help-answer">
-              <p><strong>Mac</strong>에서는 임시 서명된 앱을 처음 열거나 업데이트한 뒤 macOS가 실행과 키체인 접근을 물을 수 있습니다. <code>Flowrium Safe Storage</code> 확인창에서는 맥의 로그인 키체인 암호를 사용합니다.</p>
+              <p><strong>Mac</strong>에서는 임시 서명된 앱을 처음 열거나 업데이트한 뒤 macOS가 실행과 키체인 접근을 물을 수 있습니다. <code>Flowrium Safe Storage</code> 확인창에서는 Mac의 로그인 키체인 암호를 사용합니다.</p>
               <p><strong>Windows</strong>에서는 SmartScreen이나 PowerShell 정책에 따라 설치본이나 스크립트 실행이 제한될 수 있습니다. 회사나 학교 컴퓨터라면 관리자의 허용 절차를 따르세요. 정책상 스크립트 실행이 제한된 경우 다운로드의 Windows 설치 파일도 선택할 수 있습니다.</p>
               <p>명령으로 설치할 때도 운영체제의 보안 확인과 정책이 적용됩니다.</p>
               <div class="support-links"><a href="https://support.apple.com/ko-kr/102445">Apple 실행 확인 안내</a><a href="https://learn.microsoft.com/ko-kr/powershell/module/microsoft.powershell.core/about/about_execution_policies">Microsoft 실행 정책 안내</a></div>
@@ -178,7 +178,7 @@ Get-Content '.\Flowrium-install.ps1'</code></pre>
             <summary>ChatGPT 계정과 Codex 대화는 어떻게 연결하나요?</summary>
             <div class="help-answer">
               <p>ChatGPT 데스크톱 앱이 없는 컴퓨터에서도 Flowrium에 ChatGPT 계정을 연결하면 내장 Codex로 대화할 수 있습니다. 대화 연결을 자주 쓴다면 ChatGPT 데스크톱 앱을 함께 설치하는 편이 좋습니다.</p>
-              <p>Flowrium의 <strong>업무 연결 / 비서</strong>에서 현재 컴퓨터의 Codex 프로젝트를 찾아 기존 대화를 연결하세요. <strong>원래 대화 연결</strong>을 선택하면 같은 기기에서 이어 쓸 수 있습니다. <strong>독립 사본</strong>을 선택하면 복사한 대화에서 계속 작업합니다.</p>
+              <p>Flowrium의 <strong>설정 → 계정과 모델</strong>에서 현재 컴퓨터의 Codex 프로젝트를 찾아 기존 대화를 연결하세요. <strong>원래 대화 연결</strong>을 선택하면 같은 기기에서 이어 쓸 수 있습니다. <strong>독립 사본</strong>을 선택하면 복사한 대화에서 계속 작업합니다.</p>
               <p>연결에 문제가 생겨 웹에서 이어가려면 <strong>초안 복사하고 웹 열기</strong>를 선택하세요. 브라우저에서 초안을 붙여넣어 보내고 첨부를 다시 선택합니다. 초안이 없다면 <strong>웹에서 이어가기</strong>를 사용하세요. 일반 ChatGPT 웹 대화는 내장 Codex의 프로젝트 대화와 별도로 보관됩니다.</p>
               <div class="support-links"><a href="https://github.com/hyeondk/flowrium/blob/main/docs/CODEX-CHAT-LINK.md">Codex 연결 범위와 기록 보관 세부 안내</a></div>
             </div>

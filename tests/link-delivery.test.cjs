@@ -44,7 +44,7 @@ test('메일 대기 중 계정이 바뀌면 늦은 요청으로 메일을 보내
 });
 test('Windows에서는 기본 메일을 켜거나 Google 전달 설정으로 우회하지 못한다',async t=>{
  const windows=await fixture(t,'win32');assert.equal((await windows.api.linkDeliveryState()).nativeAvailable,false);
- await assert.rejects(windows.api.configureLinkDelivery({mail:{enabled:true,provider:'mac',senders:['me@example.test'],phrase:'Flowrium 링크'}}),/맥/);
+ await assert.rejects(windows.api.configureLinkDelivery({mail:{enabled:true,provider:'mac',senders:['me@example.test'],phrase:'Flowrium 링크'}}),/Mac/);
  const mac=await fixture(t);assert.equal((await mac.api.linkDeliveryState()).nativeAvailable,true);
  await assert.rejects(mac.api.configureLinkDelivery({mail:{enabled:true,provider:'google',senders:['me@example.test'],phrase:'Flowrium 링크'}}),/메일 주소와 요청 제목/);
  assert.equal(mac.sent.length+windows.sent.length,0);

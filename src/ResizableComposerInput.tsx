@@ -2,7 +2,6 @@ import {attachComposerMarkdown} from '../electron/mobile/composer-markdown.js';
 import {attachDraftEditor} from '../electron/mobile/draft-editor-events.js';
 import {draftWindow} from '../electron/mobile/large-draft-editor.js';
 import '../electron/mobile/composer-markdown.css';
-import {X} from 'lucide-react';
 import {useId, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject, type TextareaHTMLAttributes} from 'react';
 
 const storageKey = 'flowrium.composer.height.v1';
@@ -10,7 +9,6 @@ const minimum = 42;
 const maximum = 420;
 type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>,'value'|'onChange'> & {
   value:string; onTextChange:(text:string)=>void; textareaRef:RefObject<HTMLTextAreaElement|null>;
-  onClear?:()=>void;
 };
 
 function storedHeight() {
@@ -21,7 +19,7 @@ function storedHeight() {
   return undefined;
 }
 
-export default function ResizableComposerInput({textareaRef,value,onTextChange,onClear, ...props}: Props) {
+export default function ResizableComposerInput({textareaRef,value,onTextChange, ...props}: Props) {
   const id = useId();
   const ink = useRef<HTMLSpanElement>(null);
   const editor = useRef<ReturnType<typeof attachComposerMarkdown> | null>(null);
@@ -132,8 +130,6 @@ export default function ResizableComposerInput({textareaRef,value,onTextChange,o
       data-height-mode={actual === undefined ? 'auto' : 'manual'}
       style={{height: actual === undefined ? undefined : actual, '--composer-limit': bounds.max + 'px'} as CSSProperties}/>
       <span ref={ink} className="markdown-input-ink" aria-hidden="true"/>
-      {onClear&&<button type="button" className="icon-button composer-clear" aria-label="입력 지우기"
-        onClick={()=>{onClear();textareaRef.current?.focus();}}><X size={13}/></button>}
     </div>
   </>;
 }

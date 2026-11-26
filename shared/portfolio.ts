@@ -36,7 +36,9 @@ export interface KickoffInput extends Kickoff {
   createFolder?: boolean;
   clone?: boolean;
   scaffold?: boolean;
+  locationToken?: string;
 }
+export interface KickoffLocation { token: string; path: string; name: string }
 export interface PortfolioCard {
   project: Project;
   details: ProjectDetails | null;
@@ -53,6 +55,7 @@ export interface ProjectNavigationState {order:string[]; names:Record<string,str
 export interface PortfolioAPI {
   portfolioAction(input: {action:"navigation"; sync?:boolean} | {action:"move"; id:string; target:string; sync?:boolean}): Promise<ProjectNavigationState>;
   readPortfolio(): Promise<PortfolioCard[]>;
+  selectKickoffLocation(createFolder: boolean): Promise<KickoffLocation | null>;
   kickoffProject(input: KickoffInput): Promise<Project | null>;
   setKickoffDetails(
     projectId: string,

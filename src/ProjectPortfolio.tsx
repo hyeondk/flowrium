@@ -21,6 +21,7 @@ import type { Project, Session } from "../shared/types";
 import type {
   Kickoff,
   KickoffInput,
+  KickoffLocation,
   PortfolioCard,
   PortfolioView,
   ProjectTab,
@@ -92,8 +93,32 @@ export function KickoffForm({
   });
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [choosingFolder, setChoosingFolder] = useState(false);
+  const [location, setLocation] = useState<KickoffLocation | null>(null);
   const field = (key: keyof Kickoff, value: string) =>
     setValues((v) => ({ ...v, [key]: value }));
+  function folderMode(createFolder: boolean) {
+    setValues((v) => ({ ...v, createFolder }));
+    setLocation(null);
+    setError("");
+  }
+  async function chooseLocation() {
+    if (!api) return setError("데스크톱 앱에서 작업 폴더를 선택해 주세요.");
+    setChoosingFolder(true);
+    setError("");
+    try {
+      const picked = await api.selectKickoffLocation(!!values.createFolder);
+      if (!picked) return;
+      setLocation(picked);
+      if (!values.createFolder)
+        setValues((v) => v.name.trim() && v.name !== location?.name.slice(0, 140)
+          ? v : { ...v, name: picked.name.slice(0, 140) });
+    } catch (error) {
+      setError(errorText(error));
+    } finally {
+      setChoosingFolder(false);
+    }
+  }
   function input(
     label: string,
     key: keyof Kickoff,
@@ -114,11 +139,11 @@ export function KickoffForm({
   }
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || choosingFolder || (!editing && !location)) return;
     setBusy(true);
     setError("");
     try {
-      await onSave(values);
+      await onSave(location ? { ...values, locationToken: location.token } : values);
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -127,12 +152,37 @@ export function KickoffForm({
   }
   return (
     <form className="pf-form" onSubmit={save}>
-      <fieldset disabled={busy}>
+      {!editing && (
+        <fieldset className="pf-kickoff-location" disabled={busy || choosingFolder}>
+          <legend>작업 폴더</legend>
+          <div className="pf-folder-options">
+            <label>
+              <input type="radio" name="folder-mode" checked={!!values.createFolder} onChange={() => folderMode(true)} />
+              상위 폴더에 새 폴더 만들기
+            </label>
+            <label>
+              <input type="radio" name="folder-mode" checked={!values.createFolder} onChange={() => folderMode(false)} />
+              기존 프로젝트 폴더 사용
+            </label>
+          </div>
+          <div className="pf-kickoff-path">
+            <div aria-live="polite">
+              <strong>{values.createFolder ? "상위 폴더" : "프로젝트 폴더"}</strong>
+              <small className="pf-path">{location?.path || "폴더를 선택해 주세요."}</small>
+            </div>
+            <button type="button" autoFocus onClick={() => void chooseLocation()}>
+              <FolderOpen size={15} aria-hidden="true" />{choosingFolder ? "선택하는 중…" : "폴더 선택"}
+            </button>
+          </div>
+          {values.createFolder && <small>선택한 폴더 아래에 프로젝트 이름으로 폴더를 만듭니다.</small>}
+        </fieldset>
+      )}
+      <fieldset disabled={busy || choosingFolder}>
         <legend>프로젝트 개요</legend>
         <div className="pf-grid2">
           {input("프로젝트 이름", "name", 140, {
             required: true,
-            autoFocus: true,
+            autoFocus: editing,
           })}
           <label>
             진행 단계
@@ -161,7 +211,6 @@ export function KickoffForm({
         <label>
           프로젝트 목표
           <textarea
-            required={!editing}
             rows={2}
             maxLength={4000}
             value={values.goal}
@@ -216,29 +265,6 @@ export function KickoffForm({
         </div>
         {!editing && (
           <div className="pf-folder-options">
-            <h3>저장할 폴더</h3>
-            <label>
-              <input
-                type="radio"
-                name="folder-mode"
-                checked={!!values.createFolder}
-                onChange={() =>
-                  setValues((v) => ({ ...v, createFolder: true }))
-                }
-              />
-              선택한 위치에 프로젝트 이름으로 새 폴더 만들기
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="folder-mode"
-                checked={!values.createFolder}
-                onChange={() =>
-                  setValues((v) => ({ ...v, createFolder: false }))
-                }
-              />
-              기존 프로젝트 폴더 사용
-            </label>
             <label>
               <AnimatedCheckbox
                 checked={!!values.scaffold}
@@ -270,12 +296,12 @@ export function KickoffForm({
           <button type="button" onClick={onCancel}>
             취소
           </button>
-          <button className="pf-primary" type="submit">
+          <button className="pf-primary" type="submit" disabled={!editing && !location}>
             {busy
               ? "저장하는 중…"
               : editing
                 ? "킥오프 저장"
-                : "폴더 선택 후 킥오프"}
+                : "프로젝트 만들기"}
           </button>
         </div>
       </fieldset>
@@ -291,7 +317,6 @@ interface Props {
   onProject(project: Project, tab: ProjectTab): void;
   onProjectMove: MoveProject;
   onOpenSession(session: Session): void;
-  onChooseProject(): void;
   onCreated(project: Project): void;
   onSessionChange?(session: Session): void;
   onArchived?(id: string, value: boolean): void;
@@ -472,7 +497,6 @@ export function ProjectPortfolio({
   onProject,
   onProjectMove,
   onOpenSession,
-  onChooseProject,
   onCreated,
   onSessionChange,
   onArchived,
@@ -643,7 +667,6 @@ export function ProjectPortfolio({
             <button className="pf-primary portfolio-refresh" disabled={refreshing||!api} onClick={()=>{setRefreshing(true);reload(value=>value+1);}}><RefreshCw size={15} className={refreshing?'spin':undefined} aria-hidden="true"/>새로고침</button>
             <button className="pf-primary" onClick={() => onNavigate("kickoff")}><Plus size={16}/>새 프로젝트</button>
           </div>}
-          {view === "kickoff" && <div className="pf-actions"><button onClick={onChooseProject}><FolderOpen size={15}/>기존 폴더 연결</button></div>}
         </header>
         {error && (
           <p role="alert" className="pf-error">

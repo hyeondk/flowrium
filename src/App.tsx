@@ -48,7 +48,7 @@ import AccountSetupCard from "./AccountSetupCard";
 import type {TrashResult} from "../shared/trash";
 import ContextMenu from "./ContextMenu";
 import {ItemDeleteDialog,TrashPanel,type DeleteTarget} from "./ItemDeletion";
-import MigrationPanel from "./MigrationPanel";
+import MigrationSettings from "./MigrationPanel";
 import { useSecurity, SecurityPanel, LockScreen } from "./SecurityPanel";
 import { ProjectPortfolio } from "./ProjectPortfolio";
 import { ProjectOverview } from "./ProjectOverview";
@@ -1633,21 +1633,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       />
                       {project ? `${project.name} 작업 요청` : "작업 요청"}
                     </span>
-                    {input && (
-                      <button
-                        className="icon-button"
-                        aria-label="입력 지우기"
-                        onClick={() => setInput("")}
-                      >
-                        <X size={13} />
-                      </button>
-                    )}
                   </div>}
                   <ChatContinuation key={draftKey} session={session} running={workActive || Boolean(activity?.unsettled) || sessionApprovals.length > 0 || Boolean(session && visibleProposals(proposals).some(p=>p.sourceId===session.id || p.targetId===session.id))}
                     authenticated={connection.authenticated} aiFollowups={data.settings.aiFollowups===true} busy={submitting || !!modelPreview} draft={input} textareaRef={composer}
                     active={chatActive && dockOpen && !settingsOpen && !attentionOpen}
                     placeholder={project ? "어떤 작업을 함께 해볼까요?" : "만들고 싶은 것, 풀고 싶은 문제를 적어 주세요."}
-                    onChange={setInput} onSend={() => void send()} onContinue={continueWaitingSession} showClear={workActive}
+                    onChange={setInput} onSend={() => void send()} onContinue={continueWaitingSession}
                     onChoose={prompt => {
                       setDrafts(previous => {
                         const draft = previous[draftKey];
@@ -1797,7 +1788,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             <span>내 작업 공간</span>
             <ChevronRight size={13} />
             <strong>
-              {({dashboard:"대시보드",kickoff:"새 프로젝트",archive:"완료",outputs:"산출물",timeline:"날짜별 기록",workflow:"업무 연결 / 비서",weekly:"주간업무보고",pause:"업무 마감",music:"뮤직",history:"작업 기록",library:"프롬프트 보관함",dictionary:'사전',activity:"작업 현황",inbox:"승인함",terminal:"터미널"} as Partial<Record<View,string>>)[view] || project?.name || "시작하기"}
+              {({dashboard:"대시보드",kickoff:"새 프로젝트",archive:"완료",outputs:"산출물",timeline:"날짜별 기록",workflow:"업무 센터",weekly:"주간업무보고",pause:"업무 마감",music:"뮤직",history:"작업 기록",library:"프롬프트 보관함",dictionary:'사전',activity:"작업 현황",inbox:"승인함",terminal:"터미널"} as Partial<Record<View,string>>)[view] || project?.name || "시작하기"}
             </strong>
             {!api && <span className="preview-badge">화면 미리보기</span>}
           </div>
@@ -1811,8 +1802,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             <LoadingProgress startup label="작업 공간을 불러오고 있습니다." />
           </div>
         ) : view === "music" ? null : view === "workflow" ? (
-          <div className="page-scroll"><div className="page-inner"><WorkflowHub onOpen={openWork} onOpenInbox={()=>setView("inbox")}/><details className="work-resources"><summary>자료 관리</summary><CodexTransferPanel onChanged={refreshAfterCodexTransfer} onOpen={openTransferredConversation}/><MigrationPanel/>
-              <IntegrationPanel projectId={projectId}/></details></div></div>
+          <div className="page-scroll"><div className="page-inner">
+            <WorkflowHub onOpen={openWork} onOpenInbox={()=>setView("inbox")}/>
+            <details className="work-resources">
+              <summary>연결 서비스</summary>
+              <div className="work-resource-content"><IntegrationPanel projectId={projectId}/></div>
+            </details>
+          </div></div>
         ) : view === "terminal" && !project ? (
           <div className="pf-page"><div className="pf-content"><h1>터미널</h1><section className="pf-welcome"><h2>터미널을 열 폴더를 연결하세요</h2><button onClick={()=>void chooseProjectFor("terminal")}>프로젝트 폴더 선택</button></section></div></div>
         ) : view === "details" && project ? (
@@ -1841,7 +1837,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           <ProjectPortfolio categoryRevision={categoryRevision} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} view={view} projects={navigation.projects} sessions={projectOnlySessions}
             dashboard={{accountRevision:security.state.accountRevision,drafts,decisionSessionIds:dashboardDecisions,workClose:attentionState?.workClose,revealResume,onResumeRevealed:resumeRevealed,onDraft:openDashboardDraft,onSend:sendDashboardDraft}}
             onProjectMove={navigation.move}
-            onNavigate={setView} onProject={selectProject} onOpenSession={openWork} onChooseProject={chooseProject}
+            onNavigate={setView} onProject={selectProject} onOpenSession={openWork}
             onSessionChange={rememberSession} onArchived={(id,value)=>setArchived(prev=>({...prev,[id]:value}))}
             tools={<>
               <div className="pf-tool-group" role="group" aria-label="작성과 분석"><h3>작성과 분석</h3><div>
@@ -2255,7 +2251,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               <CloseButton aria-label="설정 닫기" onClick={closeSettings}/>
             </div>
             <SettingsLayout key={settingsNavigation} initialGroup={categoryTarget ? "categories" : "general"}>
-              <SettingsGroup id="general"><UpdatePanel settings state={update} fail={fail}/></SettingsGroup>
+              <SettingsGroup id="general">
+                <UpdatePanel settings state={update} fail={fail}/>
+                <MigrationSettings/>
+              </SettingsGroup>
               <SettingsGroup id="categories"><ProjectCategorySettings key={categoryTarget} projects={data.projects} categories={categories} initialProject={categoryTarget || projectId} onSaved={(id,category)=>{setCategories(previous=>({...previous,[id]:category}));setCategoryRevision(value=>value+1);}}/></SettingsGroup>
               <SettingsGroup id="security"><SecurityPanel security={security} accountUsage={accountUsage}/></SettingsGroup>
               <SettingsGroup id="remote"><RemotePanel/></SettingsGroup>

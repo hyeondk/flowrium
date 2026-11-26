@@ -17,6 +17,12 @@ export interface RemoteItem {
 export interface CalendarEntry { id: string; title: string; primary: boolean; role: string; timeZone?: string; writable: boolean }
 export interface CalendarEventInput { action: "create" | "update" | "delete"; calendarId?: string; eventId?: string; etag?: string; summary?: string; start?: string; end?: string; description?: string; location?: string }
 export interface CalendarEventPreview { id: string; action: CalendarEventInput["action"]; calendarId: string; calendarName: string; expiresAt: number; previous?: RemoteItem; event?: RemoteItem }
+export interface GoogleConnectionState {
+  phase: 'unconfigured' | 'ready' | 'pending' | 'connected';
+  email?: string;
+  notice?: string;
+}
+export interface GoogleCalendar { id: string; title: string; primary: boolean; }
 export interface IntegrationAPI extends LinkDeliveryAPI {
   macPimStatus(): Promise<{ available: boolean; enabled: boolean }>;
   configureMacPim(enabled: boolean): Promise<{ available: boolean; enabled: boolean }>;
@@ -25,4 +31,9 @@ export interface IntegrationAPI extends LinkDeliveryAPI {
   macPim(input: { action: "mail"; id: string }): Promise<RemoteItem & { body: string }>;
   prepareMacEvent(input: CalendarEventInput): Promise<CalendarEventPreview>;
   commitMacEvent(ticket: string): Promise<RemoteItem | { deleted: true }>;
+  readGoogleConnection(): Promise<GoogleConnectionState>;
+  googleConnectionAction(input: { action: 'configure' | 'connect' | 'cancel' | 'disconnect' | 'console' }): Promise<GoogleConnectionState>;
+  readGoogleData(input: { action: 'calendars' }): Promise<GoogleCalendar[]>;
+  readGoogleData(input: { action: 'mail'; id: string }): Promise<RemoteItem & { body: string }>;
+  readGoogleData(input: { action: 'mails' | 'events'; calendarId?: string; query?: string; from?: string; to?: string }): Promise<RemoteItem[]>;
 }

@@ -49,10 +49,6 @@ button.popup-close-button.popup-close-button:hover:enabled {
   border-color: var(--close-line);
 }
 
-button.popup-close-button:focus-visible {
-  outline: 2px solid var(--accent, #2168b4);
-  outline-offset: 2px;
-}
 
 button.popup-close-button:disabled {
   cursor: default;

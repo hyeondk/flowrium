@@ -287,7 +287,12 @@ async function run() {
       assert.equal(state.before,'none');assert.equal(state.current,'page');
     }
     await page.keyboard.press('Tab');await dashboard.focus();
-    assert(await dashboard.evaluate(el=>el.matches(':focus-visible')&&getComputedStyle(el).outlineStyle!=='none'),'대시보드의 키보드 초점 표시를 유지합니다.');
+    await page.waitForFunction(()=>document.activeElement?.matches('.side-dashboard')&&
+      getComputedStyle(document.activeElement).boxShadow.includes('rgb(66, 66, 66)'));
+    assert(await dashboard.evaluate(el=>{
+      const style=getComputedStyle(el);
+      return el.matches(':focus-visible')&&style.outlineStyle==='none'&&style.boxShadow.includes('rgb(66, 66, 66)');
+    }),'대시보드가 무채색으로 키보드 초점을 표시합니다.');
     await side.hover();
     await addProjectButton.click();
     await page.locator('.main-shell[data-view=kickoff]').waitFor();
@@ -348,6 +353,12 @@ async function run() {
       await page.mouse.move(900,80);
       await page.waitForFunction(()=>document.querySelector('.workspace-side').dataset.pinned==='true');
       const pinned=await settledBackground();
+      await dashboard.click();
+      const clickedFocus = await dashboard.evaluate(el=>{
+        const style=getComputedStyle(el);
+        return {outline:style.outlineStyle, shadow:style.boxShadow};
+      });
+      assert.deepEqual(clickedFocus,{outline:'none',shadow:'none'},'대시보드 클릭에 테마 초점 테두리를 표시하지 않습니다.');
       assert.notEqual(collapsed.image,'none','좌측 패널은 접힘 상태에도 정해진 그라데이션을 사용합니다.');
       for(const state of [hovered,pinned]){
         assert.equal(state.image,collapsed.image,'호버나 고정으로 바뀌어도 배경 그라데이션을 유지합니다.');

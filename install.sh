@@ -207,4 +207,4 @@ if [ -n "$backup" ]; then
 else
  printf '처음 열 때 macOS의 앱 실행 확인이 표시될 수 있습니다.\n'
 fi
-printf 'Flowrium Safe Storage 확인 창이 뜨면 로그인 키체인 암호를 입력하세요. 기본값은 맥 로그인 암호입니다.\n'
+printf 'Flowrium Safe Storage 확인 창이 뜨면 로그인 키체인 암호를 입력하세요. 기본값은 Mac 로그인 암호입니다.\n'

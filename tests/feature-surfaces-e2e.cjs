@@ -178,8 +178,8 @@ async function run() {
     await page.locator('.repo-batch > summary').click();
     await measure('형상관리 통합 실행 펼침');
     await screenshot('repository');
-    await navigate('업무 연결 / 비서');
-    await page.getByRole('heading', { name: '업무 연결과 비서', exact: true }).waitFor();
+    await navigate('업무 센터');
+    await page.getByRole('heading', { name: '업무 센터', exact: true }).waitFor();
     const workflowTabs = page.getByRole('navigation', { name: '업무 연결 화면' });
     for (const width of widths) {
       await page.setViewportSize({ width, height: 1000 });
