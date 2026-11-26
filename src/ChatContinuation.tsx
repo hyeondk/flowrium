@@ -3,6 +3,8 @@ import {ArrowRight, Check, LoaderCircle, Sparkles} from 'lucide-react';
 import type {Session} from '../shared/types';
 import {awaitsContinuation,continuationAnswer} from '../shared/execution-state';
 import ResizableComposerInput from './ResizableComposerInput';
+import {CodexReferenceList,useCodexReferenceMenu} from './CodexPlugins';
+import type {CodexReference} from '../shared/codex-plugins';
 import {canOfferFollowup, prepareAnswerFollowup, latestFollowupAnswer} from './answer-followup';
 import './chat-continuation.css';
 
@@ -20,6 +22,10 @@ type Props = {
   onSend(): void;
   onChoose(prompt: string): void;
   onContinue(messageId: string, suggested?: string): Promise<void>;
+  references:CodexReference[];
+  referencesEnabled:boolean;
+  onReferencesChange:(value:CodexReference[])=>void;
+  onManagePlugins:()=>void;
 };
 
 function errorText(error: unknown) {
@@ -30,7 +36,7 @@ function errorText(error: unknown) {
 
 export default function ChatContinuation({
   session, running, authenticated, aiFollowups, busy, active, draft, placeholder, textareaRef,
-  onChange, onSend, onChoose, onContinue,
+  onChange, onSend, onChoose, onContinue,references,referencesEnabled,onReferencesChange,onManagePlugins,
 }: Props) {
   const last = latestFollowupAnswer(session);
   const eligible = Boolean(session && last?.role === 'assistant' && last.text.trim() && !session.compacting
@@ -55,6 +61,8 @@ export default function ChatContinuation({
   }>();
   const finished = useRef<typeof generation>(undefined);
   const composing = useRef(false);
+  const referenceMenu=useCodexReferenceMenu({textareaRef,enabled:referencesEnabled,active,authenticated,busy,value:references,
+    onSelect:ref=>onReferencesChange([...references,ref]),onManage:onManagePlugins});
   const revision = useRef(0);
   const continuingFlight = useRef(false);
   useEffect(() => {
@@ -116,9 +124,14 @@ export default function ChatContinuation({
       placeholder={preview || placeholder} data-inline-suggestion={Boolean(preview)}
       onTextChange={onChange}
       onCompositionStart={()=>{composing.current=true;}}
-      onCompositionEnd={()=>{composing.current=false;}}
+      aria-controls={referenceMenu.listId} aria-activedescendant={referenceMenu.activeOption}
+      onInput={event=>{if(!composing.current)referenceMenu.inspect(event.currentTarget);}}
+      onSelect={event=>{if(!composing.current)referenceMenu.inspect(event.currentTarget);}}
+      onBlur={referenceMenu.close}
+      onCompositionEnd={event=>{composing.current=false;referenceMenu.inspect(event.currentTarget);}}
       onKeyDown={e => {
         if (composing.current || e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+        if(referenceMenu.onKey(e))return;
         if (e.key === 'Tab' && preview && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
           e.preventDefault(); accept();
         } else if (e.key === 'Enter' && !e.shiftKey) {
@@ -126,6 +139,8 @@ export default function ChatContinuation({
         }
       }}
     />
+    {referenceMenu.panel}
+    <CodexReferenceList value={references} onRemove={ref=>onReferencesChange(references.filter(row=>row.kind!==ref.kind||row.id!==ref.id))}/>
     {(candidate || preparing || waiting || error) && <section className="chat-continuation" aria-label="다음 작업">
       {candidate
         ? <button type="button" className="followup-accept" data-source="conversation" onClick={accept} disabled={busy}

@@ -37,6 +37,7 @@ function checked(input, {deletion = false, references = false} = {}) {
       ...(external ? {source:v.source, length:v.length} : {text:v.text}),
       mode:v.mode,
       ...(v.attachments?.length ? {attachments:require("./chat-attachments.cjs").checkedAttachments(v.attachments)} : {}),
+      ...(v.codexReferences!==undefined && {codexReferences:require('./codex-plugins.cjs').checkedReferences(v.codexReferences)}),
     };
   }
   return result;

@@ -9,6 +9,7 @@ const {Store}=require('../electron/store.cjs');
 const {readChatCitation}=require('../electron/chat-citations.cjs');
 const {presentCitations}=require('../electron/mobile/file-citations.js');
 const {chatFileLinkTarget}=require('../electron/chat-file-links.js');
+const {chatWebLinkTarget}=require('../electron/mobile/chat-web-links.js');
 const source=':codex-file-citation{path="outputs/표지.png" artifactId="report"}';
 const document=':codex-file-citation{path="outputs/보고서.pptx" artifactId="report"}';
 test('스트리밍 경계, 코드와 인용, 파일별 식별 관계 및 원문 보존',()=>{
@@ -45,9 +46,20 @@ test('마크다운 파일 링크는 로컬 경로만 디코딩하고 겹친 퍼�
   assert.equal(chatFileLinkTarget('/프로젝트/회의%20록%2520.hwp'),'/프로젝트/회의 록%20.hwp');
   assert.equal(chatFileLinkTarget('file:///C:/프로젝트/회의%20록.pdf'),'C:/프로젝트/회의 록.pdf');
   assert.equal(chatFileLinkTarget('C:%5C프로젝트%5C회의.pdf'),'C:/프로젝트/회의.pdf');
+  assert.equal(chatFileLinkTarget('/C:/프로젝트/회의%20록.pdf:12:3'),'C:/프로젝트/회의 록.pdf');
+  assert.equal(chatFileLinkTarget('문서/이전%20기록.md#L4-L9'),'문서/이전 기록.md');
+  assert.equal(chatFileLinkTarget('file:///프로젝트/회의%23록.md#L4'),'/프로젝트/회의#록.md');
   for(const href of ['#제목','https://example.com/회의.pdf','javascript:alert(1)','file://nas/회의.pdf','//nas/회의.pdf','%5C%5Cnas%5C회의.pdf','outputs/%00회의.pdf']){
     assert.equal(chatFileLinkTarget(href),null,href);
   }
+});
+
+test('웹 링크는 사용자 정보가 없는 HTTP(S) 주소만 기본 브라우저로 보낸다',()=>{
+  const address='https://developer.apple.com/design/human-interface-guidelines';
+  assert.equal(chatWebLinkTarget(address),address);
+  assert.equal(chatWebLinkTarget('HTTP://localhost:8080/docs?x=1#요약'),'http://localhost:8080/docs?x=1#%EC%9A%94%EC%95%BD');
+  for(const href of ['file:///etc/hosts','javascript:alert(1)','//example.com','https://abc:pass@example.com/',
+    'https:\\\\example.com','data:text/plain,hello','https://example.com/line\nbreak']) assert.equal(chatWebLinkTarget(href),null,href);
 });
 
 test('답변의 절대 파일 링크를 표시하고 상대 경로, 미리보기 및 다운로드는 기존 경계를 지킨다',async t=>{

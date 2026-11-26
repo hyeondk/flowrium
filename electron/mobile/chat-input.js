@@ -14,6 +14,10 @@ export const nativeQueueExplanation = '이 요청은 원래 Codex 대화의 모�
 export const clearQueueAction = '이 기기의 대기 해제';
 export const clearQueueQuestion = '이 기기에서 대기를 해제할까요?';
 export const clearQueueExplanation = '원래 대화의 접수와 실행 기록을 다시 확인합니다. 두 기록이 모두 없으면 Flowrium에서 이 요청의 대기를 끝냅니다. 원래 대화와 그 작업은 유지됩니다.';
+export const writerWaitNotice = 'Codex가 이 대화를 열고 있습니다. 쓰기 권한이 풀리면 같은 대화로 자동 전송합니다.';
+export function isPendingQueuedInput(item) {
+  return !item.branchSessionId && (item.status === 'queued' || item.status === 'sending');
+}
 export function nativeQueueNotice(result) {
   if(result.nativeDelivery==='uncertain'||result.nativeDelivery==='submitting')return '원래 대화의 접수 여부를 확인하고 있습니다.';
   return result.queued ? '원래 Codex 대기열에 접수됐습니다.' : '원래 Codex 대화에 요청을 전달했습니다.';
@@ -29,7 +33,7 @@ export function queuedInputView(item) {
     {queued:'대기 중', sending:'전달 중', sent:'전달함', cancelled:'취소함'}[item.status];
   const hint = remote === 'queued' ? '원래 Codex 대화가 이 요청을 접수했습니다.' :
     remote === 'uncertain' ? '중복 실행을 방지하기 위해 원래 대화의 수신 기록을 확인하고 있습니다.' :
-    pending && !remote && item.waitingForWriter ? '원래 대화가 Flowrium으로 돌아오면 이 요청을 이어서 실행합니다.' : '';
+    pending && !remote && item.waitingForWriter ? '쓰기 권한이 풀리면 이 대화에서 자동으로 실행합니다.' : '';
   return {status, hint, canSendToCodex:pending && !remote && !item.error && item.waitingForWriter === true && item.nativeQueueAvailable === true,
     canCancel:pending && (!remote || remote === 'queued'), canResume:pending && !remote, canClear:remote === 'uncertain'};
 }

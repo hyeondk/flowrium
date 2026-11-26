@@ -1,4 +1,4 @@
-import {maxChatInput,nativeQueueAction,nativeQueueQuestion,nativeQueueExplanation,nativeQueueNotice,queuedInputView,clearQueueAction,clearQueueQuestion,clearQueueExplanation} from './chat-input.js';
+import {maxChatInput,isPendingQueuedInput,nativeQueueAction,nativeQueueQuestion,nativeQueueExplanation,nativeQueueNotice,queuedInputView,clearQueueAction,clearQueueQuestion,clearQueueExplanation,writerWaitNotice} from './chat-input.js';
 import {uploadText,discardUpload} from './request-upload.js';
 import {attachDraftEditor} from './draft-editor-events.js';
 import {canOfferFollowup,latestFollowupAnswer,prepareAnswerFollowup} from './answer-followup.js';
@@ -1256,11 +1256,11 @@ function chat(root) {
     stop.disabled = busy;
     root.append(stop);
   }
-  if(queueItems.length){
+  const waitingRequests=queueItems.filter(isPendingQueuedInput);
+  if(waitingRequests.length){
     const queue=node("section",undefined,"box");
     queue.append(node("h2","추가 지시 대기열"));
-    const firstPending=queueItems.find(row=>row.status==='queued'||row.status==='sending');
-    for(const item of queueItems){
+    for(const item of waitingRequests){
       const line=node("div",undefined,"queue-line");
       const view=queuedInputView(item);
       line.append(node("p",item.text||"첨부 요청","body"),node("small",view.status));
@@ -1268,13 +1268,13 @@ function chat(root) {
       if(item.error)line.append(node("p",item.error,"hint"));
       if(view.canCancel)line.append(confirmationButton('이 지시 취소','queue/'+item.id,'대기 중인 지시를 취소할까요?',item.text||'첨부 요청',()=>
         run(async()=>{await call('cancelQueuedMessage',s.id,item.id);await loadQueue();showNotice('대기 중인 지시를 취소했습니다.');})));
-      if(view.canSendToCodex&&item.id===firstPending?.id)line.append(confirmationButton(nativeQueueAction,'send-to-codex/'+s.id+'/'+item.id,nativeQueueQuestion,nativeQueueExplanation,()=>
+      if(view.canSendToCodex&&item.id===waitingRequests[0].id)line.append(confirmationButton(nativeQueueAction,'send-to-codex/'+s.id+'/'+item.id,nativeQueueQuestion,nativeQueueExplanation,()=>
         run(async()=>{if(!mayStartProjectWork(s.projectId))return;const result=await call('sendQueuedToCodex',s.id,item.id);await loadQueue();if(result.accepted)showNotice(nativeQueueNotice(result));})));
       if(view.canClear)line.append(confirmationButton(clearQueueAction,'clear-codex-queue/'+s.id+'/'+item.id,clearQueueQuestion,clearQueueExplanation,()=>
         run(async()=>{await call('clearUnconfirmedCodexQueue',s.id,item.id);await loadQueue();})));
       queue.append(line);
     }
-    if(queueItems.some(item=>queuedInputView(item).canResume))queue.append(action("대기 지시 이어 보내기",()=>run(async()=>{if(!mayStartProjectWork(s.projectId))return;await call("resumeQueuedMessages",s.id);await loadQueue()})));
+    if(waitingRequests.some(item=>item.error&&queuedInputView(item).canResume))queue.append(action("대기 지시 다시 시작",()=>run(async()=>{if(!mayStartProjectWork(s.projectId))return;await call("resumeQueuedMessages",s.id);await loadQueue()})));
     root.append(queue);
   }
   const form = node("form",undefined,"chat-compose"),draftId = "chat/" + s.id;
@@ -1470,7 +1470,7 @@ function chat(root) {
         mode,
       });
       clearSentDraft(s.id,value,attachments);await loadQueue();
-      showNotice(result.steered ? "현재 작업에 추가 지시를 전달했습니다." : result.waitingForWriter ? "요청을 보관했습니다. 채팅의 추가 지시에서 전달 상태를 확인할 수 있습니다." : result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
+      showNotice(result.steered ? "현재 작업에 추가 지시를 전달했습니다." : result.waitingForWriter ? writerWaitNotice : result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
     });
   });
   root.append(form);

@@ -8,7 +8,7 @@ function eligible(session, entry) {
   const shared = session.codexLink?.mode === 'linked' || !session.codexLink && session.desktopThread;
   return Boolean(shared && !session.scope && !session.workflow && !session.personalAssistant &&
     !session.applicationTools && !entry.requestSourceId &&
-    (entry.attachments || []).every(a => ['image/png','image/jpeg','image/webp','image/gif'].includes(a.type)) &&
+    !entry.codexReferences?.length && (entry.attachments || []).every(a => ['image/png','image/jpeg','image/webp','image/gif'].includes(a.type)) &&
     entry.text.trim() && entry.text.length <= projectInlineLimit);
 }
 

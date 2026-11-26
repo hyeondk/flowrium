@@ -20,6 +20,8 @@ function linkedMarkdownFile(message,target) {
 function fileParts(target) {
   const foreign = process.platform === 'win32' ? /^[/\\]/.test(target) : /^(?:[a-z]:[\\/]|\\)/i.test(target);
   if (foreign) throw Error('이 운영체제에서 열 수 있는 프로젝트 경로인지 확인해 주세요.');
+  // Mac의 표준 /tmp와 /var 별칭으로 저장된 이전 링크도 실제 위치에 맞춘다.
+  if (process.platform === 'darwin' && /^\/(?:tmp|var)\//.test(target)) target = '/private'+target;
   const base = path.parse(target).root;
   const parts = (base ? target.slice(base.length) : target.replace(/^\.\//,'')).split(/[\\/]/);
   const invalidPart = part => !part || part.startsWith('.') || /[:\x00-\x1f]/.test(part) ||

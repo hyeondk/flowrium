@@ -119,6 +119,23 @@ async function verifyFirstSaveDuringSync(page,profile,syncGate) {
  }
 }
 
+async function verifySendDuringCatalogRead(page,syncGate,sessionId) {
+ const request='다른 대화 목록이 열려 있을 때 보내는 시험 요청';
+ await waitForCodexConnection(page);
+ await expect.poll(()=>fs.access(syncGate+'.pending').then(()=>true,()=>false),{timeout:18000}).toBe(true);
+ try {
+  const send=page.evaluate(({sessionId,text})=>window.flowrium.send({sessionId,text,mode:'plan'}),{sessionId,text:request});
+  send.catch(()=>{});
+  await expect.poll(()=>page.evaluate(async ({sessionId,request})=>{
+   const rows=(await window.flowrium.bootstrap()).sessions.find(item=>item.id===sessionId)?.messages||[];
+   return rows.some(item=>item.role==='user'&&item.text===request)&&rows.some(item=>item.role==='assistant');
+  },{sessionId,request}),{timeout:5000}).toBe(true);
+  assert.equal((await send).accepted,true);
+  await assert.rejects(fs.access(syncGate+'.release'),{code:'ENOENT'});
+ } finally { await fs.writeFile(syncGate+'.release',''); }
+ console.log('다른 대화의 목록 응답이 없는 중에도 같은 대화의 사용자 요청과 답변을 기록했습니다.');
+}
+
 async function verifyAutomaticSave(app,page,codexPath) {
  const closeName=closeSettingsButton;
  const ready=await openSettings(page,'화면');
@@ -209,7 +226,14 @@ async function run(){
  let app,page;const errors=[],measurements=[];
  try{
   const profile=path.join(temp,'profile'),store=new Store(profile);await store.load();await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
-  const relayOnly=process.argv.includes('--relay-only');
+  const relayOnly=process.argv.includes('--relay-only'),sendOnly=process.argv.includes('--send-priority-only');
+  let sendingSession;
+  if(sendOnly){
+   const folder=path.join(temp,'project');await fs.mkdir(folder);
+   const {addTrustedFixtureProject,backendFixtureAccount}=require('./project-trust-fixture.cjs');
+   const project=await addTrustedFixtureProject(store,folder,{account:backendFixtureAccount});
+   sendingSession=await store.createSession(project.id,{title:'전송 우선순위 검증'});
+  }
   const env={...process.env,FLOWRIUM_USER_DATA:profile,CODEX_HOME:path.join(temp,'codex'),FLOWRIUM_TEST_SETTINGS_SYNC_GATE:syncGate};delete env.ELECTRON_RUN_AS_NODE;
   if(!relayOnly)delete env.ELECTRON_RENDERER_URL;
   async function launch(){
@@ -218,6 +242,7 @@ async function run(){
    await page.setViewportSize({width:1440,height:1000});
   }
   await launch();
+  if(sendOnly){await verifySendDuringCatalogRead(page,syncGate,sendingSession.id);assert.deepEqual(errors,[]);return;}
   if(relayOnly){await verifyRelaySettings(app,page);assert.deepEqual(errors,[]);return;}
   await verifyFirstSaveDuringSync(page,profile,syncGate);
   await app.close();app=null;page=null;

@@ -2,7 +2,7 @@ import {projectCategory} from "../shared/project-details";
 import LoadingProgress from './LoadingProgress';
 import {withLiveTurn} from '../electron/mobile/live-turn.js';
 import {RequestSource} from './RequestSource';
-import {maxChatInput, nativeQueueNotice} from '../electron/mobile/chat-input.js';
+import {isPendingQueuedInput, maxChatInput, nativeQueueNotice, writerWaitNotice} from '../electron/mobile/chat-input.js';
 import {projectMode} from '../electron/mobile/project-mode.js';
 import {useModelCatalog} from './useModelCatalog';
 import codexAvatar from "../electron/mobile/chatgpt.svg?no-inline";
@@ -13,6 +13,8 @@ import {AttachmentComposer,ChatAttachmentList,ChatQueuePanel} from "./ChatAttach
 import InputRequestPanel from "./InputRequestPanel";
 import DecisionRequestPanel from './DecisionRequestPanel';
 import ChatContinuation from './ChatContinuation';
+import CodexPluginSettings,{CodexReferenceList} from './CodexPlugins';
+import type {CodexReference} from '../shared/codex-plugins';
 import { useWorkspaceDrafts } from "./useWorkspaceDrafts";
 import {useProjectOrder,projectOrderChanged} from "./ProjectOrder";
 import type {ProjectNavigationState} from "../shared/portfolio";
@@ -241,6 +243,17 @@ function ChatContextMeter({context}:{context:Session['context']}) {
   </span>;
 }
 
+type ConversationSelection = { sessionId?: string; tabIds: string[]; chatActive: boolean };
+
+function forgetConversationTabs(current:ConversationSelection, keep:(id:string)=>boolean):ConversationSelection {
+  const tabIds = current.tabIds.filter(keep);
+  if (tabIds.length === current.tabIds.length) return current;
+  if (!current.sessionId || keep(current.sessionId)) return {...current,tabIds};
+  const position = current.tabIds.indexOf(current.sessionId);
+  const sessionId = current.tabIds.slice(position+1).find(keep) || tabIds.at(-1);
+  return {tabIds,sessionId,chatActive:current.chatActive && Boolean(sessionId)};
+}
+
 function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>}) {
   const [logoutOpen,setLogoutOpen] = useState(false);
   const update = useDesktopUpdate();
@@ -260,7 +273,20 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     }
     return () => { active = false; };
   }, [data.projects]);
-  const [sessionId, setSessionId] = useState<string>();
+  const [{sessionId,tabIds,chatActive},setConversationSelection] = useState<ConversationSelection>({tabIds:[],chatActive:false});
+  function selectConversationId(id?:string) {
+    setConversationSelection(current=>{
+      if (current.sessionId===id) return current;
+      const nextTabs = id && !current.tabIds.includes(id) ? [...current.tabIds,id] : current.tabIds;
+      return {...current,sessionId:id,tabIds:nextTabs};
+    });
+  }
+  function setChatActive(active:boolean) {
+    setConversationSelection(current=>current.chatActive===active?current:{...current,chatActive:active});
+  }
+  function closeConversationTab(id:string) {
+    setConversationSelection(current=>forgetConversationTabs(current,value=>value!==id));
+  }
   const [view, setView] = useState<View>("dashboard");
   const [reportDialog,setReportDialog]=useState<"weekly"|"pause">();
   const [workPopup,setWorkPopup]=useState<PopupWorkKind|null>(null);
@@ -274,7 +300,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const resumeRevealed=useCallback(()=>setRevealResume(false),[]);
   function showWorkResume(){setAttentionOpen(false);setReportDialog(undefined);setView('dashboard');setRevealResume(true)}
   const musicPresence=usePresence(musicOpen);
-  const [chatActive,setChatActive]=useState(false);
   const [creatingConversation,setCreatingConversation]=useState(false);
   const [dockFilter,setDockFilter]=useState<ExecutionState|'all'>('all');
   const [proposals,setProposals]=useState<WorkflowProposal[]>([]);
@@ -292,7 +317,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }
   const input = drafts[draftKey]?.text || "";
   const attachments=drafts[draftKey]?.attachments||[];
-  const setAttachments=(items:ChatAttachment[])=>setDrafts(prev=>({...prev,[draftKey]:{text:prev[draftKey]?.text||"",mode:prev[draftKey]?.mode||mode,attachments:items}}));
+  const codexReferences=drafts[draftKey]?.codexReferences||[];
+  const setAttachments=(items:ChatAttachment[])=>setDrafts(prev=>({...prev,[draftKey]:{...prev[draftKey],text:prev[draftKey]?.text||"",mode:prev[draftKey]?.mode||mode,attachments:items}}));
+  const setCodexReferences=(value:CodexReference[])=>setDrafts(prev=>({...prev,[draftKey]:{...prev[draftKey],text:prev[draftKey]?.text||"",mode:prev[draftKey]?.mode||mode,codexReferences:value}}));
   const draftSession = data.sessions.find(s => s.id === sessionId);
   const workflow = draftSession?.workflow;
   const mode = projectMode(draftSession, workflow ? workKinds[workflow.kind].mode : undefined);
@@ -304,6 +331,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsNavigation,setSettingsNavigation]=useState(0);
+  const [pluginSettingsTarget,setPluginSettingsTarget]=useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [connection, setConnection] = useState<ConnectionStatus>({
     available: false,
@@ -604,8 +632,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         setData(previous=>({...previous,sessions:(event.restoredSessions||[]).reduce(
           (sessions,restored)=>upsert(sessions,restored),previous.sessions.filter(s=>!removed.has(s.id))
         )}));
-        setSessionId(current=>current&&removed.has(current)?undefined:current);
         if(removed.size){
+          setConversationSelection(current=>forgetConversationTabs(current,id=>!removed.has(id)));
           setActivities(previous=>Object.fromEntries(Object.entries(previous).filter(([id])=>!removed.has(id))));
           setApprovals(previous=>previous.filter(event=>!event.sessionId||!removed.has(event.sessionId)));
         }
@@ -625,7 +653,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               return {...previous,projects:snapshot.projects,sessions:[...sessions,...missing]};
             });
             setProjectId(current=>current&&!projects.has(current)?snapshot.projects[0]?.id:current);
-            setSessionId(current=>current&&!snapshot.sessions.some(s=>s.id===current)?undefined:current);
+            const available=new Set(snapshot.sessions.map(s=>s.id));
+            setConversationSelection(current=>forgetConversationTabs(current,id=>available.has(id)));
           }).catch(error=>{if(alive)fail(error);});
         }
       }
@@ -863,7 +892,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             : prev;
         });
         setProjectId(result.id);
-        setSessionId(undefined);
+        selectConversationId(undefined);
         setView(nextView);
         setSidebarOpen(false);
       }
@@ -879,7 +908,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     setSidebarOpen(false);
   }
   function selectSession(value: Session) {
-    setSessionId(value.id);
+    selectConversationId(value.id);
     setDockOpen(true);setChatActive(true);setDockFilter("all");
     stickToBottom.current = true;
     setSidebarOpen(false);
@@ -927,7 +956,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           const destination=`session:${saved.id}`;
           voiceContinuity.current.preserve=destination;
           setDrafts(previous=>({...previous,[destination]:previous[key]||{text:'',mode},[key]:{text:'',mode}}));
-          setSessionId(saved.id);
+          selectConversationId(saved.id);
         }
       }
       modelSaves.current.delete(key);
@@ -1014,12 +1043,14 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     try{
       const value=scope==='project'?await api.createSession(id||projectId!):await api.createHubConversation({scope});
       if(scope!=='project')setData(await api.bootstrap());
-      rememberSession(value);selectSession(value);setTimeout(()=>composer.current?.focus(),240);
+      rememberSession(value);selectSession(value);
+      setTimeout(()=>{if(currentDraftKey.current===`session:${value.id}`)composer.current?.focus();},240);
     }catch(error){fail(error)}finally{setCreatingConversation(false)}
   }
   async function newSession(){
     if(session?.scope)return startDockConversation(session.scope);
-    if(project)return startDockConversation('project',project.id);
+    const owner=session?.projectId||project?.id;
+    if(owner)return startDockConversation('project',owner);
     setDockOpen(true);setChatActive(false);setDockFilter('all');
   }
   function showExecution(state:ExecutionState){setDockOpen(true);setChatActive(false);setDockFilter(state)}
@@ -1029,8 +1060,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     setSettingsOpen(true);
   }
   useEffect(() => { if (!settingsOpen) setCategoryTarget(undefined); }, [settingsOpen]);
+  useEffect(() => { if (!settingsOpen) setPluginSettingsTarget(false); }, [settingsOpen]);
+  function openPluginSettings(){setCategoryTarget(undefined);setPluginSettingsTarget(true);setSettingsNavigation(value=>value+1);setSettingsOpen(true);}
   function itemContext(event:{preventDefault():void;clientX:number;clientY:number},target:DeleteTarget){event.preventDefault();setItemMenu({x:event.clientX,y:event.clientY,target})}
-  async function reloadItems(result?:TrashResult){if(!api)return;const next=await api.bootstrap();setData(next);if(sessionId&&!next.sessions.some(s=>s.id===sessionId)){setSessionId(undefined);setChatActive(false)}if(projectId&&!next.projects.some(p=>p.id===projectId)){setProjectId(next.projects[0]?.id);setView("dashboard")}notify(result?.notice||"항목을 반영했습니다.");await refreshAttention()}
+  async function reloadItems(result?:TrashResult){if(!api)return;const next=await api.bootstrap();setData(next);const available=new Set(next.sessions.map(s=>s.id));setConversationSelection(current=>forgetConversationTabs(current,id=>available.has(id)));if(projectId&&!next.projects.some(p=>p.id===projectId)){setProjectId(next.projects[0]?.id);setView("dashboard")}notify(result?.notice||"항목을 반영했습니다.");await refreshAttention()}
   function openUpdateSettings(){setCategoryTarget(undefined);setSettingsNavigation(value=>value+1);setSettingsOpen(true);}
   function useTemplate(prompt: string, nextMode: Mode) {
     const key = `project:${projectId || "unassigned"}`;
@@ -1042,10 +1075,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       },
     }));
     setDockOpen(true);setChatActive(true);setDockFilter("all");
-    setSessionId(undefined);
+    selectConversationId(undefined);
     setTimeout(() => composer.current?.focus(), 0);
   }
-  const submissionReceipts=useRef(new Map<string,{id:string;text:string}>());
+  const submissionReceipts=useRef(new Map<string,{id:string;text:string;references:string}>());
   async function restoreFailedRequest(message:Message){
     if(submittingRef.current||currentDraftKey.current!==draftKey)return;
     try {
@@ -1055,17 +1088,18 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       if(submittingRef.current||currentDraftKey.current!==draftKey)return;
       setDrafts(previous=>{
         const draft=previous[draftKey];
-        if(draft?.text||draft?.attachments?.length)return previous;
-        return {...previous,[draftKey]:{mode:draft?.mode||mode,text,attachments:message.attachments||[]}};
+        if(draft?.text||draft?.attachments?.length||draft?.codexReferences?.length)return previous;
+        return {...previous,[draftKey]:{mode:draft?.mode||mode,text,attachments:message.attachments||[],codexReferences:message.codexReferences}};
       });
       composer.current?.focus();
     } catch(error){ fail(error); }
   }
-  function longSubmission(key:string,text:string) {
+  function longSubmission(key:string,text:string,mentions:CodexReference[]=[]){
     if(text.length<=maxChatInput)return {};
+    const references=JSON.stringify(mentions);
     const prior=submissionReceipts.current.get(key);
-    if(prior?.text===text)return {submissionId:prior.id};
-    const id=crypto.randomUUID();submissionReceipts.current.set(key,{id,text});
+    if(prior?.text===text&&prior.references===references)return {submissionId:prior.id};
+    const id=crypto.randomUUID();submissionReceipts.current.set(key,{id,text,references});
     return {submissionId:id};
   }
   async function confirmChatFolders(projectId:string, target?:Session) {
@@ -1126,6 +1160,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const originKey = draftKey;
     const originalInput = requestText;
     const originalAttachments=attachments;
+    const originalReferences=codexReferences;
     const wasRunning=running;
     const text = requestText;
     let draftCleared = false;
@@ -1176,13 +1211,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             [targetKey]: { text: "", mode },
             [originKey]: { text: "", mode },
           }));
-          setSessionId(created.id);
+          selectConversationId(created.id);
         }
       }
       stickToBottom.current = true;
-      submissionId=longSubmission(restoreKey,text).submissionId||crypto.randomUUID();
+      submissionId=longSubmission(restoreKey,text,originalReferences).submissionId||crypto.randomUUID();
       if(!nextTurn)setOutgoing({sessionId:activeId,message:{
-        id:submissionId,role:'user',createdAt:new Date().toISOString(),attachments:originalAttachments,
+        id:submissionId,role:'user',createdAt:new Date().toISOString(),attachments:originalAttachments,codexReferences:originalReferences,
         text:text.length>maxChatInput?'긴 요청을 보내고 있어요.':text.trim()?text:'첨부한 자료를 확인해 주세요.',
       }});
       setDrafts(prev => ({ ...prev, [originKey]: { text: "", mode } }));
@@ -1193,6 +1228,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         sessionId: activeId,
         text,
         attachments:originalAttachments.map(a=>a.id),
+        codexReferences:originalReferences,
         mode,
         model: data.settings.model || undefined,
         effort: data.settings.effort,
@@ -1201,7 +1237,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       if(sent.steered)notify("현재 작업에 추가 지시를 전달했습니다.");
       else if(sent.queued){
         setOutgoing(current=>current?.message.id===submissionId?undefined:current);
-        notify(sent.waitingForWriter?"Codex에서 원래 대화를 사용 중입니다. 추가 지시에서 ‘지금 분기해 실행’을 선택할 수 있습니다.":"추가 지시를 보관했습니다. 현재 작업이 끝나면 차례로 전달합니다.");
+        notify(sent.waitingForWriter?writerWaitNotice:"추가 지시를 보관했습니다. 현재 작업이 끝나면 차례로 전달합니다.");
       }
     } catch (error) {
       if (!draftCleared) { fail(error); return; }
@@ -1214,6 +1250,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
             : originalInput,
           mode: prev[restoreKey]?.mode || mode,
           attachments:[...originalAttachments,...(prev[restoreKey]?.attachments||[]).filter(a=>!originalAttachments.some(b=>b.id===a.id))],
+          codexReferences:[...originalReferences,...(prev[restoreKey]?.codexReferences||[]).filter(a=>!originalReferences.some(b=>b.id===a.id&&b.kind===a.kind))].slice(0,8),
         },
       }));
       fail(error);
@@ -1314,13 +1351,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }
   async function continueWaitingSession(messageId:string,suggested?:string){
     if(!api||!session||submittingRef.current||workActive||modelSaves.current.has(draftKey))return;
-    const originKey=draftKey,originalInput=input,originalAttachments=attachments,request=input.trim()?input:suggested||input;
+    const originKey=draftKey,originalInput=input,originalAttachments=attachments,originalReferences=codexReferences,request=input.trim()?input:suggested||input;
     submittingRef.current=true;setSubmitting(true);
     try{
       if (!await confirmChatFolders(session.projectId,session)) return;
-      await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,...longSubmission(originKey,request),text:request,attachments:originalAttachments.map(a=>a.id),mode,model:data.settings.model||undefined,effort:data.settings.effort});
+      await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,...longSubmission(originKey,request,originalReferences),text:request,attachments:originalAttachments.map(a=>a.id),codexReferences:originalReferences,mode,model:data.settings.model||undefined,effort:data.settings.effort});
       submissionReceipts.current.delete(originKey);
-      setDrafts(previous=>{const draft=previous[originKey];return {...previous,[originKey]:{...draft,mode:draft?.mode||mode,text:draft?.text===originalInput?'':draft?.text||'',attachments:(draft?.attachments||[]).filter(item=>!originalAttachments.some(sent=>sent.id===item.id))}}});
+      setDrafts(previous=>{const draft=previous[originKey];return {...previous,[originKey]:{...draft,mode:draft?.mode||mode,text:draft?.text===originalInput?'':draft?.text||'',attachments:(draft?.attachments||[]).filter(item=>!originalAttachments.some(sent=>sent.id===item.id)),codexReferences:(draft?.codexReferences||[]).filter(item=>!originalReferences.some(sent=>sent.kind===item.kind&&sent.id===item.id))}}});
       stickToBottom.current=true;
     }finally{submittingRef.current=false;setSubmitting(false)}
   }
@@ -1427,9 +1464,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }
   function renderChat(){
     const project = conversationProject;
-    const queued = session?.queuedMessages?.some(row=>row.status==="queued" || row.status==="sending");
+    const queued = session?.queuedMessages?.some(isPendingQueuedInput);
     const queue = session && <ChatQueuePanel session={session} onCancel={id=>{void api!.cancelQueuedMessage(session.id,id).catch(fail);}} onResume={async()=>{try{if(await confirmChatFolders(session.projectId,session))await api!.resumeQueuedMessages(session.id);}catch(error){fail(error);}}}
-      onBranch={async id=>{try{if(!await confirmChatFolders(session.projectId,session))return;const result=await api!.startQueuedBranch(session.id,id);openWork(result.session);notify('새 분기에서 작업을 시작했습니다.');}catch(error){fail(error);}}}
       onSendToCodex={async id=>{try{if(!await confirmChatFolders(session.projectId,session))return;const result=await api!.sendQueuedToCodex(session.id,id);if(result.accepted)notify(nativeQueueNotice(result));}catch(error){fail(error);}}}
       onClear={async id=>{try{await api!.clearUnconfirmedCodexQueue(session.id,id);}catch(error){fail(error);}}}/>;
     return (
@@ -1510,6 +1546,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                           <div className="message-bubble-row">
                           {message.role==="user"&&<ChatMessageTime createdAt={message.createdAt}/>}
                           <div className="message-bubble">
+                          <CodexReferenceList value={message.codexReferences}/>
                           {Boolean(message.attachments?.length)&&conversationProject&&<ChatAttachmentList projectId={conversationProject.id} items={message.role==="assistant"?message.attachments!.filter(a=>!presentCitations(message.text).references.some(r=>r.attachmentId===a.id)):message.attachments!}/>}
                           <div className="markdown">
                             {typingId===message.id?<TypingMessageContent sessionId={session.id} messageId={message.id} text={message.text}/>:
@@ -1639,6 +1676,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     active={chatActive && dockOpen && !settingsOpen && !attentionOpen}
                     placeholder={project ? "어떤 작업을 함께 해볼까요?" : "만들고 싶은 것, 풀고 싶은 문제를 적어 주세요."}
                     onChange={setInput} onSend={() => void send()} onContinue={continueWaitingSession}
+                    references={codexReferences} referencesEnabled={Boolean(conversationProject&&!conversationProject.conversationScope&&!session?.scope)}
+                    onReferencesChange={setCodexReferences} onManagePlugins={openPluginSettings}
                     onChoose={prompt => {
                       setDrafts(previous => {
                         const draft = previous[draftKey];
@@ -1652,7 +1691,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     <div className="composer-options">
                       {attachmentControl}
                       <VoiceComposer key={voiceContinuity.current.generation} suspend={settingsOpen||attentionOpen||!dockOpen||!chatActive} disabled={running||security.state.locked} onText={text=>setDrafts(prev=>{
-                        const draft=prev[draftKey];return {...prev,[draftKey]:{mode:draft?.mode||mode,text:[draft?.text,text].filter(Boolean).join("\n"),attachments:draft?.attachments}};
+                        const draft=prev[draftKey];return {...prev,[draftKey]:{...draft,mode:draft?.mode||mode,text:[draft?.text,text].filter(Boolean).join("\n")}};
                       })} onSubmit={text=>void send([input,text].filter(Boolean).join("\n"))}/>
                       <ChatModelPicker onOpen={()=>void modelCatalog.refresh(true)} models={models}
                         preferences={previewChatModel(session?.preferences,modelPreview)} conversationKey={draftKey}
@@ -2024,7 +2063,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         onClick={() => setDockOpen(true)}>
         <PanelRight size={16} aria-hidden="true"/><span>대화</span>
       </button>}
-      <ConversationDock revealQuestion={Boolean(focusQuestion)} dotsEligible={Boolean(connection.authenticated&&connection.dotsEligible)} onAssistant={()=>void openPersonalAssistant()} assistantNavigation={assistantNavigation} assistantContent={<DotsPanel active={dockOpen} blocked={settingsOpen||historyOpen||musicOpen||attentionOpen||Boolean(workPopup)||Boolean(deletionTarget)||trashOpen||Boolean(reportDialog)||sidebarOpen||logoutOpen}/>} projectNavigation={projectNavigation} open={dockOpen} chatActive={chatActive} expanded={chatExpanded} onExpand={()=>setChatExpanded(v=>!v)} onClose={()=>setDockOpen(false)} onLeaveChat={()=>setChatActive(false)} projects={panelProjects} categories={categories} onProjectMove={navigation.move} sessions={data.sessions} projectId={projectId} sessionId={sessionId} activities={activities} requests={approvals} proposals={proposals} counts={activeCounts} filter={dockFilter} onFilter={setDockFilter} onOpen={selectSession} onProject={()=>{}} onCreate={(scope,id)=>void startDockConversation(scope,id)} onCreateProject={()=>setView('kickoff')} onSessionMenu={(event,s)=>itemContext(event,{kind:"session",id:s.id,name:s.title})} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} attentionCount={attentionState?.notifications.filter(n=>!n.readAt).length||0} onDecisions={openDecisions} busy={creatingConversation}>{renderChat()}</ConversationDock>
+      <ConversationDock revealQuestion={Boolean(focusQuestion)} dotsEligible={Boolean(connection.authenticated&&connection.dotsEligible)} onAssistant={()=>void openPersonalAssistant()} assistantNavigation={assistantNavigation} assistantContent={<DotsPanel active={dockOpen} blocked={settingsOpen||historyOpen||musicOpen||attentionOpen||Boolean(workPopup)||Boolean(deletionTarget)||trashOpen||Boolean(reportDialog)||sidebarOpen||logoutOpen}/>} projectNavigation={projectNavigation} open={dockOpen} chatActive={chatActive} expanded={chatExpanded} onExpand={()=>setChatExpanded(v=>!v)} onClose={()=>setDockOpen(false)} onLeaveChat={()=>setChatActive(false)} projects={panelProjects} categories={categories} onProjectMove={navigation.move} sessions={data.sessions} projectId={projectId} sessionId={sessionId} tabIds={tabIds} onCloseTab={closeConversationTab} tabBusy={creatingConversation||submitting} activities={activities} requests={approvals} proposals={proposals} counts={activeCounts} filter={dockFilter} onFilter={setDockFilter} onOpen={selectSession} onProject={()=>{}} onCreate={(scope,id)=>void startDockConversation(scope,id)} onCreateProject={()=>setView('kickoff')} onSessionMenu={(event,s)=>itemContext(event,{kind:"session",id:s.id,name:s.title})} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} attentionCount={attentionState?.notifications.filter(n=>!n.readAt).length||0} onDecisions={openDecisions} busy={creatingConversation}>{renderChat()}</ConversationDock>
       <WorkActionPopup kind={workPopup} projects={data.projects.filter(p=>!archived[p.id])} initialProject={view==="overview"?projectId:undefined} onClose={()=>setWorkPopup(null)} onStart={async(record,text,options)=>{await sendWorkRequest(record,text,record.workflow?.kind?workKinds[record.workflow.kind].mode:"plan",options)}} onOpen={selectSession}/>
       <MotionOverlay open={Boolean(reportDialog)} onClose={()=>setReportDialog(undefined)} label={reportDialog==='pause'?'업무 마감':'주간업무보고'} className="report-overlay">
         {reportDialog&&<PortfolioReports key={reportDialog} kind={reportDialog} projects={data.projects.filter(p=>!archived[p.id])} sessions={projectOnlySessions} authenticated={connection.authenticated}
@@ -2250,7 +2289,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               </div>
               <CloseButton aria-label="설정 닫기" onClick={closeSettings}/>
             </div>
-            <SettingsLayout key={settingsNavigation} initialGroup={categoryTarget ? "categories" : "general"}>
+            <SettingsLayout key={settingsNavigation} initialGroup={pluginSettingsTarget ? "account" : categoryTarget ? "categories" : "general"}>
               <SettingsGroup id="general">
                 <UpdatePanel settings state={update} fail={fail}/>
                 <MigrationSettings/>
@@ -2396,6 +2435,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   켜면 현재 대화의 일부를 연결한 ChatGPT 계정에 보내 명령 초안을 만듭니다. 계정 사용량이나 크레딧이 차감될 수 있습니다.
                 </p>
               </div>
+              <CodexPluginSettings authenticated={connection.authenticated} reveal={pluginSettingsTarget}/>
               </SettingsGroup><SettingsGroup id="appearance"><div className="settings-section appearance">
                 <div>
                   <h3>화면 테마</h3>

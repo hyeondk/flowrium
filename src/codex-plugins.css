@@ -1,0 +1,45 @@
+.codex-reference-list {
+  display:flex; flex-wrap:wrap; gap:6px; margin:0; padding:5px 0; list-style:none;
+}
+.codex-reference-list li {
+  min-width:0; max-width:100%; display:inline-flex; align-items:center; gap:4px; padding:2px 8px;
+  color:var(--text); background:var(--panel-soft,var(--surface)); border:1px solid var(--line-soft); border-radius:8px;
+  font-size:.82em; line-height:1.5;
+}
+.codex-reference-list li span {display:inline-flex; align-items:center; min-width:0; gap:4px}
+.codex-reference-list li button {
+  display:grid; place-items:center; padding:3px; min-height:22px; border:0; background:transparent; color:var(--muted); border-radius:5px;
+}
+.codex-reference-list li button:hover {background:var(--line-soft);color:var(--text)}
+.codex-reference-menu {
+  display:grid; gap:4px; padding:8px; margin-block:4px; background:var(--panel);
+  border:1px solid var(--line); border-radius:12px; text-align:start; font-size:.9em;
+}
+.codex-reference-menu-heading {display:flex; align-items:center; justify-content:space-between; gap:8px;padding-inline:6px}
+.codex-reference-menu p {margin:3px 6px 5px; color:var(--muted)}
+.codex-reference-menu [role=listbox] {display:grid; min-width:0; max-height:min(14rem,28vh); overflow:auto}
+.codex-reference-menu [role=option] {
+  display:grid; align-items:center; grid-template-columns:auto minmax(0,1fr) auto; gap:7px;
+  text-align:start; padding:6px 8px; border:0; border-radius:7px; background:none; color:var(--text);
+}
+.codex-reference-menu [role=option] small {color:var(--muted);font-size:.85em}
+.codex-reference-menu [role=option][aria-selected=true] {background:var(--card-subtle,var(--line-soft)); color:var(--text)}
+.codex-plugin-settings {display:grid; gap:12px; min-width:0}
+.codex-plugin-settings > header,.codex-plugin-review > div,.codex-plugin-results > li {
+  display:flex; align-items:center; justify-content:space-between; gap:10px; min-width:0;
+}
+.codex-plugin-settings h3,.codex-plugin-settings p {margin:0}
+.codex-plugin-settings > button {justify-self:start}
+.codex-plugin-tabs {display:flex; gap:5px; padding:4px; width:fit-content; background:var(--card-subtle,var(--line-soft));border:1px solid var(--line-soft);border-radius:10px;}
+.codex-plugin-tabs button {padding:5px 9px;border:0;border-radius:7px;color:var(--muted);background:none}
+.codex-plugin-tabs button[aria-pressed=true] {color:var(--text);background:var(--panel)}
+.codex-plugin-results {
+  list-style:none; margin:0; padding:0 5px 0 0; min-height:0; max-height:18rem; overflow:auto;
+  scrollbar-gutter:stable;
+}
+.codex-plugin-results > li {padding:8px 0;border-bottom:1px solid var(--line-soft)}
+.codex-plugin-results > li > div {min-width:0}
+.codex-plugin-results strong,.codex-plugin-results small {display:block}
+.codex-plugin-results small {color:var(--muted);margin-top:3px}
+.codex-plugin-results button {flex:none}
+.codex-plugin-review {display:grid;gap:8px; padding:10px; border:1px solid var(--line); border-radius:10px;}

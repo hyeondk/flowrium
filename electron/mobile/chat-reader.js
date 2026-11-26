@@ -2,12 +2,24 @@ import {workDuration} from './work-time.js';
 import {activityText,agentActivityText,describeActivity,sameWorkActivity} from './work-activity.js';
 import MarkdownIt from './markdown-engine.js';
 import {parseQuestionReply} from './question-reply.js';
+import {chatWebLinkTarget} from './chat-web-links.js';
 
 const markdown=new MarkdownIt({html:false,linkify:true,breaks:true}).disable('strikethrough');
 markdown.renderer.rules.image=(tokens,index)=>markdown.utils.escapeHtml(tokens[index].content||'이미지');
 markdown.renderer.rules.link_open=(tokens,index,options,env,renderer)=>{
-  tokens[index].attrSet('rel','noopener noreferrer');
-  tokens[index].attrSet('target','_blank');
+  const token=tokens[index];
+  const href=token.attrGet('href');
+  const web=chatWebLinkTarget(href);
+  if(web){
+    token.attrSet('href',web);
+    token.attrJoin('class','message-web-link');
+  } else if(/^https?:/i.test(href||'')){
+    token.attrs.splice(token.attrIndex('href'),1);
+  }
+  if(web||!href?.startsWith('#')){
+    token.attrSet('rel','noopener noreferrer');
+    token.attrSet('target','_blank');
+  }
   return renderer.renderToken(tokens,index,options);
 };
 function element(tag,text) {

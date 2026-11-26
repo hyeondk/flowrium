@@ -1,6 +1,7 @@
 const readline = require("node:readline");
 const {existsSync} = require("node:fs");
 const loginGate = process.env.FLOWRIUM_TEST_LOGIN_GATE;
+const pluginFixture = process.env.FLOWRIUM_TEST_PLUGINS;
 let initialized = false;
 let loggedOut = false;
 let acknowledged = false;
@@ -11,6 +12,20 @@ const threads = new Map();
 const approvalTurns = new Map();
 const inputTurns = new Map();
 const write = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
+const pluginRow=(name,extra={})=>({pluginId:name+'@openai-curated-remote',name,marketplaceName:'openai-curated-remote',
+  source:{source:'remote'},installPolicy:'AVAILABLE',...extra});
+if(pluginFixture&&process.argv[2]==='plugin'){
+  const fs=require('node:fs'),args=process.argv.slice(3);
+  if(args[0]==='list'){
+    const installed=[pluginRow('documents',{installed:true,enabled:true})];
+    if(existsSync(pluginFixture+'.installed'))installed.push(pluginRow('work-calendar',{installed:true,enabled:true}));
+    write({installed,available:args.includes('--available')?[pluginRow('work-calendar',{installed:false,enabled:false})]:[]});
+  }else if(args.join(' ')==='add work-calendar@openai-curated-remote --json'){
+    fs.writeFileSync(pluginFixture+'.installed','');
+    write({pluginId:'work-calendar@openai-curated-remote',authPolicy:'ON_INSTALL'});
+  }else process.exitCode=1;
+  return;
+}
 const notify = (method, params) => write({ method, params });
 function complete(threadId, turnId, message, policy, streamed=false) {
   if (!turns.has(turnId)) return;
@@ -162,6 +177,20 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     write({id, result:{config:{}}});
     return;
   }
+  if(pluginFixture&&method==='app/installed'){
+    write({id,result:{apps:[{id:'synthetic_work',runtimeName:'시험 연결 앱',enabled:true,callable:true},
+      {id:'synthetic_disabled',runtimeName:'숨길 비활성 앱',enabled:false,callable:false}]}});
+    return;
+  }
+  if(pluginFixture&&method==='app/list'){
+    write({id,result:{data:[{id:'work_calendar',name:'Work Calendar',isAccessible:false,isEnabled:true,
+      installUrl:'https://chatgpt.com/apps/work-calendar/work_calendar',pluginDisplayNames:['Work Calendar']}]}});
+    return;
+  }
+  if(pluginFixture&&method==='app/read'){
+    write({id,result:{apps:params.appIds.map(id=>({id,installUrl:'https://chatgpt.com/apps/work-calendar/work_calendar'}))}});
+    return;
+  }
   if (method === "thread/start") {
     const threadId=`thread-${++nextThread}`;threads.set(threadId,[]);
     write({ id, result: { thread: { id: threadId }, ...(params.permissions && {activePermissionProfile:{id:params.permissions}}) } });
@@ -186,6 +215,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     return;
   }
   if (method === "turn/start") {
+    if(pluginFixture)require('node:fs').appendFileSync(pluginFixture+'.turns',JSON.stringify(params.input)+'\n');
     const turnId = `turn-${++nextTurn}`;
     const threadId = params.threadId;
     turns.set(turnId, { threadId });

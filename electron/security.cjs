@@ -35,6 +35,7 @@ const accountCommands = new Set([
   "configureLinkDelivery", "connectKakao", "disconnectKakao", "sendKakaoLink", "sendLinkMail", "checkLinkMail", "webPushAction",
   "configureVoicePreferences", "configureVoice", "allowVoiceCapture", "transcribeVoice", "cancelVoiceCapture", "speakVoice",
   "connect", "listAvailableModels", "readChatConnection",
+  "readCodexPlugins", "manageCodexPlugin",
   "login",
   "send",
   "runTeam",

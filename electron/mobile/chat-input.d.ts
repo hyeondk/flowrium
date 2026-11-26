@@ -6,6 +6,8 @@ export const nativeQueueExplanation: string;
 export const clearQueueAction: string;
 export const clearQueueQuestion: string;
 export const clearQueueExplanation: string;
+export const writerWaitNotice: string;
+export function isPendingQueuedInput(item:import('../../shared/types').QueuedMessage): boolean;
 export function nativeQueueNotice(result:{queued:boolean;nativeDelivery?:string}): string;
 export function queuedInputView(item:import('../../shared/types').QueuedMessage): {
   status:string; hint:string; canSendToCodex:boolean; canCancel:boolean; canResume:boolean; canClear:boolean;

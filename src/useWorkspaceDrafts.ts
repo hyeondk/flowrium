@@ -61,7 +61,8 @@ export function useWorkspaceDrafts(revision: number) {
         if (
           before[key]?.text !== next[key]?.text ||
           before[key]?.mode !== next[key]?.mode ||
-          JSON.stringify(before[key]?.attachments||[]) !== JSON.stringify(next[key]?.attachments||[])
+          JSON.stringify(before[key]?.attachments||[]) !== JSON.stringify(next[key]?.attachments||[]) ||
+          JSON.stringify(before[key]?.codexReferences||[]) !== JSON.stringify(next[key]?.codexReferences||[])
         )
           patch[key] = next[key] || null;
       }

@@ -303,6 +303,14 @@ class Controller extends EventEmitter {
     require('./model-speed.cjs').serviceTier(input.speed);
     if (input.model) text(input.model, "모델", 300);
     const session = this.store.session(input.sessionId);
+    const selectedReferences=require('./codex-plugins.cjs').checkedReferences(input.codexReferences);
+    if(selectedReferences.length){
+      if(session.scope)throw Error('외부 연결 도구는 프로젝트 대화에서 사용할 수 있습니다.');
+      if(!input.requestSourceId && !/\S/.test(input.text || '') && !attachmentIds.length)
+        throw Error('선택한 연결 도구로 할 작업을 적어 주세요.');
+      if(!this.options.resolveCodexReferences)throw Error('현재 앱에서 연결 도구를 조회할 수 없습니다.');
+      input={...input,codexReferences:await this.options.resolveCodexReferences(selectedReferences)};
+    }
     if (!session.scope) {
       await this.store.requireProjectTrust(session.projectId);
       for (const id of session.workflow?.reportProjects || []) if (id!==session.projectId) await this.store.requireProjectTrust(id);
@@ -425,6 +433,7 @@ class Controller extends EventEmitter {
       text: message,
       ...(source && {requestSource:source,sourceOnly:true}),
       ...(attachments.length ? {attachments:require("./chat-attachments.cjs").checkedAttachments(attachments)} : {}),
+      ...(input.codexReferences?.length && {codexReferences:input.codexReferences}),
       createdAt: new Date().toISOString(),
     };
     run.userMessageId=userMessage.id;
@@ -530,8 +539,10 @@ class Controller extends EventEmitter {
     if (model) threadParams.model = model;
     if(run.threadId && (linked || !this.loadedThreads.has(run.threadId))){
       await verifyAccess();
-      const resumed=await client.request('thread/resume',{threadId:run.threadId,...threadParams,excludeTurns:true})
-        .catch(error=>{throw require('./codex-transfer-client.cjs').linkedError(error);});
+      const {resumeClosingThread,linkedError}=require('./codex-transfer-client.cjs');
+      const resumed=await resumeClosingThread(client,{threadId:run.threadId,...threadParams,excludeTurns:true},()=>{
+        if(!this.canExecuteRun(run))throw Error('계정 또는 작업 상태가 바뀌었습니다. 다시 보내 주세요.');
+      }).catch(error=>{throw linkedError(error);});
       if(resumed.thread?.id!==run.threadId)throw Error('원래 대화 식별자를 확인하지 못했습니다. 새 요청을 보내지 않았습니다.');
     }
     return {client,linked,cwd,prefs,sandbox,approvalPolicy,approvalsReviewer,dynamicTools,threadParams,model,verifyAccess,plan:account.account.planType};
@@ -609,7 +620,8 @@ class Controller extends EventEmitter {
       threadId: run.threadId,
       clientUserMessageId:run.userMessageId,
       ...(Object.keys(additionalContext).length && {additionalContext}),
-      input: [{type:"text",text:request}, ...run.attachments.filter(a=>a.image).map(a=>({type:"localImage",path:a.path}))],
+      input: [{type:"text",text:request}, ...require('./codex-plugins.cjs').mentionInputs(input.codexReferences),
+        ...run.attachments.filter(a=>a.image).map(a=>({type:"localImage",path:a.path}))],
       cwd,
       approvalPolicy,
       approvalsReviewer,

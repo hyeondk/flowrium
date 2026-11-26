@@ -1,4 +1,5 @@
 import type { FlowriumEvent, Mode, ChatAttachment } from "./types";
+import type {CodexReference} from './codex-plugins';
 
 export interface SecurityPreferences {
   idleMinutes: number;
@@ -40,7 +41,7 @@ export interface UsageSnapshot {
     }[];
   }[];
 }
-export type ComposerDraft = { text: string; mode: Mode; attachments?:ChatAttachment[] };
+export type ComposerDraft = { text: string; mode: Mode; attachments?:ChatAttachment[]; codexReferences?:CodexReference[] };
 export interface SecurityAPI {
   readDrafts(revision: number): Promise<Record<string, ComposerDraft>>;
   writeDrafts(

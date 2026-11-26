@@ -340,6 +340,9 @@ async function main() {
       await monitor.scan(runtime);
       await monitor.scan(runtime);
       assert.equal(shared.title,'연결한 원본이 실행 중일 때 바꾼 제목');
+      const [externalTurn]= (await desktop.request('thread/turns/list',{threadId:source,limit:1,sortDirection:'desc'})).data;
+      await assert.rejects(reader.request('turn/steer',{threadId:source,expectedTurnId:externalTurn.id,
+        input:[{type:'text',text:'분리된 읽기 연결의 추가 지시 확인'}]}),/not loaded|not found|active writer|not (?:currently )?in progress|no active turn/i);
       const active=await controller.send({...draft,text:'원래 작업 중 취소할 요청'});
       assert(active.queued&&active.waitingForWriter);
       assert(!controller.runs.has(shared.id));

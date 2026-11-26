@@ -3,7 +3,7 @@ const native=require('./codex-native-queue.cjs');
 const fs=require('node:fs/promises'),path=require('node:path');
 const {readJSON,createJSON,UUID}=require('./project-store.cjs');
 const {checkedAttachments,resolveAttachments}=require('./chat-attachments.cjs');
-const {maxChatInput}=require("./mobile/chat-input.js");
+const {isPendingQueuedInput,maxChatInput}=require("./mobile/chat-input.js");
 function validateQueue(items=[]) {
   if(!Array.isArray(items)||items.length>150)throw Error('대기 지시 목록을 확인해 주세요.');
   const seen=new Set();
@@ -23,7 +23,7 @@ function validateQueue(items=[]) {
        q.nativeDeviceHash!==undefined && !/^[a-f0-9]{64}$/.test(q.nativeDeviceHash) ||
        q.nativeQueueId!==undefined && !UUID.test(q.nativeQueueId) ||
        q.nativeAfterTurnId!==undefined && !UUID.test(q.nativeAfterTurnId))throw Error('원본 대기열 접수 정보를 확인해 주세요.');
-    checkedAttachments(q.attachments||[]);seen.add(q.id);
+    checkedAttachments(q.attachments||[]);require('./codex-plugins.cjs').checkedReferences(q.codexReferences);seen.add(q.id);
   }
 }
 class ChatQueue {
@@ -39,7 +39,7 @@ class ChatQueue {
   }
   emit(session){this.controller.emitEvent({type:'session',sessionId:session.id,session:structuredClone(session)});}
   list(id){return structuredClone(this.store.session(id).queuedMessages||[]);}
-  pending(id){return (this.store.session(id).queuedMessages||[]).some(q=>q.status==='queued'||q.status==='sending');}
+  pending(id){return (this.store.session(id).queuedMessages||[]).some(isPendingQueuedInput);}
   serial(action){const task=this.tail.then(action);this.tail=task.catch(()=>{});return task;}
   enqueue(input){return this.serial(async()=>{
     const s=this.store.session(input.sessionId);
@@ -47,15 +47,19 @@ class ChatQueue {
     const revision=input.ownerRevision??this.controller.options.queueOwner?.()??'local', owner=await this.owner(revision);
     const files=await resolveAttachments(this.store,s.projectId,input.attachments||[]);
     const history=s.queuedMessages||[];
-    if(history.filter(q=>q.status==='queued'||q.status==='sending').length>=50)throw Error('이 대화의 대기 지시는 50개까지 보관할 수 있습니다.');
-    const q={id:input.submissionId || randomUUID(),text:input.text,...(input.requestSourceId&&{requestSourceId:input.requestSourceId}),mode:input.mode,model:input.model,...(input.effort?{effort:input.effort}:{}),...(input.speed?{speed:input.speed}:{}),attachments:checkedAttachments(files),createdAt:new Date().toISOString(),status:'queued',...(input.waitingForWriter&&{waitingForWriter:true}),owner};
+    const pending=history.filter(isPendingQueuedInput);
+    const unsent=new Set(history.filter(q=>q.status==='queued'||q.status==='sending'));
+    if(unsent.size>=50)throw Error('이 대화의 대기 지시는 50개까지 보관할 수 있습니다.');
+    const waitingForWriter=input.waitingForWriter||pending[0]?.waitingForWriter;
+    const q={id:input.submissionId || randomUUID(),text:input.text,...(input.requestSourceId&&{requestSourceId:input.requestSourceId}),mode:input.mode,model:input.model,...(input.effort?{effort:input.effort}:{}),...(input.speed?{speed:input.speed}:{}),attachments:checkedAttachments(files),createdAt:new Date().toISOString(),status:'queued',...(waitingForWriter&&{waitingForWriter:true}),owner};
     if((this.controller.options.queueOwner?.()??'local')!==revision||this.controller.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다. 추가 지시를 다시 확인해 주세요.');
+    if(input.codexReferences?.length)q.codexReferences=require('./codex-plugins.cjs').checkedReferences(input.codexReferences);
     if(q.waitingForWriter && native.eligible(s,q))q.nativeQueueAvailable=true;
     const before=s.queuedMessages;
-    s.queuedMessages=[...history.filter(q=>q.status==='queued'||q.status==='sending'||history.indexOf(q)>=history.length-90),q];
+    s.queuedMessages=[...history.filter((q,index)=>unsent.has(q)||index>=history.length-90),q];
     try{await this.store.save();}catch(e){if(before)s.queuedMessages=before;else delete s.queuedMessages;throw e;}
     this.emit(s);
-    if(q.waitingForWriter)this.schedule(s.id);else queueMicrotask(()=>this.flush(s.id));
+    if(q.waitingForWriter)this.schedule(s.id,1000);else queueMicrotask(()=>this.flush(s.id));
     return {accepted:true,queued:true,queueId:q.id,...(q.waitingForWriter&&{waitingForWriter:true}),...(q.nativeQueueAvailable&&{nativeQueueAvailable:true})};
   });}
   withNativeAction(id,action){
@@ -82,7 +86,7 @@ class ChatQueue {
     const session=this.store.session(id), entry=session.queuedMessages?.find(q=>q.id===queueId);
     if(!entry || entry.status==='cancelled')throw Error('원본에 보낼 대기 지시를 선택해 주세요.');
     if(entry.status==='sent')return {accepted:true,queued:false,queueId};
-    const first=session.queuedMessages.find(q=>q.status==='queued'||q.status==='sending');
+    const first=session.queuedMessages.find(isPendingQueuedInput);
     if(first!==entry)throw Error('앞선 대기 지시를 먼저 처리해 주세요.');
     if(entry.status!=='queued' || entry.branchSessionId || !entry.nativeDelivery && (!entry.waitingForWriter || entry.error ||
        session.messages.some(m=>m.id===queueId) || this.controller.runs.has(id)))throw Error('원본에 전달할 수 있는 대기 지시를 선택해 주세요.');
@@ -119,7 +123,7 @@ class ChatQueue {
     if (!branch.messages.some(row => row.role === 'user' && row.id === entry.id)) {
       await c.send({sessionId: branch.id, submissionId: entry.id, text: entry.text, mode: entry.mode,
         requestSourceId: entry.requestSourceId, model: entry.model, effort: entry.effort, speed: entry.speed,
-        attachments: entry.attachments.map(file => file.id)}, {useCapturedSelection: true});
+        attachments: entry.attachments.map(file => file.id),codexReferences:entry.codexReferences}, {useCapturedSelection: true});
     }
     entry.status = 'cancelled';
     try { await this.store.save(); }
@@ -157,11 +161,16 @@ class ChatQueue {
     const c=this.controller;
     if(this.busy.has(id)||c.runs.has(id)||c.editingSessions.has(id)||c.shuttingDown||!c.status.authenticated||c.options.canRun?.()===false)return;
     const s=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===id);if(!s||s.compacting)return;
-    const q=(s.queuedMessages||[]).find(q=>q.status==='queued'||q.status==='sending');
-    if(!q||q.error||q.branchSessionId)return;
+    const q=(s.queuedMessages||[]).find(isPendingQueuedInput);
+    if(!q||q.error)return;
     this.busy.add(id);
     try{
-      if(q.owner!==await this.owner()||q.status==='cancelled'||c.options.canRun?.()===false||c.shuttingDown)return;
+      const owner=await this.owner();
+      if(q.status==='cancelled'||c.options.canRun?.()===false||c.shuttingDown)return;
+      if(q.owner!==owner){
+        if(!q.nativeDelivery)throw Error('대기 지시를 기록한 계정 또는 기기가 바뀌었습니다. 확인한 뒤 다시 시작해 주세요.');
+        return;
+      }
       if(q.nativeDelivery){
         try{await native.reconcile(this,s,q);}finally{if(q.status==='queued')this.schedule(id);}
         if(q.status==='sent' && this.pending(id))setImmediate(()=>this.flush(id));
@@ -172,8 +181,8 @@ class ChatQueue {
       const receipt=s.messages.find(m=>m.role==='user'&&m.id===q.id);
       if(receipt && !receipt.turnId)throw Error('앱이 종료되기 전 요청의 수신 여부가 확인되지 않았습니다. 원래 대화를 확인하고, 다시 보내려면 이 대기 지시를 취소한 뒤 새 요청으로 보내 주세요.');
       if(!receipt){
-        if(!s.scope && !await this.store.isProjectTrusted(s.projectId))return;
-        await c.send({sessionId:id,text:q.text,requestSourceId:q.requestSourceId,mode:q.mode,model:q.model,effort:q.effort,speed:q.speed,attachments:q.attachments.map(a=>a.id)},
+        if(!s.scope && !await this.store.isProjectTrusted(s.projectId))throw Error('대기 지시를 보내려면 프로젝트 폴더의 편집 권한을 다시 확인해 주세요.');
+        await c.send({sessionId:id,text:q.text,requestSourceId:q.requestSourceId,mode:q.mode,model:q.model,effort:q.effort,speed:q.speed,attachments:q.attachments.map(a=>a.id),codexReferences:q.codexReferences},
           {fromQueue:true,queueItem:q,waitingForWriter:q.waitingForWriter});
       }
       q.status='sent';delete q.waitingForWriter;q.sentAt=new Date().toISOString();
@@ -194,15 +203,15 @@ class ChatQueue {
         const changed=!q.waitingForWriter || offer;
         q.waitingForWriter=true;
         if(offer)q.nativeQueueAvailable=true;
-        this.schedule(id);
+        this.schedule(id,2000);
         if(!changed)return;
       }else q.error=error.message;
       await this.store.save();this.emit(s);
     }finally{this.busy.delete(id);}
   }
-  schedule(id){
+  schedule(id,delay=5000){
     if(this.timers.has(id)||this.controller.shuttingDown)return;
-    const timer=setTimeout(()=>{this.timers.delete(id);void this.flush(id);},5000);
+    const timer=setTimeout(()=>{this.timers.delete(id);void this.flush(id);},delay);
     timer.unref?.();this.timers.set(id,timer);
   }
   stopTimers(){for(const timer of this.timers.values())clearTimeout(timer);this.timers.clear();}

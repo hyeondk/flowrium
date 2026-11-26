@@ -1,5 +1,5 @@
-import {useMemo,useState,type ReactNode} from 'react';
-import {CheckCheck,CircleAlert,ChevronDown,Copy,FileText,TerminalSquare} from 'lucide-react';
+import {useMemo,useState,type ComponentProps,type MouseEvent,type ReactNode} from 'react';
+import {CheckCheck,CircleAlert,ChevronDown,Copy,FileText,Globe,TerminalSquare} from 'lucide-react';
 import ReactMarkdown, {defaultUrlTransform,type Components} from 'react-markdown';
 import type {Processor} from 'unified';
 import type {Extension} from 'micromark-util-types';
@@ -9,6 +9,7 @@ import './message-content.css';
 import ChatCitation from './ChatCitation';
 import {presentCitations} from '../electron/mobile/file-citations.js';
 import {chatFileLinkTarget} from '../electron/chat-file-links.js';
+import {chatWebLinkTarget} from '../electron/mobile/chat-web-links.js';
 
 type Props={sessionId?:string;messageId?:string;text:string;role:'user'|'assistant'|'system';streaming?:boolean;hasLaterRequest?:boolean;retryAction?:ReactNode};
 function failureTitle(text:string,previous:boolean){
@@ -41,17 +42,43 @@ function MarkdownFileLink({sessionId,messageId,href,children}:FileLinkSource&{hr
  return <><a href="#파일-위치" title="파일 위치 열기" onClick={event=>{event.preventDefault();void reveal();}}>{children}</a>
   {error&&<span className="message-file-link-error" role="status">{error}</span>}</>;
 }
+function MarkdownWebLink({href,children,...props}:ComponentProps<'a'>&{href:string}) {
+ const [error,setError]=useState(false);
+ async function open(event:MouseEvent<HTMLAnchorElement>){
+  const api=window.flowrium;
+  if(!api || (event.type==='auxclick' && event.button!==1))return;
+  event.preventDefault();
+  try{await api.openChatWebLink(href);setError(false);}
+  catch{setError(true);}
+ }
+ return <>
+  <a {...props} className="message-web-link" href={href} target="_blank" rel="noopener noreferrer" onClick={open} onAuxClick={open}>
+   <Globe size="1em" aria-hidden="true"/>{children}
+  </a>
+  {error&&<span className="message-file-link-error" role="status">기본 브라우저에서 웹 링크를 열지 못했습니다.</span>}
+ </>;
+}
 function Markdown({text,sessionId,messageId}:{text:string;sessionId?:string;messageId?:string}){
  const enableFiles=Boolean(window.flowrium&&sessionId&&messageId);
  const components=useMemo<Components>(()=>({
   ...markdownComponents,
-  a:({node:_,href,children,...props})=>enableFiles&&sessionId&&messageId&&href&&chatFileLinkTarget(href)
-   ? <MarkdownFileLink sessionId={sessionId} messageId={messageId} href={href}>{children}</MarkdownFileLink>
-   : <a {...props} href={href} target={href?.startsWith('#')?undefined:'_blank'} rel="noopener noreferrer">{children}</a>,
+  a:({node:_,href,children,...props})=>{
+   const web=chatWebLinkTarget(href);
+   if(web)return <MarkdownWebLink {...props} href={web}>{children}</MarkdownWebLink>;
+   if(enableFiles&&sessionId&&messageId&&href&&chatFileLinkTarget(href))
+    return <MarkdownFileLink sessionId={sessionId} messageId={messageId} href={href}>{children}</MarkdownFileLink>;
+   return href ? <a {...props} href={href}>{children}</a> : <>{children}</>;
+  },
  }),[enableFiles,sessionId,messageId]);
  return <div className="markdown message-prose">
   <ReactMarkdown remarkPlugins={[remarkGfm, preserveTildes]} remarkRehypeOptions={{footnoteLabel:'각주',footnoteBackLabel:'본문의 각주로 돌아가기'}} components={components}
-    urlTransform={(url,key,element)=>enableFiles&&key==='href'&&element.tagName==='a'&&chatFileLinkTarget(url)?url:defaultUrlTransform(url)}>
+    urlTransform={(url,key,element)=>{
+     if(key==='href'&&element.tagName==='a'){
+      if(/^https?:/i.test(url))return chatWebLinkTarget(url)||'';
+      if(enableFiles&&chatFileLinkTarget(url))return url;
+     }
+     return defaultUrlTransform(url);
+    }}>
     {text}
   </ReactMarkdown>
  </div>;

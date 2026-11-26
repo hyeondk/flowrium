@@ -24,13 +24,14 @@ async function deliver(controller, session, run, input, text, owner) {
   const anchor=session.messages.at(-1);
   const previousAnswer=run.assistant, previousItems=[...run.itemOrder];
   const id = input.submissionId || randomUUID(), createdAt = new Date().toISOString();
-  const message = {id,role:'user',turnId,text,createdAt,...(files.length ? {attachments:checkedAttachments(files)} : {})};
+  const message = {id,role:'user',turnId,text,createdAt,...(files.length ? {attachments:checkedAttachments(files)} : {}),
+    ...(input.codexReferences?.length && {codexReferences:input.codexReferences})};
   try {
     const definition=dictionary?.();
     const result = await client.request('turn/steer',{
       threadId,expectedTurnId:turnId,clientUserMessageId:id,
       ...(definition&&{additionalContext:{flowrium_dictionary:definition}}),
-      input:[{type:'text',text},...files.map(file=>({type:'localImage',path:file.path}))]
+      input:[{type:'text',text},...require('./codex-plugins.cjs').mentionInputs(input.codexReferences),...files.map(file=>({type:'localImage',path:file.path}))]
     });
     if (result.turnId !== turnId) throw Error('추가 지시의 수신 상태를 확인하지 못했습니다. 대화를 새로고침해 주세요.');
   } catch(error) {

@@ -78,6 +78,7 @@ function validateSession(session, projectId) {
       if(message.role!=="user" || source.name!=="request.txt" || source.type!=="text/plain")throw Error("긴 요청 원문 정보를 확인해 주세요.");
     }
     if(message.attachments!==undefined)require("./chat-attachments.cjs").checkedAttachments(message.attachments);
+    if(message.codexReferences!==undefined)require('./codex-plugins.cjs').checkedReferences(message.codexReferences);
     if ((message.workStartedAt !== undefined && !validateDate(message.workStartedAt)) ||
         (message.workCompletedAt !== undefined && !validateDate(message.workCompletedAt)) ||
         (message.progressCommentary !== undefined && (message.progressCommentary !== true || message.role !== 'system')))

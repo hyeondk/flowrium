@@ -1,4 +1,5 @@
 import type {CodexTransferAPI,CodexTransferLink} from "./codex-transfer";
+import type {CodexReference,CodexPluginsAPI} from './codex-plugins';
 import type {TrashAPI} from './trash';
 import type { DotsAPI } from "./dots";
 import type { MigrationAPI } from "./migration";
@@ -71,7 +72,7 @@ export interface Project {
   createdAt: string;
 }
 export interface ChatAttachment {id:string;name:string;type:string;size:number;sha256:string}
-export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;speed?:Speed;attachments:ChatAttachment[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;waitingForWriter?:boolean;branchSessionId?:string;error?:string;nativeQueueAvailable?:boolean;nativeDelivery?:'submitting'|'queued'|'uncertain';nativeCleared?:boolean}
+export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;speed?:Speed;attachments:ChatAttachment[];codexReferences?:CodexReference[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;waitingForWriter?:boolean;branchSessionId?:string;error?:string;nativeQueueAvailable?:boolean;nativeDelivery?:'submitting'|'queued'|'uncertain';nativeCleared?:boolean}
 export interface Message {
   workStartedAt?: string;
   workCompletedAt?: string;
@@ -82,6 +83,7 @@ export interface Message {
   sourceOnly?: boolean;
   delegated?: true;
   attachments?: ChatAttachment[];
+  codexReferences?:CodexReference[];
   turnId?: string;
   id: string;
   role: "user" | "assistant" | "system";
@@ -203,6 +205,7 @@ export interface FlowriumAPI
     DotsAPI,
     ExternalRepositoryAPI,
     TrashAPI,
+    CodexPluginsAPI,
     CodexTransferAPI,
     MigrationAPI,
     ProjectPortsAPI,
@@ -236,7 +239,6 @@ export interface FlowriumAPI
   readChatAttachment(projectId:string,id:string):Promise<{attachment:ChatAttachment;dataUrl?:string}>;
   listQueuedMessages(sessionId:string):Promise<QueuedMessage[]>;
   cancelQueuedMessage(sessionId:string,id:string):Promise<void>;
-  startQueuedBranch(sessionId:string,id:string):Promise<{session:Session}>;
   sendQueuedToCodex(sessionId:string,id:string):Promise<{accepted:boolean;queued:boolean;queueId:string;nativeDelivery?:QueuedMessage['nativeDelivery']}>;
   clearUnconfirmedCodexQueue(sessionId:string,id:string):Promise<unknown>;
   resumeQueuedMessages(sessionId:string):Promise<void>;
@@ -269,6 +271,7 @@ export interface FlowriumAPI
     sessionId: string;
     text: string;
     attachments?: string[];
+    codexReferences?:CodexReference[];
     mode: Mode;
     model?: string;
     effort?: Effort;
@@ -283,6 +286,7 @@ export interface FlowriumAPI
   openExternal(
     target: "chatgpt" | "chatgpt-desktop" | "codex-docs" | "download-docs" | "downloads",
   ): Promise<void>;
+  openChatWebLink(url: string): Promise<void>;
   copyText(text: string): Promise<void>;
   openProject(id: string): Promise<void>;
   exportSession(id: string): Promise<boolean>;

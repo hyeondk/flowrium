@@ -4,6 +4,10 @@ import './settings-layout.css';
 const groups=[['general','일반'],['categories','카테고리 관리'],['security','보안'],['remote','휴대폰'],['voice','음성'],['account','계정과 모델'],['appearance','화면']] as const;
 type GroupId=typeof groups[number][0];
 const SettingsContext=createContext<{selected:GroupId;expanded:boolean;prefix:string}|null>(null);
+export function useSettingsSection(id:GroupId){
+ const state=useContext(SettingsContext);
+ return !state || state.selected===id&&state.expanded;
+}
 export function SettingsGroup({id,children}:{id:GroupId;children:ReactNode}){
  const state=useContext(SettingsContext),selected=!state||state.selected===id,open=selected&&(!state||state.expanded);
  return <section className="settings-group" data-settings-group={id} data-selected={selected} hidden={!open} inert={!open} aria-hidden={!open} id={state?`${state.prefix}-panel-${id}`:undefined} aria-labelledby={state?`${state.prefix}-nav-${id}`:undefined}>

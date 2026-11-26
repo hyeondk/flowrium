@@ -1,6 +1,6 @@
 import {isImeKey} from './ime';
 import {useProjectGrip,type MoveProject} from './ProjectOrder';
-import {useEffect,useId,useRef,useState,type ReactNode,type MouseEvent,type KeyboardEvent as ReactKeyboardEvent} from 'react';
+import {useEffect,useId,useMemo,useRef,useState,type ReactNode,type MouseEvent,type KeyboardEvent as ReactKeyboardEvent} from 'react';
 import {ArrowLeft,Bell,ChevronRight,Folder,Globe2,Maximize2,MoreHorizontal,SquarePen,MessageCircle,MessagesSquare,PanelRight,PanelRightClose,Plus,Search,ShieldCheck,X} from 'lucide-react';
 import type {FlowriumEvent,Project,Session} from '../shared/types';
 import type {WorkflowProposal} from '../shared/workflow';
@@ -12,8 +12,9 @@ import ChoicePicker from './ChoicePicker';
 import ProjectCategoryLabel from './ProjectCategoryLabel';
 import {messagePreview} from './message-content';
 import {useDockResize} from './DockResizeHandle';
+import ConversationTabs from './ConversationTabs';
 type Scope='home'|'integrated'|'general'|'project'|'all'|'assistant';
-type Props={revealQuestion?:boolean;projectNavigation?:{id:string;nonce:number};open:boolean;chatActive:boolean;expanded:boolean;onExpand():void;onClose():void;onLeaveChat():void;projects:Project[];categories?:Record<string,string>;onProjectMove:MoveProject;sessions:Session[];projectId?:string;sessionId?:string;activities:Record<string,ExecutionActivity>;requests:FlowriumEvent[];proposals:WorkflowProposal[];counts:ExecutionCounts;filter:ExecutionState|'all';onFilter(state:ExecutionState|'all'):void;onOpen(s:Session):void;onProject(p:Project):void;onCreate(scope:'project'|'integrated'|'general',projectId?:string):void;onCreateProject():void;onDecisions():void;attentionCount?:number;dotsEligible:boolean;onAssistant():void;assistantContent?:ReactNode;assistantNavigation?:number;onSessionMenu?(event:MouseEvent,session:Session):void;onProjectMenu?(event:MouseEvent,project:Project):void;busy?:boolean;children:ReactNode};
+type Props={revealQuestion?:boolean;projectNavigation?:{id:string;nonce:number};open:boolean;chatActive:boolean;expanded:boolean;onExpand():void;onClose():void;onLeaveChat():void;projects:Project[];categories?:Record<string,string>;onProjectMove:MoveProject;sessions:Session[];projectId?:string;sessionId?:string;tabIds:string[];onCloseTab(id:string):void;tabBusy?:boolean;activities:Record<string,ExecutionActivity>;requests:FlowriumEvent[];proposals:WorkflowProposal[];counts:ExecutionCounts;filter:ExecutionState|'all';onFilter(state:ExecutionState|'all'):void;onOpen(s:Session):void;onProject(p:Project):void;onCreate(scope:'project'|'integrated'|'general',projectId?:string):void;onCreateProject():void;onDecisions():void;attentionCount?:number;dotsEligible:boolean;onAssistant():void;assistantContent?:ReactNode;assistantNavigation?:number;onSessionMenu?(event:MouseEvent,session:Session):void;onProjectMenu?(event:MouseEvent,project:Project):void;busy?:boolean;children:ReactNode};
 type PanelLayout='docked'|'overlay';
 const layoutKey='flowrium.dock.presentation.v1';
 function storedLayout(){try{const value=JSON.parse(localStorage.getItem(layoutKey)||'null');if(value&&['docked','overlay'].includes(value.layout)&&typeof value.minimized==='boolean')return {layout:value.layout as PanelLayout,minimized:value.minimized};}catch{}return {layout:'docked' as PanelLayout,minimized:false};}
@@ -26,7 +27,16 @@ export default function ConversationDock(props:Props){
  const [scope,setScope]=useState<Scope>('home'),[query,setQuery]=useState(''),[selectedProject,setSelectedProject]=useState(props.projectId||'');
  const [preference]=useState(storedLayout),[layout,setLayout]=useState<PanelLayout>(preference.layout),[minimized,setMinimized]=useState(preference.minimized),[modeMenu,setModeMenu]=useState(false),[storageError,setStorageError]=useState('');
  const modeButton=useRef<HTMLButtonElement>(null),modeRoot=useRef<HTMLDivElement>(null),menu=useRef<HTMLDivElement>(null),menuId=useId();
- const panel=useRef<HTMLElement>(null),selected=sessions.find(s=>s.id===sessionId);
+ const newButton=useRef<HTMLButtonElement>(null),chatPanelId=useId();
+ const sessionIndex=useMemo(()=>new Map(sessions.map(session=>[session.id,session])),[sessions]);
+ const panel=useRef<HTMLElement>(null),selected=sessionId?sessionIndex.get(sessionId):undefined;
+ const tabId=(id:string)=>`${chatPanelId}-tab-${id}`;
+ const tabs=props.tabIds.flatMap(id=>{
+   const session=sessionIndex.get(id);
+   if(!session)return [];
+   const context=session.generalAssistant?'개인 비서':session.scope?scopeLabels[session.scope]:projects.find(project=>project.id===session.projectId)?.name;
+   return [{id,title:session.title,scope:session.scope,context,state:sessionExecution(session,activities[id],requests,proposals)}];
+ });
  const resize=useDockResize(panel,layout==='overlay',props.open);
  useEffect(()=>{if(props.assistantNavigation){setScope('assistant');setQuery('')}},[props.assistantNavigation]);
  const dotsOpen=scope==='assistant'&&!chatActive&&props.dotsEligible;
@@ -53,6 +63,10 @@ export default function ConversationDock(props:Props){
  const latest=[...sessions].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
  const visible=latest.filter(s=>(scope==='all'||scope==='home'||(scope==='project'?!s.scope&&(!selectedProject||s.projectId===selectedProject):s.scope===scope))&&(!query||s.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()))&&(props.filter==='all'||sessionExecution(s,activities[s.id],requests,proposals)===props.filter));
  function group(value:Scope){setScope(value);setQuery('');props.onLeaveChat();props.onFilter('all')}
+ function browseConversations(){
+   group(scope==='assistant'?'general':scope);
+   requestAnimationFrame(()=>panel.current?.querySelector<HTMLInputElement>('.dock-browser input')?.focus());
+ }
  function goBack(){
    if(chatActive&&selected){
      if(selectedChatProject)setSelectedProject(selectedChatProject);
@@ -66,10 +80,19 @@ export default function ConversationDock(props:Props){
   <button className="dock-mobile-scrim" aria-hidden="true" tabIndex={-1} type="button" data-phase={phase} onClick={props.onClose}/>
   <aside ref={resize.bindPanel} className="conversation-dock" style={resize.style} data-resizing={resize.resizing} aria-label="통합 / 프로젝트 / 일반 대화" data-chat-active={chatActive} data-layout-mode={layout} data-minimized={isMinimized} data-expanded={props.expanded} data-phase={phase} aria-hidden={phase==='exit'} inert={phase==='exit'}>
    {resize.separator}<span className="project-order-readout" role="status">{grip.announcement}</span>
-   <header className="dock-heading"><div><div><h2>{isMinimized?(selected?.title||'대화 입력창'):'대화'}</h2></div></div><div className="dock-heading-actions">{!dotsOpen&&<button className="dock-icon" aria-label="새 대화 시작" title="새 대화" disabled={props.busy||((scope==='project'||scope==='home'||scope==='all')&&!selectedProject)} onClick={()=>props.onCreate(scope==='integrated'?'integrated':scope==='general'||scope==='assistant'?'general':'project',selectedProject)}><SquarePen size={17}/></button>}{(chatActive||scope==='assistant'||isMinimized)&&<button className="dock-icon dock-layout-toggle" aria-label={isMinimized?'대화 패널 다시 펼치기':props.expanded?'대화 패널 좁히기':'대화 패널 넓히기'} title={isMinimized?'대화 패널 다시 펼치기':props.expanded?'대화 패널 좁히기':'대화 패널 넓히기'} onClick={()=>{resize.reset();if(isMinimized)setMinimized(false);else props.onExpand()}}>{isMinimized||!props.expanded?<Maximize2 size={18}/>:<PanelRight size={18}/>}</button>}
+   <header className="dock-heading"><div><div><h2>{isMinimized?(selected?.title||'대화 입력창'):'대화'}</h2></div></div><div className="dock-heading-actions">{!dotsOpen&&<button ref={newButton} className="dock-icon" aria-label="새 대화 시작" title="새 대화" disabled={props.busy||((scope==='project'||scope==='home'||scope==='all')&&!selectedProject)} onClick={()=>props.onCreate(scope==='integrated'?'integrated':scope==='general'||scope==='assistant'?'general':'project',selectedProject)}><SquarePen size={17}/></button>}{(chatActive||scope==='assistant'||isMinimized)&&<button className="dock-icon dock-layout-toggle" aria-label={isMinimized?'대화 패널 다시 펼치기':props.expanded?'대화 패널 좁히기':'대화 패널 넓히기'} title={isMinimized?'대화 패널 다시 펼치기':props.expanded?'대화 패널 좁히기':'대화 패널 넓히기'} onClick={()=>{resize.reset();if(isMinimized)setMinimized(false);else props.onExpand()}}>{isMinimized||!props.expanded?<Maximize2 size={18}/>:<PanelRight size={18}/>}</button>}
     <div className="dock-mode-picker" ref={modeRoot}><button ref={modeButton} className="dock-icon" aria-label="대화 패널 보기 방식" aria-haspopup="menu" aria-expanded={modeMenu} aria-controls={modeMenu?menuId:undefined} onClick={()=>setModeMenu(value=>!value)}><MoreHorizontal size={18}/></button>{modeMenu&&<div ref={menu} id={menuId} role="menu" aria-label="대화 패널 보기" className="flow-context-menu dock-panel-menu" onKeyDown={menuKey}>{([['docked','대시보드 옆에 고정'],['overlay','겹쳐 보기'],['composer','입력창만 보기']] as const).map(([value,label])=><button type="button" key={value} role="menuitemradio" aria-checked={value==='composer'?isMinimized:!isMinimized&&layout===value} tabIndex={-1} disabled={value==='composer'&&!chatActive} aria-describedby={value==='composer'&&!chatActive?menuId+'-help':undefined} onClick={()=>selectLayout(value)}><span>{label}</span><i aria-hidden="true">{(value==='composer'?isMinimized:!isMinimized&&layout===value)?'✓':''}</i></button>)}{!chatActive&&<p id={menuId+'-help'} className="dock-mode-help">Flowrium 대화를 연 뒤 사용할 수 있습니다.</p>}</div>}</div>
     <button className="dock-icon dock-fold" aria-label="대화함 접기" onClick={props.onClose}><PanelRightClose size={18}/></button><CloseButton className="dock-close-small" aria-label="대화함 닫기" onClick={props.onClose}/></div></header>
    <div className="dock-scope-tabs" aria-label="대화 종류">{([['integrated','통합'],['project','프로젝트'],['general','일반'],['assistant','개인 비서']] as const).map(([key,label])=><button key={key} aria-label={key==='assistant'?'개인 비서 보기':undefined} aria-pressed={scope===key} title={key==='integrated'?'전체 프로젝트의 대화와 알림':label+' 대화'} onClick={()=>key==='assistant'?props.onAssistant():group(key)}>{label}{key==='integrated'&&Boolean(props.attentionCount)&&<small>{props.attentionCount}</small>}</button>)}</div>
+   {tabs.length>0&&<ConversationTabs tabs={tabs} selected={chatActive?selectedChatId:undefined} browsing={!chatActive&&!dotsOpen}
+     disabled={props.tabBusy} panelId={chatPanelId} tabId={tabId}
+     onSelect={id=>{if(chatActive&&id===selectedChatId)return;const session=sessionIndex.get(id);if(session)props.onOpen(session);}}
+     onClose={props.onCloseTab} onBrowse={browseConversations}
+     onEmpty={()=>requestAnimationFrame(()=>{
+       const target=newButton.current;
+       if(target&&!target.disabled)target.focus();
+       else panel.current?.querySelector<HTMLButtonElement>('.dock-scope-tabs button')?.focus();
+     })}/>}
    <div className="dock-navigation-row">
     {(scope !== 'home' || chatActive) && <button
       type="button" className="dock-back"
@@ -104,7 +127,9 @@ export default function ConversationDock(props:Props){
       {scope!=='all'&&<button className="dock-primary dock-new-conversation" disabled={props.busy||(scope==='project'&&!selectedProject)} onClick={()=>props.onCreate(scope==='home'||scope==='assistant'?'project':scope,selectedProject)}><Plus size={17}/>새 {scope==='general'?'일반 ':scope==='integrated'?'통합 ':''}대화</button>}
      </>}
     </div>}</MotionPresence>
-    <MotionPresence open={chatActive} durationMs={220}>{innerPhase=><div className="dock-page dock-chat" data-phase={innerPhase} inert={innerPhase==='exit'}>{props.children}</div>}</MotionPresence>
+    <MotionPresence open={chatActive} durationMs={220}>{innerPhase=><div className="dock-page dock-chat" data-phase={innerPhase} inert={innerPhase==='exit'}
+      id={chatPanelId} role={selectedChatId&&!isMinimized?'tabpanel':undefined}
+      aria-labelledby={selectedChatId&&!isMinimized?tabId(selectedChatId):undefined}>{props.children}</div>}</MotionPresence>
    </div>{storageError&&<p className="dock-storage-error" role="status">{storageError}</p>}<footer className="dock-footer"><span className="dock-footer-dot"/>프로젝트와 개인 대화를 따로 보관합니다.</footer>
   </aside></> }</MotionPresence>
 }

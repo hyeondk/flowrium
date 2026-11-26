@@ -87,7 +87,7 @@ async function invokeRegistered(name,handler,args){
   if(['send','startWork','logoutSecurity','installUpdate','lockSecurity'].includes(name)||
     (name==='workflowAction'&&args[0]?.action==='continueConversation')||
     (name==='saveSettings'&&(args[0]?.aiFollowups===false||Object.hasOwn(args[0]??{},'codexPath'))))followupGenerator?.invalidate();
-  const independent=/^(read|list)/.test(name)||['bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','voiceServersState','voiceStatus','voicePreferences','workflowState','dictionaryState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState','selectKickoffLocation'].includes(name);
+  const independent=/^(read|list)/.test(name)||['bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','openChatWebLink','voiceServersState','voiceStatus','voicePreferences','workflowState','dictionaryState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState','selectKickoffLocation'].includes(name);
   const query=args[0];
   // 실행 파일과 프로젝트를 바꾸는 작업은 기존 동기화를 기다린다.
   const settingsOnly=(name==='saveSettings'&&!Object.hasOwn(query??{},'codexPath')) ||
@@ -95,9 +95,10 @@ async function invokeRegistered(name,handler,args){
     (name==='webPushAction'&&query?.action==='preferences');
   const passiveTransfer=name==='codexTransferAction'&&(query?.action==='sync'&&!query.force||query?.action==='receipts'||query?.action==='readOriginal'||query?.background===true);
   const foreground=!independent&&!passiveTransfer&&!settingsOnly;
+  const sendingSession=name==='send'&&typeof query?.sessionId==='string' ? query.sessionId : undefined;
   if(foreground)foregroundOperations++;
   try{
-    if(foreground&&name!=='chooseProject')await waitForTransferWrites();
+    if(foreground&&name!=='chooseProject')await waitForTransferWrites(sendingSession);
     if((migrationTransition||importRestartRequired)&&!['migrationAction','securityState','unlockSecurity','lockSecurity','hideDotsView','readDotsState'].includes(name))throw Error('자료 이관 후 앱을 다시 시작해 주세요.');
     if(controller?.trashRuntime?.isBusy()&&!/^(read|list)/.test(name)&&!['chooseProject','trashAction','bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','interrupt','terminalRead','terminalList','hideDotsView','readDotsState'].includes(name))throw Error('삭제 또는 복원을 마친 뒤 변경해 주세요.');
     activeOperations++;
@@ -105,11 +106,14 @@ async function invokeRegistered(name,handler,args){
     try{return await security.guard(name,()=>handler(...args));}finally{activeOperations--;if(foreground)activeForegroundOperations--;}
   }finally{if(foreground)foregroundOperations--;}
 }
-async function waitForTransferWrites(){
+async function waitForTransferWrites(sessionId){
   const transfer=codexTransfer;
   if(!transfer)return;
-  const current=[...(transfer.syncingSessions?.values()||[])];
-  if(transfer.syncMonitor?.flight)current.push(transfer.syncMonitor.flight);
+  // A chat send waits for its own history reconciliation and any active writes.
+  // A background list request for another conversation must not hold the composer.
+  const current = sessionId === undefined
+    ? [...(transfer.syncingSessions?.values()||[]),transfer.syncMonitor?.flight].filter(Boolean)
+    : [transfer.syncingSessions?.get(sessionId)].filter(Boolean);
   if(!current.length&&!transfer.refreshDone&&!transfer.operationDone)return;
   const context=transfer.context();
   if(current.length)await Promise.allSettled(current);
@@ -310,6 +314,17 @@ async function launch() {
     callApplicationTool: async input => externalTools?.handles(input.name)
       ? externalTools.call(input) : projectTools?.handles(input.name) ? projectTools.call(input) : workflowRuntime?.callTool(input),
   });
+  const codexPlugins=require('./codex-plugins.cjs').registerCodexPlugins(register,{
+    controller,getContext:()=>canUseAccount() ? JSON.stringify([security.accountRevision,security.epoch,security.data.accountOwner]) : null,
+    directory:app.getPath('userData'),openExternal:url=>shell.openExternal(url),
+  });
+  let pluginContext=JSON.stringify([security.accountRevision,security.epoch,security.data.accountOwner]);
+  security.on('state',()=>{
+    const next=JSON.stringify([security.accountRevision,security.epoch,security.data.accountOwner]);
+    if(next!==pluginContext){pluginContext=next;codexPlugins.invalidate();}
+  });
+  app.on('will-quit',codexPlugins.invalidate);
+  controller.options.resolveCodexReferences=codexPlugins.resolve;
   const {FollowupPreference}=require('./followup-preference.cjs');
   const followupPreference=new FollowupPreference(app.getPath('userData'));
   await followupPreference.load();
@@ -334,7 +349,6 @@ async function launch() {
   register("listQueuedMessages", id => controller.listQueuedMessages(id));
   register("cancelQueuedMessage", (id, queued) => controller.cancelQueuedMessage(id, queued));
   register("sendQueuedToCodex", (id, queued) => controller.messageQueue.sendToCodex(id, queued));
-  register("startQueuedBranch", (id, queued) => controller.messageQueue.startBranch(id, queued));
   register("clearUnconfirmedCodexQueue", (id, queued) => controller.messageQueue.clearUnconfirmed(id, queued));
   register("resumeQueuedMessages", id => controller.resumeQueuedMessages(id));
   const { Drafts, registerDrafts } = require("./drafts.cjs");
@@ -668,6 +682,15 @@ async function launch() {
     if (!Object.hasOwn(links, target))
       throw new Error("지원하지 않는 외부 링크입니다.");
     return shell.openExternal(links[target]);
+  });
+  register("openChatWebLink", async (value) => {
+    const url = require("./mobile/chat-web-links.js").chatWebLinkTarget(value);
+    if (!url) throw new Error("열 수 있는 웹 링크인지 확인해 주세요.");
+    try {
+      await shell.openExternal(url);
+    } catch {
+      throw new Error("기본 브라우저에서 웹 링크를 열지 못했습니다.");
+    }
   });
   register("copyText", (value) => {
     if (typeof value !== "string") throw new Error("복사할 텍스트를 확인해 주세요.");

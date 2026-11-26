@@ -10,6 +10,8 @@ function fixtureRows(){
     {text:'사용자가 선택할 요청',waitingForWriter:true,nativeQueueAvailable:true},
     {text:'외부 전달 불가 요청',waitingForWriter:true,nativeQueueAvailable:false},
     {text:'보통의 대기 요청'},
+    {text:'이미 취소한 추가 지시',status:'cancelled'},
+    {text:'이미 보낸 추가 지시',status:'sent'},
     ...Object.keys(labels).map(state=>({text:'이미 시작된 요청 '+state,waitingForWriter:true,nativeQueueAvailable:true,nativeDelivery:state}))
   ].map(row=>({...base,...row,id:randomUUID()}));
 }
@@ -19,8 +21,13 @@ async function verify(page,selector,rows,calls,clearCalls,sessionId,role){
   const target=row(rows[0]),trigger=target.getByRole('button',{name:action,exact:true});
   const dialog=page.getByRole(role,{name:confirmation,exact:true});
   await trigger.waitFor();
+  assert.equal(await page.getByRole('button',{name:/지금 분기해 실행|지금 전달 재개/}).count(),0);
   for(const item of rows.slice(1)){
     const other=row(item);
+    if(item.status==='sent'||item.status==='cancelled'){
+      assert.equal(await other.count(),0,item.text);
+      continue;
+    }
     await other.getByText(item.text,{exact:true}).waitFor();
     assert.equal(await other.getByRole('button',{name:action,exact:true}).count(),0,item.text);
     assert.equal(await other.getByRole('button',{name:'이 기기의 대기 해제',exact:true}).count(),item.nativeDelivery==='uncertain'?1:0);
@@ -56,7 +63,7 @@ async function verify(page,selector,rows,calls,clearCalls,sessionId,role){
   await clear.click();
   await clearDialog.getByRole('button',{name:'이 기기의 대기 해제',exact:true}).click();
   await clearDialog.waitFor({state:'hidden'});
-  await row(uncertain).getByText('이 기기에서 대기 해제',{exact:true}).waitFor();
+  await row(uncertain).waitFor({state:'detached'});
   assert.equal(await clear.count(),0);
   assert.deepEqual(await clearCalls(),[[sessionId,uncertain.id]]);
   assert.deepEqual(await calls(),[[sessionId,rows[0].id]],'로컬 대기를 해제해도 원본에는 추가 제출하지 않습니다.');
