@@ -1,5 +1,6 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs/promises');
+const os=require('node:os');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {randomUUID}=require('node:crypto');
@@ -8,7 +9,7 @@ const {Store}=require('../electron/store.cjs');
 const {openConversation}=require('./shell-test-helpers.cjs');
 const {closeInstalledApp}=require('./update-installed-ui.cjs');
 async function main(){
- const root=path.resolve(__dirname,'..'),temp=await fs.mkdtemp(path.join(root,'.flowrium-tmp','citation-ui-'));
+ const root=path.resolve(__dirname,'..'),temp=await fs.mkdtemp(path.join(await fs.realpath(os.tmpdir()),'flowrium-citation-ui-'));
  let app;
  try {
   const folder=path.join(temp,'샘플'),out=path.join(folder,'outputs');

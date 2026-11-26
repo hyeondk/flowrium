@@ -292,15 +292,22 @@ async function run() {
     await popupButton.click();
     await popup.waitFor({state:'hidden'});
     const input=page.getByRole('textbox',{name:'Codex에 보낼 작업 요청'});
-    const focusStyle=()=>input.evaluate(element=>{
-      const panel=getComputedStyle(element.closest('.composer'));
+    const focusStyle=()=>input.evaluate(async element=>{
+      const composer=element.closest('.composer');
+      const panel=getComputedStyle(composer);
+      void panel.borderColor;
+      await Promise.allSettled(composer.getAnimations().map(animation=>animation.finished));
       return {border:panel.borderColor, shadow:panel.boxShadow, outline:getComputedStyle(element).outlineStyle};
     });
-    const unfocused = await focusStyle();
-    await input.click();
-    assert.deepEqual(await focusStyle(),unfocused,'입력창을 클릭해도 테두리나 그림자가 생기지 않습니다.');
-    assert.equal(unfocused.outline,'none');
     if(process.argv.includes('--composer-controls')) {
+      for(const theme of ['light','dark'])for(const accent of ['blue','green','purple']){
+        await page.evaluate(tokens=>Object.assign(document.documentElement.dataset,tokens),{theme,accent});
+        await input.blur();
+        const unfocused=await focusStyle();
+        await input.click();
+        assert.deepEqual(await focusStyle(),unfocused,'입력창을 클릭해도 테두리나 그림자가 생기지 않습니다.');
+        assert.equal(unfocused.outline,'none');
+      }
       const clearButton=page.getByRole('button',{name:'입력 지우기',exact:true});
       await input.fill('대기검증');
       await expect(clearButton).toHaveCount(0);
@@ -311,7 +318,7 @@ async function run() {
       await input.press(process.platform==='darwin'?'Meta+a':'Control+a');
       await input.press('Backspace');
       await expect(input).toHaveValue('');
-      console.log('채팅 작성과 작업 중 추가 요청의 지우기 버튼 제거 / 직접 삭제 / 클릭 테두리 확인');
+      console.log('채팅 작성과 작업 중 추가 요청의 지우기 버튼 제거 / 직접 삭제 / 밝고 어두운 모드에 강조색 3가지 클릭 테두리 확인');
       return;
     }
     if(process.argv.includes('--work-progress')) {
