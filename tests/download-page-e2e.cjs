@@ -152,19 +152,21 @@ async function run() {
     assert.equal(await page.locator(':focus').getAttribute('id'),'main');
     assert.match(await page.locator('.getting-started .section-intro').textContent(),/첫 작업.*폴더를 신뢰/);
     const downloadOrigin = new URL(page.url()).origin;
-    for (const [label, fragment, region, command] of [
-      ["터미널로 설치", "#mac-terminal", "Mac 터미널", "bash Flowrium-install.sh"],
-      ["PowerShell로 설치", "#windows-terminal", "Windows PowerShell", "& '.\\Flowrium-install.ps1'"],
-    ]) {
-      await page.getByRole("link", {name: label, exact: true}).click();
-      assert.equal(new URL(page.url()).origin, downloadOrigin);
-      assert.equal(new URL(page.url()).hash, fragment);
-      const instructions=page.getByRole("article", {name: region});
-      assert.ok(await instructions.getByText(command, {exact: true}).isVisible());
-      const download=await instructions.locator("pre code").first().textContent();
-      assert.match(download, /https:\/\/github\.com\/hyeondk\/flowrium\/releases\/latest\/download\/install\.(sh|ps1)/);
-      assert.doesNotMatch(download, /\|\s*(bash|sh|powershell)|Invoke-Expression|ExecutionPolicy/);
-    }
+    await page.getByRole("link", {name: "터미널로 설치", exact: true}).click();
+    assert.equal(new URL(page.url()).origin, downloadOrigin);
+    assert.equal(new URL(page.url()).hash, "#mac-terminal");
+    const macInstructions=page.getByRole("article", {name: "Mac 터미널"});
+    assert.ok(await macInstructions.getByText("bash Flowrium-install.sh", {exact: true}).isVisible());
+    const macDownload=await macInstructions.locator("pre code").first().textContent();
+    assert.match(macDownload, /https:\/\/github\.com\/hyeondk\/flowrium\/releases\/latest\/download\/install\.sh/);
+    assert.doesNotMatch(macDownload, /\|\s*(bash|sh|powershell)|Invoke-Expression|ExecutionPolicy/);
+    await page.getByRole("link", {name: "PowerShell로 설치", exact: true}).click();
+    assert.equal(new URL(page.url()).origin, downloadOrigin);
+    assert.equal(new URL(page.url()).hash, "#windows-terminal");
+    const windowsInstructions=page.getByRole("article", {name: "Windows PowerShell"});
+    assert.equal(await windowsInstructions.locator("pre").count(), 1);
+    assert.equal(await windowsInstructions.locator("#win-exe-command").count(), 1);
+    assert.doesNotMatch(await page.locator("#terminal-install").innerText(), /install\.ps1/i);
     await page.evaluate(()=>{
       Object.defineProperty(navigator, "clipboard", {configurable:true, value:{
         writeText(value) {
@@ -174,9 +176,9 @@ async function run() {
         },
       }});
     });
-    await page.getByRole("button", {name: "Windows 내려받기 명령 복사"}).click();
+    await windowsInstructions.getByRole("button", {name: "Windows 공식 설치 파일 명령 복사"}).click();
     await page.getByRole("status").filter({hasText:"명령을 클립보드에 복사했습니다"}).waitFor();
-    assert.equal(await page.evaluate(()=>window.copiedCommand),await page.locator("#win-download-command").textContent());
+    assert.equal(await page.evaluate(()=>window.copiedCommand),await windowsInstructions.locator("#win-exe-command").textContent());
     await page.evaluate(()=>window.rejectClipboard=true);
     await page.getByRole("button", {name: "Mac 설치 명령 복사"}).click();
     await page.getByRole("status").filter({hasText:"선택한 명령을 키보드로 복사"}).waitFor();
@@ -227,6 +229,10 @@ async function run() {
     assert.match(exeText, /Start-Process/);
     assert.ok(exeText.indexOf(".ComputeHash(") < exeText.indexOf("Start-Process"));
     assert.doesNotMatch(exeText, /Unblock-File|ExecutionPolicy|Invoke-Expression|-Verb\s+RunAs/i);
+    const commandArea=page.locator('#windows-exe-terminal pre');
+    await commandArea.focus();
+    await commandArea.press('PageDown');
+    await page.waitForFunction(()=>document.querySelector('#windows-exe-terminal pre').scrollTop>0);
     await page.evaluate(() => {
       window.rejectClipboard = false;
       window.copiedCommand = undefined;
@@ -257,6 +263,15 @@ async function run() {
       assert.equal(await page.locator('.hero-copy > p').evaluate(e=>getComputedStyle(e).wordBreak),'keep-all');
       const commandFits = await page.locator('.command-block pre').evaluateAll(blocks=>blocks.every(block=>block.scrollWidth<=block.clientWidth+1));
       assert.ok(commandFits,'설치 명령 가로폭 '+width);
+      const commands=await page.locator('.command-grid').evaluate(grid=>{
+        const [mac,windows]=Array.from(grid.children,card=>card.getBoundingClientRect());
+        const terminal=grid.querySelector('#windows-exe-terminal pre');
+        const bounds=terminal.getBoundingClientRect();
+        return {sideBySide:mac.right<windows.left&&Math.abs(mac.top-windows.top)<1,
+          stacked:mac.bottom<windows.top,scrolls:terminal.scrollHeight>terminal.clientHeight&&getComputedStyle(terminal).overflowY==='auto',
+          contained:bounds.left>=windows.left&&bounds.right<=windows.right};
+      });
+      assert.ok(commands[width>720?'sideBySide':'stacked']&&commands.scrolls&&commands.contained,JSON.stringify({width,...commands}));
       const help=await page.locator('#help').evaluate(section=>{
         const heading=section.querySelector('h2').getBoundingClientRect();
         const list=section.querySelector('.help-list').getBoundingClientRect();
