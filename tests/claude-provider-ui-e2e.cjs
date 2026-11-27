@@ -119,7 +119,7 @@ async function main() {
     await waitDefault('','high');
     await defaultModel.selectOption('claude-low-fixture');
     await waitDefault('claude-low-fixture','');
-    assert.equal(await defaultEffort.inputValue(),'');
+    await page.waitForFunction(() => document.querySelector('select[aria-label="추론 수준"]')?.value === '');
     await defaultEffort.selectOption('low');
     await waitDefault('claude-low-fixture','low');
     await defaultEffort.selectOption('');
