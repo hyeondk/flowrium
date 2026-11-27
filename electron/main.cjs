@@ -262,7 +262,8 @@ function createWindow() {
 }
 async function launch() {
   lifecycleDiagnostic('launch-start');
-  if (process.platform === "win32") app.setAppUserModelId(require("../package.json").build.appId);
+  // Keep the running window grouped with the shortcuts created by the installer.
+  if (process.platform === "win32") app.setAppUserModelId("io.github.hyeondk.flowrium");
   await acknowledgeUpdateLaunch(app, "starting");
   const { Security, registerSecurity } = require("./security.cjs");
   security = new Security(app.getPath("userData"));
