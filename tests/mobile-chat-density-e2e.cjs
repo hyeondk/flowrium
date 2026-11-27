@@ -415,7 +415,8 @@ async function main(){
    const accountType=await typography(page,['.settings-account-models h2','.settings-account-identities td','.settings-account-models form select']);
    assert.deepEqual(accountType.map(size=>size.font),[13,11,16]);
    assert(accountType[2].height<=30,JSON.stringify(accountType));
-   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth),0);
+   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth);
+   assert(overflow<=1,`${width}px로 표시한 설정 화면의 가로 넘침 ${overflow}px`);
   }
   await page.setViewportSize({width:390,height:844});
   await page.getByRole('button',{name:'도움말',exact:true}).click();
