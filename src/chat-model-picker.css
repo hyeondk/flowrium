@@ -21,6 +21,11 @@
   min-inline-size:0;
 }
 
+.composer .chat-provider-picker {flex:none;margin-inline-end:8px}
+.composer-provider-note {margin:0 0 6px;color:var(--muted);font-size:.75rem;line-height:1.45;word-break:keep-all}
+.composer-provider-progress {display:flex;flex-wrap:wrap;gap:6px 12px;margin:0 0 6px;color:var(--muted);font-size:.75rem}
+.composer-provider-progress>span {display:inline-flex;align-items:center;gap:6px}
+
 .chat-performance-slot {
   anchor-name:--composer-performance;
   display:flex;

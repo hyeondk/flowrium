@@ -28,3 +28,16 @@
   .settings-disclosure-layout .settings-group[data-selected=true] {transition:none;transform:none}
 }
 .settings-modal .settings-disclosure-layout {height:var(--settings-reference-height,560px);flex:0 1 var(--settings-reference-height,560px)}
+.claude-connection-settings > label {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-block:12px;
+}
+.claude-connection-settings form .settings-buttons {margin-top:12px}
+.provider-mode-setup {margin:12px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--panel);word-break:keep-all}
+.provider-mode-setup > p {margin-block:8px 14px;color:var(--muted)}
+.provider-mode-choices {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:10px}
+.provider-mode-choices > .button {display:grid;gap:5px;text-align:start;white-space:normal;line-height:1.45;padding:12px}
+.provider-mode-choices > .button span {color:var(--muted);font-size:.86em}

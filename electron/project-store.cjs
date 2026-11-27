@@ -51,13 +51,15 @@ function validateSession(session, projectId) {
     if(!link || typeof link.threadId!=='string' || !link.threadId || link.threadId.length>300 || typeof link.cwd!=='string' || !path.isAbsolute(link.cwd) || !/^[a-f0-9]{64}$/.test(link.ownerHash))throw Error('로컬 대화 연결 정보를 확인해 주세요.');
   }
   if(session.codexLink!==undefined)require("./codex-transfer-link.cjs").validateLink(session.codexLink);
+  require('./ai-provider.cjs').checkedProvider(session.provider);
   if(session.defaultProjectMode!==undefined && session.defaultProjectMode!=='build')throw Error('저장된 프로젝트 작업 범위를 확인해 주세요.');
   if(session.scope!==undefined&&!['general','integrated'].includes(session.scope))throw Error('대화 종류를 확인해 주세요.');
   if (session.preferences !== undefined) require("./chat-preferences.cjs").preferences(session.preferences);
   if (session.workflow !== undefined) require("./workbench.cjs").validateWorkflow(session.workflow);
   if(session.queuedMessages!==undefined)require("./chat-queue.cjs").validateQueue(session.queuedMessages);
   if(session.completedContinuationId!==undefined&&!UUID.test(session.completedContinuationId))throw Error('완료한 후속 작업의 답변 식별자를 확인해 주세요.');
-  if(session.context!==undefined && (!session.context || !Number.isFinite(session.context.used)||!Number.isFinite(session.context.total)||!Number.isFinite(session.context.max)||!Number.isFinite(session.context.percent)))throw Error("문맥 사용량 정보를 확인해 주세요.");
+  for(const context of [session.context,session.claudeContext])
+    if(context!==undefined && (!context || ![context.used,context.total,context.max,context.percent].every(Number.isFinite)))throw Error('문맥 사용량 정보를 확인해 주세요.');
   const ids = new Set();
   for (const message of session.messages) {
     if (
@@ -78,6 +80,7 @@ function validateSession(session, projectId) {
       if(message.role!=="user" || source.name!=="request.txt" || source.type!=="text/plain")throw Error("긴 요청 원문 정보를 확인해 주세요.");
     }
     if(message.attachments!==undefined)require("./chat-attachments.cjs").checkedAttachments(message.attachments);
+    require('./ai-provider.cjs').checkedProvider(message.provider);
     if(message.codexReferences!==undefined)require('./codex-plugins.cjs').checkedReferences(message.codexReferences);
     if ((message.workStartedAt !== undefined && !validateDate(message.workStartedAt)) ||
         (message.workCompletedAt !== undefined && !validateDate(message.workCompletedAt)) ||

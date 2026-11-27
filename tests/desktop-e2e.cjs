@@ -1,4 +1,4 @@
-const {settledRail}=require('./shell-test-helpers.cjs');
+const {settledRail,selectExistingProjectFolder}=require('./shell-test-helpers.cjs');
 const {trustRegisteredFixtureFolder,setFixtureAccountLinked} = require('./project-trust-fixture.cjs');
 const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
@@ -66,7 +66,7 @@ async function run() {
     await app.evaluate(({ dialog }, selection) => {
       dialog.showOpenDialog = async () => ({canceled: false, filePaths:[selection]});
     }, project);
-    await btn("프로젝트 추가").click();await btn("기존 폴더 연결").click();
+    await btn("프로젝트 추가").click();await (await selectExistingProjectFolder(page)).click();
     await page.locator("[data-work-kind=task]").waitFor();
     await trustRegisteredFixtureFolder(profile, project);
     await page.locator(".settings-button").click();

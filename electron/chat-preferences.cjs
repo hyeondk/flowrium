@@ -13,7 +13,8 @@ function preferences(input) {
   if (model && (typeof model !== "string" || model.length > 300 || !model.trim())) throw new Error("대화 모델을 확인해 주세요.");
   if (effort && !["none","minimal","low","medium","high","xhigh","max","ultra"].includes(effort)) throw new Error("대화 추론 강도를 확인해 주세요.");
   const url = chatAddress(input.chatGptUrl);
-  const result={ ...(model && {model}), ...(effort && {effort}), ...(url && {chatGptUrl:url}) };
+  const provider = require('./ai-provider.cjs').checkedProvider(input.provider);
+  const result={ ...(provider && {provider}), ...(model && {model}), ...(effort && {effort}), ...(url && {chatGptUrl:url}) };
   if (input.speed !== undefined && input.speed !== '') {
     require('./model-speed.cjs').serviceTier(input.speed);
     result.speed = input.speed;

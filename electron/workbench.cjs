@@ -319,7 +319,10 @@ async function startWork(store, input, teamSlot) {
         .map((m) => (m.role === "user" ? "사용자" : "답변") + " / " + m.text.slice(-2600)).join("\n\n").slice(-12000),
     };
   }
-  const preferences = input.model || input.effort ? require("./chat-preferences.cjs").preferences({...(input.model?{model:input.model}:{}),...(input.effort?{effort:input.effort}:{})}) : undefined;
+  const provider = teamSlot ? 'codex' : input.provider;
+  const preferences = provider !== undefined || input.model || input.effort
+    ? require('./chat-preferences.cjs').preferences({ provider, model: input.model, effort: input.effort })
+    : undefined;
   return store.createSession(input.projectId, { title, workflow: validateWorkflow(workflow), ...(preferences && {preferences}) });
 }
 async function autoSaveWorkArtifact(store,id) {

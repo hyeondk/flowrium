@@ -21,7 +21,7 @@ async function continueConversation(controller,input){
   recheck(controller,input,before);
   const next=input.text?.trim()?input.text:
     originalAnswerFollowups(before.session)[0]?.prompt||followupFromAnswer(before.text)?.prompt||'앞서 제안한 다음 단계를 이어서 진행해 주세요.';
-  return await controller.send({sessionId:input.sessionId,requestSourceId:input.requestSourceId,submissionId:input.submissionId,text:next,attachments:input.attachments||[],codexReferences:input.codexReferences,mode:input.mode,model:input.model,effort:input.effort},{expectedContinuation:{messageId:input.messageId,text:before.text,owner:before.owner}});
+  return await controller.send({sessionId:input.sessionId,requestSourceId:input.requestSourceId,submissionId:input.submissionId,text:next,attachments:input.attachments||[],codexReferences:input.codexReferences,mode:input.mode,provider:input.provider,model:input.model,effort:input.effort,speed:input.speed},{expectedContinuation:{messageId:input.messageId,text:before.text,owner:before.owner}});
  }finally{controller.continuationFlights.delete(input.sessionId);}
 }
 async function completeContinuation(controller,input){

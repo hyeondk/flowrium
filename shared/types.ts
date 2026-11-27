@@ -23,6 +23,7 @@ import type { TeamsAPI } from "./teams";
 import type { RepositoryAPI } from "./repository";
 import type { WorkbenchAPI, Workflow } from "./workbench";
 export interface ChatPreferences {
+  provider?: AIProvider;
   model?: string;
   effort?: Effort;
   speed?: Speed;
@@ -38,7 +39,7 @@ export interface ChatPreferences {
 }
 export type ConversationEdit =
   | { action: "preferences"; preferences: ChatPreferences }
-  | { action: "model"; model: string; effort?: Effort | ""; speed?: Speed | "" }
+  | { action: "model"; provider?: AIProvider; model: string; effort?: Effort | ""; speed?: Speed | "" }
   | { action: "rename"; title: string }
   | { action: "branch"; messageId?: string }
   | { action: "rewind"; messageId: string }
@@ -60,6 +61,8 @@ export interface UpdateState {
   message: string;
 }
 export type Effort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+export type AIProvider = "codex" | "claude";
+export type ProviderMode = "sync" | "mixed";
 export type Speed = "standard" | "fast" | "ultrafast";
 export type Mode = "plan" | "build" | "review";
 export type ConversationScope = "general" | "integrated";
@@ -72,8 +75,9 @@ export interface Project {
   createdAt: string;
 }
 export interface ChatAttachment {id:string;name:string;type:string;size:number;sha256:string}
-export interface QueuedMessage {id:string;text:string;mode:Mode;model?:string|null;effort?:Effort;speed?:Speed;attachments:ChatAttachment[];codexReferences?:CodexReference[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;waitingForWriter?:boolean;branchSessionId?:string;error?:string;nativeQueueAvailable?:boolean;nativeDelivery?:'submitting'|'queued'|'uncertain';nativeCleared?:boolean}
+export interface QueuedMessage {id:string;text:string;mode:Mode;provider?:AIProvider;model?:string|null;effort?:Effort;speed?:Speed;attachments:ChatAttachment[];codexReferences?:CodexReference[];createdAt:string;status:"queued"|"sending"|"sent"|"cancelled";owner:string;sentAt?:string;waitingForWriter?:boolean;branchSessionId?:string;error?:string;nativeQueueAvailable?:boolean;nativeDelivery?:'submitting'|'queued'|'uncertain';nativeCleared?:boolean}
 export interface Message {
+  provider?: AIProvider;
   workStartedAt?: string;
   workCompletedAt?: string;
   progressCommentary?: true;
@@ -105,6 +109,7 @@ export interface WorkStep {
   sourceUrl?: string;
 }
 export interface Session {
+  provider?: AIProvider;
   defaultProjectMode?: "build";
   desktopThread?: {threadId:string;cwd:string;ownerHash:string};
   codexLink?:CodexTransferLink;
@@ -123,6 +128,7 @@ export interface Session {
   completedContinuationId?: string;
   queuedMessages?: QueuedMessage[];
   context?: {used:number;total:number;max:number;percent:number;updatedAt:string};
+  claudeContext?: Session['context'];
   compacting?: boolean;
   applicationTools?: boolean;
   createdAt: string;
@@ -135,6 +141,11 @@ export interface CodexHistoryEntry {
   imported: boolean;
 }
 export interface Settings {
+  provider?: AIProvider;
+  providerMode?: ProviderMode;
+  claudeEnabled?: boolean;
+  claudeModel?: string;
+  claudeEffort?: Effort;
   chatDefaults?: ChatPreferences;
   aiFollowups?: boolean;
   codexPath?: string;
@@ -162,13 +173,21 @@ export interface Model {
   displayName: string;
   description?: string;
 }
+export interface ClaudeConnection {
+  configured: boolean;
+  connected: boolean;
+  models: Model[];
+  error?: string;
+}
 export interface InputQuestion {
   id: string; header: string; question: string; options: { label: string; description: string }[];
   isOther: boolean; isSecret: boolean;
 }
 export type InputAnswers = Record<string, { answers: string[] }>;
 export interface FlowriumEvent {
-  streamingMessage?: Pick<Message,'id'|'createdAt'|'turnId'>;
+  provider?: AIProvider;
+  runningProviders?: AIProvider[];
+  streamingMessage?: Pick<Message,'id'|'createdAt'|'turnId'|'provider'>;
   contextUsage?: Session['context'];
   workProgress?: {messageId: string; step: WorkStep};
   workCommentary?: Message;
@@ -192,6 +211,7 @@ export interface FlowriumEvent {
   session?: Session;
 }
 export interface Bootstrap {
+  providerSetupRequired?: boolean;
   externalActivity?: Record<string,'running'|'pending'>;
   conversationProjects?: Project[];
   projects: Project[];
@@ -230,8 +250,8 @@ export interface FlowriumAPI
   startupAppearance?: Pick<Settings, "theme" | "accentColor">;
   previewAppearance?(appearance: Pick<Settings, "theme" | "accentColor">): void;
   reactMessage(input:{sessionId:string;messageId:string;liked:boolean}):Promise<Session>;
-  openGeneralAssistant():Promise<Session>;
-  createHubConversation(input:{scope:ConversationScope;title?:string}):Promise<Session>;
+  openGeneralAssistant(provider?:AIProvider):Promise<Session>;
+  createHubConversation(input:{scope:ConversationScope;title?:string;provider?:AIProvider}):Promise<Session>;
   listHubConversations():Promise<{projects:Project[];sessions:Session[]}>;
   addChatAttachments(projectId:string,files:{name:string;type:string;bytes:Uint8Array}[]):Promise<ChatAttachment[]>;
   readRequestSource(sessionId:string,messageId:string,offset:number|"full"):Promise<{text:string;next:number|null}>;
@@ -252,11 +272,14 @@ export interface FlowriumAPI
   onUpdate(callback: (state: UpdateState) => void): () => void;
   bootstrap(): Promise<Bootstrap>;
   chooseProject(): Promise<Project | null>;
-  requestProjectTrust(projectId: string): Promise<boolean>;
-  createSession(projectId: string, model?: string): Promise<Session>;
+  requestProjectTrust(projectId: string, provider?: AIProvider): Promise<boolean>;
+  createSession(projectId: string, model?: string, provider?:AIProvider): Promise<Session>;
   deleteSession(id: string): Promise<void>;
   saveSettings(settings: Partial<Settings>): Promise<Settings>;
   connectionStatus(): Promise<ConnectionStatus>;
+  readClaudeConnection(): Promise<ClaudeConnection>;
+  checkClaudeConnection(): Promise<ClaudeConnection>;
+  configureClaude(input: {apiKey: string} | {remove: true}): Promise<ClaudeConnection>;
   readDesktopChatInstallation(): Promise<boolean|null>;
   readChatConnection(): Promise<{ready:true} | {ready:false;reason:'login'|'unavailable'|'changed';message:string;desktopInstalled:boolean|null}>;
   listAvailableModels():ReturnType<FlowriumAPI['connect']>;
@@ -275,18 +298,19 @@ export interface FlowriumAPI
     attachments?: string[];
     codexReferences?:CodexReference[];
     mode: Mode;
+    provider?: AIProvider;
     model?: string;
     effort?: Effort;
     speed?: Speed;
   }): Promise<{ accepted: boolean; steered?: boolean; queued?: boolean; waitingForWriter?:boolean; queueId?:string }>;
-  interrupt(sessionId: string): Promise<void>;
+  interrupt(sessionId: string, provider?:AIProvider): Promise<void>;
   answerInput(input: { requestId: string; answers: InputAnswers }): Promise<void>;
   approval(input: {
     requestId: string;
     decision: "accept" | "decline";
   }): Promise<void>;
   openExternal(
-    target: "chatgpt" | "chatgpt-desktop" | "codex-docs" | "download-docs" | "downloads",
+    target: "chatgpt" | "chatgpt-desktop" | "codex-docs" | "claude-console" | "download-docs" | "downloads",
   ): Promise<void>;
   openChatWebLink(url: string): Promise<void>;
   copyText(text: string): Promise<void>;

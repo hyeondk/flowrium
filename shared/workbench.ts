@@ -1,5 +1,5 @@
 import definitions from "../electron/work-kinds.json";
-import type { Mode, Session, Effort } from "./types";
+import type { AIProvider, Mode, Session, Effort } from "./types";
 
 export type WorkKind = keyof typeof definitions;
 export const workKinds = definitions as Record<
@@ -20,6 +20,7 @@ export const statusLabels: Record<WorkStatus, string> = {
 };
 export type ResearchSearch = "live" | "cached" | "disabled";
 export interface WorkInput {
+  provider?:AIProvider;
   model?:string;
   effort?:Effort;
   searchMode?: ResearchSearch;

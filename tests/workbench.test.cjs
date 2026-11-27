@@ -56,6 +56,11 @@ test("기능별 역할 대화가 별도로 생기고 현재 프로젝트에서 �
   await assert.rejects(work("weekly", "기간 오류", { from: "2026-09-31" }), /형식/);
   const team = await startWork(store, { projectId: project.id, title: "팀 작업", kind: "task" }, { runId: randomUUID(), index: 0, mode: "review" });
   assert.equal(team.workflow.teamSlot.mode, "review");
+  assert.equal(team.preferences.provider, "codex");
+  const claude = await work("weekly", "Claude 주간 보고", {provider:"claude",model:"claude-sonnet",effort:"high"});
+  assert.deepEqual(store.session(claude.id).preferences,{provider:"claude",model:"claude-sonnet",effort:"high"});
+  assert.match(await workContext(store, claude.id), /최종 답변을 엑셀로 변환/);
+  await assert.rejects(work("weekly", "지원하지 않는 AI", {provider:"external"}), /AI 서비스/);
   assert.equal((await work("task", "외부 입력", { teamSlot: team.workflow.teamSlot })).workflow.teamSlot, undefined);
 });
 test("새 업무·기존 대화의 검토/완료 근거/재개, 연속 항목 변경 및 다른 컴퓨터 복원", async (t) => {

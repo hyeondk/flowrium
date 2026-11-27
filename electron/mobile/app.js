@@ -389,11 +389,12 @@ function clearPrivateState(nextGate) {
   draftPages.clear();
   questionDrafts.clear();
   selectedProposals.clear();
-  attachedDrafts.clear();missingCitations.clear();attachmentPreviews.clear();attachmentFlights.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;chatModels=chatModelRequest=undefined;extrasEpoch++;
+  attachedDrafts.clear();missingCitations.clear();attachmentPreviews.clear();attachmentFlights.clear();queueItems=[];workflowData=mobileSettings=usageData=pushData=undefined;chatCatalog=chatModelRequest=undefined;chatCatalogChecked=0;extrasEpoch++;
   for (const write of preferenceWrites.values()) clearTimeout(write.timer);
   preferenceWrites.clear();
   selectedSession = selectedProject = "";
   statusFilter = "running";
+  conversationProviderChoice = undefined;
   chatOriginStatus = "";
   route = "projects";
   routePositions.clear();
@@ -435,6 +436,10 @@ async function poll() {
       if (!openQuestions.has(id)) questionDrafts.delete(id);
     const fresh = JSON.stringify(next);
     const changed = gate || fresh !== signature;
+    if (Boolean(next.settings?.claudeEnabled) !== Boolean(data?.settings?.claudeEnabled)) {
+      chatCatalog=mobileSettings=undefined;
+      chatCatalogChecked=0;
+    }
     data = next;
     applyAppearance(next.settings);
     signature = fresh;
@@ -448,6 +453,7 @@ async function poll() {
     if(route==="projects") void loadDashboard();
     if (["assistant","settings"].includes(route)) void loadExtras(false);
     if (route === "chat") {
+      void loadChatModels();
       void loadQueue();
       const current = session(selectedSession);
       if (!current) go("projects");
@@ -957,7 +963,8 @@ function activityChart(){
 }
 function statusPage(root){
   const label=executionNames[statusFilter];root.append(action('대시보드로',()=>goBack('projects')),node('h1',label+' 대화'));
-  const list=data.sessions.filter(s=>s.executionState===statusFilter).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+  const provider=appendConversationProviderFilter(root);
+  const list=data.sessions.filter(s=>s.executionState===statusFilter&&(!provider||sessionProvider(s)===provider)).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
   if(list.length) root.append(sessionList(list));
   if(!list.length)root.append(node('p',label+' 상태의 대화가 없습니다.','hint'));
 }
@@ -1101,8 +1108,9 @@ function projectPage(root) {
   folderGuide(root,p);
   if (detailTab === "team") return team(root);
   if (detailTab === "files") return artifacts(root);
+  const provider=appendConversationProviderFilter(root);
   const list = ownSessions()
-    .slice()
+    .filter(s=>!provider||sessionProvider(s)===provider)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   root.append(action("새 업무 대화", () => go("new"), "main-action"));
   if (!list.length)
@@ -1151,6 +1159,7 @@ function newWork(root) {
       kind: kind.value,
       title: title.value.trim(),
       brief: brief.value.trim(),
+      ...(data.settings.claudeEnabled&&{provider:conversationProviderFilter()||defaultChatProvider()}),
     };
     if (!values.title) return;
     if(!mayStartProjectWork(p.id))return;
@@ -1164,34 +1173,85 @@ function newWork(root) {
   });
   root.append(form);
 }
-let chatModelRequest,chatModels;
+let chatModelRequest,chatCatalog,chatCatalogChecked=0,conversationProviderChoice;
+const defaultChatProvider=()=>data.settings.claudeEnabled&&data.settings.provider==='claude'?'claude':'codex';
+const sessionProvider=s=>s.providerLocked?s.provider:s.preferences?.provider||s.provider||defaultChatProvider();
+const activeModelCatalog=()=>chatCatalog||mobileSettings||{};
+const providerConnected=provider=>provider==='claude'
+  ? data.settings.claudeEnabled&&activeModelCatalog().claudeConnected
+  : data.connection?.authenticated;
+const providerOptions=[['codex','Codex'],['claude','Claude']];
+function conversationProviderFilter(){
+  return data.settings.claudeEnabled&&data.settings.providerMode!=='mixed'?conversationProviderChoice||defaultChatProvider():undefined;
+}
+function appendConversationProviderFilter(root){
+  const selected=conversationProviderFilter();
+  if(!selected)return undefined;
+  const filters=node('div',undefined,'tabs');
+  filters.setAttribute('role','group');filters.setAttribute('aria-label','AI 서비스별 대화');
+  for(const [id,title] of providerOptions){
+    const button=action(title,()=>{conversationProviderChoice=id;render();});
+    button.setAttribute('aria-pressed',String(id===selected));
+    if(id===selected)button.setAttribute('aria-current','page');
+    filters.append(button);
+  }
+  root.append(filters);
+  return selected;
+}
 async function loadChatModels(){
-  if(chatModels?.length || mobileSettings?.models?.length || chatModelRequest || gate || !data?.connection?.authenticated)return;
+  if(chatModelRequest || gate || !data || !(data.connection?.authenticated||data.settings.claudeEnabled) || Date.now()-chatCatalogChecked<30000)return;
+  if(!data.settings.claudeEnabled&&(chatCatalog?.models?.length||mobileSettings?.models?.length))return;
   const epoch=accessEpoch,request=call('mobileSettings');chatModelRequest=request;
   try{
     const catalog=await request;
-    if(epoch===accessEpoch){chatModels=catalog.models;if(route==='chat')render();}
+    if(epoch===accessEpoch){
+      const changed=JSON.stringify(catalog)!==JSON.stringify(activeModelCatalog());
+      chatCatalog=catalog;
+      if(changed&&route==='chat')render();
+    }
   }catch(error){if(epoch===accessEpoch&&error.gate)clearPrivateState(error.gate);}
-  finally{if(chatModelRequest===request)chatModelRequest=undefined;}
+  finally{if(chatModelRequest===request){chatModelRequest=undefined;chatCatalogChecked=Date.now();}}
 }
 function chatModelPicker(s){
-  const models=mobileSettings?.models||chatModels||[],own=s.preferences?.model||'';
-  const inherited=data.settings.model||models.find(m=>m.isDefault)?.id;
+  const catalog=activeModelCatalog(),provider=sessionProvider(s),claude=provider==='claude',multi=data.settings.claudeEnabled||claude;
+  const preferences=(s.preferences?.provider||'codex')===provider?s.preferences:undefined;
+  const models=(claude?catalog.claudeModels:catalog.models)||[],own=preferences?.model||'';
+  const inherited=(claude?data.settings.claudeModel:data.settings.model)||models.find(m=>m.isDefault)?.id;
   const name=id=>modelDisplayName(models.find(row=>row.id===id)||id);
   const options=[['',inherited?name(inherited)+' / 기본':'기본 설정 따르기']];
   if(own&&!models.some(m=>m.id===own))options.push([own,name(own)]);
   for(const model of models)options.push([model.id,modelDisplayName(model)]);
-  const picker=select(options,own);
-  picker.disabled=busy||(!own&&!models.length);
-  picker.addEventListener('change',()=>{
-    const value=picker.value;
+  const group=document.createDocumentFragment(),picker=select(options,own);
+  function addPicker(name,control) {
+    const field=label(name,control);field.firstChild.remove();group.append(field);
+  }
+  function change(selection) {
     void run(async()=>{
-      const saved=await call('setMobileChatModel',s.id,value);
+      const saved=await call('setMobileChatModel',s.id,multi?selection:selection.model);
       const current=session(s.id);
-      if(current)current.preferences={...current.preferences,model:saved.model||undefined};
+      if(current)current.preferences={...current.preferences,model:saved.model||undefined,
+        ...(multi&&{provider:saved.provider||selection.provider,effort:saved.effort||undefined})};
     });
-  });
-  return label('이 채팅의 모델',picker);
+  }
+  if(multi){
+    const service=select(data.settings.claudeEnabled?providerOptions:[['codex','Codex'],['claude','Claude (꺼짐)']],provider);
+    service.options[1].disabled=!data.settings.claudeEnabled;
+    const serial=data.settings.providerMode!=='mixed'||Boolean(s.workflow);
+    service.disabled=busy||(serial&&running(s.id))||s.providerLocked||Boolean(s.scope);
+    service.addEventListener('change',()=>change({provider:service.value,model:'',effort:''}));
+    addPicker('이 채팅의 AI 서비스',service);
+  }
+  picker.disabled=busy||Boolean(s.scope)||(!own&&!models.length)||(claude&&!data.settings.claudeEnabled);
+  picker.addEventListener('change',()=>change({provider,model:picker.value,effort:''}));
+  addPicker('이 채팅의 모델',picker);
+  if(multi){
+    const available=reasoningEffortOptions(models.find(m=>m.id===(own||inherited)));
+    const effort=select([['','모델 기본 수준'],...available.map(row=>[row.reasoningEffort,effortDisplayName(row.reasoningEffort)])],preferences?.effort||'');
+    effort.disabled=busy||Boolean(s.scope)||!available.length||(claude&&!data.settings.claudeEnabled);
+    effort.addEventListener('change',()=>change({provider,model:picker.value,effort:effort.value}));
+    addPicker('이 채팅의 추론 수준',effort);
+  }
+  return group;
 }
 function chat(root) {
   const s = session(selectedSession);
@@ -1200,7 +1260,9 @@ function chat(root) {
   const backLabel=origin?.view==='projects'?'대시보드로':chatOriginStatus?executionNames[chatOriginStatus]+' 대화 목록으로':'프로젝트로';
   const back=action('',()=>goBack('project',s.projectId));back.setAttribute('aria-label',backLabel);back.title=backLabel;
   const title=node('div',undefined,'mobile-chat-title'),name=node('h1',s.title);name.title=s.title;
-  title.append(name,node('p',(project(s.projectId)?.name||'')+' / '+(kinds[s.workflow?.kind]||'대화'),'chat-context'));
+  const provider=sessionProvider(s), connected=providerConnected(provider);
+  const service=data.settings.claudeEnabled||provider==='claude'?(provider==='claude'?'Claude':'Codex'):'';
+  title.append(name,node('p',[project(s.projectId)?.name,kinds[s.workflow?.kind]||'대화',service].filter(Boolean).join(' / '),'chat-context'));
   heading.append(back,title);root.append(heading);
   if(!s.scope)folderGuide(root,project(s.projectId));
   const pending = data.approvals.filter((a) => a.sessionId === s.id);
@@ -1228,7 +1290,7 @@ function chat(root) {
     const citations=presentCitations(m.text||'',m.role,running(s.id)&&m.id===s.lastMessageId);
 
     const meta=node('div',undefined,'mobile-message-meta'),clock=chatClock(m.createdAt);
-    meta.append(node('small',m.role==='user'?'나':m.role==='assistant'?'Codex':'작업 상태'));
+    meta.append(node('small',m.role==='user'?'나':m.role==='assistant'?(m.provider==='claude'?'Claude':'Codex'):'작업 상태'));
     if(clock){
       const time=node('time');
       time.dateTime=m.createdAt;
@@ -1251,9 +1313,11 @@ function chat(root) {
     }
     history.append(block);
   }
-  if (running(s.id)) {
-    const stop = confirmationButton('작업 중단', 'interrupt/' + s.id, '실행 중인 작업을 중단할까요?', s.title, () =>
-      run(async () => { await call('interrupt', s.id); showNotice('작업 중단을 요청했습니다.'); }));
+  const runningServices=s.runningProviders||(running(s.id)?[undefined]:[]);
+  for(const engine of runningServices){
+    const stopLabel=engine?(engine==='claude'?'Claude':'Codex')+' 작업 중단':'작업 중단';
+    const stop = confirmationButton(stopLabel, 'interrupt/'+s.id+(engine?'/'+engine:''), '실행 중인 작업을 중단할까요?', s.title, () =>
+      run(async () => { await call('interrupt',s.id,...(engine?[engine]:[]));showNotice('작업 중단을 요청했습니다.'); }));
     stop.disabled = busy;
     root.append(stop);
   }
@@ -1293,12 +1357,15 @@ function chat(root) {
       submissionReceipts.delete(s.id);
     }
   },listener);
-  const canSteer = running(s.id) && data.canSteer;
-  const submit = node("button", canSteer ? "지금 전달" : running(s.id) ? "추가 지시 대기열에 넣기" : "요청 보내기", "main-action");
+  const selectedRunning=runningServices.includes(provider)||runningServices.includes(undefined);
+  const waits=selectedRunning||running(s.id)&&(data.settings.providerMode!=='mixed'||Boolean(s.workflow));
+  const canSteer = provider==='codex' && selectedRunning && data.canSteer;
+  const submit = node("button", canSteer ? "지금 전달" : waits ? "추가 지시 대기열에 넣기" : "요청 보내기", "main-action");
   submit.type = "submit";
-  submit.disabled = busy || !data.connection?.authenticated;
+  submit.disabled = busy || !connected;
   const options=node('div',undefined,'chat-options');
-  const modelPicker=chatModelPicker(s);modelPicker.firstChild.remove();options.append(modelPicker);
+  options.toggleAttribute('data-multiple-providers',Boolean(data.settings.claudeEnabled||provider==='claude'));
+  options.append(chatModelPicker(s));
   const textLabel=label('요청',text),editor=node('span',undefined,'markdown-input');
   const ink=node('span',undefined,'markdown-input-ink');ink.setAttribute('aria-hidden','true');
   text.replaceWith(editor);editor.append(text,ink);
@@ -1434,16 +1501,18 @@ function chat(root) {
     const proceed=action('진행하기',()=>{if(!s.scope&&!mayStartProjectWork(s.projectId))return;return run(async()=>{
       const attachments=attachedDrafts.get(s.id)||[];
       const value=fullText();
-      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:continuationMessageId,...await mobileChatInput(s,value.trim()?value:nextCommand||value),attachments:attachments.map(a=>a.id),mode});
+      await call('workflowAction',{action:'continueConversation',sessionId:s.id,messageId:continuationMessageId,...await mobileChatInput(s,value.trim()?value:nextCommand||value),attachments:attachments.map(a=>a.id),mode,...(data.settings.claudeEnabled&&{provider})});
       clearSentDraft(s.id,value,attachments);
     });});
     const complete=action('완료',()=>run(async()=>{
       await call('workflowAction',{action:'completeContinuation',sessionId:s.id,messageId:continuationMessageId});showNotice('후속 대기를 완료했습니다.');
     }));
-    proceed.disabled=busy||!data.connection?.authenticated;complete.disabled=busy;choices.append(proceed,complete);form.append(choices);
+    proceed.disabled=busy||!connected;complete.disabled=busy;choices.append(proceed,complete);form.append(choices);
   }
   attachmentComposer(form,s);
-  form.insertBefore(form.querySelector('.attachments'),options);
+  const attachmentFields=form.querySelector('.attachments');
+  if(options.hasAttribute('data-multiple-providers'))options.after(attachmentFields);
+  else form.insertBefore(attachmentFields,options);
   if (canSteer) {
     const choices=node('div',undefined,'actions mobile-delivery-actions'), queue=node('button','다음 차례');
     submit.dataset.delivery='steer';
@@ -1452,15 +1521,15 @@ function chat(root) {
     queue.setAttribute('aria-label','추가 지시 대기열에 넣기');
     choices.append(submit,queue);form.append(choices);
   } else form.append(submit);
-  if (!data.connection?.authenticated)
+  if (!connected)
     form.append(
-      node("p", "데스크톱 설정에서 본인의 ChatGPT 계정을 연결하세요.", "hint"),
+      node("p", provider==='claude'?"컴퓨터의 Flowrium 설정에서 Claude 사용을 켜고 API 키를 연결하세요.":"데스크톱 설정에서 본인의 ChatGPT 계정을 연결하세요.", "hint"),
     );
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const value = fullText();
     const attachments=attachedDrafts.get(s.id)||[];
-    if (!value.trim() && !attachments.length) return;
+    if (!connected || (!value.trim() && !attachments.length)) return;
     if(!s.scope&&!mayStartProjectWork(s.projectId))return;
     void run(async () => {
       const result=await call("send", {
@@ -1469,6 +1538,7 @@ function chat(root) {
         ...await mobileChatInput(s,value),
         attachments:attachments.map(a=>a.id),
         mode,
+        ...(data.settings.claudeEnabled&&{provider}),
       });
       clearSentDraft(s.id,value,attachments);await loadQueue();
       showNotice(result.steered ? "현재 작업에 추가 지시를 전달했습니다." : result.waitingForWriter ? writerWaitNotice : result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
@@ -1738,7 +1808,7 @@ async function loadExtras(announce=true){
     }else{
       const [settings,usage,push]=await Promise.all([call('mobileSettings'),call('readAccountUsage').catch(()=>null),data.pushAvailable?call('webPushState').catch(()=>null):null]);
       if(!current())return;
-      loadErrors.delete(label);mobileSettings=settings;usageData=usage;pushData=push;render();
+      loadErrors.delete(label);mobileSettings=chatCatalog=settings;chatCatalogChecked=Date.now();usageData=usage;pushData=push;render();
     }
   }catch(error){
     if(!current())return;
@@ -1911,21 +1981,27 @@ function settingsPage(root){
   account.append(node('h2','계정과 모델'),accountLine);
   root.append(account);
   if(!mobileSettings){account.append(loadingRegion('계정 설정'));return}
-  const preferences=optimisticPreferences('account',{...mobileSettings.chatDefaults,model:mobileSettings.model,effort:mobileSettings.effort,aiFollowups:mobileSettings.aiFollowups});
-  const save=async ({model,effort,aiFollowups,...chatDefaults})=>{
+  const {model:defaultModel,effort:defaultEffort,aiFollowups,provider:configuredProvider,claudeModel,claudeEffort}=mobileSettings;
+  const preferences=optimisticPreferences('account',{...mobileSettings.chatDefaults,model:defaultModel,effort:defaultEffort,aiFollowups,provider:configuredProvider,claudeModel,claudeEffort});
+  const save=async ({model,effort,aiFollowups,provider,claudeModel,claudeEffort,...chatDefaults})=>{
     const input={};
-    if(model!==undefined)input.model=model;
-    if(effort!==undefined)input.effort=effort;
-    if(aiFollowups!==undefined)input.aiFollowups=aiFollowups;
+    for(const [key,value] of Object.entries({model,effort,aiFollowups,provider,claudeModel,claudeEffort}))
+      if(value!==undefined)input[key]=value;
     if(Object.keys(chatDefaults).length)input.chatDefaults=chatDefaults;
     const saved=await call('saveMobileSettings',input);
     return ()=>{
-      mobileSettings={...mobileSettings,model:saved.model,effort:saved.effort,aiFollowups:saved.aiFollowups,chatDefaults:saved.chatDefaults};
-      if(data?.settings && typeof saved.aiFollowups==='boolean')data.settings.aiFollowups=saved.aiFollowups;
+      mobileSettings={...mobileSettings,...saved};
+      if(data?.settings)for(const [key,value]of Object.entries(saved)) {
+        if(['model','effort','aiFollowups','provider','claudeModel','claudeEffort'].includes(key))data.settings[key]=value;
+      }
     };
   };
-  const form=node('form'),models=mobileSettings.models||[],model=select([['','계정 기본 모델'],...models.map(m=>[m.id,modelDisplayName(m)])],preferences.model||''),effort=select([],''),answer=select([['short','짧게'],['normal','보통'],['detailed','자세히']],preferences.answerLength||'normal');
-  model.disabled=!models.length;
+  const multi=Boolean(data.settings.claudeEnabled&&mobileSettings.claudeEnabled);
+  const form=node('form'),service=select(providerOptions,multi&&preferences.provider==='claude'?'claude':'codex'),model=select([],''),effort=select([],''),answer=select([['short','짧게'],['normal','보통'],['detailed','자세히']],preferences.answerLength||'normal');
+  const modelField=label('기본 ChatGPT 모델',model);
+  let models;
+  const modelKey=()=>service.value==='claude'?'claudeModel':'model';
+  const effortKey=()=>service.value==='claude'?'claudeEffort':'effort';
   function refreshEfforts(preferred){
     const selected=models.find(m=>m.id===model.value)||(!model.value?models.find(m=>m.isDefault):undefined),available=reasoningEffortOptions(selected);
     const choices=available.length?available.map(row=>[row.reasoningEffort,effortDisplayName(row.reasoningEffort)]):[['','모델 기본값']];
@@ -1934,14 +2010,37 @@ function settingsPage(root){
     effort.value=[preferred,selected?.defaultReasoningEffort,values[0]].find(value=>values.includes(value));
     effort.disabled=!available.length;
   }
-  refreshEfforts(preferences.effort);
+  function refreshProvider(){
+    const claude=service.value==='claude',label=claude?'기본 Claude 모델':'기본 ChatGPT 모델';
+    models=(claude?mobileSettings.claudeModels:mobileSettings.models)||[];
+    model.replaceChildren(...select([['','계정 기본 모델'],...models.map(m=>[m.id,modelDisplayName(m)])],'').children);
+    model.value=models.some(row=>row.id===preferences[modelKey()])?preferences[modelKey()]:'';
+    model.disabled=!models.length;
+    modelField.firstChild.textContent=label;
+    model.setAttribute('aria-label',label);
+    model.dataset.field='setting/'+label;
+    refreshEfforts(preferences[effortKey()]);
+  }
+  refreshProvider();
+  if(multi){
+    form.append(label('기본 AI 서비스',service));
+    service.addEventListener('change',()=>{
+      refreshProvider();queuePreferenceWrite('account',{provider:service.value},save);
+    });
+  }
   model.addEventListener('change',()=>{
     refreshEfforts(effort.value);
-    queuePreferenceWrite('account',{model:model.value,...(effort.value?{effort:effort.value}:{})},save);
+    preferences[modelKey()]=model.value;
+    if(effort.value)preferences[effortKey()]=effort.value;
+    queuePreferenceWrite('account',{[modelKey()]:model.value,...(effort.value?{[effortKey()]:effort.value}:{})},save);
+  });
+  effort.addEventListener('change',()=>{
+    preferences[effortKey()]=effort.value;
+    queuePreferenceWrite('account',{[effortKey()]:effort.value},save);
   });
   const tests=node('input'),ask=node('input'),compact=node('input');
   tests.checked=preferences.testing!==false;ask.checked=preferences.askNext===true;compact.checked=preferences.autoCompact!==false;
-  form.append(label('기본 ChatGPT 모델',model),label('추론 수준',effort),label('답변 길이',answer),settingsSwitch('작업 후 검증',tests),settingsSwitch('필요한 다음 질문',ask),settingsSwitch('문맥 자동 압축',compact));
+  form.append(modelField,label('추론 수준',effort),label('답변 길이',answer),settingsSwitch('작업 후 검증',tests),settingsSwitch('필요한 다음 질문',ask),settingsSwitch('문맥 자동 압축',compact));
   if(typeof mobileSettings.aiFollowups==='boolean'){
     const followups=node('input');followups.checked=preferences.aiFollowups===true;
     const hint=node('p','켜면 현재 대화의 일부를 연결한 ChatGPT 계정에 보내 명령 초안을 만듭니다. 계정 사용량이나 크레딧이 차감될 수 있습니다.','hint');
@@ -1951,7 +2050,7 @@ function settingsPage(root){
     followups.addEventListener('change',()=>queuePreferenceWrite('account',{aiFollowups:followups.checked},save));
   }
   for(const control of form.elements)control.dataset.field='setting/'+control.getAttribute('aria-label');
-  for(const [control,key] of [[effort,'effort'],[answer,'answerLength'],[tests,'testing'],[ask,'askNext'],[compact,'autoCompact']]){
+  for(const [control,key] of [[answer,'answerLength'],[tests,'testing'],[ask,'askNext'],[compact,'autoCompact']]){
     control.addEventListener('change',()=>queuePreferenceWrite('account',{[key]:control.type==='checkbox'?control.checked:control.value},save));
   }
   account.append(form);

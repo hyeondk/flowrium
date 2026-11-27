@@ -1,0 +1,17 @@
+.work-model-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(150px, 100%), 1fr));
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.work-model-fields > label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.project-ai-actions .work-model-fields { margin-top: 16px; }

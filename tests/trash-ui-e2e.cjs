@@ -1,6 +1,6 @@
 const assert=require('node:assert/strict'),fs=require('node:fs/promises'),path=require('node:path');
 const {_electron}=require('playwright'),{Store}=require('../electron/store.cjs');
-const {openConversation,leaveConversation,composer}=require('./shell-test-helpers.cjs');
+const {openConversation,leaveConversation,composer,selectExistingProjectFolder}=require('./shell-test-helpers.cjs');
 async function main(){
  const base=path.resolve(__dirname,'../.flowrium-tmp/qa-261115_03');await fs.mkdir(base,{recursive:true});const temporary=await fs.mkdtemp(path.join(base,'trash-screen-')),profile=path.join(temporary,'profile');let app,page,passed=false;
   async function closeApp(){let child;try{child=app.process();}catch{return;}if(child.exitCode!==null||child.signalCode)return;let timer;try{await app.evaluate(()=>{globalThis.stopProbe=true;});await Promise.race([app.close(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('정상 앱 종료가 15초 안에 완료되지 않았습니다.')),15000);})]);}catch(error){console.error('종료 진단',await fs.readFile(path.join(temporary,'shutdown.log'),'utf8').catch(()=>''));child.kill('SIGKILL');throw error;}finally{clearTimeout(timer);}}
@@ -26,9 +26,11 @@ async function main(){
     globalThis.releaseProbeRefresh=()=>{runtime.busy=false;end();dialog.showOpenDialog=picker;};
   },b.path);
   try{
-    await button('프로젝트 추가').click();await button('기존 폴더 연결').click();
+    await button('프로젝트 추가').click();
+    const create=await selectExistingProjectFolder(page);
     await until(()=>app.evaluate(()=>globalThis.probePickCount===1));
-    assert(await app.evaluate(()=>globalThis.testTransfer.options.foregroundBusy()));
+    await create.click();
+    await until(()=>app.evaluate(()=>globalThis.testTransfer.options.foregroundBusy()));
   }finally{await app.evaluate(()=>globalThis.releaseProbeRefresh());}
   await until(()=>app.evaluate(()=>!globalThis.testTransfer.options.foregroundBusy()));
   assert.equal((await snapshot()).projects.filter(p=>p.id===b.id).length,1);

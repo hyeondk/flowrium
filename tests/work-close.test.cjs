@@ -45,7 +45,7 @@ async function setup(t, options = {}) {
   await controller.connect();
   return {
     project, profile, events, get controller() { return controller; }, get runtime() { return runtime; },
-    async make() { return startWork(store, {projectId:project.id,kind:'pause',title:'시험 마감 기록'}); },
+    async make(provider) { return startWork(store, {projectId:project.id,kind:'pause',title:'시험 마감 기록',provider}); },
     async action(input) { return runtime.action(input); },
     async state() { return runtime.state(); },
     async wait(ready) {
@@ -73,6 +73,39 @@ function arm(sessionId, reason, memo = '', batchId = randomUUID()) {
 }
 const reserve = {action:'returnToWork'};
 const countNotices = state => state.notifications.filter(row => row.kind === 'work-resume');
+
+test('로컬 Claude 연결만으로 마감 요청을 보내고 복귀 메모를 계정 경계 안에서 읽는다', async t => {
+  let claudeConnected=true;
+  const app=await setup(t,{canUseLocalClaude:()=>claudeConnected});
+  const controller=app.controller;
+  controller.status.authenticated=false;
+  await controller.store.saveSettings({claudeEnabled:true});
+  const sent=[];
+  controller.options.claude={
+    status:async()=>({configured:true}),
+    listModels:async()=>[],
+    generate:async input=>{sent.push(input);return {text:'회의 전에 실행한 항목을 확인했습니다.'};},
+  };
+  const session=await app.make('claude');
+  const input=arm(session.id,'회의','같은 기기에서 확인할 복귀 메모');
+  await app.action({action:'beginWorkClose',batchId:input.batchId});
+  await app.action(input);
+  await controller.send({sessionId:session.id,provider:'claude',submissionId:input.submissionId,text:'회의 전에 남은 항목을 정리해줘.',mode:'plan'});
+  await app.action({action:'finishWorkClose',batchId:input.batchId});
+  const state=await app.wait(value=>value.workClose?.sessions[0]?.status==='completed');
+  assert.equal(state.workClose.returnPending,true);
+  assert.equal(sent.length,1);
+  assert.doesNotMatch(JSON.stringify(sent),/같은 기기에서 확인할 복귀 메모/);
+  assert.equal((await app.action(reserve)).id,input.batchId);
+  const read={action:'readWorkClose',batchId:input.batchId};
+  assert.equal((await app.action(read)).memo,input.memo);
+  claudeConnected=false;
+  assert.equal((await app.state()).workClose,undefined);
+  await assert.rejects(app.action(read),/AI 서비스 연결/);
+  claudeConnected=true;
+  app.setAccount(1);
+  assert.equal(await app.action(read),null);
+});
 
 test('실제로 실행한 마감만 1초 이내 복귀에서 알림 한 번을 만들고 새 실행 이후에도 메모를 비공개로 유지한다', async t => {
   const app = await setup(t);

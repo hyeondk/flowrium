@@ -64,6 +64,9 @@ import TeamPanel from "./TeamPanel";
 import RepositoryPanel from "./RepositoryPanel";
 import { ConversationTools } from "./ConversationTools";
 import ChatModelPicker,{AccountSpeedPreference,type ChatModelSelection} from './ChatModelPicker';
+import ClaudeConnectionPanel,{useClaudeConnection} from './ClaudeConnectionPanel';
+import ProviderModeDialog,{ProviderModeSetting} from './ProviderModeDialog';
+import {conversationOwnerProvider,conversationTabProvider,savedConversationProvider,ProviderModelsContext,providerNames,ProviderSelect} from './ProviderSelect';
 import Workbench, { WorkSessionControls } from "./Workbench";
 import WeeklyReportFile from "./WeeklyReportFile";
 import { UpdatePanel, useDesktopUpdate } from "./UpdatePanel";
@@ -111,6 +114,7 @@ import {
   X,
 } from "lucide-react";
 import type {
+  AIProvider,
   Bootstrap,
   ConnectionStatus,
   Effort,
@@ -119,6 +123,7 @@ import type {
   Mode,
   Model,
   Project,
+  ProviderMode,
   Session,
   ChatAttachment,
   ChatPreferences,
@@ -136,6 +141,7 @@ const api = window.flowrium;
 function previewChatModel(preferences?:ChatPreferences,selection?:ChatModelSelection):ChatPreferences|undefined {
   if(!selection)return preferences;
   return {...preferences,
+    ...(selection.provider!==undefined&&{provider:selection.provider}),
     ...(selection.model!==undefined&&{model:selection.model||undefined}),
     ...(selection.effort!==undefined&&{effort:selection.effort||undefined}),
     ...(selection.speed!==undefined&&{speed:selection.speed||undefined})};
@@ -147,6 +153,7 @@ const initial: Bootstrap = {
   version: packageInfo.flowriumVersion || packageInfo.version,
   platform: "preview",
 };
+const emptyModels: Model[] = [];
 const templates = [
   {
     title: "새 프로젝트의 첫 설계",
@@ -225,6 +232,31 @@ function externalActivity(state:'running'|'pending'):ExecutionActivity {
     : {unsettled:true,text:'',status:'Codex 앱의 작업 상태를 확인하고 있습니다.'};
 }
 
+type ProviderStream=Pick<ExecutionActivity,'text'|'status'|'streamingMessage'>;
+type ConversationActivity=ExecutionActivity & {
+  runningProviders?:AIProvider[];
+  streams?:Partial<Record<AIProvider,ProviderStream>>;
+  externalStatus?:'running'|'pending';
+};
+
+function activityProvider(event:FlowriumEvent):AIProvider {
+  return event.provider??event.streamingMessage?.provider??'codex';
+}
+
+function recordProviderActivity(current:ConversationActivity|undefined,event:FlowriumEvent):ConversationActivity {
+  const provider=activityProvider(event);
+  const previous=current?.streams?.[provider];
+  const stream:ProviderStream=event.type==='delta' ? {
+    streamingMessage:event.streamingMessage,
+    text:((previous?.streamingMessage?.id===event.streamingMessage?.id?previous?.text||'':'')+(event.text||'')).slice(0,2_000_000),
+    status:'답변을 작성하고 있습니다',
+  } : { ...previous,text:previous?.text||'',status:event.text||'작업 중입니다' };
+  const externalStatus=current?.source==='external'?(current.unsettled?'pending':'running'):current?.externalStatus;
+  const runningProviders=event.runningProviders??[...new Set([...(current?.runningProviders??[]),provider])];
+  return { ...current,...stream, source:'local', unsettled:undefined, externalStatus, runningProviders,
+    streams:{...current?.streams,[provider]:stream} };
+}
+
 const contextPercentFormat = new Intl.NumberFormat('ko-KR', {maximumFractionDigits:1});
 function ChatContextMeter({context}:{context:Session['context']}) {
   const known = context && Number.isFinite(context.used) && context.used>=0 && Number.isFinite(context.max) && context.max>0;
@@ -263,6 +295,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [categories,setCategories]=useState<Record<string,string>>({});
   const [archived, setArchived] = useState<Record<string,boolean>>({});
   const [data, setData] = useState(initial);
+  const providerMode=data.settings.providerMode??'sync';
+  const [providerSetupDismissed,setProviderSetupDismissed]=useState(false);
+  const [dockProviderOverride,setDockProviderOverride]=useState<AIProvider>();
+  const [settingsModelService,setSettingsModelService]=useState<AIProvider>('codex');
   const [loaded, setLoaded] = useState(false);
   const [projectId, setProjectId] = useState<string>();
   useEffect(() => {
@@ -286,7 +322,14 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     setConversationSelection(current=>current.chatActive===active?current:{...current,chatActive:active});
   }
   function closeConversationTab(id:string) {
-    setConversationSelection(current=>forgetConversationTabs(current,value=>value!==id));
+    setConversationSelection(current=>{
+      const next=forgetConversationTabs(current,value=>value!==id);
+      if (providerMode!=='sync'||current.sessionId!==id||!next.sessionId) return next;
+      const matchingSessions=data.sessions.filter(session=>conversationTabProvider(session)===dockProvider);
+      if(matchingSessions.some(session=>session.id===next.sessionId)) return next;
+      const sessionId=next.tabIds.slice().reverse().find(id=>matchingSessions.some(session=>session.id===id));
+      return {...next,sessionId,chatActive:next.chatActive&&Boolean(sessionId)};
+    });
   }
   const [view, setView] = useState<View>("dashboard");
   const [reportDialog,setReportDialog]=useState<"weekly"|"pause">();
@@ -332,6 +375,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const [search, setSearch] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsNavigation,setSettingsNavigation]=useState(0);
+  const [claudeSettingsTarget,setClaudeSettingsTarget]=useState(false);
   const [pluginSettingsTarget,setPluginSettingsTarget]=useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [connection, setConnection] = useState<ConnectionStatus>({
@@ -339,6 +383,16 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     authenticated: false,
   });
   const [models, setModels] = useState<Model[]>([]);
+  const claudeEnabled=data.settings.claudeEnabled===true;
+  const claude=useClaudeConnection(api,claudeEnabled);
+  const claudeConnected=claudeEnabled&&claude.status?.connected===true;
+  const claudeModels=claudeEnabled?claude.status?.models||emptyModels:emptyModels;
+  const defaultProvider:AIProvider='codex';
+  const editedService=claudeEnabled?settingsModelService:'codex';
+  const defaultModels=editedService==='claude'?claudeModels:models;
+  const defaultModel=editedService==='claude'?data.settings.claudeModel:data.settings.model;
+  const defaultEffort=editedService==='claude'?data.settings.claudeEffort:data.settings.effort;
+  const defaultMetadata=defaultModels.find(row=>defaultModel?row.id===defaultModel:row.isDefault);
   const [connecting, setConnecting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [chatWebFallback,setChatWebFallback]=useState<{key:string;message:string;canLogin:boolean;showInstall:boolean}>();
@@ -347,7 +401,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const modelSaves = useRef(new Map<string,{next?:ChatModelSelection}>());
   const [modelPreviews,setModelPreviews]=useState(()=>new Map<string,ChatModelSelection>());
   const modelPreview=modelPreviews.get(draftKey);
-  const [activities, setActivities] = useState<Record<string, ExecutionActivity>>({});
+  const [activities, setActivities] = useState<Record<string, ConversationActivity>>({});
   const [approvals, setApprovals] = useState<FlowriumEvent[]>([]);
   const [deletionTarget,setDeletionTarget]=useState<DeleteTarget|null>(null),[trashOpen,setTrashOpen]=useState(false);
   const [itemMenu,setItemMenu]=useState<{x:number;y:number;target:DeleteTarget}|null>(null);
@@ -400,6 +454,19 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const historyImporting = useRef(false);
   const project = data.projects.find((p) => p.id === projectId);
   const session = data.sessions.find((s) => s.id === sessionId);
+  const dockProvider=providerMode==='sync'?(chatActive&&session?conversationTabProvider(session):dockProviderOverride??defaultProvider):undefined;
+  useEffect(()=>{
+    if(providerMode==='sync'&&chatActive&&session) setDockProviderOverride(conversationTabProvider(session));
+  },[providerMode,chatActive,session]);
+  const previewPreferences=previewChatModel(session?.preferences,modelPreview);
+  const ownerProvider=providerMode==='sync'&&session?conversationOwnerProvider(session):undefined;
+  const chatProvider=ownerProvider??previewPreferences?.provider??savedConversationProvider(session)??dockProvider??defaultProvider;
+  const chatPreferences=previewPreferences?.provider&&previewPreferences.provider!==chatProvider?undefined:previewPreferences;
+  const containsClaude=Boolean(session?.messages.some(message=>message.provider==='claude'));
+  const containsCodex=Boolean(session?.messages.some(message=>message.role!=='system'&&message.provider!=='claude'));
+  const chatModels=chatProvider==='claude'?claudeModels:models;
+  const chatDefaultModel=chatProvider==='claude'?data.settings.claudeModel:data.settings.chatDefaults?.model||data.settings.model;
+  const chatDefaultEffort=chatProvider==='claude'?data.settings.claudeEffort:data.settings.chatDefaults?.effort??data.settings.effort;
   const [outgoing,setOutgoing]=useState<{sessionId:string;message:Message}>();
   const [workToolsSession,setWorkToolsSession]=useState<string>();
   const workProgress=useMemo(()=>session?.messages && latestWorkProgress(session.messages),[session?.messages]);
@@ -423,22 +490,31 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   );
   const activity = sessionId ? activities[sessionId] : undefined;
   const workActive = Boolean(activity?.source);
+  const parallelChat=providerMode==='mixed'&&!session?.workflow;
+  const providerPending=!parallelChat&&(workActive||Boolean(activity?.unsettled)||Boolean(session?.queuedMessages?.some(row=>row.status==='queued'||row.status==='sending')));
   const running = activity?.source === 'local';
+  const runningProviders=running?activity.runningProviders??(['codex'] as AIProvider[]):[];
+  const runningCurrent=running&&(!parallelChat||runningProviders.includes(chatProvider));
+  const stoppingKey=sessionId&&parallelChat?`${sessionId}:${chatProvider}`:sessionId;
+  const visibleProviders=[...new Set<AIProvider>([...runningProviders,...(activity?.source==='external'||activity?.externalStatus?['codex'] as const:[])])];
   const pendingMessage=outgoing?.sessionId===session?.id?outgoing?.message:undefined;
   const pendingRecorded=Boolean(pendingMessage&&session?.messages.some(message=>message.id===pendingMessage.id));
-  const streamingMessage=activity?.streamingMessage;
-  const typingId=answerCompleted?undefined:running?streamingMessage?.id:activity?.source==='external'&&workProgress?.turnId
+  const externalTypingId=!answerCompleted&&activity?.source==='external'&&workProgress?.turnId
     ? findLatestMessage(session?.messages,message=>message.role==='assistant'&&message.turnId===workProgress.turnId)?.id : undefined;
+  const streams=useMemo(()=>activity?.source==='local'?Object.values(activity.streams??{}):[],[activity]);
+  const typingIds=new Set(streams.flatMap(stream=>stream.streamingMessage?[stream.streamingMessage.id]:[]));
+  if(externalTypingId)typingIds.add(externalTypingId);
   const displayMessages=useMemo(()=>{
     let visible=session?.messages||[];
-    if(running&&streamingMessage&&activity?.text){
+    for(const {streamingMessage,text} of streams){
+      if(!streamingMessage||!text)continue;
       const saved=visible.find(message=>message.id===streamingMessage.id);
-      if(!saved)visible=[...visible,{...streamingMessage,role:'assistant',text:activity.text}];
-      else if(saved.text!==activity.text)visible=visible.map(message=>message===saved?{...message,text:activity.text}:message);
+      if(!saved)visible=[...visible,{...streamingMessage,role:'assistant',text}];
+      else if(saved.text!==text)visible=visible.map(message=>message===saved?{...message,text}:message);
     }
     return pendingMessage&&!pendingRecorded?[...visible,pendingMessage]:visible;
-  },[session?.messages,pendingMessage,pendingRecorded,running,streamingMessage,activity?.text]);
-  const streamedLength=typingId?findLatestMessage(displayMessages,message=>message.id===typingId)?.text.length??0:undefined;
+  },[session?.messages,pendingMessage,pendingRecorded,streams]);
+  const streamedLength=typingIds.size?findLatestMessage(displayMessages,message=>typingIds.has(message.id))?.text.length??0:undefined;
   useEffect(()=>{
     if(!pendingRecorded||!pendingMessage)return;
     const timer=window.setTimeout(()=>setOutgoing(current=>current?.message.id===pendingMessage.id?undefined:current),360);
@@ -524,7 +600,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   useEffect(()=>{if(update?.status==="available")window.dispatchEvent(new Event("flowrium-attention-refresh"));},[update?.status,update?.latestVersion]);
   useEffect(()=>{if(!api)return;let alive=true;const refresh=()=>api.workflowState().then(value=>{if(alive){setProposals(value.proposals);setAttentionState(value)}}).catch(()=>{});void refresh();const timer=setInterval(refresh,5000);window.addEventListener("flowrium-attention-refresh",refresh);return()=>{alive=false;clearInterval(timer);window.removeEventListener("flowrium-attention-refresh",refresh)}},[]);
   useEffect(()=>{
-    if(!api||!loaded||!connection.authenticated)return;
+    if(!api||!loaded||(!connection.authenticated&&!claudeConnected))return;
     let active=true;
     let busy=false;
     let retry=false;
@@ -558,7 +634,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       document.removeEventListener('visibilitychange',onVisible);
       window.removeEventListener('flowrium-work-close-started',onWorkCloseReady);
     };
-  },[loaded,connection.authenticated]);
+  },[loaded,connection.authenticated,claudeConnected]);
   useEffect(() => {
     if (!api) {
       setLoaded(true);
@@ -607,9 +683,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       }
       if(event.type==='contextUsage'&&event.sessionId&&event.contextUsage){
         const context=event.contextUsage;
-        setData(previous=>({...previous,sessions:previous.sessions.map(s=>
-          s.id===event.sessionId&&(!s.context||s.context.updatedAt<context.updatedAt)?{...s,context}:s
-        )}));
+        const key=event.provider==='claude'?'claudeContext':'context';
+        setData(previous=>({...previous,sessions:previous.sessions.map(s=>s.id===event.sessionId&&(!s[key]||s[key].updatedAt<context.updatedAt)
+          ? {...s,[key]:context}:s)}));
       }
       if(event.type==='externalTurn'&&event.sessionId&&event.turnId&&event.turnMessages){
         setData(previous=>({...previous,sessions:previous.sessions.map(s=>s.id===event.sessionId?{
@@ -617,7 +693,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         }:s)}));
         const id=event.sessionId;
         setActivities(previous=>{
-          if(previous[id]?.source==='local')return previous;
+          if(previous[id]?.source==='local'){
+            const externalStatus=event.status==='running'||event.status==='pending'?event.status:undefined;
+            return previous[id].externalStatus===externalStatus?previous:{...previous,[id]:{...previous[id],externalStatus}};
+          }
           if(event.status==='running'||event.status==='pending')return {...previous,[id]:externalActivity(event.status)};
           if(previous[id]?.source!=='external'&&!previous[id]?.unsettled)return previous;
           const next={...previous};delete next[id];return next;
@@ -669,28 +748,27 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           const id=event.session!.id,active=prev[id];
           if(active?.source!=='local')return prev;
           const transcript=event.session!.messages;
-          const latest=findLatestMessage(transcript,message=>message.role!=='system');
-          if(latest?.role==='assistant'){
-            if(active.streamingMessage?.id===latest.id&&active.text===latest.text)return prev;
-            return {...prev,[id]:{...active,streamingMessage:{id:latest.id,createdAt:latest.createdAt,turnId:latest.turnId},text:latest.text}};
+          const streams={...active.streams};
+          let changed=false;
+          for(const provider of active.runningProviders??(['codex'] as const)){
+            const stream=streams[provider];
+            if(!stream)continue;
+            const latest=findLatestMessage(transcript,message=>message.role!=='system'&&(message.provider??'codex')===provider);
+            if(latest?.role==='assistant'&&(stream.streamingMessage?.id!==latest.id||stream.text!==latest.text)){
+              streams[provider]={...stream,streamingMessage:{id:latest.id,createdAt:latest.createdAt,turnId:latest.turnId,provider:latest.provider},text:latest.text};
+              changed=true;
+            }else if(latest?.role!=='assistant'&&stream.streamingMessage&&transcript.some(message=>message.id===stream.streamingMessage!.id)){
+              streams[provider]={...stream,streamingMessage:undefined,text:''};
+              changed=true;
+            }
           }
-          if(active.streamingMessage&&transcript.some(message=>message.id===active.streamingMessage!.id))
-            return {...prev,[id]:{...active,streamingMessage:undefined,text:''}};
-          return prev;
+          return changed?{...prev,[id]:{...active,streams}}:prev;
         });
       }
       if (event.type === "delta" && event.sessionId)
         setActivities((prev) =>
           prev[event.sessionId!]?.source === "local"
-            ? {
-                ...prev,
-                [event.sessionId!]: {
-                  ...prev[event.sessionId!],
-                  text: ((prev[event.sessionId!].streamingMessage?.id===event.streamingMessage?.id ? prev[event.sessionId!].text : '') + (event.text || "")).slice(0,2_000_000),
-                  streamingMessage:event.streamingMessage,
-                  status: "답변을 작성하고 있습니다",
-                },
-              }
+            ? { ...prev, [event.sessionId!]: recordProviderActivity(prev[event.sessionId!],event) }
             : prev,
         );
       if (event.type === "status" && event.sessionId && event.workProgress) {
@@ -713,7 +791,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       }
       if (event.type === "status" && event.sessionId && (event.status === "running" || event.status === "stopping"))
         setActivities((prev) =>
-          ({ ...prev, [event.sessionId!]: { source:"local",streamingMessage:prev[event.sessionId!]?.streamingMessage,text:prev[event.sessionId!]?.text || "",status:event.text || "작업 중입니다" } }),
+          ({ ...prev, [event.sessionId!]: recordProviderActivity(prev[event.sessionId!],event) }),
         );
       if (event.type === "status" && !event.sessionId) {
         if (event.status === "disconnected") {
@@ -760,17 +838,25 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         else fail(new Error(event.text || "연결 중 오류가 발생했습니다."));
       }
       if (event.type === "done" && event.sessionId) {
+        const id=event.sessionId,provider=activityProvider(event);
         setActivities((prev) => {
           const next = { ...prev };
-          delete next[event.sessionId!];
+          const previous=next[id],remaining=event.runningProviders??previous?.runningProviders?.filter(value=>value!==provider)??[];
+          if(previous&&remaining.length){
+            const streams={...previous.streams};delete streams[provider];
+            const active=streams[remaining[0]];
+            next[id]={...previous,text:active?.text||'',status:active?.status||'작업 중입니다',streamingMessage:active?.streamingMessage,runningProviders:remaining,streams};
+          } else if(previous?.externalStatus) next[id]=externalActivity(previous.externalStatus);
+          else delete next[id];
           return next;
         });
         setApprovals((prev) =>
-          prev.filter((a) => a.sessionId !== event.sessionId),
+          prev.filter(a=>a.sessionId!==id||(Boolean(event.runningProviders?.length)&&activityProvider(a)!==provider)),
         );
         setStopping((prev) => {
           const next = { ...prev };
-          delete next[event.sessionId!];
+          delete next[id];
+          delete next[`${id}:${provider}`];
           return next;
         });
       }
@@ -779,12 +865,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const changedRequests = new Set<string>();
     let restoring = true;
     const off = api.onEvent(event => {
-      if (restoring && event.type === "done" && event.sessionId) finishedSessions.add(event.sessionId);
+      if (restoring && event.type === "done" && event.sessionId) finishedSessions.add(`${event.sessionId}:${activityProvider(event)}`);
       if (restoring && event.requestId && ["approval","input","inputResolved"].includes(event.type)) changedRequests.add(event.requestId);
       handleEvent(event);
     });
     api.securityPending().then(events=>{
-      if(alive) events.filter(event=>!finishedSessions.has(event.sessionId || "") && !changedRequests.has(event.requestId || "")).forEach(handleEvent);
+      if(alive) events.filter(event=>!finishedSessions.has(`${event.sessionId}:${activityProvider(event)}`) && !changedRequests.has(event.requestId || "")).forEach(handleEvent);
     }).catch(error=>{if(alive)fail(error);}).finally(()=>{restoring=false;finishedSessions.clear();changedRequests.clear();});
     return () => {
       alive = false;
@@ -802,7 +888,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   useEffect(() => {
     const el = messages.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
-  }, [session?.messages, activity?.text, sessionId]);
+  }, [session?.messages, streams, sessionId]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isImeKey(e)) return;
@@ -914,6 +1000,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     setSidebarOpen(false);
   }
   function selectSession(value: Session) {
+    if (providerMode==='sync') setDockProviderOverride(conversationTabProvider(value));
     selectConversationId(value.id);
     setDockOpen(true);setChatActive(true);setDockFilter("all");
     stickToBottom.current = true;
@@ -924,6 +1011,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }
   async function selectChatModel(change: ChatModelSelection) {
     if (!api || !conversationProject || submittingRef.current) return;
+    if (change.provider && (providerPending || ownerProvider || (change.provider==='claude'&&!claudeEnabled))) return;
     const key = draftKey;
     setModelPreviews(previous=>new Map(previous).set(key,{...previous.get(key),...change}));
     const active=modelSaves.current.get(key);
@@ -938,16 +1026,19 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     try {
       let next:ChatModelSelection|undefined=change;
       while(next){
-        const selection={action:'model' as const,...next,model:next.model??saved?.preferences?.model??''};
+        const provider=ownerProvider??next.provider??savedConversationProvider(saved)??dockProvider??defaultProvider;
+        const selection={action:'model' as const,...next,
+          provider:(next.provider!==undefined||provider==='claude')?provider:undefined,
+          model:next.model??(saved?.preferences?.provider&&saved.preferences.provider!==provider?'':saved?.preferences?.model)??''};
         if(saved) saved=await api.editConversation(saved.id,selection);
         else {
-          saved=created=await api.createSession(conversationProject.id,selection.model);
-          if(next.effort!==undefined||next.speed!==undefined) saved=await api.editConversation(saved.id,selection);
+          saved=created=await api.createSession(conversationProject.id,selection.model||undefined,provider);
+          if(selection.provider||next.effort!==undefined||next.speed!==undefined) saved=await api.editConversation(saved.id,selection);
         }
         if(!created){
-          const {id,preferences}=saved;
+          const {id,preferences,provider}=saved;
           setData(previous=>({...previous,sessions:previous.sessions.map(item=>item.id===id
-            ? {...item,preferences:previewChatModel(item.preferences,{model:preferences?.model||'',effort:preferences?.effort||'',speed:preferences?.speed||''})}
+            ? {...item,provider,preferences:previewChatModel(item.preferences,{provider:preferences?.provider,model:preferences?.model||'',effort:preferences?.effort||'',speed:preferences?.speed||''})}
             : item)}));
         }
         next=flight.next;
@@ -979,21 +1070,34 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     if (!request) return;
     try { await sendWorkRequest(value,request,nextMode); } catch(error) { fail(error); }
   }
-  async function sendWorkRequest(value:Session,request:string,nextMode?:Mode,overrides?:{model?:string;effort?:Effort;submissionId?:string}) {
+  function requireClaudeConnection() {
+    if (!claudeEnabled) throw Error('설정의 계정과 모델에서 Claude를 다시 켜 주세요.');
+    if (!claudeConnected) throw Error('설정의 계정과 모델에서 Claude API 키를 연결해 주세요.');
+  }
+  async function sendWorkRequest(value:Session,request:string,nextMode?:Mode,overrides?:{provider?:AIProvider;model?:string;effort?:Effort;submissionId?:string}) {
     rememberSession(value);
     if (!api) return;
     const mode = nextMode || "plan";
     const key = `session:${value.id}`;
     setDrafts(prev => ({ ...prev, [key]: { text: request, mode } }));
-    if (!connection.authenticated) {
+    const bound=providerMode==='sync'?conversationOwnerProvider(value):undefined;
+    if (bound&&overrides?.provider&&overrides.provider!==bound) throw Error('이 대화와 같은 AI 서비스를 선택하세요.');
+    const provider=bound??overrides?.provider??savedConversationProvider(value)??defaultProvider;
+    if (provider==='claude') {
+      requireClaudeConnection();
+      if (!await confirmChatFolders(value.projectId,value,provider)) throw Error('프로젝트 접근을 허용한 뒤 작업을 시작하세요.');
+    }
+    else if (!connection.authenticated) {
       throw new Error("ChatGPT 계정 연결 후 AI 업무를 시작하세요.");
     }
-    const chosenModel=overrides?.model||value.preferences?.model||data.settings.model;
-    const metadata=models.find(row=>row.id===chosenModel)||(!chosenModel?models.find(row=>row.isDefault):undefined);
-    const requested=overrides?.effort||value.preferences?.effort||data.settings.effort;
+    const preferences=value.preferences?.provider&&value.preferences.provider!==provider?undefined:value.preferences;
+    const chosenModel=overrides?.model||preferences?.model||(provider==='claude'?data.settings.claudeModel:data.settings.model);
+    const catalog=provider==='claude'?claudeModels:models;
+    const metadata=catalog.find(row=>row.id===chosenModel)||(!chosenModel?catalog.find(row=>row.isDefault):undefined);
+    const requested=overrides?.effort||preferences?.effort||(provider==='claude'?data.settings.claudeEffort:data.settings.effort);
     const supported=effortOptions(metadata);
     const chosenEffort=supported.some(row=>row.reasoningEffort===requested)?requested:metadata?.defaultReasoningEffort||supported[0]?.reasoningEffort;
-    const result=await api.send({ sessionId: value.id, text: request, mode, model:chosenModel, effort:chosenEffort, submissionId:overrides?.submissionId });
+    const result=await api.send({ sessionId: value.id, text: request, mode, provider, model:chosenModel, effort:chosenEffort, submissionId:overrides?.submissionId });
     if(!result.accepted)throw new Error('요청을 전송하지 못했습니다. 대화 초안은 보존했습니다.');
     setDrafts(prev => prev[key]?.text === request ? { ...prev, [key]: { text: "", mode } } : prev);
   }
@@ -1033,21 +1137,25 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }
   async function openPersonalAssistant(){
     if(!api)return;
-    if(connection.authenticated&&connection.dotsEligible){
+    const provider=dockProvider??defaultProvider;
+    if(provider==='claude'&&!claudeEnabled) return openClaudeSettings();
+    if(provider==='codex'&&connection.authenticated&&connection.dotsEligible){
       setChatActive(false);setDockFilter('all');setDockOpen(true);setAssistantNavigation(value=>(value||0)+1);
       return;
     }
     setCreatingConversation(true);
     try {
-      const value=await api.openGeneralAssistant();
+      const value=await api.openGeneralAssistant(provider);
       setData(await api.bootstrap());rememberSession(value);selectSession(value);
     } catch(error){fail(error)} finally{setCreatingConversation(false)}
   }
   async function startDockConversation(scope:'project'|'integrated'|'general',id?:string){
     if(!api)return notify('데스크톱 앱에서 대화를 시작할 수 있습니다.');
+    const provider=dockProvider??defaultProvider;
+    if(provider==='claude'&&!claudeEnabled)return openClaudeSettings();
     setCreatingConversation(true);
     try{
-      const value=scope==='project'?await api.createSession(id||projectId!):await api.createHubConversation({scope});
+      const value=scope==='project'?await api.createSession(id||projectId!,undefined,provider):await api.createHubConversation({scope,provider});
       if(scope!=='project')setData(await api.bootstrap());
       rememberSession(value);selectSession(value);
       setTimeout(()=>{if(currentDraftKey.current===`session:${value.id}`)composer.current?.focus();},240);
@@ -1067,7 +1175,14 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }
   useEffect(() => { if (!settingsOpen) setCategoryTarget(undefined); }, [settingsOpen]);
   useEffect(() => { if (!settingsOpen) setPluginSettingsTarget(false); }, [settingsOpen]);
+  useEffect(() => { if (!settingsOpen) setClaudeSettingsTarget(false); }, [settingsOpen]);
+  useEffect(() => {
+    if (!settingsOpen || !claudeSettingsTarget) return;
+    const frame=requestAnimationFrame(()=>document.getElementById('claude-connection-title')?.scrollIntoView({block:'nearest'}));
+    return ()=>cancelAnimationFrame(frame);
+  }, [settingsOpen, claudeSettingsTarget, settingsNavigation]);
   function openPluginSettings(){setCategoryTarget(undefined);setPluginSettingsTarget(true);setSettingsNavigation(value=>value+1);setSettingsOpen(true);}
+  function openClaudeSettings(){setCategoryTarget(undefined);setClaudeSettingsTarget(true);setSettingsNavigation(value=>value+1);setSettingsOpen(true);}
   function itemContext(event:{preventDefault():void;clientX:number;clientY:number},target:DeleteTarget){event.preventDefault();setItemMenu({x:event.clientX,y:event.clientY,target})}
   async function reloadItems(result?:TrashResult){if(!api)return;const next=await api.bootstrap();setData(next);const available=new Set(next.sessions.map(s=>s.id));setConversationSelection(current=>forgetConversationTabs(current,id=>available.has(id)));if(projectId&&!next.projects.some(p=>p.id===projectId)){setProjectId(next.projects[0]?.id);setView("dashboard")}notify(result?.notice||"항목을 반영했습니다.");await refreshAttention()}
   function openUpdateSettings(){setCategoryTarget(undefined);setSettingsNavigation(value=>value+1);setSettingsOpen(true);}
@@ -1108,11 +1223,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const id=crypto.randomUUID();submissionReceipts.current.set(key,{id,text,references});
     return {submissionId:id};
   }
-  async function confirmChatFolders(projectId:string, target?:Session) {
+  async function confirmChatFolders(projectId:string, target?:Session, provider?:AIProvider) {
     if (target?.scope) return true;
     if (!api) return false;
     const folders = new Set([projectId, ...(target?.workflow?.reportProjects || [])]);
-    for (const id of folders) if (!await api.requestProjectTrust(id)) return false;
+    for (const id of folders) if (!await api.requestProjectTrust(id,provider)) return false;
     return true;
   }
   async function openDashboardDraft(projectId:string,text:string,target?:Session) {
@@ -1139,16 +1254,22 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const current=data.sessions.find(session=>session.id===target.id&&session.projectId===target.projectId&&!session.scope);
     if(!api||!current||current.workflow?.status==='done'||archived[current.projectId])
       throw Error('보낼 수 있는 프로젝트 대화를 다시 선택해 주세요.');
-    const connection=await api.readChatConnection();
-    if(!connection.ready)throw Error(connection.message);
-    if(!await confirmChatFolders(current.projectId,current))throw Error('프로젝트 편집 권한을 확인해 주세요.');
+    const provider=(providerMode==='sync'?conversationOwnerProvider(current):undefined)??savedConversationProvider(current)??defaultProvider;
+    const preferences=current.preferences?.provider&&current.preferences.provider!==provider?undefined:current.preferences;
+    if(provider==='claude') requireClaudeConnection();
+    else {
+      const prepared=await api.readChatConnection();
+      if(!prepared.ready)throw Error(prepared.message);
+    }
+    if(!await confirmChatFolders(current.projectId,current,provider))throw Error('프로젝트 편집 권한을 확인해 주세요.');
     const state=await api.securityState();
     if(state.locked||state.accountRevision!==security.state.accountRevision)
       throw Error('계정이나 잠금 상태가 바뀌었습니다. 대상 대화를 다시 확인해 주세요.');
     const sent=await api.send({
       sessionId:current.id,text,submissionId,
       mode:projectMode(current,current.workflow?workKinds[current.workflow.kind].mode:undefined),
-      model:data.settings.model||undefined,effort:data.settings.effort,
+      provider,model:preferences?.model||(provider==='claude'?data.settings.claudeModel:data.settings.model||undefined),
+      effort:preferences?.effort||(provider==='claude'?data.settings.claudeEffort:data.settings.effort),
     });
     if(!sent.accepted)throw Error('대화에 요청을 접수하지 못했습니다.');
     return {queued:sent.queued,queueId:sent.queueId};
@@ -1167,12 +1288,16 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const originalInput = requestText;
     const originalAttachments=attachments;
     const originalReferences=codexReferences;
-    const wasRunning=running;
+    const wasRunning=runningCurrent;
+    const sendAsNext=nextTurn||(wasRunning&&chatProvider==='claude');
     const text = requestText;
     let draftCleared = false;
     let submissionId:string|undefined;
     try {
-      if (!connection.authenticated && !wasRunning) {
+      if (chatProvider==='claude') {
+        requireClaudeConnection();
+        if(originalReferences.length) throw Error('Claude에 보내려면 입력창에서 Codex 플러그인 참조를 제거해 주세요.');
+      } else if (!connection.authenticated && !wasRunning) {
         const prepared = await api.readChatConnection();
         if (currentDraftKey.current !== originKey) return;
         if (!prepared.ready) {
@@ -1192,7 +1317,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         }
       }
       setChatWebFallback(undefined);
-      if (!await confirmChatFolders(conversationProject.id,session)) {
+      if (!await confirmChatFolders(conversationProject.id,session,chatProvider)) {
         if (textOverride && !/\S/.test(input)) {
           setDrafts(prev => prev[originKey]?.text ? prev : {
             ...prev, [originKey]: { ...prev[originKey], text: requestText, mode },
@@ -1202,7 +1327,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       }
       if (currentDraftKey.current !== originKey) return;
       if (!activeId) {
-        const created = await api.createSession(conversationProject.id);
+        const created = await api.createSession(conversationProject.id,undefined,chatProvider);
         activeId = created.id;
         setData((prev) => ({
           ...prev,
@@ -1222,7 +1347,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       }
       stickToBottom.current = true;
       submissionId=longSubmission(restoreKey,text,originalReferences).submissionId||crypto.randomUUID();
-      if(!nextTurn)setOutgoing({sessionId:activeId,message:{
+      if(!sendAsNext)setOutgoing({sessionId:activeId,message:{
         id:submissionId,role:'user',createdAt:new Date().toISOString(),attachments:originalAttachments,codexReferences:originalReferences,
         text:text.length>maxChatInput?'긴 요청을 보내고 있어요.':text.trim()?text:'첨부한 자료를 확인해 주세요.',
       }});
@@ -1230,14 +1355,15 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       draftCleared = true;
       const sent=await api.send({
         submissionId,
-        ...(wasRunning&&!nextTurn&&{delivery:"steer" as const}),
+        ...(wasRunning&&!sendAsNext&&{delivery:"steer" as const}),
         sessionId: activeId,
         text,
         attachments:originalAttachments.map(a=>a.id),
         codexReferences:originalReferences,
         mode,
-        model: data.settings.model || undefined,
-        effort: data.settings.effort,
+        provider: chatProvider,
+        model: chatPreferences?.model||chatDefaultModel,
+        effort: chatPreferences?.effort||chatDefaultEffort,
       });
       submissionReceipts.current.delete(restoreKey);
       if(sent.steered)notify("현재 작업에 추가 지시를 전달했습니다.");
@@ -1290,7 +1416,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           .slice(-16)
           .map(
             (m) =>
-              `${m.role === "user" ? "사용자" : m.role === "assistant" ? "Codex" : "작업 상태"}:\n${m.text}`,
+              `${m.role === "user" ? "사용자" : m.role === "assistant" ? providerNames[m.provider??'codex'] : "작업 상태"}:\n${m.text}`,
           ),
         input ? `다음 요청:\n${input}` : "",
       ]
@@ -1351,6 +1477,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     settingsSaveQueue.current = Promise.all([pending, saving]).then(()=>{});
     return saving;
   }
+  async function chooseProviderMode(value:ProviderMode) {
+    if (!await saveSettings({providerMode:value})) return false;
+    setProviderSetupDismissed(true);
+    return true;
+  }
   async function decide(event: FlowriumEvent, decision: "accept" | "decline") {
     if (!api || !event.requestId || decisionFlights.current.has(event.requestId)) return;
     const requestId = event.requestId;
@@ -1375,23 +1506,28 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const originKey=draftKey,originalInput=input,originalAttachments=attachments,originalReferences=codexReferences,request=input.trim()?input:suggested||input;
     submittingRef.current=true;setSubmitting(true);
     try{
-      if (!await confirmChatFolders(session.projectId,session)) return;
-      await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,...longSubmission(originKey,request,originalReferences),text:request,attachments:originalAttachments.map(a=>a.id),codexReferences:originalReferences,mode,model:data.settings.model||undefined,effort:data.settings.effort});
+      if(chatProvider==='claude') {
+        requireClaudeConnection();
+        if(originalReferences.length) throw Error('Claude에 보내려면 입력창에서 Codex 플러그인 참조를 제거해 주세요.');
+      }
+      if (!await confirmChatFolders(session.projectId,session,chatProvider)) return;
+      await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,...longSubmission(originKey,request,originalReferences),text:request,attachments:originalAttachments.map(a=>a.id),codexReferences:originalReferences,mode,provider:chatProvider,model:chatPreferences?.model||chatDefaultModel,effort:chatPreferences?.effort||chatDefaultEffort});
       submissionReceipts.current.delete(originKey);
       setDrafts(previous=>{const draft=previous[originKey];return {...previous,[originKey]:{...draft,mode:draft?.mode||mode,text:draft?.text===originalInput?'':draft?.text||'',attachments:(draft?.attachments||[]).filter(item=>!originalAttachments.some(sent=>sent.id===item.id)),codexReferences:(draft?.codexReferences||[]).filter(item=>!originalReferences.some(sent=>sent.kind===item.kind&&sent.id===item.id))}}});
       stickToBottom.current=true;
     }finally{submittingRef.current=false;setSubmitting(false)}
   }
   async function interrupt() {
-    if (!api || !sessionId || stopping[sessionId]) return;
+    if (!api || !sessionId || !stoppingKey || stopping[stoppingKey]) return;
     const id = sessionId;
-    setStopping((prev) => ({ ...prev, [id]: true }));
+    const key=stoppingKey;
+    setStopping((prev) => ({ ...prev, [key]: true }));
     try {
-      await api.interrupt(id);
+      await api.interrupt(id,parallelChat?chatProvider:undefined);
     } catch (error) {
       setStopping((prev) => {
         const next = { ...prev };
-        delete next[id];
+        delete next[key];
         return next;
       });
       fail(error);
@@ -1485,6 +1621,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   }
   function renderChat(){
     const project = conversationProject;
+    const chatContext=chatProvider==='claude'?session?.claudeContext:session?.context;
     const queued = session?.queuedMessages?.some(isPendingQueuedInput);
     const queue = session && <ChatQueuePanel session={session} onCancel={id=>{void api!.cancelQueuedMessage(session.id,id).catch(fail);}} onResume={async()=>{try{if(await confirmChatFolders(session.projectId,session))await api!.resumeQueuedMessages(session.id);}catch(error){fail(error);}}}
       onSendToCodex={async id=>{try{if(!await confirmChatFolders(session.projectId,session))return;const result=await api!.sendQueuedToCodex(session.id,id);if(result.accepted)notify(nativeQueueNotice(result));}catch(error){fail(error);}}}
@@ -1504,12 +1641,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       <h2 title={session.title}>{session.title}</h2>
                     </div>
                     <div className="session-actions">
-                      <ChatContextMeter context={session.context}/>
+                      <ChatContextMeter context={chatContext}/>
                         <details className="session-details" key={`connection:${session.id}`} onToggle={event=>setWorkToolsSession(event.currentTarget.open ? session.id : undefined)}>
                           <summary aria-label="대화 연결 및 작업 도구" title="대화 연결 및 작업 도구"><Settings2 size={16}/></summary>
                           <div className="session-details-body">
-                            <CodexLinkBar session={session} running={workActive}/>
-                            {session.context && <div className="chat-context">문맥 {session.context.percent}% ({session.context.used.toLocaleString("ko-KR")} / {session.context.max.toLocaleString("ko-KR")} 토큰) <progress max={100} value={session.context.percent}/></div>}
+                            {chatProvider==='codex'&&<CodexLinkBar session={session} running={workActive}/>}
+                            {chatContext && <div className="chat-context">문맥 {chatContext.percent}% ({chatContext.used.toLocaleString("ko-KR")} / {chatContext.max.toLocaleString("ko-KR")} 토큰) <progress max={100} value={chatContext.percent}/></div>}
                             {!queued && queue}
                             {session.workflow && <WorkSessionControls session={session} onSessionChange={rememberSession} running={workActive}/>}
                             {workToolsSession===session.id && <WorkToolDetails progress={workProgress} messages={session.messages} projectId={session.projectId}/>}
@@ -1541,6 +1678,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                       <article
                         className={`message ${message.role}`}
                         data-message-id={message.id}
+                        data-provider={message.role==='assistant'?(message.provider??'codex'):undefined}
                         data-outgoing={pendingMessage?.id===message.id||undefined}
                         aria-label={message.role==="user"?"내 메시지":undefined}
                         key={message.id}
@@ -1549,7 +1687,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                           {(message.role!=="user"||message.delegated)&&<div className="message-meta">
                         <span className={`message-avatar ${message.role}`}>
                           {message.role === "assistant" ? (
-                            <img className="codex-avatar" src={codexAvatar} width="24" height="24" alt="" draggable={false}/>
+                            message.provider==='claude' ? <Sparkles size={14} aria-hidden="true"/> : <img className="codex-avatar" src={codexAvatar} width="24" height="24" alt="" draggable={false}/>
                           ) : message.role === "user" ? (
                             <UserRound size={16} aria-hidden="true" />
                           ) : (
@@ -1558,7 +1696,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         </span>
                             <strong>
                               {message.role === "assistant"
-                                ? "Codex"
+                                ? providerNames[message.provider??'codex']
                                 : message.role === "user"
                                   ? (message.delegated ? "전달된 요청" : "나")
                                   : "작업 상태"}
@@ -1570,7 +1708,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                           <CodexReferenceList value={message.codexReferences}/>
                           {Boolean(message.attachments?.length)&&conversationProject&&<ChatAttachmentList projectId={conversationProject.id} items={message.role==="assistant"?message.attachments!.filter(a=>!presentCitations(message.text).references.some(r=>r.attachmentId===a.id)):message.attachments!}/>}
                           <div className="markdown">
-                            {typingId===message.id?<TypingMessageContent sessionId={session.id} messageId={message.id} text={message.text}/>:
+                            {typingIds.has(message.id)?<TypingMessageContent sessionId={session.id} messageId={message.id} text={message.text}/>:
                             <MessageContent sessionId={session.id} messageId={message.id} text={message.text} role={message.role} hasLaterRequest={hasLaterRequest}
                               retryAction={failedRequest&&<button type="button" className="button subtle" data-message-detail-control
                                 disabled={submitting||Boolean(input.length||attachments.length)}
@@ -1578,7 +1716,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                                 onClick={()=>restoreFailedRequest(failedRequest)}>입력창에 다시 담기</button>}/>}
                             {message.sourceOnly && <RequestSource sessionId={session.id} messageId={message.id}/>}
                           </div>
-                          {!workActive && typingId !== message.id && session.workflow?.kind === "weekly" && message.role === "assistant" &&
+                          {!workActive && !typingIds.has(message.id) && session.workflow?.kind === "weekly" && message.role === "assistant" &&
                             <WeeklyReportFile sessionId={session.id} messageId={message.id}/>}
                           </div>
                           </div>
@@ -1633,7 +1771,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 <div className="welcome-content">
                   <h1>새 자유 대화</h1>
                   <p className="welcome-description">
-                    프로젝트를 선택하고 Codex에게 요청할 내용을 적으세요.
+                    프로젝트를 선택하고 {providerNames[chatProvider]}에 보낼 요청을 적으세요.
                   </p>
                   <div className={`project-banner ${project ? "ready" : ""}`}>
                     <div className="banner-icon">
@@ -1671,7 +1809,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               <div className="composer-area">
                 {sessionApprovals.filter(event=>event.type!=="input" || !session).map(event=><DecisionRequestPanel key={event.requestId} event={event}/>)}
                 {draftError && <p role="alert" className="composer-draft-error">{draftError} <button onClick={retryDrafts}>초안 다시 불러오기</button></p>}
-                {!connection.authenticated && chatWebFallback?.key===draftKey ? <section className="composer-web-fallback" aria-label="브라우저에서 대화 이어가기">
+                {chatProvider==='codex' && (!connection.authenticated && chatWebFallback?.key===draftKey ? <section className="composer-web-fallback" aria-label="브라우저에서 대화 이어가기">
                   <p role="status">{chatWebFallback.message}{!conversationProject?.conversationScope&&!session?.preferences?.chatGptUrl&&' 웹에서 코딩 작업을 하려면 작업 위치로 클라우드를 선택하세요.'}{attachments.length>0&&' 웹에서는 첨부 파일을 다시 선택해 주세요.'}</p>
                   <div>
                     {chatWebFallback.showInstall&&desktopChatInstalled!==true&&<button type="button" className="button subtle" onClick={()=>void api?.openExternal('chatgpt-desktop').catch(fail)}><Download size={14} aria-hidden="true"/>데스크톱 앱 설치</button>}
@@ -1681,23 +1819,38 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 </section>:desktopChatInstalled===false&&!workActive&&<div className="composer-web-options" role="group" aria-label="데스크톱 앱과 브라우저 선택">
                   <button type="button" className="button subtle" title="데스크톱 앱을 설치하면 같은 기기의 Codex 대화를 Flowrium과 이어갈 수 있어요." onClick={()=>void api?.openExternal('chatgpt-desktop').catch(fail)}><Download size={14} aria-hidden="true"/>데스크톱 앱 설치</button>
                   <button type="button" className="button subtle" onClick={()=>void openChatWeb()}><ExternalLink size={14} aria-hidden="true"/>{/\S/.test(input)?'초안 복사하고 웹 열기':'웹에서 이어가기'}</button>
+                </div>)}
+                {chatProvider==='claude' && !claudeConnected && !runningCurrent && <section className="composer-web-fallback" aria-label="Claude 연결 상태">
+                  <p role="status">{!claudeEnabled?'Claude가 꺼져 있습니다.':claude.busy?'Claude 연결을 확인하고 있습니다.':'Claude를 사용하려면 Anthropic API 키를 연결하세요.'}</p>
+                  <button type="button" className="button secondary" onClick={openClaudeSettings}>Claude 설정 열기</button>
+                </section>}
+                {chatProvider==='claude'&&claudeConnected&&containsCodex&&!runningCurrent&&<p className="composer-provider-note">
+                  Claude로 보내면 최근 대화 내용이 Anthropic으로 전송됩니다. Claude 답변은 Flowrium에 보관됩니다.
+                </p>}
+                {chatProvider==='codex'&&containsClaude&&!runningCurrent&&<p className="composer-provider-note">
+                  Codex로 보내면 최근 Claude 대화가 요청의 참고 내용으로 전달됩니다.
+                </p>}
+                {parallelChat&&visibleProviders.length>0&&(claudeEnabled||containsClaude)&&<div className="composer-provider-progress" role="status" aria-label="AI 서비스 작업 상태">
+                  {visibleProviders.map(provider=><span key={provider} data-provider={provider}>
+                    <span className="status-dot online" aria-hidden="true"/>{providerNames[provider]} 작업 중
+                  </span>)}
                 </div>}
-                <AttachmentComposer key={voiceContinuity.current.generation} projectId={project?.id} items={attachments} onChange={setAttachments} disabled={security.state.locked} report={notify}>{attachmentControl=>(
+                <AttachmentComposer key={voiceContinuity.current.generation} projectId={conversationProject?.id} items={attachments} onChange={setAttachments} disabled={security.state.locked} report={notify}>{attachmentControl=>(
                 <div className={`composer ${workActive ? "working" : ""}`}>
                   {!workActive && <div className="composer-topline">
                     <span>
                       <span
-                        className={`status-dot ${connection.authenticated ? "online" : ""}`}
+                        className={`status-dot ${(chatProvider==='claude'?claudeConnected:connection.authenticated) ? "online" : ""}`}
                       />
                       {project ? `${project.name} 작업 요청` : "작업 요청"}
                     </span>
                   </div>}
-                  <ChatContinuation key={draftKey} session={session} running={workActive || Boolean(activity?.unsettled) || sessionApprovals.length > 0 || Boolean(session && visibleProposals(proposals).some(p=>p.sourceId===session.id || p.targetId===session.id))}
-                    authenticated={connection.authenticated} aiFollowups={data.settings.aiFollowups===true} busy={submitting || !!modelPreview} draft={input} textareaRef={composer}
+                  <ChatContinuation key={draftKey} session={session} provider={chatProvider} running={workActive || Boolean(activity?.unsettled) || sessionApprovals.length > 0 || Boolean(session && visibleProposals(proposals).some(p=>p.sourceId===session.id || p.targetId===session.id))}
+                    authenticated={chatProvider==='claude'?claudeConnected:connection.authenticated} aiFollowups={chatProvider==='codex'&&!containsClaude&&data.settings.aiFollowups===true} busy={submitting || !!modelPreview} draft={input} textareaRef={composer}
                     active={chatActive && dockOpen && !settingsOpen && !attentionOpen}
                     placeholder={project ? "어떤 작업을 함께 해볼까요?" : "만들고 싶은 것, 풀고 싶은 문제를 적어 주세요."}
                     onChange={setInput} onSend={() => void send()} onContinue={continueWaitingSession}
-                    references={codexReferences} referencesEnabled={Boolean(conversationProject&&!conversationProject.conversationScope&&!session?.scope)}
+                    references={codexReferences} referencesEnabled={chatProvider==='codex'&&Boolean(conversationProject&&!conversationProject.conversationScope&&!session?.scope)}
                     onReferencesChange={setCodexReferences} onManagePlugins={openPluginSettings}
                     onChoose={prompt => {
                       setDrafts(previous => {
@@ -1711,25 +1864,26 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   <div className="composer-toolbar">
                     <div className="composer-options">
                       {attachmentControl}
-                      <VoiceComposer key={voiceContinuity.current.generation} suspend={settingsOpen||attentionOpen||!dockOpen||!chatActive} disabled={running||security.state.locked} onText={text=>setDrafts(prev=>{
+                      <VoiceComposer key={voiceContinuity.current.generation} suspend={settingsOpen||attentionOpen||!dockOpen||!chatActive} disabled={runningCurrent||security.state.locked} onText={text=>setDrafts(prev=>{
                         const draft=prev[draftKey];return {...prev,[draftKey]:{...draft,mode:draft?.mode||mode,text:[draft?.text,text].filter(Boolean).join("\n")}};
                       })} onSubmit={text=>void send([input,text].filter(Boolean).join("\n"))}/>
-                      <ChatModelPicker onOpen={()=>void modelCatalog.refresh(true)} models={models}
-                        preferences={previewChatModel(session?.preferences,modelPreview)} conversationKey={draftKey}
-                        defaultModel={data.settings.chatDefaults?.model||data.settings.model}
-                        defaultEffort={data.settings.chatDefaults?.effort??data.settings.effort} defaultSpeed={data.settings.chatDefaults?.speed??data.settings.speed}
+                      <ChatModelPicker onOpen={chatProvider==='codex'?()=>void modelCatalog.refresh(true):undefined} models={chatModels}
+                        provider={chatProvider} showProvider={providerMode==='mixed'} claudeEnabled={claudeEnabled} providerLocked={providerPending||Boolean(ownerProvider)}
+                        preferences={chatPreferences} conversationKey={draftKey}
+                        defaultModel={chatDefaultModel}
+                        defaultEffort={chatDefaultEffort} defaultSpeed={chatProvider==='codex'?data.settings.chatDefaults?.speed??data.settings.speed:undefined}
                         pro={connection.authenticated&&connection.accountPlan==='pro'}
                         disabled={!conversationProject || submitting}
                         onChange={change => void selectChatModel(change)}/>
                     </div>
                     <div className="chat-run-controls">
-                    {running&&<><button type="button" className="chat-delivery" data-delivery="queue" aria-label="추가 지시 대기열에 넣기" onClick={()=>void send(undefined,true)} disabled={(!/\S/.test(input)&&!attachments.length)||submitting||!!modelPreview}>다음 차례</button>
-                    <button type="button" className="chat-delivery" data-delivery="steer" aria-label="현재 작업에 추가 지시 보내기" onClick={()=>void send()} disabled={(!/\S/.test(input)&&!attachments.length)||submitting||!!modelPreview}>지금 전달</button></>}
-                    {running ? (
+                    {runningCurrent&&<><button type="button" className="chat-delivery" data-delivery="queue" aria-label="추가 지시 대기열에 넣기" onClick={()=>void send(undefined,true)} disabled={(!/\S/.test(input)&&!attachments.length)||submitting||!!modelPreview||(chatProvider==='claude'&&!claudeConnected)}>다음 차례</button>
+                    {chatProvider==='codex'&&<button type="button" className="chat-delivery" data-delivery="steer" aria-label="현재 작업에 추가 지시 보내기" onClick={()=>void send()} disabled={(!/\S/.test(input)&&!attachments.length)||submitting||!!modelPreview}>지금 전달</button>}</>}
+                    {runningCurrent ? (
                       <button
                         className="send-button stop-button"
                         aria-label="작업 중지"
-                        disabled={Boolean(sessionId && stopping[sessionId])}
+                        disabled={Boolean(stoppingKey && stopping[stoppingKey])}
                         onClick={interrupt}
                       >
                         <Square size={14} />
@@ -1739,7 +1893,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                         className="send-button"
                         aria-label="작업 보내기"
                         onClick={()=>void send()}
-                        disabled={(!/\S/.test(input)&&!attachments.length) || submitting || !!modelPreview || !project}
+                        disabled={(!/\S/.test(input)&&!attachments.length) || submitting || !!modelPreview || !conversationProject || (chatProvider==='claude'&&!claudeConnected)}
                       >
                         {submitting ? (
                           <LoaderCircle size={17} className="spin" />
@@ -1829,6 +1983,11 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     }).catch(fail);
   };
   return (
+    <ProviderModelsContext.Provider value={{
+      claudeEnabled, claudeConnected, claudeModels, claudeError:claude.status?.error,
+      defaultProvider, providerMode, claudeModel:data.settings.claudeModel, claudeEffort:data.settings.claudeEffort,
+      refreshClaude:claude.refresh,
+    }}>
     <div className="app-shell" data-chat-focus={isChatFocused}>
       {sidebarPresence.present && (
         <button
@@ -1867,6 +2026,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         </header>
 
         {!settingsOpen&&!isChatFocused && <UpdatePanel state={update} fail={fail} />}
+        <ProviderModeDialog open={loaded&&data.providerSetupRequired===true&&!providerSetupDismissed} onChoose={chooseProviderMode}/>
         {loaded&&view==="dashboard"&&!data.projects.length&&<AccountSetupCard chatConnected={accountLinked} onChat={()=>setSettingsOpen(true)}/>}
         {!loaded ? (
           <div className="loading-page">
@@ -2095,7 +2255,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         onClick={() => setDockOpen(true)}>
         <PanelRight size={16} aria-hidden="true"/><span>대화</span>
       </button>}
-      <ConversationDock revealQuestion={Boolean(focusQuestion)} dotsEligible={Boolean(connection.authenticated&&connection.dotsEligible)} onAssistant={()=>void openPersonalAssistant()} assistantNavigation={assistantNavigation} assistantContent={<DotsPanel active={dockOpen} blocked={settingsOpen||historyOpen||musicOpen||attentionOpen||Boolean(workPopup)||Boolean(deletionTarget)||trashOpen||Boolean(reportDialog)||sidebarOpen||logoutOpen}/>} projectNavigation={projectNavigation} open={dockOpen} chatActive={chatActive} expanded={chatExpanded} onExpand={()=>setChatExpanded(v=>!v)} onClose={()=>setDockOpen(false)} onLeaveChat={()=>setChatActive(false)} projects={panelProjects} categories={categories} onProjectMove={navigation.move} sessions={data.sessions} projectId={projectId} sessionId={sessionId} tabIds={tabIds} onCloseTab={closeConversationTab} tabBusy={creatingConversation||submitting} activities={activities} requests={approvals} proposals={proposals} counts={activeCounts} filter={dockFilter} onFilter={setDockFilter} onOpen={selectSession} onProject={()=>{}} onCreate={(scope,id)=>void startDockConversation(scope,id)} onCreateProject={()=>setView('kickoff')} onSessionMenu={(event,s)=>itemContext(event,{kind:"session",id:s.id,name:s.title})} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} attentionCount={attentionState?.notifications.filter(n=>!n.readAt).length||0} onDecisions={openDecisions} busy={creatingConversation}>{renderChat()}</ConversationDock>
+      <ConversationDock provider={dockProvider} claudeEnabled={claudeEnabled} onProviderChange={setDockProviderOverride} revealQuestion={Boolean(focusQuestion)} dotsEligible={Boolean(dockProvider!=='claude'&&connection.authenticated&&connection.dotsEligible)} onAssistant={()=>void openPersonalAssistant()} assistantNavigation={assistantNavigation} assistantContent={<DotsPanel active={dockOpen} blocked={settingsOpen||historyOpen||musicOpen||attentionOpen||Boolean(workPopup)||Boolean(deletionTarget)||trashOpen||Boolean(reportDialog)||sidebarOpen||logoutOpen}/>} projectNavigation={projectNavigation} open={dockOpen} chatActive={chatActive} expanded={chatExpanded} onExpand={()=>setChatExpanded(v=>!v)} onClose={()=>setDockOpen(false)} onLeaveChat={()=>setChatActive(false)} projects={panelProjects} categories={categories} onProjectMove={navigation.move} sessions={data.sessions} projectId={projectId} sessionId={sessionId} tabIds={tabIds} onCloseTab={closeConversationTab} tabBusy={creatingConversation||submitting} activities={activities} requests={approvals} proposals={proposals} counts={activeCounts} filter={dockFilter} onFilter={setDockFilter} onOpen={selectSession} onProject={()=>{}} onCreate={(scope,id)=>void startDockConversation(scope,id)} onCreateProject={()=>setView('kickoff')} onSessionMenu={(event,s)=>itemContext(event,{kind:"session",id:s.id,name:s.title})} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} attentionCount={attentionState?.notifications.filter(n=>!n.readAt).length||0} onDecisions={openDecisions} busy={creatingConversation}>{renderChat()}</ConversationDock>
       <WorkActionPopup kind={workPopup} projects={data.projects.filter(p=>!archived[p.id])} initialProject={view==="overview"?projectId:undefined} onClose={()=>setWorkPopup(null)} onStart={async(record,text,options)=>{await sendWorkRequest(record,text,record.workflow?.kind?workKinds[record.workflow.kind].mode:"plan",options)}} onOpen={selectSession}/>
       <MotionOverlay open={Boolean(reportDialog)} onClose={()=>setReportDialog(undefined)} label={reportDialog==='pause'?'업무 마감':'주간업무보고'} className="report-overlay">
         {reportDialog&&<PortfolioReports key={reportDialog} kind={reportDialog} projects={data.projects.filter(p=>!archived[p.id])} sessions={projectOnlySessions} authenticated={connection.authenticated}
@@ -2321,7 +2481,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               </div>
               <CloseButton aria-label="설정 닫기" onClick={closeSettings}/>
             </div>
-            <SettingsLayout key={settingsNavigation} initialGroup={pluginSettingsTarget ? "account" : categoryTarget ? "categories" : "general"}>
+            <SettingsLayout key={settingsNavigation} initialGroup={pluginSettingsTarget||claudeSettingsTarget ? "account" : categoryTarget ? "categories" : "general"}>
               <SettingsGroup id="general">
                 <UpdatePanel settings state={update} fail={fail}/>
                 <MigrationSettings/>
@@ -2406,52 +2566,57 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   </div>
                 )}
               </div>
+              <ClaudeConnectionPanel enabled={claudeEnabled} connection={claude} onEnable={value=>saveSettings({claudeEnabled:value})}
+                onConsole={()=>void api?.openExternal('claude-console').catch(fail)}/>
               <CodexTransferPanel onChanged={refreshAfterCodexTransfer} onOpen={openTransferredConversation}/>
               <div className="settings-section">
                 <h3>
                   <Sparkles size={17} />
                   작업 기본값
                 </h3>
+                <ProviderModeSetting value={providerMode} onChange={value=>void saveSettings({providerMode:value})}/>
+                <ProviderSelect value={editedService} claudeEnabled={claudeEnabled} label="기본값을 편집할 AI 서비스"
+                  onChange={setSettingsModelService}/>
                 <label className="field-label">
                   모델
                   <select
                     className="text-input"
                     aria-label="기본 모델"
-                    value={data.settings.model || ""}
-                    onChange={(e) => saveSettings({ model: e.target.value })}
+                    value={defaultModel || ""}
+                    onChange={(e) => saveSettings(editedService==='claude'?{claudeModel:e.target.value}:{model:e.target.value})}
                   >
-                    <option value="">계정 기본 모델</option>
-                    {data.settings.model &&
-                      !models.some((m) => m.id === data.settings.model) && (
-                        <option value={data.settings.model}>
-                          {modelDisplayName(data.settings.model)}
+                    <option value="">{editedService==='claude'?'Claude 기본 모델':'계정 기본 모델'}</option>
+                    {defaultModel &&
+                      !defaultModels.some((m) => m.id === defaultModel) && (
+                        <option value={defaultModel}>
+                          {modelDisplayName(defaultModel)}
                         </option>
                       )}
-                    {models.map((m) => (
+                    {defaultModels.map((m) => (
                       <option value={m.id} key={m.id}>
                         {modelDisplayName(m)}
                       </option>
                     ))}
                   </select>
                 </label>
-                {!models.length && (
+                {!defaultModels.length && (
                   <p className="field-hint">
                     연결을 확인하면 계정에서 사용 가능한 모델을 불러옵니다.
                   </p>
                 )}
-                <AccountSpeedPreference speed={data.settings.speed} pro={connection.authenticated&&connection.accountPlan==='pro'} model={models.find(row=>data.settings.model?row.id===data.settings.model:row.isDefault)}
-                  onChange={speed=>void saveSettings({speed})}/>
+                {editedService==='codex'&&<AccountSpeedPreference speed={data.settings.speed} pro={connection.authenticated&&connection.accountPlan==='pro'} model={defaultMetadata}
+                  onChange={speed=>void saveSettings({speed})}/>}
                 <label className="field-label">
-                  생각의 깊이
+                  추론 수준
                   <select
                     className="text-input"
-                    value={effectiveEffort(models.find(row=>row.id===data.settings.model)||(!data.settings.model?models.find(row=>row.isDefault):undefined),data.settings.effort)||''}
+                    value={effectiveEffort(defaultMetadata,defaultEffort)||''}
                     onChange={(e) =>
-                      saveSettings({ effort: e.target.value as Effort })
+                      saveSettings(editedService==='claude'?{claudeEffort:e.target.value as Effort}:{effort:e.target.value as Effort})
                     }
                   >
                     <option value="" disabled>모델 기본값</option>
-                    {effortOptions(models.find(row=>row.id===data.settings.model)||(!data.settings.model?models.find(row=>row.isDefault):undefined)).map(row=><option key={row.reasoningEffort} value={row.reasoningEffort}>{effortLabels[row.reasoningEffort]}</option>)}
+                    {effortOptions(defaultMetadata).map(row=><option key={row.reasoningEffort} value={row.reasoningEffort}>{effortLabels[row.reasoningEffort]}</option>)}
                   </select>
                 </label>
                 <label>
@@ -2464,7 +2629,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   />
                 </label>
                 <p className="field-hint" id="model-followups-description">
-                  켜면 현재 대화의 일부를 연결한 ChatGPT 계정에 보내 명령 초안을 만듭니다. 계정 사용량이나 크레딧이 차감될 수 있습니다.
+                  켜면 Codex 대화의 일부를 연결한 ChatGPT 계정에 보내 명령 초안을 만듭니다. 계정 사용량이나 크레딧이 차감될 수 있습니다.
                 </p>
               </div>
               <CodexPluginSettings authenticated={connection.authenticated} reveal={pluginSettingsTarget}/>
@@ -2515,5 +2680,6 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       )}
 
     </div>
+    </ProviderModelsContext.Provider>
   );
 }

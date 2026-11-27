@@ -109,6 +109,59 @@ test('진행 중인 원본 답변이 갱신될 때에도 중간에 있었던 로
  const final=row('나중 부분',17,'turn');
  assert.deepEqual(withLiveTurn([user,error,partial],'turn',[user,final]),[user,error,final]);
 });
+test('같은 대화의 Claude 행과 최신 시각은 Codex 새로고침과 재연결을 거쳐도 보존된다', async t=>{
+ const f=await fixture(t),plan=await f.preview(),{randomUUID}=require('node:crypto');
+ await f.runtime.apply({planId:plan.id});
+ const session=f.store.state.sessions[0],sessionId=session.id,sourceThread=f.client.threads.get('원본대화');
+ const at=second=>new Date(second*1000).toISOString(),turnId=randomUUID();
+ const local=[
+  {id:randomUUID(),role:'user',text:'Claude에게만 보낸 내용',provider:'claude',turnId,createdAt:at(1700000100)},
+  {id:randomUUID(),role:'assistant',text:'Claude에서만 받은 답변',provider:'claude',turnId,createdAt:at(1700000101)},
+ ];
+ session.messages.push(...local);session.updatedAt=local[1].createdAt;
+ await f.store.save();
+ function addCodex(title,second){
+  sourceThread.updatedAt=second;
+  f.client.turns.get(sourceThread.id).push({id:title,status:'completed',startedAt:second,completedAt:second,itemsView:'full',items:[{id:title,type:'agentMessage',text:title}]});
+ }
+ async function verify(second){
+  const latest=f.store.session(sessionId);
+  assert.equal(latest.updatedAt,local[1].createdAt);
+  assert.equal(latest.codexLink.sourceUpdatedAt,at(second));
+  assert.deepEqual(latest.messages.slice(-2),local);
+  assert(local.every(message=>!latest.codexLink.sourceMessageIds.includes(message.id)));
+ }
+ addCodex('원본 앱의 첫 답변',1700000030);
+ await f.runtime.refresh(sessionId);
+ await verify(1700000030);
+ addCodex('원본 앱의 다음 답변',1700000040);
+ const next=await f.preview();
+ const receipt=await f.runtime.apply({planId:next.id});
+ assert.equal(receipt.updated,1);
+ await verify(1700000040);
+ const reopened=new Store(path.dirname(f.store.file));
+ await reopened.load();
+ assert.deepEqual(reopened.session(sessionId).messages.slice(-2),local);
+});
+test('메시지 식별자가 겹치면 원본을 보관 폴더에 새로 쓰기 전에 Codex 갱신을 중단한다', async t=>{
+ const f=await fixture(t),first=await f.preview();
+ await f.runtime.apply({planId:first.id});
+ const session=f.store.state.sessions[0],sourceThread=f.client.threads.get('원본대화');
+ const second=1700000040;
+ sourceThread.updatedAt=second;
+ f.client.turns.get(sourceThread.id).push({id:'다음 턴',status:'completed',startedAt:second,completedAt:second,itemsView:'full',items:[{id:'다음 응답',type:'agentMessage',text:'나중에 온 원본'}]});
+ const incoming=await require('../electron/codex-transfer-data.cjs').snapshot(f.client,sourceThread.id,f.folder);
+ session.messages.push({...incoming.messages.at(-1),provider:'claude',text:'로컬 Claude 답변'});
+ await f.store.save();
+ const previous=structuredClone(session);
+ const archiveDir=path.dirname(path.join(f.folder,session.codexLink.archivePath));
+ const files=await fs.readdir(archiveDir);
+ await assert.rejects(f.runtime.refresh(session.id),/기존 대화를 보존/);
+ const plan=await f.preview(),receipt=await f.runtime.apply({planId:plan.id});
+ assert.equal(receipt.failed,1);
+ assert.deepEqual(await fs.readdir(archiveDir),files);
+ assert.deepEqual(f.store.session(session.id),previous);
+});
 async function fixture(t){const root=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'flowrium-codex-transfer-'))),folder=path.join(root,'프로젝트');await fs.mkdir(folder);const store=new Store(path.join(root,'설정'));await store.load();const project=await store.addProject(folder),client=new Client(folder);let revision=0,epoch=0,owner='시험계정',allowed=true;
 const controller={client,runs:new Map(),editingSessions:new Set(),loadedThreads:new Set(),emitEvent(){}};
 const runtime=new CodexTransfer(store,controller,{accountRevision:()=>revision,stateEpoch:()=>epoch,accountOwner:()=>owner,canRun:()=>allowed,allowTemporaryProjects:true});
@@ -164,6 +217,62 @@ test('미리보기 후 잠금 회차가 바뀌면 기존 선택을 재사용하�
 test('큰 단일 항목도 본문을 자르지 않고 작업 메타와 항목을 분리하여 읽는다',async t=>{const f=await fixture(t),large='큰 원문 시작\n'+'x'.repeat(17*1024*1024)+'\n큰 원문 끝';f.client.turns.set('원본대화',[{id:'큰작업',status:'completed',startedAt:1700000000,completedAt:1700000002,itemsView:'full',items:[{id:'큰답변',type:'agentMessage',text:large}]}]);const data=await require('../electron/codex-transfer-data.cjs').snapshot(f.client,'원본대화',f.folder);assert.equal(data.messages.map(message=>message.text).join(''),large);assert.equal(data.raw.turns[0].items[0].item.text,large);assert(f.client.calls.filter(call=>call.method==='thread/turns/list').every(call=>call.params.itemsView==='notLoaded'&&call.params.limit===25));assert(f.client.calls.filter(call=>call.method==='thread/items/list').every(call=>call.params.limit===25));});
 test('백그라운드 메타가 같으면 본문 재분석을 생략하고 수동과 전송 전은 전체를 대조한다',async t=>{const f=await fixture(t),p=await f.preview();await f.runtime.apply({planId:p.id});const session=f.store.state.sessions[0];f.client.calls=[];await f.runtime.refresh(session.id,{background:true});assert(f.client.calls.some(call=>call.method==='thread/read'));assert(!f.client.calls.some(call=>['thread/turns/list','thread/items/list'].includes(call.method)));f.client.turns.get('원본대화')[0].items[2].text='시각이 같아도 수동 대조로 확인할 변경';await f.runtime.beforeSend(session.id);assert(session.messages.some(message=>message.text==='시각이 같아도 수동 대조로 확인할 변경'));assert(f.client.calls.some(call=>call.method==='thread/items/list'));});
 test('백그라운드 원본 시각이 바뀌면 전체 항목을 읽어 새 메시지를 반영한다',async t=>{const f=await fixture(t),p=await f.preview();await f.runtime.apply({planId:p.id});const session=f.store.state.sessions[0];f.client.threads.get('원본대화').updatedAt=1700000030;f.client.turns.get('원본대화')[0].items[2].text='새로 반영할 원문';f.client.calls=[];await f.runtime.refresh(session.id,{background:true});assert(session.messages.some(message=>message.text==='새로 반영할 원문'));assert(f.client.calls.some(call=>call.method==='thread/items/list'));});
+
+test('혼합 대화의 Claude 작업 중 Codex 진행을 읽고 완료된 원본을 같은 대화로 갱신한다',async t=>{
+ const f=await fixture(t),plan=await f.preview();
+ await f.runtime.apply({planId:plan.id});
+ const session=f.store.state.sessions[0],thread=f.client.threads.get(session.threadId);
+ const {ConversationRuns}=require('../electron/conversation-runs.cjs');
+ f.store.state.settings.providerMode='mixed';
+ f.controller.runs=new ConversationRuns();
+ f.controller.runs.set(session.id,{sessionId:session.id,provider:'claude'});
+ const local={id:require('node:crypto').randomUUID(),provider:'claude',turnId:'claude-turn',role:'assistant',text:'작성 중',createdAt:new Date().toISOString()};
+ session.messages.push(local);
+ const turn={id:'new-native',status:'inProgress',startedAt:Math.floor(Date.now()/1000),items:[{id:'new-answer',type:'agentMessage',text:'Codex 응답 작성 중'}]};
+ f.client.turns.get(session.threadId).push(turn);
+ thread.status={type:'active'};
+ assert.deepEqual(await f.runtime.action({action:'sync',sessionId:session.id}),{sync:'active'});
+ assert(f.runtime.liveView(session).messages.some(row=>row.text==='Codex 응답 작성 중'));
+ assert(f.runtime.liveView(session).messages.includes(local));
+ await assert.rejects(f.runtime.beforeSend(session.id),{code:'THREAD_ACTIVE'});
+ thread.status={type:'idle'};
+ turn.status='completed';turn.completedAt=turn.startedAt+1;
+ turn.items[0].text='Codex 응답 완료';thread.updatedAt=turn.completedAt;
+ await f.runtime.beforeSend(session.id);
+ assert(session.messages.some(row=>row.text==='Codex 응답 완료'));
+ assert(session.messages.includes(local));
+ f.controller.runs.set(session.id,{sessionId:session.id,provider:'codex'});
+ assert.deepEqual(await f.runtime.action({action:'sync',sessionId:session.id}),{sync:'deferred'});
+ await assert.rejects(f.runtime.beforeSend(session.id),/실행 중인 대화/);
+});
+
+test('Codex 갱신 저장 실패에서 동시에 생긴 Claude 본문과 문맥을 유지한다',async t=>{
+ const f=await fixture(t),plan=await f.preview();
+ await f.runtime.apply({planId:plan.id});
+ const session=f.store.state.sessions[0],link=session.codexLink;
+ const {ConversationRuns}=require('../electron/conversation-runs.cjs');
+ f.store.state.settings.providerMode='mixed';
+ f.controller.runs=new ConversationRuns();
+ f.controller.runs.set(session.id,{sessionId:session.id,provider:'claude'});
+ const local={id:'claude-local',provider:'claude',turnId:'claude-turn',role:'assistant',text:'작성 중',createdAt:new Date().toISOString()};
+ session.messages.push(local);
+ f.client.turns.get(session.threadId)[0].items[2].text='저장하지 못한 Codex 내용';
+ f.store.save=async()=>{
+  assert(session.messages.includes(local));
+  assert(session.messages.some(row=>row.text==='저장하지 못한 Codex 내용'));
+  local.text='작성 완료';
+  session.messages.push({...local,id:'claude-next',text:'동시에 보존할 후속 답변'});
+  session.claudeContext={used:5,max:10};
+  session.updatedAt='2099-01-01T00:00:00.000Z';
+  throw Error('시험 저장 실패');
+ };
+ await assert.rejects(f.runtime.refresh(session.id),/시험 저장 실패/);
+ assert.equal(session.codexLink,link);
+ assert.equal(session.updatedAt,'2099-01-01T00:00:00.000Z');
+ assert.deepEqual(session.claudeContext,{used:5,max:10});
+ assert(!session.messages.some(row=>row.text==='저장하지 못한 Codex 내용'));
+ assert.deepEqual(session.messages.filter(row=>row.provider==='claude').map(row=>row.text),['작성 완료','동시에 보존할 후속 답변']);
+});
 test('큰 항목 페이지는 같은 커서에서 크기를 줄여 복구하고 모든 항목을 순서대로 보존한다',async()=>{const items=Array.from({length:7},(_,index)=>({item:{id:'항목'+index,type:'agentMessage',text:'본문'+index}})),calls=[];let recoveries=0;const client={async request(method,params){calls.push({method,...params});if(params.limit>3)throw Object.assign(Error('크기 초과'),{code:'PROTOCOL_FRAME_TOO_LARGE'});const offset=Number(params.cursor||0),data=items.slice(offset,offset+params.limit);return{data,nextCursor:offset+data.length<items.length?String(offset+data.length):null};}};const actual=await require('../electron/codex-transfer-data.cjs').itemPages(client,'대화','작업',{recover:async()=>recoveries++});assert.deepEqual(actual,items);assert.equal(recoveries,3);assert.deepEqual(calls.slice(0,4).map(call=>call.limit),[25,12,6,3]);assert(calls.slice(0,4).every(call=>call.cursor===undefined));assert(calls.every(call=>call.method==='thread/items/list'));});
 test('단일 항목도 읽기 한도를 넘으면 본문을 자르지 않고 명확히 실패한다',async()=>{let recovered=0;const client={async request(){throw Object.assign(Error('크기 초과'),{code:'PROTOCOL_FRAME_TOO_LARGE'});}};await assert.rejects(require('../electron/codex-transfer-data.cjs').itemPages(client,'대화','작업',{recover:async()=>recovered++}),/단일 항목이 128MB/);assert.equal(recovered,5);});
 test('이미 연결한 대화의 사라진 첨부는 명시적 재시도로 복사하고 메시지를 중복 생성하지 않는다',async t=>{

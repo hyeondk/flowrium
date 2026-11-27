@@ -1,4 +1,4 @@
-import type { FlowriumEvent, Session, Mode, Effort } from "./types";
+import type { FlowriumEvent, Session, Mode, Effort, AIProvider, Speed } from "./types";
 
 export interface WorkflowPreferences {
   enabled:boolean;
@@ -61,7 +61,7 @@ export type WorkflowAction =
   |{action:'pullWatchSettings';enabled:boolean}
   |{action:'pullWatchOpen';notificationId:string}
   |{action:'completeContinuation';sessionId:string;messageId:string}
-  |{action:'continueConversation';submissionId?:string;sessionId:string;messageId:string;text?:string;attachments?:string[];codexReferences?:import('./codex-plugins').CodexReference[];mode:Mode;model?:string;effort?:Effort}
+  |{action:'continueConversation';submissionId?:string;sessionId:string;messageId:string;text?:string;attachments?:string[];codexReferences?:import('./codex-plugins').CodexReference[];mode:Mode;provider?:AIProvider;model?:string;effort?:Effort;speed?:Speed}
   |{action:"preferences";value:Partial<WorkflowPreferences>}
   |{action:"send";sourceId?:string|null;targetId:string;text:string}
   |{action:"request";sourceId?:string;projectId?:string;targetId?:string;title:string;text:string}

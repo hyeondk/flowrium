@@ -4,7 +4,7 @@ const {randomUUID}=require('node:crypto');
 const {pages,samePath}=require('./history.cjs');
 const {projectDirectory,createJSON,readJSON,UUID}=require('./project-store.cjs');
 const D=require('./codex-transfer-data.cjs');
-const {mergeMessages}=require('./codex-transfer-merge.cjs');
+const {mergeMessages,assertNoClaudeSourceIdCollision,isLocalClaude}=require('./codex-transfer-merge.cjs');
 const {materialize}=require('./codex-transfer-attachments.cjs');
 const {readArchive,writeArchive}=require('./codex-transfer-archive.cjs');
 const clone=v=>structuredClone(v),now=()=>new Date().toISOString();
@@ -144,6 +144,7 @@ class CodexTransfer {
     if(existing&&(this.controller.runs.has(existing.id)||this.controller.editingSessions.has(existing.id)||existing.compacting))throw Error('Flowrium에서 실행 중인 대화입니다. 작업을 마친 뒤 다시 연결해 주세요.');
     const data=await this.snapshot(threadId,project.path,snap.data.active,context);this.guard(context.owner,context.revision,context.epoch);
     if(existing?.codexLink&&(mode==='copy'||existing.codexLink.snapshotHash===data.contentHash&&!input.retryAttachments)){receipt.skipped++;receipt.entries.push({threadId,sessionId:existing.id,projectId:project.id,status:'skipped'});continue;}
+    if(existing)assertNoClaudeSourceIdCollision(existing.messages,data.messages);
     let targetId=threadId;
     if(mode==='copy'){if(data.active&&!data.lastCompleteTurnId)throw Error('아직 완료된 작업이 없어 독립 사본을 만들 수 없습니다. 원래 작업이 끝난 뒤 다시 복사해 주세요.');const fork=await this.client.request('thread/fork',{threadId,excludeTurns:true,cwd:project.path,...(data.active?{lastTurnId:data.lastCompleteTurnId}:{})});targetId=D.id(fork.thread?.id);if(targetId===threadId)throw Error('독립 사본 식별자가 원본과 같습니다.');this.guard(context.owner,context.revision,context.epoch);}
     const unchanged=existing?.codexLink?.snapshotHash===data.contentHash,archivePath=unchanged?existing.codexLink.archivePath:await this.archive(project,data);const media=await materialize(this.store,project,data,()=>this.guard(context.owner,context.revision,context.epoch),{resolveHistoryBase:id=>this.historyThread(id,data,context)});receipt.attachments.copied+=media.copied;receipt.attachments.recovered+=media.recovered;receipt.attachments.missing+=media.missing;data.messages=media.messages;data.warnings.push(...media.warnings);if(unchanged&&input.retryAttachments&&!media.copied){receipt.skipped++;receipt.entries.push({threadId,sessionId:existing.id,projectId:project.id,status:'skipped'});receipt.warnings.push(...data.warnings);continue;}const old=existing&&clone(existing);const record=importedSession({project,data,existing,targetId,mode,ownerHash:context.owner,deviceHash,archivePath});const session=existing?Object.assign(existing,record):record;this.guard(context.owner,context.revision,context.epoch);if(!existing)this.store.state.sessions.unshift(session);
@@ -168,18 +169,86 @@ class CodexTransfer {
   this.guard(context.owner,context.revision,context.epoch);
   this.controller.emitEvent?.({type:'session',sessionId:session.id,session:clone(session)});
  }
- async refresh(sessionId,options={}){const context=await this.ready(true);const session=this.store.session(D.id(sessionId));if(!session.codexLink)throw Error('연결한 Codex 대화를 선택해 주세요.');require('./codex-transfer-link.cjs').validateLink(session.codexLink);if(this.controller.runs.has(session.id)||this.controller.editingSessions.has(session.id)||session.compacting)throw Error('실행 중인 대화는 끝난 뒤 갱신해 주세요.');if(session.codexLink.mode!=='linked')return clone(session);if(session.codexLink.ownerHash!==context.owner||session.codexLink.deviceHash!==await this.device())throw Error('이 대화는 원래 계정과 기기에서 다시 연결해 주세요.');this.busy=true;try{const project=this.store.project(session.projectId);await this.resolveLinkedThread(session,project,context);let thread;if(options.background){if(session.codexLink.activeAtImport)return clone(session);thread=await D.readThread(this.client,session.threadId,project.path);this.guard(context.owner,context.revision,context.epoch);if(D.active(thread)||D.at(thread.updatedAt)===session.codexLink.sourceUpdatedAt)return clone(session);}const data=await this.snapshot(session.threadId,project.path,false,context,thread);this.guard(context.owner,context.revision,context.epoch);if(data.active){if(options.background)return clone(session);throw Object.assign(Error('다른 앱에서 이 대화가 실행 중입니다. 해당 작업을 마친 뒤 다시 확인해 주세요.'),{code:'THREAD_ACTIVE'});}if(session.codexLink.activeAtImport&&!options.externalFinished){if(options.background)return clone(session);throw Error('가져올 때 원래 앱에서 실행 중이었습니다. 작업이 끝난 뒤 연결 새로고침을 눌러 주세요.');}if(data.contentHash===session.codexLink.snapshotHash&&!session.codexLink.activeAtImport)return clone(session);const old=clone(session),archivePath=data.contentHash===session.codexLink.snapshotHash?session.codexLink.archivePath:await this.archive(project,data);const media=await materialize(this.store,project,data,()=>this.guard(context.owner,context.revision,context.epoch),{resolveHistoryBase:id=>this.historyThread(id,data,context)});session.messages=mergeMessages(session.messages,media.messages);session.title=String(session.pendingThreadName||data.thread.name||data.thread.preview||session.title).slice(0,300);session.updatedAt=D.at(data.thread.updatedAt);session.codexLink={...session.codexLink,activeAtImport:false,sourceUpdatedAt:session.updatedAt,snapshotHash:data.contentHash,archivePath,sourceMessageIds:data.messages.map(m=>m.id)};this.guard(context.owner,context.revision,context.epoch);try{importSize(session);await this.store.save();}catch(error){Object.assign(session,old);throw error;}this.guard(context.owner,context.revision,context.epoch);this.controller.loadedThreads.delete(session.threadId);this.controller.emitEvent?.({type:'session',sessionId:session.id,session:clone(session)});return clone(session);}finally{this.busy=false;}}
+ async refresh(sessionId,options={}){
+  const context=await this.ready(true),session=this.store.session(D.id(sessionId));
+  if(!session.codexLink)throw Error('연결한 Codex 대화를 선택해 주세요.');
+  require('./codex-transfer-link.cjs').validateLink(session.codexLink);
+  const {nativeSyncBlocked,restoreNativeMessages}=require('./chat-sync.cjs');
+  const checkIdle=()=>{
+   if(nativeSyncBlocked(this,session))throw Object.assign(Error('실행 중인 대화는 끝난 뒤 갱신해 주세요.'),{code:'NATIVE_SYNC_DEFERRED'});
+  };
+  checkIdle();
+  if(session.codexLink.mode!=='linked')return clone(session);
+  if(session.codexLink.ownerHash!==context.owner||session.codexLink.deviceHash!==await this.device())
+   throw Error('이 대화는 원래 계정과 기기에서 다시 연결해 주세요.');
+  checkIdle();
+  this.busy=true;
+  try{
+   const project=this.store.project(session.projectId);
+   await this.resolveLinkedThread(session,project,context);
+   let thread;
+   if(options.background){
+    if(session.codexLink.activeAtImport)return clone(session);
+    thread=await D.readThread(this.client,session.threadId,project.path);
+    this.guard(context.owner,context.revision,context.epoch);
+    if(D.active(thread)||D.at(thread.updatedAt)===session.codexLink.sourceUpdatedAt)return clone(session);
+   }
+   const data=await this.snapshot(session.threadId,project.path,false,context,thread);
+   this.guard(context.owner,context.revision,context.epoch);
+   if(data.active){
+    if(options.background)return clone(session);
+    throw Object.assign(Error('다른 앱에서 이 대화가 실행 중입니다. 해당 작업을 마친 뒤 다시 확인해 주세요.'),{code:'THREAD_ACTIVE'});
+   }
+   if(session.codexLink.activeAtImport&&!options.externalFinished){
+    if(options.background)return clone(session);
+    throw Error('가져올 때 원래 앱에서 실행 중이었습니다. 작업이 끝난 뒤 연결 새로고침을 눌러 주세요.');
+   }
+   if(data.contentHash===session.codexLink.snapshotHash&&!session.codexLink.activeAtImport)return clone(session);
+   checkIdle();
+   assertNoClaudeSourceIdCollision(session.messages,data.messages);
+   const archivePath=data.contentHash===session.codexLink.snapshotHash?session.codexLink.archivePath:await this.archive(project,data);
+   const media=await materialize(this.store,project,data,()=>this.guard(context.owner,context.revision,context.epoch),{resolveHistoryBase:id=>this.historyThread(id,data,context)});
+   this.guard(context.owner,context.revision,context.epoch);
+   checkIdle();
+   const oldMessages=session.messages,oldTitle=session.title,oldDate=session.updatedAt,oldLink=session.codexLink;
+   const localClaude=new Map(oldMessages.filter(isLocalClaude).map(message=>[message.id,message]));
+   const nextMessages=mergeMessages(oldMessages,media.messages).map(message=>localClaude.get(message.id)||message);
+   const title=String(session.pendingThreadName||data.thread.name||data.thread.preview||oldTitle).slice(0,300);
+   const sourceUpdatedAt=D.at(data.thread.updatedAt);
+   const appliedDate=Date.parse(sourceUpdatedAt)>Date.parse(oldDate)?sourceUpdatedAt:oldDate;
+   const link={...oldLink,activeAtImport:false,sourceUpdatedAt,snapshotHash:data.contentHash,archivePath,sourceMessageIds:data.messages.map(m=>m.id)};
+   Object.assign(session,{messages:nextMessages,title,updatedAt:appliedDate,codexLink:link});
+   try{
+    importSize(session);
+    await this.store.save();
+   }catch(error){
+    session.messages=restoreNativeMessages(oldMessages,session.messages);
+    if(session.title===title)session.title=oldTitle;
+    if(session.updatedAt===appliedDate)session.updatedAt=oldDate;
+    if(session.codexLink===link)session.codexLink=oldLink;
+    throw error;
+   }
+   this.guard(context.owner,context.revision,context.epoch);
+   this.controller.loadedThreads.delete(session.threadId);
+   this.controller.emitEvent?.({type:'session',sessionId:session.id,session:clone(session)});
+   return clone(session);
+  }finally{this.busy=false;}
+ }
  bindNative(session,threadId,cwd){require('./chat-sync.cjs').bindNative(this,session,threadId,cwd);}
  async beforeSend(sessionId,options={}){
   const session=this.store.session(sessionId);
   if(session.codexLink?.mode!=='linked')return;
+  const {probe,nativeSyncBlocked}=require('./chat-sync.cjs');
+  const checkIdle=()=>{if(nativeSyncBlocked(this,session))throw Error('실행 중인 대화는 끝난 뒤 이어가 주세요.');};
+  checkIdle();
   if(session.threadId && session.threadId===session.codexLink.sourceThreadId) {
    await this.waitForRefresh();
    const context=await this.ready(true);
    const cwd=this.store.project(session.projectId).path;
    if(session.codexLink.ownerHash!==context.owner||session.codexLink.deviceHash!==await this.device()||session.threadId!==session.codexLink.sourceThreadId)throw Error('연결 계정이나 원본 대화가 바뀌었습니다.');
-   const latest=await require('./chat-sync.cjs').probe(this,session,context,cwd);
+   const latest=await probe(this,session,context,cwd);
    this.guard(context.owner,context.revision,context.epoch);
+   checkIdle();
    if(latest.active)throw Object.assign(Error('다른 앱에서 이 대화의 작업이 진행 중입니다.'),{code:'THREAD_ACTIVE'});
    if(options.waitingForWriter && latest.stamp && !session.codexLink.activeAtImport && session.codexLink.sourceUpdatedAt===D.at(latest.thread.updatedAt))return;
   }

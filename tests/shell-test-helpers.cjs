@@ -28,7 +28,16 @@ async function leaveConversation(page){await page.getByRole('button',{name:'대�
 async function waitForCodexConnection(page){
  await page.waitForFunction(async()=>Boolean((await window.flowrium?.connectionStatus())?.authenticated),undefined,{polling:100});
 }
-module.exports={composer,dockDismissButton,dockHome,openConversation,newProjectConversation,closeSettings,leaveConversation,openProjectTab,settledRail,settledLayout,waitForCodexConnection};
+async function selectExistingProjectFolder(page,{keyboard=false}={}){
+ const group=page.getByRole('group',{name:'작업 폴더',exact:true});
+ await group.getByRole('radio',{name:'기존 프로젝트 폴더 사용',exact:true}).check();
+ const pick=group.getByRole('button',{name:'폴더 선택',exact:true});
+ if(keyboard)await pick.press('Enter');else await pick.click();
+ const create=page.getByRole('button',{name:'프로젝트 만들기',exact:true});
+ await page.waitForFunction(()=>document.querySelector('.pf-form button[type=submit]')?.disabled===false);
+ return create;
+}
+module.exports={composer,dockDismissButton,dockHome,openConversation,newProjectConversation,closeSettings,leaveConversation,openProjectTab,settledRail,settledLayout,waitForCodexConnection,selectExistingProjectFolder};
 
 async function openProjectTab(page,name) {
  if(name==='홈'){

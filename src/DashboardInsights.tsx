@@ -1,30 +1,32 @@
 import {ArrowRight, ChartNoAxesColumn, ChevronRight, Circle, Sparkles} from 'lucide-react';
-import {modelDisplayName} from '../shared/model-display';
 import { useEffect, useState } from 'react';
 import type { PortfolioCard } from '../shared/portfolio';
-import type { Model, Session } from '../shared/types';
+import type { Session } from '../shared/types';
+import WorkModelFields, { useWorkModel } from './WorkModelFields';
 import './dashboard-insights.css';
 const localDay=(date:Date)=>[date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
 export default function DashboardInsights({cards,sessions,onOpen,onProject}:{cards:PortfolioCard[];sessions:Session[];onOpen(s:Session):void;onProject(id:string):void}){
-  const today=localDay(new Date()),active=cards.filter(c=>!c.details?.archivedAt),[pending,setPending]=useState<number|null>(null),[models,setModels]=useState<Model[]>([]),[model,setModel]=useState(''),[destination,setDestination]=useState(''),[planOpen,setPlanOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const today=localDay(new Date()),active=cards.filter(c=>!c.details?.archivedAt),[pending,setPending]=useState<number|null>(null),[destination,setDestination]=useState(''),[planOpen,setPlanOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const modelSelection=useWorkModel(planOpen);
+  const { providerName, ready, loading, connectionError } = modelSelection;
   useEffect(()=>{let alive=true;const poll=async()=>{try{const [approvals,state]=await Promise.all([window.flowrium!.securityPending(),window.flowrium!.workflowState()]);if(alive)setPending(approvals.length+state.proposals.filter(p=>!p.hidden&&['pending','held'].includes(p.status)&&(!p.snoozedUntil||p.snoozedUntil<=Date.now())).length);}catch{if(alive)setPending(null);}};void poll();const timer=setInterval(poll,6000);return()=>{alive=false;clearInterval(timer);};},[]);
-  useEffect(()=>{if(!planOpen)return;let alive=true;window.flowrium?.connect().then(v=>{if(alive){setModels(v.models);if(!v.status.authenticated)setError('ChatGPT 계정을 연결한 뒤 오늘의 계획을 생성하세요.');}}).catch(e=>{if(alive)setError(e.message);});return()=>{alive=false;};},[planOpen]);
   const due=active.filter(c=>c.details?.dueDate&&c.details.dueDate<=today),unfinished=sessions.filter(s=>s.workflow&&s.workflow.status!=='done'&&active.some(c=>c.project.id===s.projectId)),done=sessions.filter(s=>s.workflow?.completion);
   const goals=active.flatMap(c=>(c.details?.periodGoals||[]).filter(g=>!g.done&&!g.carriedTo&&(g.due?g.due<=today:g.period==='month'?g.key===today.slice(0,7):g.key<=today&&today<=localDay(new Date(Date.parse(g.key+'T12:00:00')+6*86400000)))).map(g=>({projectId:c.project.id,project:c.details?.kickoff?.name||c.project.name,...g})));
   const days=Array.from({length:7},(_,i)=>localDay(new Date(Date.now()-(6-i)*86400000))),daily=days.map(day=>({day,started:sessions.filter(s=>localDay(new Date(s.createdAt))===day).length,done:done.filter(s=>localDay(new Date(s.workflow!.completion!.at))===day).length}));
   const peak=Math.max(1,...daily.flatMap(d=>[d.started,d.done]));
   const phases=['킥오프','진행','유지보수','중단','완료'].map(phase=>({phase,count:cards.filter(c=>(c.details?.archivedAt?'완료':c.details?.kickoff?.phase||'진행')===phase).length}));
-  async function generate(){if(busy)return;const target=active.find(c=>c.project.id===destination)||active[0];if(!target)return;setBusy(true);setError('');try{
-    const connection=await window.flowrium!.connect();if(!connection.status.authenticated)throw Error('ChatGPT 계정을 연결한 뒤 오늘의 계획을 생성하세요.');
+  async function generate(){if(busy||!ready||loading)return;const target=active.find(c=>c.project.id===destination)||active[0];if(!target)return;setBusy(true);setError('');try{
     const sources = active.slice(0,64);
     for (const id of new Set([target.project.id,...sources.map(c=>c.project.id)])) {
-      if (!await window.flowrium!.requestProjectTrust(id)) {setBusy(false);return;}
+      if (!await window.flowrium!.requestProjectTrust(id, modelSelection.provider)) return;
     }
     const facts=sources.map(c=>({project:c.details?.kickoff?.name||c.project.name,due:c.details?.dueDate,goal:c.details?.goal,periodGoals:(c.details?.periodGoals||[]).filter(g=>!g.done&&!g.carriedTo).slice(-10),activeWork:unfinished.filter(s=>s.projectId===c.project.id).slice(0,10).map(s=>({title:s.title,updatedAt:s.updatedAt,remaining:s.workflow?.checklist.filter(t=>!t.done).map(t=>t.text)}))}));
     const request='오늘('+today+')의 우선순위 계획을 작성하세요. 아래 실제 목표와 기한, 미완료 업무만 근거로 삼고 임의의 기한이나 실적을 만들지 마세요. 우선순위와 이유 / 오늘 할 일 3~7개 / 먼저 확인할 결정 / 미뤄도 되는 일을 구분하고 산출물로 저장하세요.\n\n확인한 프로젝트 사실:\n'+JSON.stringify(facts);
-    const record=await window.flowrium!.startWork({projectId:target.project.id,kind:'briefing',title:'오늘의 우선순위 / '+today,role:'오늘의 업무 계획 담당자',brief:'실제 목표와 기한에 근거한 오늘의 우선순위 정리',audience:'사용자',from:today,to:today,reportProjects:sources.map(c=>c.project.id),...(model?{model}:{})});
-    await window.flowrium!.send({sessionId:record.id,text:request,mode:'build',...(model?{model}:{})});onOpen(record);
-  }catch(e){setError(e instanceof Error?e.message:String(e));setBusy(false);}}
+    const record=await window.flowrium!.startWork({projectId:target.project.id,kind:'briefing',title:'오늘의 우선순위 / '+today,role:'오늘의 업무 계획 담당자',brief:'실제 목표와 기한에 근거한 오늘의 우선순위 정리',audience:'사용자',from:today,to:today,reportProjects:sources.map(c=>c.project.id),...modelSelection.request});
+    const result=await window.flowrium!.send({sessionId:record.id,text:request,mode:'build',...modelSelection.request});
+    if(!result.accepted)throw Error('AI 계획 요청을 보내지 못했습니다.');
+    onOpen(record);
+  }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   return <section className="dashboard-insights" aria-label="오늘의 업무와 프로젝트 현황">
     <section className="di-today">
       <header><div><h2>오늘의 할 일</h2><span>{today}</span></div><button className="di-plan-toggle" disabled={!active.length} aria-expanded={planOpen} onClick={()=>setPlanOpen(!planOpen)}><Sparkles size={14}/>AI로 오늘 할 일 정리</button></header>
@@ -34,10 +36,11 @@ export default function DashboardInsights({cards,sessions,onOpen,onProject}:{car
         {unfinished.slice(0,3).map(s=><button className="di-task" key={s.id} onClick={()=>onOpen(s)}><Circle size={16}/><span><strong>{s.workflow?.checklist.find(t=>!t.done)?.text||s.title}</strong><small>{cards.find(c=>c.project.id===s.projectId)?.project.name}</small></span><em>{s.workflow?.status==='review'?'검토 중':'진행 중'}</em><ArrowRight size={14}/></button>)}
         {!due.length&&!goals.length&&!unfinished.length&&<p className="di-empty">확인할 목표나 진행 중인 업무가 없습니다. 프로젝트에서 목표와 업무를 시작하세요.</p>}
       </div>
-      {planOpen&&<section className="di-ai" aria-label="ChatGPT 오늘의 계획"><header><h3>ChatGPT 오늘의 계획</h3><span>요청할 때 생성</span></header><p>목표와 기한, 진행 업무를 함께 확인해 오늘의 우선순위와 첫 행동을 제안하고 별도 대화에 저장합니다.</p>
-        <div className="di-plan-fields"><label>사용할 모델<select value={model} onChange={e=>setModel(e.target.value)}><option value="">계정 기본 모델</option>{models.map(m=><option value={m.id} key={m.id}>{modelDisplayName(m)}</option>)}</select></label><label>결과를 보관할 프로젝트<select value={destination||active[0]?.project.id||''} onChange={e=>setDestination(e.target.value)}>{active.map(c=><option value={c.project.id} key={c.project.id}>{c.details?.kickoff?.name||c.project.name}</option>)}</select></label></div>
-        <button className="di-plan-generate" disabled={busy||!active.length} onClick={()=>void generate()}>{busy?'AI 계획 시작 중…':'ChatGPT로 계획 생성'}<ArrowRight size={14}/></button>
-        {active.length>64&&<small>처음 64개 진행 프로젝트를 대상으로 생성합니다.</small>}{error&&<p role="alert">{error}</p>}
+      {planOpen&&<section className="di-ai" aria-label={`${providerName} 오늘의 계획`}><header><h3>{providerName} 오늘의 계획</h3><span>요청할 때 생성</span></header><p>목표와 기한, 진행 업무를 함께 확인해 오늘의 우선순위와 첫 행동을 제안하고 별도 대화에 저장합니다.</p>
+        <WorkModelFields selection={modelSelection} className="di-plan-fields" providerLabel="계획 AI 서비스" modelLabel="계획 AI 모델" effortLabel="계획 AI 추론 수준"/>
+        <div className="di-plan-fields"><label>결과를 보관할 프로젝트<select value={destination||active[0]?.project.id||''} onChange={e=>setDestination(e.target.value)}>{active.map(c=><option value={c.project.id} key={c.project.id}>{c.details?.kickoff?.name||c.project.name}</option>)}</select></label></div>
+        <button className="di-plan-generate" disabled={busy||!ready||loading||!active.length} onClick={()=>void generate()}>{busy?'AI 계획 시작 중…':`${providerName}로 계획 생성`}<ArrowRight size={14}/></button>
+        {active.length>64&&<small>처음 64개 진행 프로젝트를 대상으로 생성합니다.</small>}{(error||connectionError)&&<p role="alert">{error||connectionError}</p>}
       </section>}
     </section>
     <details className="di-analysis"><summary><ChevronRight size={14}/><ChartNoAxesColumn size={15}/><span>업무 분석</span><small>최근 7일 / 프로젝트 진행 현황</small></summary><div className="di-analysis-body">

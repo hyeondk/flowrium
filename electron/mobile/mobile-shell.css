@@ -323,6 +323,7 @@ html {background:var(--bg)}
 #content .chat-compose>label,#content .chat-compose :is(.mobile-followup,.mobile-followup-progress),#content .chat-compose>.hint,#content .chat-compose>.actions{grid-column:1/-1}
 #content .chat-compose>label,#content .chat-compose .chat-options label {margin:0}
 #content .chat-compose .chat-options {display:block;grid-row:auto;grid-column:2;min-width:0}
+#content .chat-compose .chat-options[data-multiple-providers] {display:grid;grid-column:1/-1;grid-template-columns:minmax(0,.75fr) minmax(0,1.4fr) minmax(0,.85fr);gap:5px}
 #content .chat-compose select{font-size:.82rem;min-height:38px;padding:3px 5px;border:0}
 #content .chat-compose .attachments {grid-row:auto;grid-column:1;margin:0;padding:0}
 #content .chat-compose .attachments:has(.attachment){grid-column:1/-1;grid-row:auto}

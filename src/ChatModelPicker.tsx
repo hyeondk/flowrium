@@ -1,10 +1,11 @@
 import {useId, useRef, useState, type CSSProperties, type KeyboardEvent} from 'react';
 import {RotateCcw, Zap} from 'lucide-react';
 import ChoicePicker from './ChoicePicker';
-import type {ChatPreferences, Effort, Model, Speed} from '../shared/types';
+import type {AIProvider, ChatPreferences, Effort, Model, Speed} from '../shared/types';
 import {modelDisplayName} from '../shared/model-display';
 import {effortOptions, effectiveEffort} from '../shared/model-options';
 import {isImeKey} from './ime';
+import {providerNames} from './ProviderSelect';
 import './chat-model-picker.css';
 
 const speedLabels: Record<Speed,string> = {standard:'Standard',fast:'Fast',ultrafast:'Ultrafast'};
@@ -27,8 +28,12 @@ export function AccountSpeedPreference({model,speed,pro,onChange}: {model?:Model
   </label>;
 }
 
-export type ChatModelSelection = {model?:string; effort?:Effort|''; speed?:Speed|''};
+export type ChatModelSelection = {provider?:AIProvider; model?:string; effort?:Effort|''; speed?:Speed|''};
 type Props = {
+  provider: AIProvider;
+  showProvider: boolean;
+  providerLocked: boolean;
+  claudeEnabled: boolean;
   models: Model[];
   preferences?: ChatPreferences;
   defaultModel?: string;
@@ -41,7 +46,8 @@ type Props = {
   onChange(selection: ChatModelSelection): void;
 };
 
-function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disabled, pro, onChange, onOpen}: {
+function ChatPerformance({provider, model, preferences, defaultEffort, defaultSpeed, disabled, pro, onChange, onOpen}: {
+  provider: AIProvider;
   model?: Model;
   preferences?: ChatPreferences;
   defaultEffort?: Effort;
@@ -63,8 +69,9 @@ function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disab
   const savedEffort=effectiveEffort(model,preferences?.effort??defaultEffort) as Effort|undefined;
   const position=Math.max(0,efforts.indexOf(preview??savedEffort??efforts[0]));
   const label=effortLabels[efforts[position]]||'Default';
+  const hasSpeed=provider==='codex';
   const requestedSpeed=preferences?.speed??defaultSpeed??'standard';
-  const speed=speedAvailable(requestedSpeed,model,pro)?requestedSpeed:'standard';
+  const speed=hasSpeed&&speedAvailable(requestedSpeed,model,pro)?requestedSpeed:'standard';
 
   function clearPreview() {
     moving.current=false;
@@ -89,20 +96,20 @@ function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disab
   return <>
     <span className="chat-performance-slot">
       <button className="chat-performance-trigger" type="button" ref={trigger} popoverTarget={id} disabled={disabled}
-        aria-label="Reasoning and speed" title={speedLabels[speed]+' / '+label} data-speed={speed} onKeyDown={closeOnEscape}>
+        aria-label={hasSpeed?'Reasoning and speed':'Reasoning effort'} title={hasSpeed?speedLabels[speed]+' / '+label:label} data-speed={speed} onKeyDown={closeOnEscape}>
         {speed!=='standard'&&<Zap size={12} aria-hidden="true"/>}<span>{label}</span>
       </button>
     </span>
     <div id={id} ref={popup} className="chat-performance-popup" popover="auto" role="group" aria-label="Model controls"
       onKeyDown={closeOnEscape} onToggle={event=>{if(event.newState==='closed')clearPreview();else{setShowSpeed(false);onOpen?.();}}}>
       <div className="chat-performance-heading">
-        <button type="button" className="chat-performance-icon" aria-label="Speed" title="Speed" aria-expanded={showSpeed} aria-controls={id+'-speed'}
-          data-fast={speed!=='standard'} onClick={()=>setShowSpeed(value=>!value)}><Zap size={16}/></button>
+        {hasSpeed?<button type="button" className="chat-performance-icon" aria-label="Speed" title="Speed" aria-expanded={showSpeed} aria-controls={id+'-speed'}
+          data-fast={speed!=='standard'} onClick={()=>setShowSpeed(value=>!value)}><Zap size={16}/></button>:<span aria-hidden="true"/>}
         <div><span>Reasoning</span><strong>{label}</strong></div>
         <span className="chat-performance-reset" data-local-tooltip>
           <button type="button" className="chat-performance-icon" aria-label="기본값으로 복구" aria-describedby={id+'-reset-tip'} data-local-tooltip
-            disabled={disabled||(!preferences?.effort&&!preferences?.speed)} onClick={()=>onChange({effort:'',speed:''})}><RotateCcw size={14}/></button>
-          <span id={id+'-reset-tip'} className="chat-performance-tooltip" role="tooltip">속도와 추론 수준을 계정 기본값으로 복구합니다</span>
+            disabled={disabled||(!preferences?.effort&&(!hasSpeed||!preferences?.speed))} onClick={()=>onChange(hasSpeed?{effort:'',speed:''}:{effort:''})}><RotateCcw size={14}/></button>
+          <span id={id+'-reset-tip'} className="chat-performance-tooltip" role="tooltip">{hasSpeed?'속도와 추론 수준을 계정 기본값으로 복구합니다':'추론 수준을 모델 기본값으로 복구합니다'}</span>
         </span>
       </div>
       {efforts.length > 1 ? <input className="chat-effort-slider" type="range" aria-label="Reasoning effort" aria-valuetext={label}
@@ -120,7 +127,7 @@ function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disab
           setPreview(next);
           if(!moving.current)commit();
         }}/> : <p className="chat-performance-note">{efforts.length ? 'One level available' : 'Model default'}</p>}
-      {showSpeed&&<div id={id+'-speed'} className="chat-speeds" role="group" aria-label="Execution speed">
+      {hasSpeed&&showSpeed&&<div id={id+'-speed'} className="chat-speeds" role="group" aria-label="Execution speed">
         {speedOrder.map(value=><button key={value} type="button" disabled={disabled||!speedAvailable(value,model,pro)} aria-pressed={value===speed}
           onClick={()=>onChange({speed:value})}>{speedLabels[value]}</button>)}
       </div>}
@@ -128,7 +135,7 @@ function ChatPerformance({model, preferences, defaultEffort, defaultSpeed, disab
   </>;
 }
 
-export default function ChatModelPicker({models, preferences, defaultModel, defaultEffort, defaultSpeed, conversationKey, disabled, pro, onChange, onOpen}: Props) {
+export default function ChatModelPicker({provider, showProvider, providerLocked, claudeEnabled, models, preferences, defaultModel, defaultEffort, defaultSpeed, conversationKey, disabled, pro, onChange, onOpen}: Props) {
   const model=preferences?.model;
   const available = (id: string) => modelDisplayName(models.find(item => item.id === id) || id);
   const inherited = defaultModel || models.find(item => item.isDefault)?.id;
@@ -136,6 +143,13 @@ export default function ChatModelPicker({models, preferences, defaultModel, defa
   const label = model ? available(model) : inherited ? available(inherited) : '계정 기본 모델';
   const active=models.find(item=>item.id===(model||inherited));
   return <div className="chat-model-controls">
+    {showProvider&&(claudeEnabled||provider==='claude')&&<div className="chat-model-picker chat-provider-picker" title={providerLocked?'이 대화에서 사용하는 AI 서비스':undefined}>
+      <ChoicePicker label="이 채팅의 AI 서비스" value={provider} triggerLabel={providerNames[provider]} disabled={disabled||providerLocked}
+        placement="up" menuMinWidth={140} options={[
+          {value:'codex',label:providerNames.codex},
+          ...(claudeEnabled?[{value:'claude',label:providerNames.claude}]:[]),
+        ]} onChange={value=>onChange({provider:value as AIProvider,model:'',effort:'',speed:''})}/>
+    </div>}
     <div className="model-select chat-model-picker" data-model={model||''} title={model ? `이 대화의 모델 (${label})` : defaultLabel}>
       <ChoicePicker label="이 채팅의 모델" value={model || ''} triggerLabel={label} disabled={disabled} placement="up" menuMinWidth={240} onOpen={onOpen} onFocus={onOpen}
         onChange={model=>onChange({model})} options={[
@@ -144,7 +158,7 @@ export default function ChatModelPicker({models, preferences, defaultModel, defa
           ...models.map(item=>({value:item.id,label:modelDisplayName(item)})),
         ]}/>
     </div>
-    <ChatPerformance key={conversationKey} model={active} preferences={preferences} defaultEffort={defaultEffort} defaultSpeed={defaultSpeed}
+    <ChatPerformance key={`${conversationKey}:${provider}`} provider={provider} model={active} preferences={preferences} defaultEffort={defaultEffort} defaultSpeed={defaultSpeed}
       disabled={disabled} pro={pro} onChange={onChange} onOpen={onOpen}/>
   </div>;
 }

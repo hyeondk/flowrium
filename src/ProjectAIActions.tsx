@@ -1,6 +1,6 @@
-import {modelDisplayName} from '../shared/model-display';
-import { useEffect, useState } from 'react';
-import type { Model, Project, Session } from '../shared/types';
+import { useState } from 'react';
+import type { Project, Session } from '../shared/types';
+import WorkModelFields, { useWorkModel } from './WorkModelFields';
 type Purpose='goals'|'rules'|'design'|'meetings'|'docs';
 const labels:Record<Purpose,string>={goals:'목표 진척 정리',rules:'프로젝트 규칙 작성',design:'디자인 검토 작성',meetings:'회의록 작성과 요약',docs:'문서 작성과 자료 요약'};
 const prompts:Record<Purpose,string>={
@@ -11,13 +11,17 @@ const prompts:Record<Purpose,string>={
   docs:'프로젝트 자료를 확인해 사용자가 요청한 완성 문서나 요약을 작성하고 flowrium_project_artifact_create로 저장하세요. HTML 보고서는 실제 문서 형태로 구성하고 발표자료 요청은 section.slide 요소로 만드세요. 근거가 없는 숫자와 실적은 만들지 마세요.',
 };
 export default function ProjectAIActions({project,purpose,onOpen}:{project:Project;purpose:Purpose;onOpen(s:Session):void}){
-  const [open,setOpen]=useState(false),[models,setModels]=useState<Model[]>([]),[model,setModel]=useState(''),[instruction,setInstruction]=useState(''),[error,setError]=useState(''),[authenticated,setAuthenticated]=useState(false),[busy,setBusy]=useState(false);
-  useEffect(()=>{if(!open)return;let alive=true;window.flowrium?.connect().then(v=>{if(alive){setModels(v.models);setAuthenticated(v.status.authenticated);if(!v.status.authenticated)setError('ChatGPT 계정 연결이 필요합니다.');}}).catch(e=>{if(alive)setError(e.message);});return()=>{alive=false;};},[open]);
-  async function start(){if(busy||!authenticated)return;setBusy(true);setError('');try{
-    if (!await window.flowrium!.requestProjectTrust(project.id)) {setBusy(false);return;}
-    const kind=purpose==='docs'?'document':'task',request=[prompts[purpose],instruction&&'사용자 요청 / '+instruction].filter(Boolean).join('\n\n');
-    const session=await window.flowrium!.startWork({projectId:project.id,kind,title:labels[purpose],role:'프로젝트 자료 작성 담당자',brief:request,audience:'프로젝트 사용자',from:'',to:'',...(model?{model}:{})});
-    await window.flowrium!.send({sessionId:session.id,text:request,mode:'build',...(model?{model}:{})});onOpen(session);
-  }catch(e){setError(e instanceof Error?e.message:String(e));setBusy(false);}}
-  return <details className="pf-panel project-ai-actions" open={open} onToggle={e=>setOpen(e.currentTarget.open)}><summary>ChatGPT로 {labels[purpose]}</summary><p>AI가 자료를 읽고 결과를 작성해 프로젝트에 저장합니다. 필요한 조건이나 참고 내용을 덧붙이세요.</p><label>사용할 ChatGPT 모델<select value={model} onChange={e=>setModel(e.target.value)}><option value="">계정 기본 모델</option>{models.map(m=><option key={m.id} value={m.id}>{modelDisplayName(m)}</option>)}</select></label><label>AI에게 요청할 내용<textarea rows={3} maxLength={10000} value={instruction} onChange={e=>setInstruction(e.target.value)}/></label><button className="pf-primary" disabled={busy||!authenticated} onClick={()=>void start()}>{busy?'AI 업무 시작 중…':'ChatGPT로 작성하고 저장'}</button>{error&&<p role="alert">{error}</p>}</details>;
+  const [open,setOpen]=useState(false),[instruction,setInstruction]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const modelSelection=useWorkModel(open);
+  const { provider, providerName, ready, loading, connectionError } = modelSelection;
+  async function start(){if(busy||!ready||loading)return;setBusy(true);setError('');try{
+    if (!await window.flowrium!.requestProjectTrust(project.id, provider)) return;
+    const kind=purpose==='docs'?'document':'task';
+    const request=[prompts[purpose],instruction&&'사용자 요청 / '+instruction].filter(Boolean).join('\n\n');
+    const session=await window.flowrium!.startWork({projectId:project.id,kind,title:labels[purpose],role:'프로젝트 자료 작성 담당자',brief:request,audience:'프로젝트 사용자',from:'',to:'',...modelSelection.request});
+    const result=await window.flowrium!.send({sessionId:session.id,text:request,mode:'build',...modelSelection.request});
+    if(!result.accepted)throw Error('AI 업무 요청을 보내지 못했습니다.');
+    onOpen(session);
+  }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
+  return <details className="pf-panel project-ai-actions" open={open} onToggle={e=>setOpen(e.currentTarget.open)}><summary>{providerName}로 {labels[purpose]}</summary><p>AI가 자료를 읽고 결과를 작성해 프로젝트에 저장합니다. 필요한 조건이나 참고 내용을 덧붙이세요.</p><WorkModelFields selection={modelSelection} providerLabel="프로젝트 업무 AI 서비스" modelLabel="프로젝트 업무 AI 모델" effortLabel="프로젝트 업무 AI 추론 수준"/><label>AI에게 요청할 내용<textarea rows={3} maxLength={10000} value={instruction} onChange={e=>setInstruction(e.target.value)}/></label><button className="pf-primary" disabled={busy||!ready||loading} onClick={()=>void start()}>{busy?'AI 업무 시작 중…':`${providerName}로 작성하고 저장`}</button>{(error||connectionError)&&<p role="alert">{error||connectionError}</p>}</details>;
 }

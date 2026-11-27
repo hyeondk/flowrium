@@ -29,6 +29,9 @@ function chatFailure(error, fallback = 'Codex가 작업을 마치지 못했고 �
   const status = Number(detail?.httpStatusCode ?? error?.statusCode ?? /\b(?:HTTP(?: status)?|unexpected status|status(?: code)?)\D{0,6}(\d{3})\b/i.exec(message)?.[1]);
   const known = (reason, summary) => ({reason, message:summary});
 
+  if (typeof error?.code === 'string' && error.code.startsWith('CLAUDE_'))
+    return known('claude',publicMessage(error,'Claude 요청을 처리하지 못했습니다. 연결 상태를 확인해 주세요.'));
+
   if (error?.code === 'CODEX_EXECUTABLE_MISSING' || /Codex 실행 파일을 찾지 못했습니다/.test(message))
     return known('unavailable','이 기기에서 Codex 실행 파일을 찾지 못했습니다. Flowrium을 다시 설치하거나 설정에서 Codex 실행 파일 경로를 확인해 주세요.');
   if (error?.code === 'CODEX_START' || /Codex를 실행하지 못했습니다/.test(message))

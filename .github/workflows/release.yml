@@ -112,6 +112,8 @@ jobs:
       - run: npm run build
       - name: 첫 로그인과 인증 후 자동 연결 확인
         run: node tests/chat-connection-e2e.cjs
+      - name: Claude 연결과 두 서비스 대화 전환 검증
+        run: node tests/claude-provider-ui-e2e.cjs
       - name: ChatGPT 계정의 일반 대화 권한 유지 확인
         run: node tests/chatgpt-workspace-config-native.cjs
       - name: 프로젝트 대화의 실제 읽기 및 쓰기 권한 검사
@@ -532,6 +534,7 @@ jobs:
           pattern: flowrium-*
           merge-multiple: true
           path: release
+      - run: npm ci --ignore-scripts
       - name: 체크섬 생성
         run: |
           node scripts/prepare-release-assets.mjs release

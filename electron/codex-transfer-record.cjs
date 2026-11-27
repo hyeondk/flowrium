@@ -5,7 +5,8 @@ const { validateLink } = require('./codex-transfer-link.cjs');
 
 function importedSession({ project, data, existing, targetId, mode, ownerHash, deviceHash, archivePath }) {
   const threadId = data.thread.id;
-  const updatedAt = D.at(data.thread.updatedAt);
+  const sourceUpdatedAt = D.at(data.thread.updatedAt);
+  const updatedAt = Date.parse(existing?.updatedAt) > Date.parse(sourceUpdatedAt) ? existing.updatedAt : sourceUpdatedAt;
   const session = {
     ...existing,
     id: existing?.id || D.stable('flowrium:codex:'+project.id+':'+threadId+':'+mode),
@@ -19,7 +20,7 @@ function importedSession({ project, data, existing, targetId, mode, ownerHash, d
     codexLink: {
       version:1, mode, sourceThreadId:threadId, ownerHash, deviceHash, archivePath,
       importedAt:existing?.codexLink?.importedAt || new Date().toISOString(),
-      sourceUpdatedAt:updatedAt, snapshotHash:data.contentHash, activeAtImport:data.active,
+      sourceUpdatedAt, snapshotHash:data.contentHash, activeAtImport:data.active,
       sourceMessageIds:data.messages.map(message=>message.id),
     },
   };

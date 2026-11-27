@@ -42,6 +42,15 @@ function registerConversationTools(register,controller) {
  register('editConversation',async(id,input)=>{
   if(controller.codexTransfer?.isBusy())throw Error('대화 연결 작업을 마친 뒤 대화를 편집해 주세요.');
   const session=store.session(text(id,'대화 식별자',100));
+  function applyProvider(next,requested){
+    if(requested===undefined)return;
+    const {providerFor,allowsParallel}=require('./ai-provider.cjs');
+    providerFor(session,requested,store.state.settings);
+    if(!allowsParallel(session,store.state.settings)&&controller.runs.has(id)&&providerFor(session,undefined,store.state.settings)!==requested)
+      throw Error('현재 작업을 마친 뒤 AI 서비스를 바꿔 주세요.');
+    next.provider=requested;
+    if(requested==='claude')delete next.speed;
+  }
   if (input?.action === 'rename') return require('./chat-sync.cjs').rename(controller,session,text(input.title,'대화 이름',300));
   if (input?.action === 'model') {
     if (editing.has(id)) throw Error('대화 설정을 저장하는 중입니다.');
@@ -55,6 +64,7 @@ function registerConversationTools(register,controller) {
       if (input[key] === '') delete next[key];
       else next[key] = input[key];
     }
+    applyProvider(next,input.provider);
     const validated = require('./chat-preferences.cjs').preferences(next);
     editing.add(id);
     session.preferences = validated;
@@ -70,6 +80,8 @@ function registerConversationTools(register,controller) {
       if (controller.messageQueue.pending(id)) void controller.messageQueue.flush(id);
     }
   }
+  if(session.messages.some(message=>message.provider==='claude')&&['rewind','branch'].includes(input?.action))throw Error('Claude 기록을 보존하려면 새 대화에서 시작해 주세요.');
+  if(session.provider==='claude'&&!session.threadId&&input?.action==='compact')throw Error('Codex 문맥 압축은 Codex를 사용한 대화에서 열 수 있습니다.');
   if(session.codexLink?.mode==='linked'&&['compact','rewind','branch'].includes(input?.action))throw Error('원래 앱과 공유하는 대화의 과거 문맥은 여기서 바꾸지 않습니다. 독립 사본으로 연결한 뒤 분기 / 되감기 / 압축을 사용해 주세요.');
   if(controller.runs.has(id)||editing.has(id)||session.compacting||controller.messageQueue.pending(id))throw Error('실행 중인 작업과 대기 지시를 마친 뒤 다시 시도해 주세요.');
   editing.add(id);
@@ -101,7 +113,11 @@ function registerConversationTools(register,controller) {
     controller.loadedThreads.add(fork.thread.id);
     return result;
    }
-   if(input?.action==='preferences')session.preferences=require('./chat-preferences.cjs').preferences(input.preferences);
+   if(input?.action==='preferences') {
+    const next=require('./chat-preferences.cjs').preferences(input.preferences);
+    applyProvider(next,next.provider);
+    session.preferences=next;
+   }
    else if(input?.action==='rewind'&&index>=0&&session.messages[index].role==='user'){
     const {turns,client}=await prepare(controller,session),target=session.messages[index];
     const draftText=target.sourceOnly?(await require("./chat-long-request.cjs").readRequestSource(store,id,target.id,"full")).text:target.text;

@@ -57,6 +57,7 @@
 }
 .conversation-dock .dock-scope-tabs>button[aria-pressed=true]{background:var(--scope-selection);color:var(--accent-ink);box-shadow:none}
 .conversation-dock .dock-scope-tabs small{font-size:10px;line-height:15px;padding:0 3px;border-radius:4px;color:var(--accent);background:var(--selected)}
+.conversation-dock .dock-provider-tabs + .dock-scope-tabs {margin-block-start:5px}
 .dock-navigation-row {
   display:flex;
   align-items:center;

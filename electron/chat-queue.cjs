@@ -17,6 +17,7 @@ function validateQueue(items=[]) {
     if(q.branchSessionId!==undefined&&(!UUID.test(q.branchSessionId)||q.nativeDelivery||!q.waitingForWriter))
       throw Error('대기 요청이 이동한 분기 대화를 확인해 주세요.');
     require('./model-speed.cjs').serviceTier(q.speed);
+    require('./ai-provider.cjs').checkedProvider(q.provider);
     if(q.nativeDelivery!==undefined && (!['submitting','queued','uncertain'].includes(q.nativeDelivery) || q.status!=='queued' || !UUID.test(q.nativeThreadId)) ||
        q.nativeQueueAvailable!==undefined && typeof q.nativeQueueAvailable!=='boolean' ||
        q.nativeCleared!==undefined && (q.nativeCleared!==true || q.status!=='cancelled') ||
@@ -39,7 +40,7 @@ class ChatQueue {
   }
   emit(session){this.controller.emitEvent({type:'session',sessionId:session.id,session:structuredClone(session)});}
   list(id){return structuredClone(this.store.session(id).queuedMessages||[]);}
-  pending(id){return (this.store.session(id).queuedMessages||[]).some(isPendingQueuedInput);}
+  pending(id,provider){return (this.store.session(id).queuedMessages||[]).some(row=>isPendingQueuedInput(row)&&(!provider||(row.provider||'codex')===provider));}
   serial(action){const task=this.tail.then(action);this.tail=task.catch(()=>{});return task;}
   enqueue(input){return this.serial(async()=>{
     const s=this.store.session(input.sessionId);
@@ -52,6 +53,7 @@ class ChatQueue {
     if(unsent.size>=50)throw Error('이 대화의 대기 지시는 50개까지 보관할 수 있습니다.');
     const waitingForWriter=input.waitingForWriter||pending[0]?.waitingForWriter;
     const q={id:input.submissionId || randomUUID(),text:input.text,...(input.requestSourceId&&{requestSourceId:input.requestSourceId}),mode:input.mode,model:input.model,...(input.effort?{effort:input.effort}:{}),...(input.speed?{speed:input.speed}:{}),attachments:checkedAttachments(files),createdAt:new Date().toISOString(),status:'queued',...(waitingForWriter&&{waitingForWriter:true}),owner};
+    if(input.provider === 'claude')q.provider='claude';
     if((this.controller.options.queueOwner?.()??'local')!==revision||this.controller.options.canRun?.()===false)throw Error('계정이나 잠금 상태가 바뀌었습니다. 추가 지시를 다시 확인해 주세요.');
     if(input.codexReferences?.length)q.codexReferences=require('./codex-plugins.cjs').checkedReferences(input.codexReferences);
     if(q.waitingForWriter && native.eligible(s,q))q.nativeQueueAvailable=true;
@@ -159,10 +161,17 @@ class ChatQueue {
   }
   async _flush(id){
     const c=this.controller;
-    if(this.busy.has(id)||c.runs.has(id)||c.editingSessions.has(id)||c.shuttingDown||!c.status.authenticated||c.options.canRun?.()===false)return;
-    const s=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===id);if(!s||s.compacting)return;
-    const q=(s.queuedMessages||[]).find(isPendingQueuedInput);
+    if(this.busy.has(id)||c.editingSessions.has(id)||c.shuttingDown||c.options.canRun?.()===false)return;
+    const s=(this.store.visibleSessions?.()||this.store.state.sessions).find(s=>s.id===id);if(!s)return;
+    const parallel=require('./ai-provider.cjs').allowsParallel(s,this.store.state.settings);
+    if(!parallel&&(c.runs.has(id)||s.compacting))return;
+    const q=(s.queuedMessages||[]).find(row=>isPendingQueuedInput(row)&&(!parallel||
+      (!c.runs.forProvider(id,row.provider||'codex')&&(!s.compacting||row.provider==='claude'))));
     if(!q||q.error)return;
+    const provider=q.provider || 'codex';
+    if(provider === 'claude'
+      ? !this.store.state.settings.claudeEnabled || !(await c.options.claude?.status())?.configured
+      : !c.status.authenticated)return;
     this.busy.add(id);
     try{
       const owner=await this.owner();
@@ -182,7 +191,7 @@ class ChatQueue {
       if(receipt && !receipt.turnId)throw Error('앱이 종료되기 전 요청의 수신 여부가 확인되지 않았습니다. 원래 대화를 확인하고, 다시 보내려면 이 대기 지시를 취소한 뒤 새 요청으로 보내 주세요.');
       if(!receipt){
         if(!s.scope && !await this.store.isProjectTrusted(s.projectId))throw Error('대기 지시를 보내려면 프로젝트 폴더의 편집 권한을 다시 확인해 주세요.');
-        await c.send({sessionId:id,text:q.text,requestSourceId:q.requestSourceId,mode:q.mode,model:q.model,effort:q.effort,speed:q.speed,attachments:q.attachments.map(a=>a.id),codexReferences:q.codexReferences},
+        await c.send({sessionId:id,text:q.text,requestSourceId:q.requestSourceId,mode:q.mode,provider,model:q.model,effort:q.effort,speed:q.speed,attachments:q.attachments.map(a=>a.id),codexReferences:q.codexReferences},
           {fromQueue:true,queueItem:q,waitingForWriter:q.waitingForWriter});
       }
       q.status='sent';delete q.waitingForWriter;q.sentAt=new Date().toISOString();

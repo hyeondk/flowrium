@@ -125,6 +125,7 @@ test("결정 묶음 추천은 실제 대화 결과를 새 승인 항목으로 �
   const s=await setup(t);
   await s.workflow.action({action:"request",sourceId:s.a.id,targetId:s.b.id,title:"기존 결정",text:"자료 확인"});
   const session=await s.workflow.action({action:"recommend"});assert.equal(s.controller.sent.length,1);
+  assert.equal(s.controller.sent[0].input.provider,'codex');
   await s.controller.finish(session.id,JSON.stringify({summary:"먼저 근거를 정리하세요.",recommendations:[{title:"자료 정리",body:"근거 정리 과업",targetId:s.b.id}]}));
   let data=await s.wait(d=>d.proposals.length===2);assert.equal(data.proposals[0].kind,"next");assert.equal(data.proposals[0].status,"pending");assert.equal(s.controller.sent.length,1);
   const items=data.proposals.map(p=>({id:p.id,revision:p.revision}));

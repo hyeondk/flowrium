@@ -95,6 +95,7 @@ async function invokeRegistered(name,handler,args){
   // 실행 파일과 프로젝트를 바꾸는 작업은 기존 동기화를 기다린다.
   const settingsOnly=(name==='saveSettings'&&!Object.hasOwn(query??{},'codexPath')) ||
     name==='setSecurityPreferences' || name==='configureVoicePreferences' || name==='dictionaryAction' ||
+    name==='configureClaude' || name==='checkClaudeConnection' ||
     (name==='webPushAction'&&query?.action==='preferences');
   const passiveTransfer=name==='codexTransferAction'&&(query?.action==='sync'&&!query.force||query?.action==='receipts'||query?.action==='readOriginal'||query?.background===true);
   const foreground=!independent&&!passiveTransfer&&!settingsOnly;
@@ -269,11 +270,17 @@ async function launch() {
   security = new Security(app.getPath("userData"));
   await security.load();
   lifecycleDiagnostic('security-ready');
-  const store = new Store(app.getPath("userData"), {projectTrustOwner: () => security.data.accountOwner});
+  const claude = new (require('./claude.cjs').ClaudeClient)({directory:app.getPath('userData'),secretStorage:require('electron').safeStorage});
+  let claudeConfigured = false;
+  const codexTrustOwner = () => security.data.accountOwner && security.data.accountOwner !== 'signed-out' ? security.data.accountOwner : null;
+  const store = new Store(app.getPath("userData"), {projectTrustOwner: () => codexTrustOwner() ||
+    (store.state.settings.claudeEnabled && claudeConfigured ? 'flowrium-claude-local' : security.data.accountOwner)});
   try {
     const recovered=await require('./migration.cjs').recoverMigrations(app.getPath('userData'));
     if(recovered.some(row=>row.status==='recovery-required'))throw Error('자료 이관 복구가 완료되지 않았습니다. 원본과 백업을 보존하고 복구 결과를 확인해 주세요. / '+path.join(app.getPath('userData'),'migration-records'));
     await store.load();
+    if(store.newWorkspace)store.state.settings.providerSetupPending=true;
+    if(store.state.settings.claudeEnabled)claudeConfigured=(await claude.status().catch(()=>null))?.configured===true;
     applyAppearance(store.state.settings);
     lifecycleDiagnostic('store-ready');
   } catch (error) {
@@ -340,6 +347,7 @@ async function launch() {
   register('dictionaryState',()=>dictionary.state());
   register('dictionaryAction',input=>dictionary.action(input));
   controller = new Controller(store, {
+    claude,
     canRun: canUseAccount,
     canContinue: canContinueAccountWork,
     queueOwner: () => security.accountRevision,
@@ -348,6 +356,31 @@ async function launch() {
     applicationTools: async session => [...(await workflowRuntime?.toolsFor(session) || []), ...(externalTools?.definitions || []), ...(projectTools?.definitions || [])],
     callApplicationTool: async input => externalTools?.handles(input.name)
       ? externalTools.call(input) : projectTools?.handles(input.name) ? projectTools.call(input) : workflowRuntime?.callTool(input),
+  });
+  async function claudeConnection(refresh=false){
+    try {
+      const enabled=store.state.settings.claudeEnabled===true;
+      if(!enabled)return {configured:claudeConfigured,connected:false,models:[]};
+      claudeConfigured=(await claude.status()).configured;
+      const models=enabled&&claudeConfigured ? await claude.listModels({refresh}) : [];
+      return {configured:claudeConfigured,connected:enabled&&models.length>0,models};
+    } catch(error) {
+      return {configured:claudeConfigured,connected:false,models:[],error:publicMessage(error)};
+    }
+  }
+  register('readClaudeConnection',()=>claudeConnection());
+  register('checkClaudeConnection',()=>claudeConnection(true));
+  register('configureClaude',async input=>{
+    if(input?.remove===true){
+      await claude.disconnect();
+      claudeConfigured=false;
+      return {configured:false,connected:false,models:[]};
+    }
+    if(!store.state.settings.claudeEnabled)throw Error('설정에서 Claude 사용을 먼저 켜 주세요.');
+    const result=await claude.configure(input?.apiKey);
+    claudeConfigured=result.configured;
+    setImmediate(()=>controller.messageQueue.flushAll());
+    return {...result,connected:true};
   });
   const codexPlugins=require('./codex-plugins.cjs').registerCodexPlugins(register,{
     controller,getContext:()=>canUseAccount() ? JSON.stringify([security.accountRevision,security.epoch,security.data.accountOwner]) : null,
@@ -365,13 +398,14 @@ async function launch() {
   await followupPreference.load();
   const followupAccount=()=>security.accountRevision+':'+security.data.accountOwner;
   const canUseFollowupModel=()=>followupPreference.enabled(followupAccount());
-  const visibleChatSettings=value=>({...value,aiFollowups:canUseFollowupModel()});
+  const visibleChatSettings=({providerSetupPending,...value})=>({...value,aiFollowups:canUseFollowupModel()});
   followupGenerator=require('./followup-generator.cjs').createFollowupGenerator(controller,{
     accountRevision:()=>security.accountRevision,stateEpoch:()=>security.epoch,
     canRun:()=>canUseFollowupModel()&&!quitting&&!migrationTransition&&!importRestartRequired&&
       !security.locked&&!security.loggingOut&&!updater?.isInstalling()&&!controller.trashRuntime?.isBusy(),
   });
-  register('readChatRecommendation',(sessionId,answerId)=>followupGenerator.recommend(sessionId,answerId));
+  register('readChatRecommendation',(sessionId,answerId)=>
+    store.peekSession(sessionId)?.messages.some(message=>message.provider==='claude') ? null : followupGenerator.recommend(sessionId,answerId));
   require("./chat-attachments.cjs").registerChatAttachments(register, store);
   register('readChatCitation',(sessionId,messageId,index,action)=>{
     const epoch=security.epoch,revision=security.accountRevision;
@@ -425,6 +459,7 @@ async function launch() {
   const memory = require("./memory.cjs").registerMemory(register, store, { accountRevision: () => security.accountRevision });
   workflowRuntime = require("./workflow.cjs").registerWorkflow(register, store, controller, {
     canRun: () => !quitting && !migrationTransition && !importRestartRequired && !security.locked && !security.loggingOut && !updater?.isInstalling(),
+    canUseLocalClaude: () => !codexTrustOwner() && store.state.settings.claudeEnabled && claudeConfigured,
     updateState: () => updater.getState(),
     accountRevision: () => security.accountRevision,
     externalMethods: ['commitMacEvent','repositoryFlow'],
@@ -586,6 +621,7 @@ async function launch() {
   register("bootstrap", async () => {
     await store.syncConversationOwner?.();
     const snapshot = { ...store.snapshot(), version: displayVersion(app.getVersion()), platform: process.platform, externalActivity:{} };
+    if(snapshot.settings.providerSetupPending && !snapshot.settings.providerMode)snapshot.providerSetupRequired=true;
     snapshot.settings=visibleChatSettings(snapshot.settings);
     await Promise.all(snapshot.projects.map(async project => {
       project.trustedForFileAccess = await store.isProjectTrusted(project.id);
@@ -603,10 +639,13 @@ async function launch() {
     lifecycleDiagnostic('bootstrap-ready');
     return snapshot;
   });
-  register("requestProjectTrust", async id => {
-    if (!security.data.accountOwner || security.data.accountOwner === 'signed-out') {
+  register("requestProjectTrust", async (id, provider) => {
+    require('./ai-provider.cjs').checkedProvider(provider);
+    if (provider==='claude' && (!store.state.settings.claudeEnabled || !claudeConfigured))
+      throw Error('설정에서 Claude API 키를 연결해 주세요.');
+    if (!codexTrustOwner() && provider!=='claude') {
       await controller.connect(true);
-      if (!security.data.accountOwner || security.data.accountOwner === 'signed-out')
+      if (!codexTrustOwner())
         throw Error('설정에서 ChatGPT 계정에 로그인한 뒤 프로젝트 폴더를 신뢰해 주세요.');
     }
     const revision = security.accountRevision;
@@ -614,7 +653,7 @@ async function launch() {
       if (!window || window.isDestroyed() || security.locked || security.loggingOut) return false;
       const answer = await dialog.showMessageBox(window,{
         type:'question',title:'프로젝트 폴더 신뢰',message:`‘${name}’ 프로젝트 폴더를 신뢰할까요?`,
-        detail:`허용하면 이 폴더에서 Codex가 파일을 읽고 수정하거나 생성할 수 있습니다.\n\n${path}`,
+        detail:`허용하면 이 폴더에서 Claude가 자료를 읽고 Flowrium 문서를 작성할 수 있습니다. Codex를 사용할 때도 파일 읽기와 편집이 허용됩니다.\n\n${path}`,
         buttons:['취소','신뢰하고 편집 허용'],defaultId:0,cancelId:0,noLink:true,
       });
       return answer.response===1 && security.accountRevision===revision && !security.locked &&
@@ -634,8 +673,9 @@ async function launch() {
     if(controller.trashRuntime?.isBusy())throw Error('삭제 또는 복원을 마친 뒤 프로젝트를 연결해 주세요.');
     return store.addProject(choice.filePaths[0]);
   });
-  register("createSession", (projectId, model) =>
-    store.createSession(text(projectId, "프로젝트 식별자", 100), model ? {preferences:{model:text(model, "모델", 300)}} : {}),
+  register("createSession", (projectId, model, provider) =>
+    store.createSession(text(projectId, "프로젝트 식별자", 100), model||provider!==undefined
+      ? {preferences:require('./chat-preferences.cjs').preferences({model,provider})} : {}),
   );
   register("deleteSession", (id) =>
     controller.deleteSession(text(id, "대화 식별자", 100)),
@@ -689,8 +729,8 @@ async function launch() {
     try { return await controller.send(input, {fromComposer:true}); }
     catch (error) { throw Error(require('./errors.cjs').chatFailure(error).message); }
   });
-  register("interrupt", (id) =>
-    controller.interrupt(text(id, "대화 식별자", 100)),
+  register("interrupt", (id, provider) =>
+    controller.interrupt(text(id, "대화 식별자", 100),provider),
   );
   register("answerInput", input => controller.answerInput(input));
   register("approval", (input) => {
@@ -706,6 +746,7 @@ async function launch() {
     chatgpt: "https://chatgpt.com/",
     "chatgpt-desktop": "https://learn.chatgpt.com/docs/app",
     "codex-docs": "https://learn.chatgpt.com/docs/app-server",
+    "claude-console": "https://platform.claude.com/settings/keys",
     "download-docs":
       "https://docs.github.com/ko/pages/getting-started-with-github-pages/creating-a-github-pages-site",
   };

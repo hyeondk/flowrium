@@ -21,7 +21,8 @@ export function withLiveTurn(messages, turnId, rows) {
   const source = [], local = [];
   let turnOffset;
   for (const message of messages) {
-    if (message.turnId === turnId) {
+    if(message.provider==='claude')local.push(message);
+    else if (message.turnId === turnId) {
       turnOffset ??= source.length;
     } else if (message.turnId) source.push(message);
     else local.push(message);

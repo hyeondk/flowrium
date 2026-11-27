@@ -28,10 +28,18 @@ function settings(input, current = DEFAULT_SETTINGS) {
     throw new Error("설정 형식이 올바르지 않습니다.");
   const next = { ...current };
   for (const key of Object.keys(input)) {
-    if (!["codexPath", "model", "effort", "speed", "theme", "accentColor", "chatDefaults"].includes(key))
+    if (!["codexPath", "model", "effort", "speed", "theme", "accentColor", "chatDefaults", "provider", "providerMode", "providerSetupPending", "claudeEnabled", "claudeModel", "claudeEffort"].includes(key))
       throw new Error("지원하지 않는 설정입니다.");
     const value = input[key];
-    if (key === "effort" && !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(value))
+    if (key === 'provider') require('./ai-provider.cjs').checkedProvider(value);
+    if (key === 'providerMode') {
+      if(value!=='sync'&&value!=='mixed')throw Error('대화 구성을 확인해 주세요.');
+      delete next.providerSetupPending;
+    }
+    if (key === 'providerSetupPending' && value!==true) throw Error('대화 구성 안내 상태를 확인해 주세요.');
+    if (key === 'claudeEnabled' && typeof value !== 'boolean') throw Error('Claude 사용 설정을 확인해 주세요.');
+    if (key === 'claudeEffort' && (value === '' || value == null)) { delete next.claudeEffort; continue; }
+    if ((key === "effort" || key === 'claudeEffort') && !["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].includes(value))
       throw new Error("추론 강도를 확인해 주세요.");
     if (key === "speed") {
       if (value === "" || value == null) { delete next.speed; continue; }
@@ -41,12 +49,12 @@ function settings(input, current = DEFAULT_SETTINGS) {
       throw new Error("강조색을 확인해 주세요.");
     if (key === "theme" && !["dark", "light"].includes(value))
       throw new Error("화면 테마를 확인해 주세요.");
-    if (key === "codexPath" || key === "model") {
+    if (key === "codexPath" || key === "model" || key === 'claudeModel') {
       if (value === "" || value == null) {
         delete next[key];
         continue;
       }
-      text(value, key === "model" ? "모델" : "실행 파일 경로", 4096);
+      text(value, key === 'codexPath' ? '실행 파일 경로' : '모델', key === 'claudeModel' ? 300 : 4096);
       if (key === "codexPath" && !path.isAbsolute(value))
         throw new Error("실행 파일의 절대 경로를 입력해 주세요.");
     }
@@ -111,6 +119,7 @@ class Store {
       let raw;
       let legacy = false;
       try {
+        this.newWorkspace=false;
         raw = await this.readRegistry(this.file);
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
@@ -122,6 +131,7 @@ class Store {
           // 처음부터 비어 있던 작업 공간에서만 빈 등록의 첫 저장을 허용합니다.
           if (!Object.hasOwn(this, "initialRegistry"))
             this.initialRegistry = { version: 2, projects: [], localThreads: {} };
+          this.newWorkspace=true;
           return this.state;
         }
       }
@@ -416,6 +426,7 @@ class Store {
       ...(extra.generalAssistant === true && { generalAssistant: true }),
       ...(extra.workflow && { workflow: extra.workflow }),
       ...(extra.threadId && {threadId:extra.threadId}),
+      ...(extra.provider && {provider:require('./ai-provider.cjs').checkedProvider(extra.provider)}),
       ...(extra.preferences && {preferences:structuredClone(extra.preferences)}),
       ...(extra.context && {context:structuredClone(extra.context)}),
       ...(extra.applicationTools && {applicationTools:true}),

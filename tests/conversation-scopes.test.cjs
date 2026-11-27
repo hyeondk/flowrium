@@ -130,7 +130,7 @@ test('통합 업무 제안은 실제 결정함 승인 뒤 프로젝트에서 실
  try{
   let revision=0,account='계정-가',locked=false;const store=new Store(path.join(temporary,'app'));await store.load();const folder=path.join(temporary,'project');await fs.mkdir(folder);const project=await require('./project-trust-fixture.cjs').addTrustedFixtureProject(store,folder);
   class WorkController extends EventEmitter{
-   constructor(){super();this.store=store;this.options={queueOwner:()=>revision,canRun:()=>true};this.runs=new Map();this.editingSessions=new Set();this.sent=[];}
+   constructor(){super();this.store=store;this.options={queueOwner:()=>revision,canRun:()=>true};this.runs=new (require('../electron/conversation-runs.cjs').ConversationRuns)();this.editingSessions=new Set();this.sent=[];}
    canExecuteRun(run){return Controller.prototype.canExecuteRun.call(this,run);}
    async send(input){const s=store.session(input.sessionId);s.messages.push({id:require('node:crypto').randomUUID(),role:'user',text:input.text,createdAt:new Date().toISOString()});await store.save();this.sent.push(input);this.runs.set(s.id,{sessionId:s.id});return{accepted:true};}
    async finish(id){const s=store.session(id);s.messages.push({id:require('node:crypto').randomUUID(),role:'assistant',text:'실제 프로젝트 검증 결과',createdAt:new Date().toISOString()});await store.save();this.runs.delete(id);this.emit('event',{type:'done',sessionId:id,status:'completed'});}

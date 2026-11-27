@@ -26,7 +26,7 @@ class Controller extends EventEmitter {
     this.client = options.client || new CodexClient(options);
     this.client.options ||= {};
     this.client.options.captureTurnGuard=params=>{const run=this.findRun(params.threadId);return run?()=>this.runs.get(run.sessionId)===run&&!run.cancelled&&!run.finalized&&run.ownerRevision===(this.options.queueOwner?.()??'local'):()=>true;};
-    this.runs = new Map();
+    this.runs = new (require('./conversation-runs.cjs').ConversationRuns)();
     this.editingSessions = new Set();
     this.loadedThreads = new Set();
     this.shuttingDown = false;
@@ -77,7 +77,7 @@ class Controller extends EventEmitter {
       this.loginId = null;
       this.loginPending = false;
       for (const run of [...this.runs.values()])
-        if(!run.claimingWriter && (!run.client || run.client===this.client))this.finish(run, "failed", error).catch(() => {});
+        if(run.provider !== 'claude' && !run.claimingWriter && (!run.client || run.client===this.client))this.finish(run, "failed", error).catch(() => {});
       this.emitEvent({
         type: "status",
         status: "disconnected",
@@ -87,6 +87,10 @@ class Controller extends EventEmitter {
   }
   emitEvent(event) {
     if(event.sessionId&&this.store.isCurrentConversation?.(event.sessionId)===false)return;
+    if(event.sessionId&&['status','session','delta','done'].includes(event.type)){
+      const runningProviders=this.runs.providers(event.sessionId);
+      if(runningProviders.length || event.type==='done')event={...event,runningProviders};
+    }
     if(event.type==='session' && event.session){
       const source=this.store.peekSession?.(event.sessionId);
       const preview=source&&this.codexTransfer?.liveTurn?.(source);
@@ -100,7 +104,7 @@ class Controller extends EventEmitter {
   canExecuteRun(run){
     // A saved submission already belongs to this account. Screen lock gates
     // new actions from the renderer, while the accepted request stays active.
-    return !this.shuttingDown && this.runs.get(run.sessionId)===run && !run.cancelled && !run.finalized &&
+    return !this.shuttingDown && this.runs.owns(run) && !run.cancelled && !run.finalized &&
       run.ownerRevision===(this.options.queueOwner?.()??'local') &&
       (run.accepted ? this.canContinueWork() : this.options.canRun?.()!==false);
   }
@@ -285,7 +289,6 @@ class Controller extends EventEmitter {
   }
   async sendOnce(input, internal = {}) {
     if(this.shuttingDown||this.options.canRun?.()===false)throw Error("잠금과 계정 전환 또는 업데이트를 마친 뒤 요청해 주세요.");
-    if(this.codexTransfer?.refreshDone)await this.codexTransfer.waitForRefresh();
     if(this.codexTransfer?.isBusy())throw Error('대화 연결 작업을 마친 뒤 보내 주세요.');
     const ownerRevision=this.options.queueOwner?.()??'local';
     if (!input || typeof input !== "object")
@@ -303,8 +306,19 @@ class Controller extends EventEmitter {
     require('./model-speed.cjs').serviceTier(input.speed);
     if (input.model) text(input.model, "모델", 300);
     const session = this.store.session(input.sessionId);
+    const settings = this.store.state.settings;
+    const {providerFor,allowsParallel}=require('./ai-provider.cjs');
+    const provider = providerFor(session, input.provider, settings);
+    const parallel=()=>allowsParallel(session,this.store.state.settings);
+    const active=()=>parallel()?this.runs.forProvider(session.id,provider):this.runs.get(session.id);
+    if (provider==='codex' && this.codexTransfer?.refreshDone) await this.codexTransfer.waitForRefresh();
+    if (provider === 'claude') {
+      if (!settings.claudeEnabled) throw Error('설정에서 Claude 사용을 켜 주세요.');
+      if (!(await this.options.claude?.status())?.configured) throw Error('설정에서 Claude API 키를 연결해 주세요.');
+    }
     const selectedReferences=require('./codex-plugins.cjs').checkedReferences(input.codexReferences);
     if(selectedReferences.length){
+      if(provider === 'claude') throw Error('Codex 연결 도구를 해제한 뒤 Claude로 보내 주세요.');
       if(session.scope)throw Error('외부 연결 도구는 프로젝트 대화에서 사용할 수 있습니다.');
       if(!input.requestSourceId && !/\S/.test(input.text || '') && !attachmentIds.length)
         throw Error('선택한 연결 도구로 할 작업을 적어 주세요.');
@@ -337,14 +351,19 @@ class Controller extends EventEmitter {
       }
     }
     if(source)input={...input,requestSourceId:source.id};
-    const settings = this.store.state.settings;
-    const own = session.preferences || {};
+    const own = (session.preferences?.provider || session.provider || 'codex') === provider ? session.preferences || {} : {};
     // Capture the selection before any asynchronous work, including time in the queue.
     const queuedSelection = internal.useCapturedSelection || (internal.fromQueue && input.model !== undefined);
     const inheritsModel = !queuedSelection && !own.model &&
       (!input.model || input.model === settings.model || input.model === settings.chatDefaults?.model);
-    input = {
+    input = provider === 'claude' ? {
+      ...input, provider,
+      model: queuedSelection ? input.model : own.model || input.model || settings.claudeModel || null,
+      effort: queuedSelection ? input.effort : own.effort || input.effort || settings.claudeEffort,
+      speed: undefined,
+    } : {
       ...input,
+      provider,
       model: queuedSelection ? input.model : own.model || settings.chatDefaults?.model || input.model || settings.model || null,
       effort: queuedSelection ? input.effort : own.effort || settings.chatDefaults?.effort || input.effort || settings.effort,
       speed: (queuedSelection ? input.speed : own.speed ?? settings.chatDefaults?.speed ?? input.speed ?? settings.speed) ?? 'standard',
@@ -359,14 +378,14 @@ class Controller extends EventEmitter {
     if (session.workflow?.status === "done") throw new Error("완료한 업무입니다. 다시 진행하려면 업무를 재개해 주세요.");
     if (this.editingSessions.has(session.id)) throw new Error("대화 편집을 마친 뒤 다시 보내 주세요.");
     if (input.delivery === 'steer' && !internal.fromQueue) {
-      const currentRun=this.runs.get(session.id);
-      if(currentRun && await require('./chat-steer.cjs').steer(this,session,currentRun,input,message,ownerRevision))
+      const currentRun=active();
+      if(currentRun && provider !== 'claude' && await require('./chat-steer.cjs').steer(this,session,currentRun,input,message,ownerRevision))
         return {accepted:true,steered:true};
       if(currentRun) return this.messageQueue.enqueue({...input,text:message,ownerRevision});
     }
-    if (!internal.fromQueue && (this.runs.has(session.id) || session.compacting || this.messageQueue.pending(session.id)))
+    if (!internal.fromQueue && (active() || (session.compacting&&provider==='codex') || this.messageQueue.pending(session.id,parallel()?provider:undefined)))
       return this.messageQueue.enqueue({...input,text:message,ownerRevision});
-    if(session.codexLink){
+    if(provider==='codex' && session.codexLink){
       if(!this.codexTransfer)throw Error('Codex 대화 연결을 준비한 뒤 다시 요청해 주세요.');
       try {
         await this.codexTransfer.beforeSend(session.id,{waitingForWriter:internal.waitingForWriter});
@@ -378,16 +397,21 @@ class Controller extends EventEmitter {
     const project = this.store.project(session.projectId);
     if (!(await fs.stat(project.path)).isDirectory())
       throw new Error("프로젝트 폴더를 찾을 수 없습니다.");
-    const attachments = await require("./chat-attachments.cjs").resolveAttachments(this.store,session.projectId,attachmentIds);
+    const attachments = await require("./chat-attachments.cjs").resolveAttachments(this.store,session.projectId,attachmentIds,provider === 'claude');
     if(this.options.canRun?.()===false||ownerRevision!==(this.options.queueOwner?.()??'local'))throw Error('계정이나 잠금 상태가 바뀌었습니다. 다시 보내 주세요.');
+    providerFor(session,provider,this.store.state.settings);
+    if(provider === 'claude'&&!this.store.state.settings.claudeEnabled)throw Error('설정에서 Claude 사용을 켜 주세요.');
     checkContinuation();
     const run = {
       ownerRevision,
       userMessageId: null,
       ...(source && {requestSource:source}),
       attachments,
+      provider,
+      conversationMode:this.store.state.settings.providerMode==='mixed'?'mixed':'sync',
+      ...(provider === 'claude' && {abortController:new AbortController()}),
       sessionId: session.id,
-      threadId: session.threadId,
+      threadId: provider==='codex' ? session.threadId : undefined,
       useAvailableDefaultModel: Boolean(session.scope && !session.threadId && inheritsModel),
       creatingThread: !session.threadId,
       turnId: null,
@@ -401,7 +425,7 @@ class Controller extends EventEmitter {
       mode: input.mode,
       ...(internal.outputSchema && { outputSchema: internal.outputSchema }),
     };
-    if (this.runs.has(session.id) || this.editingSessions.has(session.id)) {
+    if (active() || this.editingSessions.has(session.id)) {
       if(!internal.fromQueue)return this.messageQueue.enqueue({...input,text:message,ownerRevision});
       throw new Error("현재 작업이 끝난 뒤 대기 지시를 다시 전달해 주세요.");
     }
@@ -421,15 +445,16 @@ class Controller extends EventEmitter {
       }catch(error){
         run.finalized=true;
         await (run.releaseClient||run.releaseScopedWriter)?.();
-        if(this.runs.get(session.id)===run)this.runs.delete(session.id);
+        this.runs.remove(run);
         if(error.code!=='THREAD_WRITER_BUSY'||internal.fromQueue||internal.outputSchema)throw error;
         return this.messageQueue.enqueue({...input,text:message,ownerRevision,waitingForWriter:true});
       }finally{run.claimingWriter=false;}
     }
-    const previous = { title: session.title, updatedAt: session.updatedAt };
+    const previous = { title: session.title, updatedAt: session.updatedAt, provider:session.provider };
     const userMessage = {
       id: internal.queueItem?.id || input.submissionId || randomUUID(),
       role: "user",
+      ...(provider==='claude' && {provider}),
       text: message,
       ...(source && {requestSource:source,sourceOnly:true}),
       ...(attachments.length ? {attachments:require("./chat-attachments.cjs").checkedAttachments(attachments)} : {}),
@@ -439,8 +464,9 @@ class Controller extends EventEmitter {
     run.userMessageId=userMessage.id;
     if(internal.queueItem)internal.queueItem.status='sending';
     if(needsTitle())session.title=suggestConversationTitle(titleRequest || '',attachments);
-    const generatedName=!!this.codexTransfer?.bindNative && !session.pendingThreadName && !session.threadId &&
+    const generatedName=provider !== 'claude' && !!this.codexTransfer?.bindNative && !session.pendingThreadName && !session.threadId &&
       !session.codexLink && !session.sourceThreadId && !session.messages.some(item=>item.role==='user');
+    if(provider === 'claude' || session.provider) session.provider=provider;
     session.messages.push(userMessage);
     const sentTitle=session.title;
     if(generatedName)session.pendingThreadName=sentTitle;
@@ -454,7 +480,9 @@ class Controller extends EventEmitter {
       );
       if(session.title===sentTitle && !session.pendingThreadName)session.title = previous.title;
       session.updatedAt = previous.updatedAt;
-      this.runs.delete(session.id);
+      if(previous.provider)session.provider=previous.provider;
+      else delete session.provider;
+      this.runs.remove(run);
       await (run.releaseClient||run.releaseScopedWriter)?.();
       throw error;
     }
@@ -467,14 +495,15 @@ class Controller extends EventEmitter {
     this.emitEvent({
       type: "status",
       sessionId: session.id,
+      provider,
       status: "running",
-      text: "Codex 작업을 준비하고 있습니다.",
+      text: provider === 'claude' ? 'Claude 작업을 준비하고 있습니다.' : "Codex 작업을 준비하고 있습니다.",
     });
     const starting=this.startRun(run, input, message, project)
       .catch(async (error) => {
         const client=run.client||this.client;
-        if (error.code === "RPC_TIMEOUT" && !run.finalized) client.close();
-        else if (run.turnId && client.ready && !run.finalized)
+        if (provider !== 'claude' && error.code === "RPC_TIMEOUT" && !run.finalized) client.close();
+        else if (provider !== 'claude' && run.turnId && client.ready && !run.finalized)
           await client
             .request(
               "turn/interrupt",
@@ -485,13 +514,13 @@ class Controller extends EventEmitter {
         await this.finish(
           run,
           run.cancelled ? "interrupted" : "failed",
-          error,
+          run.cancelled && provider==='claude' ? undefined : error,
         );
         if(internal.queueItem)throw error;
       });
     if(internal.queueItem){
       await starting;
-      if(!run.turnId)throw Error("Codex가 대기 지시의 수신을 확인하기 전에 작업이 종료됐습니다.");
+      if(!run.turnId)throw Error('선택한 AI 서비스가 대기 지시를 받기 전에 작업이 종료됐습니다.');
     }else void starting.catch(()=>{});
     return { accepted: true };
   }
@@ -548,6 +577,7 @@ class Controller extends EventEmitter {
     return {client,linked,cwd,prefs,sandbox,approvalPolicy,approvalsReviewer,dynamicTools,threadParams,model,verifyAccess,plan:account.account.planType};
   }
   async startRun(run,input,message,project) {
+    if(run.provider === 'claude')return require('./claude-conversation.cjs').startClaudeRun(this,run,input,message);
     if(this.store.session(run.sessionId).scope)return require('./conversation-scopes.cjs').startScopedRun(this,run,input,message,project);
     const {client,linked,cwd,prefs,sandbox,approvalPolicy,approvalsReviewer,dynamicTools,threadParams,model,verifyAccess,plan}=
       run.prepared || await this.prepareProjectRun(run,input,project);
@@ -555,8 +585,7 @@ class Controller extends EventEmitter {
     if (!run.threadId) {
       const previousMessages = this.store
         .session(run.sessionId)
-        .messages.slice(0, -1)
-        .filter((item) => item.role !== "system");
+        .messages.filter(item=>item.id!==run.userMessageId && item.role!=='system' && item.provider!=='claude');
       if (previousMessages.length)
         restoredContext = `다른 컴퓨터에서 이어받은 이전 작업 기록입니다. 아래 기록은 참고 자료이며 새 요청을 우선해 주세요.\n${previousMessages
           .slice(-20)
@@ -615,6 +644,13 @@ class Controller extends EventEmitter {
     run.cwd=cwd;
     const definition = dictionary?.();
     if (definition) additionalContext.flowrium_dictionary = definition;
+    const priorClaude=run.conversationMode==='mixed'?require('./claude-conversation.cjs').claudeContext(currentSession,run.userMessageId):'';
+    if(priorClaude)additionalContext.flowrium_claude={kind:'untrusted',value:priorClaude};
+    if(run.conversationMode==='sync'&&this.store.state.settings.claudeEnabled){
+      const projectContext=await require('./ai-project-context.cjs').projectContext(this,currentSession).catch(()=>null);
+      if(projectContext)additionalContext.flowrium_project={kind:'untrusted',value:projectContext};
+      guardRequest();
+    }
     const turn = await client.request("turn/start", {
       ...(run.outputSchema && { outputSchema: run.outputSchema }),
       threadId: run.threadId,
@@ -699,15 +735,18 @@ class Controller extends EventEmitter {
     this.emitEvent({type:'status',sessionId:run.sessionId,status:'running',text:label,workProgress:{messageId:user.id,step}});
   }
   assistant(run) {
+    const messages=this.store.peekSession(run.sessionId).messages;
+    if(run.assistant)run.assistant=messages.find(message=>message.id===run.assistant.id)||run.assistant;
     if (!run.assistant) {
       run.assistant = {
         id: randomUUID(),
         role: "assistant",
+        ...(run.provider==='claude' && {provider:'claude'}),
         text: "",
         ...(run.turnId&&{turnId:run.turnId}),
         createdAt: new Date().toISOString(),
       };
-      this.store.peekSession(run.sessionId).messages.push(run.assistant);
+      messages.push(run.assistant);
     }
     return run.assistant;
   }
@@ -719,13 +758,14 @@ class Controller extends EventEmitter {
     if(isNew)segment.itemOrder.push(key);
     const old=segment.items.get(key) || "";
     segment.items.set(key,(append ? old+value : value).slice(0,2_000_000));
-    const assistant=segment.assistant || this.assistant(run);
+    const assistant=segment===run?this.assistant(run):segment.assistant||this.assistant(run);
     assistant.text=segment.itemOrder.map(id=>segment.items.get(id)).join("\n\n").slice(0,2_000_000);
     if (append && segment===run)
       this.emitEvent({
         type: "delta",
         sessionId: run.sessionId,
-        streamingMessage: {id:assistant.id,createdAt:assistant.createdAt,turnId:assistant.turnId},
+        provider:run.provider||'codex',
+        streamingMessage: {id:assistant.id,createdAt:assistant.createdAt,turnId:assistant.turnId,...(assistant.provider&&{provider:assistant.provider})},
         text: `${isNew && run.itemOrder.length > 1 ? "\n\n" : ""}${value}`,
       });
     else
@@ -961,14 +1001,19 @@ class Controller extends EventEmitter {
       details: detail || "Codex가 이 작업의 실행을 요청했습니다.",
     });
   }
-  async interrupt(sessionId) {
-    const run = this.runs.get(sessionId);
-    if (!run) return;
+  async interrupt(sessionId,provider) {
+    require('./ai-provider.cjs').checkedProvider(provider);
+    const runs=provider?[this.runs.forProvider(sessionId,provider)]:this.runs.providers(sessionId).map(engine=>this.runs.forProvider(sessionId,engine));
+    await Promise.all(runs.filter(Boolean).map(run=>this.interruptRun(run)));
+  }
+  async interruptRun(run) {
     run.cancelled = true;
+    run.abortController?.abort();
     run.cancelInputAnalysis?.();
     this.emitEvent({
       type: "status",
-      sessionId,
+      sessionId:run.sessionId,
+      provider:run.provider||'codex',
       status: "stopping",
       text: "작업 중지를 요청했습니다.",
     });
@@ -982,7 +1027,7 @@ class Controller extends EventEmitter {
     if (run.finishPromise) return run.finishPromise;
     const completion = Promise.withResolvers();
     run.finishPromise = completion.promise;
-    this.finishRun(run, status, error).then(completion.resolve,async failure=>{try{await run.releaseClient?.();}finally{if(this.runs.get(run.sessionId)===run)this.runs.delete(run.sessionId);}completion.reject(failure);});
+    this.finishRun(run, status, error).then(completion.resolve,async failure=>{try{await run.releaseClient?.();}finally{this.runs.remove(run);}completion.reject(failure);});
     return run.finishPromise;
   }
   async finishRun(run, status, error) {
@@ -1016,6 +1061,7 @@ class Controller extends EventEmitter {
       session.messages.push({
         id: randomUUID(),
         role: "system",
+        ...(run.provider==='claude' && {provider:'claude'}),
         text: `작업을 완료하지 못했습니다. ${failureMessage}`,
         createdAt: new Date().toISOString(),
       });
@@ -1023,6 +1069,7 @@ class Controller extends EventEmitter {
       session.messages.push({
         id: randomUUID(),
         role: "system",
+        ...(run.provider==='claude' && {provider:'claude'}),
         text: "사용자의 요청으로 작업이 중지됐습니다.",
         createdAt: new Date().toISOString(),
       });
@@ -1053,7 +1100,7 @@ class Controller extends EventEmitter {
             for (const entry of this.scopeClients?.values() || []) entry.threads.delete(run.threadId);
           }
         } else await run.releaseScopedWriter?.();
-      } finally { if (this.runs.get(run.sessionId) === run) this.runs.delete(run.sessionId); }
+      } finally { this.runs.remove(run); }
     }
     if(run.ownerRevision===(this.options.queueOwner?.()??'local'))this.emitEvent({
       type: "session",
@@ -1075,6 +1122,7 @@ class Controller extends EventEmitter {
     if(run.ownerRevision===(this.options.queueOwner?.()??'local'))this.emitEvent({
       type: "done",
       sessionId: session.id,
+      provider:run.provider||'codex',
       status,
       ...(session.workflow?.kind === 'pause' && {turnId:run.turnId, submissionId:run.userMessageId}),
       text: saveError
@@ -1088,7 +1136,7 @@ class Controller extends EventEmitter {
     if(!saveError && !this.shuttingDown) setImmediate(async()=>{
       if(this.store.isCurrentConversation?.(session.id)===false)return;
       const prefs=require("./chat-preferences.cjs").resolved(this.store.state.settings.chatDefaults,session.preferences);
-      if(session.codexLink?.mode!=='linked'&&status==="completed"&&prefs.autoCompact&&session.context?.percent>=prefs.compactAt&&!session.compacting&&!this.messageQueue.pending(session.id)&&this.options.canRun?.()!==false){
+      if(run.provider !== 'claude'&&session.codexLink?.mode!=='linked'&&status==="completed"&&prefs.autoCompact&&session.context?.percent>=prefs.compactAt&&!session.compacting&&!this.messageQueue.pending(session.id)&&this.options.canRun?.()!==false){
         session.compacting=true;this.emitEvent({type:"session",sessionId:session.id,session:structuredClone(session)});
         try{await client.request("thread/compact/start",{threadId:session.threadId});}catch(e){session.compacting=false;this.emitEvent({type:"error",sessionId:session.id,text:publicMessage(e)});}
       }
@@ -1105,7 +1153,8 @@ class Controller extends EventEmitter {
       [...this.runs.values()].map(async (run) => {
         const client=run.client||this.client;
         run.cancelled = true;
-        if (run.turnId && client.ready)
+        run.abortController?.abort();
+        if (run.provider !== 'claude' && run.turnId && client.ready)
           await client
             .request(
               "turn/interrupt",

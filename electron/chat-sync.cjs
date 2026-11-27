@@ -1,8 +1,9 @@
 const D = require('./codex-transfer-data.cjs');
 const { UUID } = require('./project-store.cjs');
 const {withLiveTurn}=require('./mobile/live-turn.js');
-const {matchExchanges,retainLocalOrder}=require('./codex-transfer-merge.cjs');
+const {matchExchanges,retainLocalOrder,codexMergeCandidates,isLocalClaude}=require('./codex-transfer-merge.cjs');
 const {readCodexRolloutContext}=require('./codex-rollout-context.cjs');
+const {allowsParallel}=require('./ai-provider.cjs');
 
 function bindNative(runtime, session, threadId, cwd) {
   if (!threadId || session.codexLink) return;
@@ -12,9 +13,25 @@ function bindNative(runtime, session, threadId, cwd) {
   session.desktopThread = { threadId, cwd, ownerHash: runtime.owner() };
 }
 
+function hasNativeRun(runtime, session) {
+  const runs=runtime.controller.runs;
+  return allowsParallel(session,runtime.store?.state?.settings||{}) && typeof runs.forProvider==='function'
+    ? Boolean(runs.forProvider(session.id,'codex')) : runs.has(session.id);
+}
+
+function nativeSyncBlocked(runtime, session) {
+  return hasNativeRun(runtime,session) || runtime.controller.editingSessions.has(session.id) || session.compacting;
+}
+
 function deferred(runtime, session) {
-  const c = runtime.controller;
-  return runtime.isBusy() || c.runs.has(session.id) || c.editingSessions.has(session.id) || session.compacting;
+  return runtime.isBusy() || nativeSyncBlocked(runtime,session);
+}
+
+function restoreNativeMessages(previous,current) {
+  const local=current.filter(isLocalClaude);
+  const before=previous.filter(isLocalClaude);
+  if (before.length===local.length && before.every((row,index)=>row===local[index])) return previous;
+  return retainLocalOrder(previous.filter(row=>!isLocalClaude(row)),current,local);
 }
 
 async function connection(runtime, session, context) {
@@ -80,10 +97,11 @@ async function probe(runtime, session, context, cwd, thread = undefined) {
 }
 
 function mergeNative(local, incoming) {
-  const localById=new Map(local.map(m=>[m.id,m]));
+  const candidates=codexMergeCandidates(local,incoming);
+  const localById=new Map(candidates.map(m=>[m.id,m]));
   const byTurn=Map.groupBy(incoming,m=>m.turnId), localByTurn=new Map(), matches=new Map();
   let lastTurn;
-  for(const message of local){
+  for(const message of candidates){
     if(message.role==='user' && message.turnId)lastTurn=message.turnId;
     const turn=message.turnId || (message.role==='assistant' && lastTurn);
     if(!turn)continue;
@@ -114,8 +132,9 @@ async function refreshNative(runtime, session, cwd, context, thread) {
   runtime.busy=true;
   try {
     let incoming=snapshot.messages;
+    const candidates=codexMergeCandidates(session.messages,incoming);
     const remoteIds=new Set(snapshot.messages.map(m=>m.id));
-    const ownedTurns=new Set(session.messages.filter(m=>m.role==='user'&&!remoteIds.has(m.id)).map(m=>m.turnId));
+    const ownedTurns=new Set(candidates.filter(m=>m.role==='user'&&!remoteIds.has(m.id)).map(m=>m.turnId));
     const externalUsers=new Set(snapshot.messages.filter(m=>m.role==='user'&&!ownedTurns.has(m.turnId)).map(m=>m.id));
     const attachments=snapshot.attachments.filter(a=>externalUsers.has(D.stable('codex-message:'+id+':'+a.key+':0')));
     if(attachments.length){
@@ -125,13 +144,16 @@ async function refreshNative(runtime, session, cwd, context, thread) {
       incoming=media.messages;
     }
     guardSession(runtime, session, id, context);
+    if(nativeSyncBlocked(runtime,session))return {sync:'deferred'};
     const merged=mergeNative(session.messages,incoming);
     if(JSON.stringify(merged)===JSON.stringify(session.messages))return {sync:'current'};
     const oldMessages = session.messages, oldDate = session.updatedAt;
     session.messages = merged;
-    session.updatedAt = [oldDate, D.at(snapshot.thread.updatedAt)].sort().at(-1);
+    const appliedDate = [oldDate, D.at(snapshot.thread.updatedAt)].sort().at(-1);
+    session.updatedAt = appliedDate;
     try { await runtime.store.save(); } catch (error) {
-      session.messages = oldMessages; session.updatedAt = oldDate;
+      session.messages = restoreNativeMessages(oldMessages,session.messages);
+      if (session.updatedAt===appliedDate) session.updatedAt=oldDate;
       throw error;
     }
     guardSession(runtime, session, id, context);
@@ -163,7 +185,7 @@ async function mirrorActiveTurn(runtime,session,latest,cwd,context){
   runtime.liveTurns??=new WeakMap();
   const previous=liveTurn(runtime,session);
   const sameTurn=previous?.turnId===turn.id;
-  const saved=sameTurn?previous.rows:session.messages.filter(m=>m.turnId===turn.id);
+  const saved=sameTurn?previous.rows:session.messages.filter(m=>!isLocalClaude(m)&&m.turnId===turn.id);
   const merged=mergeNative(saved,part.messages);
   const existing=new Map(saved.map(m=>[m.id,m]));
   for(let i=0;i<merged.length;i++){
@@ -188,19 +210,22 @@ async function mirrorActiveTurn(runtime,session,latest,cwd,context){
 
 function liveTurn(runtime,session){
   const preview=runtime.liveTurns?.get(session);
-  if(!preview||preview.threadId!==session.threadId||runtime.controller.runs.has(session.id))return;
+  if(!preview||preview.threadId!==session.threadId||hasNativeRun(runtime,session))return;
   try{runtime.guard(preview.owner,preview.revision,preview.epoch);}catch{return;}
   return preview;
 }
 function liveView(runtime,session){
   const preview=liveTurn(runtime,session);
-  return preview?{...session,messages:withLiveTurn(session.messages,preview.turnId,preview.rows)}:session;
+  if(!preview)return session;
+  const local=session.messages.filter(isLocalClaude);
+  const native=withLiveTurn(session.messages.filter(m=>!isLocalClaude(m)),preview.turnId,preview.rows);
+  return {...session,messages:retainLocalOrder(native,session.messages,local)};
 }
 function finishPreview(runtime,session){
   const preview=runtime.liveTurns?.get(session);
   if(!preview)return;
   runtime.liveTurns.delete(session);
-  const rows=session.messages.filter(m=>m.turnId===preview.turnId);
+  const rows=session.messages.filter(m=>!isLocalClaude(m)&&m.turnId===preview.turnId);
   runtime.controller.emitEvent({type:'externalTurn',sessionId:session.id,turnId:preview.turnId,turnMessages:rows,status:'idle'});
 
 }
@@ -211,8 +236,8 @@ async function importedTailUnchanged(runtime,session,latest,cwd,context){
   const link=session.codexLink,turn=latest.newest;
   if(link?.mode!=='linked'||link.activeAtImport||!turn||link.sourceUpdatedAt!==D.at(latest.thread.updatedAt)||
      latest.thread.name&&latest.thread.name!==session.title)return false;
-  const saved=session.messages.filter(m=>m.turnId===turn.id);
-  if(!saved.length || session.messages.findLast(m=>m.turnId)?.turnId!==turn.id)return false;
+  const saved=session.messages.filter(m=>!isLocalClaude(m)&&m.turnId===turn.id);
+  if(!saved.length || session.messages.findLast(m=>!isLocalClaude(m)&&m.turnId)?.turnId!==turn.id)return false;
   const part=await D.snapshot(runtime.client,session.threadId,cwd,false,{
     thread:latest.thread,turns:[turn],recover:()=>runtime.recover(context)
   });
@@ -226,7 +251,8 @@ async function syncSession(runtime, sessionId, force, background) {
   if (runtime.isBusy()) return { sync: 'deferred' };
   if (!session.threadId && session.codexLink?.mode==='linked') {
     if (deferred(runtime,session)) return {sync:'deferred'};
-    await runtime.refresh(session.id,{background:true});
+    try { await runtime.refresh(session.id,{background:true}); }
+    catch(error) { if(error.code==='NATIVE_SYNC_DEFERRED')return {sync:'deferred'};throw error; }
   }
   if (!session.threadId && deferred(runtime,session)) return {sync:'deferred'};
   const id = session.threadId;
@@ -256,6 +282,7 @@ async function syncSession(runtime, sessionId, force, background) {
     try { await runtime.refresh(session.id, { externalFinished: true }); }
     catch (error) {
       if (error.code === 'THREAD_ACTIVE') return { sync: 'active' };
+      if (error.code === 'NATIVE_SYNC_DEFERRED') return { sync: 'deferred' };
       throw error;
     }
   } else {
@@ -269,11 +296,11 @@ async function syncSession(runtime, sessionId, force, background) {
 
 async function openDesktop(runtime, sessionId) {
   const context = await runtime.ready(true), session = runtime.store.session(D.id(sessionId)), id = session.threadId;
-  if (!UUID.test(id) || deferred(runtime, session)) throw Error('작업이 끝난 로컬 대화를 선택해 주세요.');
+  if (!UUID.test(id) || deferred(runtime, session) || runtime.controller.runs.has(session.id)) throw Error('작업이 끝난 로컬 대화를 선택해 주세요.');
   const cwd = await connection(runtime, session, context);
   await D.readThread(runtime.client, id, cwd);
   guardSession(runtime, session, id, context);
-  if (deferred(runtime, session)) throw Error('현재 작업을 마친 뒤 데스크톱에서 이어가세요.');
+  if (deferred(runtime, session) || runtime.controller.runs.has(session.id)) throw Error('현재 작업을 마친 뒤 데스크톱에서 이어가세요.');
   if (!runtime.options.openDesktopThread) throw Error('데스크톱 앱 연결을 사용할 수 없습니다.');
   await runtime.options.openDesktopThread('codex://threads/' + id);
   return { opened: true };
@@ -405,4 +432,4 @@ function rename(controller, session, name) {
   });
 }
 
-module.exports = { liveTurn, liveView, contextUsage, probe, bindNative, sync, openDesktop, mergeNative, listingTitles, rename, flushInitialTitle };
+module.exports = { liveTurn, liveView, contextUsage, probe, bindNative, sync, openDesktop, mergeNative, listingTitles, rename, flushInitialTitle, nativeSyncBlocked, restoreNativeMessages };

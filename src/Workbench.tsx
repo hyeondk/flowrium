@@ -1,11 +1,11 @@
 import LoadingProgress from './LoadingProgress';
-import {modelDisplayName} from '../shared/model-display';
 import { CloseButton, AnimatedCheckbox } from './ui-motion';
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import ArtifactViewer from "./ArtifactViewer";
 import { ArrowLeft, ArrowRight, BookOpen, Check, CheckCheck, ChevronRight, ClipboardList, FileText, FolderOpen, GitBranch, GitCommitHorizontal, Hand, ListChecks, LoaderCircle, MessageSquare, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
-import type { Mode, Project, Session, Model } from "../shared/types";
+import type { Mode, Project, Session } from "../shared/types";
 import { statusLabels, workKinds, type Artifact, type WorkInput, type WorkFormat, type WorkKind, type WorkOverview, type WorkStatus, type WorkUpdate } from "../shared/workbench";
+import WorkModelFields, { useWorkModel } from './WorkModelFields';
 import "./workbench.css";
 
 const icons = { task: MessageSquare, research: Search, briefing: BookOpen, document: FileText, weekly: ClipboardList, pause: Hand };
@@ -34,8 +34,7 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [models,setModels]=useState<Model[]>([]),[authenticated,setAuthenticated]=useState(false);
-  useEffect(()=>{let alive=true;window.flowrium?.connect().then(v=>{if(alive){setModels(v.models);setAuthenticated(v.status.authenticated);}}).catch(e=>{if(alive)setError(messageOf(e));});return()=>{alive=false;};},[]);
+  const modelSelection = useWorkModel();
   const fields = {
     research: ["조사 주제", "알고 싶은 점과 참고할 출처", "보고서 독자와 조사 깊이"],
     briefing: ["브리핑 제목", "특히 확인할 사항", "보고 대상과 형식"],
@@ -48,12 +47,12 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (busy) return;
-    if(!authenticated){setError("ChatGPT 계정을 연결한 뒤 AI 업무를 시작하세요.");return;}
+    if(!modelSelection.ready || modelSelection.loading){setError(modelSelection.connectionError || modelSelection.connectionHint);return;}
     setBusy(true);
     setError("");
     try {
-      if (!await getAPI().requestProjectTrust(project.id)) { setBusy(false); return; }
-      const s = await getAPI().startWork(form);
+      if (!await getAPI().requestProjectTrust(project.id, modelSelection.provider)) { setBusy(false); return; }
+      const s = await getAPI().startWork({ ...form, ...modelSelection.request });
       onSessionChange(s);
       onOpen(s, spec.mode, [form.title, form.brief].filter(Boolean).join("\n\n") + "\n\n요청한 " + spec.label + " 업무를 시작해 주세요.");
     } catch (err) {
@@ -63,10 +62,10 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
   }
   return <section className="wb-form" aria-label={spec.label + " 업무 설정"}>
     <header className="wb-section-head"><button className="wb-back" onClick={onClose}><ArrowLeft size={15}/> 업무 목록</button><span>{project.name}</span></header>
-    <h1>{spec.label}</h1><p>{spec.description} ChatGPT가 요청과 프로젝트 근거를 확인해 결과를 작성합니다.</p>
+    <h1>{spec.label}</h1><p>{spec.description} {modelSelection.providerName}가 요청과 프로젝트 근거를 확인해 결과를 작성합니다.</p>
     <form onSubmit={submit}>
-      <label>사용할 ChatGPT 모델<select aria-label="업무 AI 모델" value={form.model||""} onChange={e=>set("model",e.target.value)}><option value="">계정 기본 모델</option>{models.map(m=><option key={m.id} value={m.id}>{modelDisplayName(m)}</option>)}</select></label>
-      {!authenticated&&<p>ChatGPT 계정을 연결하면 AI가 이 업무를 수행합니다.</p>}
+      <WorkModelFields selection={modelSelection} providerLabel="업무 AI 서비스" modelLabel="업무 AI 모델" effortLabel="업무 AI 추론 수준"/>
+      {modelSelection.connectionError && <p>{modelSelection.connectionError}</p>}
       <label>{fields[0]}<input autoFocus required maxLength={160} value={form.title} onChange={(e) => set("title", e.target.value)}/></label>
       <label>{fields[1]}<textarea rows={4} maxLength={12000} value={form.brief} onChange={(e) => set("brief", e.target.value)}/></label>
       <div className="wb-field-pair"><label>담당 역할<input required maxLength={120} value={form.role} onChange={(e) => set("role", e.target.value)}/></label>
@@ -82,7 +81,7 @@ function WorkForm({ project, sessions, kind, onOpen, onClose, onSessionChange }:
         {form.sourceSessionId && <small>선택한 대화의 최근 메시지를 이 업무의 시작 시점에 복사합니다.</small>}</label>}
       {error && <p className="wb-error" role="alert">{error}</p>}
       <div className="wb-form-footer"><button type="button" className="wb-secondary" onClick={onClose}>취소</button>
-        <button className="wb-primary" disabled={busy || !authenticated || !form.title.trim()}>{busy ? <LoaderCircle size={16}/> : <ArrowRight size={16}/>} 업무 시작</button></div>
+        <button className="wb-primary" disabled={busy || !modelSelection.ready || modelSelection.loading || !form.title.trim()}>{busy ? <LoaderCircle size={16}/> : <ArrowRight size={16}/>} 업무 시작</button></div>
     </form>
   </section>;
 }

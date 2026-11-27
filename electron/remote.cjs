@@ -8,6 +8,7 @@ const {canOfferFollowup,latestFollowupAnswer,originalAnswerFollowups}=require('.
 const {attachmentDisplayText}=require('./mobile/attachment-text.js');
 const {MobileUpdater} = require('./mobile-updater.cjs');
 const {MobileRequestUploads,chunkBytes,singleUploadBytes} = require('./mobile-request-uploads.cjs');
+const {boundProvider, providerFor} = require('./ai-provider.cjs');
 const allowed = new Set([
   "startWork",
   "send",
@@ -25,9 +26,11 @@ const allowed = new Set([
   "checkMobileUpdate", "applyMobileUpdate",
 ]);
 const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-function mobileSummary(s, active, deciding, revision, activity, unsettled) {
+function mobileSummary(s, runs, deciding, revision, activity, external, settings) {
   const { id, projectId, title, createdAt, updatedAt } = s;
-  const executionState=executionFor(s,active,deciding,unsettled);
+  const executionState=executionFor(s,Boolean(runs.length||external?.running),deciding,Boolean(external));
+  const bound=boundProvider(s);
+  const defaultProvider=settings.claudeEnabled&&!bound&&!s.preferences?.provider&&!s.provider?settings.provider:undefined;
   return {
     id,
     projectId,
@@ -38,6 +41,9 @@ function mobileSummary(s, active, deciding, revision, activity, unsettled) {
     defaultProjectMode: s.defaultProjectMode,
     completedContinuationId:s.completedContinuationId,
     scope: s.scope,
+    provider: providerFor(s, defaultProvider, settings),
+    ...(settings.providerMode!=='mixed'&&bound&&{providerLocked:true}),
+    ...(settings.claudeEnabled&&runs.length>0&&{runningProviders:runs.map(run=>run.provider||'codex')}),
     canCompleteWaiting: executionState==='waiting',
     continuationMessageId: executionState==='waiting' ? continuationAnswer(s)?.id : undefined,
     revision,
@@ -54,6 +60,7 @@ function mobileSummary(s, active, deciding, revision, activity, unsettled) {
       teamSlot: s.workflow.teamSlot && { mode: s.workflow.teamSlot.mode },
     },
     preferences: s.preferences && {
+      provider: s.preferences.provider,
       model: s.preferences.model,
       effort: s.preferences.effort,
       sandbox: s.preferences.sandbox,
@@ -112,6 +119,7 @@ function mobileMessages(s, params, revision) {
         id: m.id,
         createdAt: m.createdAt,
         role: m.role,
+        ...(m.provider==='claude' && {provider:'claude'}),
         text: visible ? text : toolLabel,
         ...(text!==m.text && {attachmentHeaderRemoved:true}),
         index: start,
@@ -198,10 +206,10 @@ function registerRemote(
   const mobileUpdater = new MobileUpdater({version,directory:mobileUpdateDirectory,storage:mobileUpdateStorage,fetchImpl:mobileUpdateFetch});
   const requestUploads = new MobileRequestUploads();
   const answeredInputs = new Set();
-  const runRevisions = new WeakMap();
+  const runRevisions = new Map();
   const runLabels = new WeakMap();
   const externalPreview=s=>s&&controller.codexTransfer?.liveTurn?.(s);
-  const revisionOf=id=>runRevisions.get(controller.runs.get(id))||externalPreview(store.peekSession?.(id))?.version||0;
+  const revisionOf=id=>runRevisions.get(id)||externalPreview(store.peekSession?.(id))?.version||0;
   const display=s=>controller.codexTransfer?.liveView?.(s)||s;
   const handoffs = new Map();
   const scopeId = () => key ? createHash("sha256").update(key).digest("hex") : "";
@@ -229,6 +237,16 @@ function registerRemote(
     const session=store.state.sessions.find(item=>item.id===id);
     if(!session)throw Error('연결된 프로젝트 대화를 선택해 주세요.');
     if(!session.scope)await store.requireProjectTrust(session.projectId);
+  }
+  function mobileModels(models = []) {
+    return models.map(({id,displayName,isDefault,supportedReasoningEfforts,defaultReasoningEffort}) => ({
+      id,displayName,isDefault,defaultReasoningEffort,
+      supportedReasoningEfforts:supportedReasoningEfforts?.map(({reasoningEffort,description})=>({reasoningEffort,description})),
+    }));
+  }
+  function mobileModelSettings(settings) {
+    return { model:settings.model,effort:settings.effort,chatDefaults:settings.chatDefaults,aiFollowups:canUseFollowupModel(),
+      ...(settings.claudeEnabled && { claudeEnabled:true,provider:settings.provider,providerMode:settings.providerMode,claudeModel:settings.claudeModel,claudeEffort:settings.claudeEffort }) };
   }
   async function mobileCall(method, args, requestScope, requestOwner) {
     const input=args[0];
@@ -268,23 +286,37 @@ function registerRemote(
         !store.state.sessions.some(row=>row.id===sessionId)) return null;
     }
     if (method === "setMobileChatModel") {
-      const [id,model]=args;
+      const [id,selection]=args;
       const session=store.state.sessions.find(s=>s.id===id&&!s.scope);
-      if(args.length!==2 || typeof id!=='string' || !uuid.test(id) || !session || typeof model!=='string' || model.length>300 || model!==model.trim())
+      const legacy=typeof selection==='string';
+      const choice=legacy?{model:selection}:selection;
+      const {model,provider,effort}=choice??{};
+      if(args.length!==2 || typeof id!=='string' || !uuid.test(id) || !session || !choice || typeof choice!=='object' || Array.isArray(choice) ||
+        Object.keys(choice).some(k=>!['model','provider','effort'].includes(k)) || (provider!==undefined && !['codex','claude'].includes(provider)) ||
+        typeof model!=='string' || model.length>300 || model!==model.trim() || (effort!==undefined && typeof effort!=='string'))
         throw Error('연결된 프로젝트 대화와 모델을 선택해 주세요.');
-      if(model){
-        const connection=await handlers.get('connect')?.();
-        if(!connection?.status?.authenticated || !connection.models?.some(x=>x.id===model))throw Error('현재 계정에서 제공하는 모델을 선택해 주세요.');
+      const settings=store.state.settings;
+      const selectedProvider=providerFor(session,provider,settings);
+      if (selectedProvider==='claude' && !settings.claudeEnabled) throw Error('컴퓨터의 Flowrium에서 Claude 사용을 켜 주세요.');
+      if(model||effort){
+        const connection=await handlers.get(selectedProvider==='claude'?'readClaudeConnection':'connect')?.();
+        const connected=selectedProvider==='claude'?connection?.connected:connection?.status?.authenticated;
+        const catalog=connection?.models||[];
+        const selectedModel=model?catalog.find(row=>row.id===model):catalog.find(row=>row.id===(selectedProvider==='claude'?settings.claudeModel:settings.chatDefaults?.model||settings.model))||catalog.find(row=>row.isDefault);
+        if(!connected || !selectedModel || effort && !selectedModel.supportedReasoningEfforts?.some(row=>row.reasoningEffort===effort))
+          throw Error('현재 계정에서 제공하는 모델과 추론 수준을 선택해 주세요.');
       }
       checkScope(requestScope,requestOwner);
       if(!store.state.sessions.includes(session))throw Error('대화 목록이 바뀌었습니다. 프로젝트 대화를 다시 선택해 주세요.');
       const edit=handlers.get('editConversation');
       if(!edit)throw Error('이 데스크톱 버전은 대화 모델 변경을 지원하지 않습니다.');
-      const value=await guard('editConversation',()=>edit(id,{action:'model',model}));
+      const value=await guard('editConversation',()=>edit(id,{action:'model',model,...(provider!==undefined&&{provider}),...(effort!==undefined&&{effort})}));
       checkScope(requestScope,requestOwner);
       controller.emitEvent?.({type:'session',sessionId:id,session:value});
-      return {model:value.preferences?.model||''};
+      return {model:value.preferences?.model||'',...(!legacy&&{provider:value.preferences?.provider,effort:value.preferences?.effort||''})};
     }
+    if(method==='interrupt'&&(args.length>2||typeof args[0]!=='string'||!uuid.test(args[0])||
+      (args.length===2&&!['codex','claude'].includes(args[1])))) throw Error('중단할 대화와 AI 서비스를 확인해 주세요.');
     // Older mobile clients include a snapshot of the default model. Resolve it in
     // the desktop controller at send time, including when this request is queued.
     if(method==='send' && args.length===1 && args[0] && typeof args[0]==='object'){
@@ -292,19 +324,26 @@ function registerRemote(
       return handlers.get('send')(input);
     }
     if (method === "mobileSettings") {
-      const connection = await handlers.get("connect")?.();
-      return {model:store.state.settings.model,effort:store.state.settings.effort,chatDefaults:store.state.settings.chatDefaults,aiFollowups:canUseFollowupModel(),
-        models:(connection?.models || []).map(({id,displayName,isDefault,supportedReasoningEfforts,defaultReasoningEffort}) => ({id,displayName,isDefault,supportedReasoningEfforts,defaultReasoningEffort}))};
+      const settings=store.state.settings;
+      const [codex,claude]=await Promise.allSettled([handlers.get('connect')?.(),settings.claudeEnabled?handlers.get('readClaudeConnection')?.():undefined]);
+      const codexModels=codex.status==='fulfilled'&&codex.value?.models||[];
+      const claudeResult=claude.status==='fulfilled'?claude.value:undefined;
+      checkScope(requestScope,requestOwner);
+      const current=store.state.settings;
+      return {...mobileModelSettings(current), models:mobileModels(codexModels),
+        ...(current.claudeEnabled&&{claudeConnected:claudeResult?.connected===true,claudeModels:mobileModels(claudeResult?.models)})};
     }
     if (method === "saveMobileSettings") {
       const input = args[0];
-      if (args.length !== 1 || !input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["model","effort","chatDefaults","aiFollowups"].includes(k)) ||
+      if (args.length !== 1 || !input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(k => !["model","effort","chatDefaults","aiFollowups","provider","claudeModel","claudeEffort"].includes(k)) ||
         (Object.hasOwn(input,'aiFollowups') && typeof input.aiFollowups!=='boolean'))
         throw Error("모바일에서 바꿀 수 없는 설정입니다.");
       if (input.chatDefaults && (typeof input.chatDefaults !== "object" || Array.isArray(input.chatDefaults) || Object.keys(input.chatDefaults).some(k => !["answerLength","testing","askNext","autoCompact","compactAt"].includes(k))))
         throw Error("실행 권한은 데스크톱에서 바꿔 주세요.");
+      if (!store.state.settings.claudeEnabled && (input.provider==='claude' || Object.hasOwn(input,'claudeModel') || Object.hasOwn(input,'claudeEffort')))
+        throw Error('컴퓨터의 Flowrium에서 Claude 사용을 켜 주세요.');
       const result = await handlers.get("saveSettings")(input,{mergeChatDefaults:true});
-      return {model:result.model,effort:result.effort,chatDefaults:result.chatDefaults,aiFollowups:canUseFollowupModel()};
+      return mobileModelSettings(result);
     }
     if (method === "mobileWorkflowState") return workflowView(await handlers.get("workflowState")());
     if (method === "workflowAction") {
@@ -333,14 +372,13 @@ function registerRemote(
     return method === "workflowAction" && result?.pending ? workflowView(result) : result;
   }
   let pairedLink, startFlight, relayUpdateFlight, reconnectTimer, shuttingDown = false;
-  let sequence = 0;
+  let sequence = 0, historyRevision = 0;
   let connectionOwner = "";
   let server,
     tunnel,
     key,
     publicOrigin,
     status = "",
-    running = new Set(),
     approvals = new Map();
   const state = () => ({
     enabled: !!server && (!pairing || !!pairedLink),
@@ -353,20 +391,18 @@ function registerRemote(
   });
   function update(event) {
     if (event.type === "status" && event.status === "connected") scheduleRestore();
-    const run=controller.runs.get(event.sessionId);
-    if(server && run && (event.type==='delta'||event.type==='session'||event.workProgress||event.workCommentary))runRevisions.set(run,revisionOf(event.sessionId)+1);
+    const run=event.provider?controller.runs.forProvider?.(event.sessionId,event.provider)||controller.runs.get(event.sessionId):controller.runs.get(event.sessionId);
+    if(server && run && (event.type==='delta'||event.type==='session'||event.workProgress||event.workCommentary))runRevisions.set(event.sessionId,++historyRevision);
     if(server && run && event.type==='status' && typeof event.text==='string')runLabels.set(run,event.text.slice(0,180));
     if (event.type === "approval" || event.type === "input")
       approvals.set(event.requestId, event);
     if (event.type === "input") answeredInputs.delete(event.requestId);
     if (event.type === "inputResolved") approvals.delete(event.requestId);
-    if (event.type === "done") {
-      running.delete(event.sessionId);
+    if (event.type === 'done' && !event.runningProviders?.length && !controller.runs.has(event.sessionId)) {
+      runRevisions.delete(event.sessionId);
       for (const [id, a] of approvals)
         if (a.sessionId === event.sessionId) approvals.delete(id);
     }
-    if (event.type === "status" && event.sessionId)
-      running.add(event.sessionId);
   }
   async function readPending() {
     const pending = handlers.get("securityPending");
@@ -513,6 +549,12 @@ function registerRemote(
             const [pending,links] = await Promise.all([readPending(),readDecisionLinks()]);
             const requests = pending.filter(e=>e.type==='approval'||(e.type==='input'&&!answeredInputs.has(e.requestId)));
             const deciding = new Set([...requests.map(e=>e.sessionId),...links.flatMap(p=>[p.sourceId,p.targetId])]);
+            const running = new Map();
+            for(const run of controller.runs.values()){
+              if(run.claimingWriter||run.finalized)continue;
+              const active=running.get(run.sessionId)||[];
+              active.push(run);running.set(run.sessionId,active);
+            }
             return {
               projects: await Promise.all(snapshot.projects.map(async (p) => ({
                 id: p.id,
@@ -521,9 +563,8 @@ function registerRemote(
                 trustedForFileAccess: await store.isProjectTrusted(p.id),
               }))),
               sessions: snapshot.sessions.map(s=>{
-                const run=controller.runs.get(s.id),external=externalPreview(s);
-                const active=Boolean(run&&!run.claimingWriter&&!run.finalized||external?.running);
-                return mobileSummary(display(s),active,deciding.has(s.id),revisionOf(s.id),runLabels.get(run),Boolean(external));
+                const runs=running.get(s.id)||[];
+                return mobileSummary(display(s),runs,deciding.has(s.id),revisionOf(s.id),runLabels.get(runs[0]),externalPreview(s),snapshot.settings);
               }),
               settings: {
                 theme: snapshot.settings.theme === 'dark' ? 'dark' : 'light',
@@ -532,6 +573,7 @@ function registerRemote(
                 model: snapshot.settings.chatDefaults?.model || snapshot.settings.model,
                 effort: snapshot.settings.chatDefaults?.effort || snapshot.settings.effort,
                 aiFollowups: canUseFollowupModel(),
+                ...(snapshot.settings.claudeEnabled && {claudeEnabled:true,provider:snapshot.settings.provider,providerMode:snapshot.settings.providerMode,claudeModel:snapshot.settings.claudeModel,claudeEffort:snapshot.settings.claudeEffort}),
               },
               version,
               mobileVersion:mobileUpdater.version,
@@ -543,7 +585,7 @@ function registerRemote(
                 authenticated: connection.authenticated,
                 accountLabel: connection.accountLabel,
               },
-              running: [...controller.runs].filter(([,run])=>!run.claimingWriter&&!run.finalized).map(([id])=>id),
+              running: [...running.keys()],
               approvals: requests.map(e => e.type === "input" ? mobileInput(e) : e),
             };
           });
@@ -767,7 +809,7 @@ function registerRemote(
     publicOrigin = undefined;
     onContextChanged();
     status = "";
-    running.clear();
+    runRevisions.clear();
     approvals.clear();
     answeredInputs.clear();
     handoffs.clear();
@@ -858,7 +900,6 @@ function registerRemote(
         ownServer.close();
         throw Error("휴대폰 연결 준비가 취소됐습니다.");
       }
-      for (const run of controller.runs.values()) running.add(run.sessionId);
       if (pairing) {
         let link;
         link=await pairing.open(expectedOwner,ownServer,()=>pairedDisconnect(link,attempt),explicit);

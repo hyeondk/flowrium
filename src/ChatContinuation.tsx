@@ -1,15 +1,17 @@
 import {useEffect, useMemo, useRef, useState, type RefObject} from 'react';
 import {ArrowRight, Check, LoaderCircle, Sparkles} from 'lucide-react';
-import type {Session} from '../shared/types';
+import type {AIProvider,Session} from '../shared/types';
 import {awaitsContinuation,continuationAnswer} from '../shared/execution-state';
 import ResizableComposerInput from './ResizableComposerInput';
 import {CodexReferenceList,useCodexReferenceMenu} from './CodexPlugins';
 import type {CodexReference} from '../shared/codex-plugins';
 import {canOfferFollowup, prepareAnswerFollowup, latestFollowupAnswer} from './answer-followup';
+import {providerNames} from './ProviderSelect';
 import './chat-continuation.css';
 
 type Props = {
   session?: Session;
+  provider: AIProvider;
   running: boolean;
   authenticated: boolean;
   aiFollowups: boolean;
@@ -35,7 +37,7 @@ function errorText(error: unknown) {
 }
 
 export default function ChatContinuation({
-  session, running, authenticated, aiFollowups, busy, active, draft, placeholder, textareaRef,
+  session, provider, running, authenticated, aiFollowups, busy, active, draft, placeholder, textareaRef,
   onChange, onSend, onChoose, onContinue,references,referencesEnabled,onReferencesChange,onManagePlugins,
 }: Props) {
   const last = latestFollowupAnswer(session);
@@ -120,7 +122,7 @@ export default function ChatContinuation({
   }
 
   return <>
-    <ResizableComposerInput textareaRef={textareaRef} aria-label="Codex에 보낼 작업 요청" value={draft}
+    <ResizableComposerInput textareaRef={textareaRef} aria-label={`${providerNames[provider]}에 보낼 작업 요청`} value={draft}
       placeholder={preview || placeholder} data-inline-suggestion={Boolean(preview)}
       onTextChange={onChange}
       onCompositionStart={()=>{composing.current=true;}}

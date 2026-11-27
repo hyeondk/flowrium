@@ -150,7 +150,8 @@ async function startScopedRun(controller,run,input,message,project){
    controller.emitEvent({type:'status',sessionId:session.id,status:'running',text:'저장된 기본 모델을 현재 계정에서 사용할 수 없어 현재 계정의 기본 모델로 보냅니다.'});
   }
  }
- const previous=!run.threadId?session.messages.filter(m=>m.id!==run.userMessageId&&m.role!=='system').slice(-20).map(m=>m.role+': '+m.text).join('\n').slice(-40000):'';
+ const previous=!run.threadId?session.messages.filter(m=>m.id!==run.userMessageId&&m.role!=='system'&&m.provider!=='claude').slice(-20).map(m=>m.role+': '+m.text).join('\n').slice(-40000):'';
+ const priorClaude=run.conversationMode==='mixed'?require('./claude-conversation.cjs').claudeContext(session,run.userMessageId):'';
  if(!run.threadId){
   const tools=session.scope==='integrated'?[...toolDefinitions,currentRequest.reader]:[currentRequest.reader];
   const result=await client.request('thread/start',{...params,...(model&&{model}),dynamicTools:tools.map(t=>({type:'function',...t}))});
@@ -178,7 +179,7 @@ async function startScopedRun(controller,run,input,message,project){
  guard();
  const definition=dictionary?.();
  const guidance=instructions[session.scope]+(run.requestPages?'\n현재 긴 요청의 원문을 읽을 때는 전용 도구 flowrium_read_current_request를 사용하세요. 이 도구는 사용자가 이번에 입력한 글만 반환합니다.':'');
- const turn=await client.request('turn/start',{threadId:run.threadId,clientUserMessageId:run.userMessageId,approvalPolicy:'never',approvalsReviewer:'user',permissions:params.permissions,cwd:params.cwd,model,effort:input.effort,serviceTierForTurn:require('./model-speed.cjs').serviceTierForPlan(input.speed,client.flowriumAccountPlan),additionalContext:{flowrium_app:{kind:'application',value:'한국어로 답변해 주세요.\n'+guidance+'\n'+require('./chat-preferences.cjs').instructions(prefs)},...((context||previous||attachmentText)&&{flowrium_work:{kind:'untrusted',value:[context,previous,attachmentText].filter(Boolean).join('\n\n')}}),...(definition&&{flowrium_dictionary:definition})},input:[{type:'text',text:request},...run.attachments.filter(a=>a.image).map(a=>({type:'localImage',path:a.path}))]});
+ const turn=await client.request('turn/start',{threadId:run.threadId,clientUserMessageId:run.userMessageId,approvalPolicy:'never',approvalsReviewer:'user',permissions:params.permissions,cwd:params.cwd,model,effort:input.effort,serviceTierForTurn:require('./model-speed.cjs').serviceTierForPlan(input.speed,client.flowriumAccountPlan),additionalContext:{flowrium_app:{kind:'application',value:'한국어로 답변해 주세요.\n'+guidance+'\n'+require('./chat-preferences.cjs').instructions(prefs)},...((context||previous||attachmentText)&&{flowrium_work:{kind:'untrusted',value:[context,previous,attachmentText].filter(Boolean).join('\n\n')}}),...(priorClaude&&{flowrium_claude:{kind:'untrusted',value:priorClaude}}),...(definition&&{flowrium_dictionary:definition})},input:[{type:'text',text:request},...run.attachments.filter(a=>a.image).map(a=>({type:'localImage',path:a.path}))]});
  if(!turn.turn?.id)throw Error('ChatGPT 응답을 시작하지 못했습니다.');run.turnId=turn.turn.id;
  await controller.applyInitialTitle(run,session,client);
  const sent=session.messages.find(m=>m.id===run.userMessageId);if(sent)sent.turnId=run.turnId;await controller.store.save();
@@ -187,19 +188,22 @@ async function startScopedRun(controller,run,input,message,project){
 function registerConversationScopes(register,store,controller,options={}){
  store.conversations.getOwner=()=>options.accountOwner?.()||options.accountRevision?.()||0;controller.options.scopeWorkflowAction=options.workflowAction;
  register('createHubConversation',async input=>{
-  if(!input||!SCOPES.includes(input.scope)||Object.keys(input).some(k=>!['scope','title'].includes(k)))throw Error('일반 대화 또는 통합 채팅을 선택해 주세요.');
+  if(!input||!SCOPES.includes(input.scope)||Object.keys(input).some(k=>!['scope','title','provider'].includes(k)))throw Error('일반 대화 또는 통합 채팅을 선택해 주세요.');
+  const provider=require('./ai-provider.cjs').checkedProvider(input.provider);
   const title=input.title===undefined?(input.scope==='general'?'새 일반 대화':'새 통합 채팅'):text(input.title,'대화 제목',300);
-  const project=await store.conversations.ensure(input.scope);return store.createSession(project.id,{title});
+  const project=await store.conversations.ensure(input.scope);return store.createSession(project.id,{title,...(provider&&{preferences:{provider}})});
  });
  let assistantTail=Promise.resolve();
- register('openGeneralAssistant',()=>{
+ register('openGeneralAssistant',(requested)=>{
+  const {checkedProvider,boundProvider}=require('./ai-provider.cjs');
+  const provider=checkedProvider(requested)||'codex';
   const owner=store.conversations.owner();
   const pending=assistantTail.then(async()=>{
    if(owner!==store.conversations.owner())throw Error('연결 계정이 바뀌었습니다.');
    const project=await store.conversations.ensure('general');
    if(owner!==store.conversations.owner())throw Error('연결 계정이 바뀌었습니다.');
-   const existing=store.conversations.sessions().find(session=>session.projectId===project.id && session.generalAssistant);
-   return existing?structuredClone(existing):store.createSession(project.id,{title:'개인 비서',generalAssistant:true});
+   const existing=store.conversations.sessions().find(session=>session.projectId===project.id && session.generalAssistant && (boundProvider(session)||session.preferences?.provider||'codex')===provider);
+   return existing?structuredClone(existing):store.createSession(project.id,{title:'개인 비서',generalAssistant:true,...(provider==='claude'&&{preferences:{provider}})});
   });
   assistantTail=pending.catch(()=>{});
   return pending;

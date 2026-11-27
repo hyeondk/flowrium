@@ -3,6 +3,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { _electron } = require('playwright');
+const { selectExistingProjectFolder } = require('./shell-test-helpers.cjs');
 
 async function main() {
   const win = process.platform === 'win32';
@@ -45,8 +46,8 @@ async function main() {
     const add=page.locator('.workspace-side').getByRole('button',{name:'프로젝트 추가',exact:true});
     await add.click();
     await page.locator('.main-shell[data-view=kickoff]').waitFor();
-    await page.getByRole('button',{name:'기존 폴더 연결',exact:true}).focus();
-    await page.keyboard.press('Enter');
+    const create=await selectExistingProjectFolder(page,{keyboard:true});
+    await create.press('Enter');
     await page.getByRole('heading',{name:'시험 프로젝트',exact:true}).waitFor(); await click('터미널'); await click('터미널 추가');
     const textbox = page.locator('.xterm-helper-textarea');
     async function send(command) {

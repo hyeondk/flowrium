@@ -65,7 +65,7 @@ class WorkflowRuntime {
     this.listener=e=>{
       if(e.type==="status"&&e.status==="running")this.runOwners.set(e.sessionId,this.account());
       const owner=this.runOwners.get(e.sessionId);
-      if(e.type==="done")this.runOwners.delete(e.sessionId);
+      if(e.type==='done'&&!e.runningProviders?.length)this.runOwners.delete(e.sessionId);
       if(owner!==undefined&&owner!==this.account())return;
       if(["done","approval","input"].includes(e.type))void this.serial(()=>this.onEvent(e)).catch(error=>this.noticeError(error));
     };
@@ -160,9 +160,12 @@ class WorkflowRuntime {
     this.record.workClose=next;
     try{await this.save();}catch(error){this.record.workClose=previous;throw error;}
   }
+  canReadWorkClose(){
+    return (this.controller.status?.authenticated===true&&/^[\da-f]{64}$/.test(this.controller.options?.modelAccount?.()||'')) ||
+      this.options.canUseLocalClaude?.()===true;
+  }
   requireWorkCloseAccount(){
-    if(this.controller.status?.authenticated!==true || !/^[\da-f]{64}$/.test(this.controller.options?.modelAccount?.()||''))
-      throw Error('같은 ChatGPT 계정에 연결한 뒤 업무 복귀 기록을 확인해 주세요.');
+    if(!this.canReadWorkClose())throw Error('업무 마감에 사용한 AI 서비스 연결을 확인해 주세요.');
   }
   beginWorkCloseSubmission(batchId){
     this.requireWorkCloseAccount();
@@ -207,7 +210,7 @@ class WorkflowRuntime {
   async state(){
     return this.serial(async()=>{this.ready();await this.syncUpdateNotice();const record=copy(this.record);delete record.dismissedNotificationKeys;delete record.latestUpdateNotified;delete record.workClose;delete record.pullWatch;
       const batch=this.record.workClose?.current;
-      const resume=this.controller.status?.authenticated===true?workClose.resumeView(batch):undefined;
+      const resume=this.canReadWorkClose()?workClose.resumeView(batch):undefined;
       return{...record,...(resume&&{workClose:{...resume,returnPending:!batch.returnedAt}}),
       pullWatch:watchSummary(this.record.pullWatch,this.pullRun?.checking===true&&this.pullRun.owner===this.owner),pending:await this.options.pending?.()||[],
       projects:this.store.state.projects.map(p=>({id:p.id,name:p.name})),
@@ -373,7 +376,7 @@ class WorkflowRuntime {
         properties:{title:{type:"string"},body:{type:"string"},targetId:{type:"string"}}
       }}}
     };
-    try{await this.controller.send({sessionId:session.id,mode:"plan",text:"아래 대기 결정을 주제와 선후 관계로 묶고 실행 가능한 다음 업무를 최대 8개 추천하세요. 서로 모순되는 선택은 임의로 결정하지 말고 설명하세요. targetId는 아래에 있는 대화 id 또는 빈 문자열만 사용하세요. 추천은 사용자가 승인하기 전 실행되지 않습니다.\n"+JSON.stringify(pending)}, {outputSchema:schema});}
+    try{await this.controller.send({sessionId:session.id,provider:'codex',mode:"plan",text:"아래 대기 결정을 주제와 선후 관계로 묶고 실행 가능한 다음 업무를 최대 8개 추천하세요. 서로 모순되는 선택은 임의로 결정하지 말고 설명하세요. targetId는 아래에 있는 대화 id 또는 빈 문자열만 사용하세요. 추천은 사용자가 승인하기 전 실행되지 않습니다.\n"+JSON.stringify(pending)}, {outputSchema:schema});}
     catch(error){job.status="failed";job.error=String(error.message);await this.save();throw error;}
     return copy(session);
   }
