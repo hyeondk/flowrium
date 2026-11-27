@@ -43,10 +43,12 @@ button.popup-close-button.popup-close-button::before {
   content: "";
 }
 
-button.popup-close-button.popup-close-button:hover:enabled {
-  background: var(--close-hover);
-  color: var(--close-ink);
-  border-color: var(--close-line);
+@media (hover:hover) and (pointer:fine) {
+  :root:not([data-touch-input]) button.popup-close-button.popup-close-button:hover:enabled {
+    background: var(--close-hover);
+    color: var(--close-ink);
+    border-color: var(--close-line);
+  }
 }
 
 

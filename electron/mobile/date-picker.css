@@ -19,7 +19,10 @@
 .flow-date-picker .flow-date-title {min-width:0;font-weight:800;padding-inline:9px;white-space:nowrap;}
 .flow-date-picker .flow-date-title::after {content:'⌄';display:inline-block;margin-inline-start:5px;transform:translateY(-1px);}
 .flow-date-picker .flow-date-title[aria-expanded=true]::after {transform:rotate(180deg);}
-.flow-date-picker :is(button:hover:enabled,button:focus-visible){background:var(--calendar-tint);color:var(--calendar-ink);}
+:root:is(:not([data-touch-input]),[data-keyboard-focus]) .flow-date-picker button:focus-visible{background:var(--calendar-tint);color:var(--calendar-ink);}
+@media (hover:hover) and (pointer:fine) {
+  :root:not([data-touch-input]) .flow-date-picker button:hover:enabled{background:var(--calendar-tint);color:var(--calendar-ink);}
+}
 .flow-date-picker button:disabled{opacity:.36;cursor:default;}
 .flow-date-main {display:flow-root;height:calc(6 * var(--calendar-cell) + 40px);}
 .flow-date-picker .flow-date-week,.flow-date-picker .flow-date-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));text-align:center;gap:2px;}

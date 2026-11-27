@@ -14,6 +14,34 @@ async function typography(page,selectors) {
  }),selectors);
 }
 
+async function verifyDashboardTouch(page) {
+ const refresh=page.getByRole('button',{name:'새로고침',exact:true});
+ const rect=await refresh.boundingBox(),cdp=await page.context().newCDPSession(page);
+ const appearance=()=>refresh.evaluate(el=>{
+   const css=getComputedStyle(el);
+   return [css.backgroundColor,css.borderColor,css.boxShadow,css.outlineStyle,css.webkitTapHighlightColor];
+ });
+ const idle=await appearance();
+ assert.equal(idle.at(-1),'rgba(0, 0, 0, 0)');
+ try {
+  await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:true});
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:rect.x+rect.width/2,y:rect.y+rect.height/2}]});
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  await page.waitForFunction(()=>document.documentElement.hasAttribute('data-touch-input'));
+  assert.deepEqual(await appearance(),idle);
+  await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:false});
+  const {root}=await cdp.send('DOM.getDocument');
+  const {nodeId}=await cdp.send('DOM.querySelector',{nodeId:root.nodeId,selector:'.workspace-overview .mobile-compact-refresh'});
+  await cdp.send('CSS.enable');
+  await cdp.send('CSS.forcePseudoState',{nodeId,forcedPseudoClasses:['hover']});
+  assert.deepEqual(await appearance(),idle,'터치 뒤 브라우저가 호버 상태를 유지해도 강조가 남지 않는다');
+  await cdp.send('CSS.forcePseudoState',{nodeId,forcedPseudoClasses:[]});
+ } finally {
+  await cdp.send('Emulation.setTouchEmulationEnabled',{enabled:false});
+  await cdp.detach();
+ }
+}
+
 async function verifyChatSafeArea(page) {
  const cdp=await page.context().newCDPSession(page);
  const devices=[
@@ -117,6 +145,8 @@ async function verifyCommandDrafts(page,store,finished,model,modelCommand,trace,
   await page.getByRole('button',{name:new RegExp(finished.title)}).click();
   await candidate.filter({hasText:expected}).waitFor({timeout:8000});
   assert.doesNotMatch(await candidate.innerText(),/필요한 순서|확인 방법/);
+  assert.equal(await input.getAttribute('placeholder'),expected);
+  assert.equal(await input.inputValue(),'','추천 미리보기는 전송할 초안에 미리 입력하지 않는다');
   await candidate.click();
   assert.equal(await input.inputValue(),expected);
   await input.fill('읽던 기록을 유지하는지 확인하는 테스트를 추가해줘');
@@ -188,6 +218,9 @@ async function main(){
    row('user','정산표 항목에 맞게 검토해줘'),
    row('assistant','반품과 쿠폰은 서로 다른 열로 들어 있습니다. 결제 수수료가 빠진 주문도 있었습니다.'),
   ]});
+  const avatarChat=await store.createSession(project.id,{title:'두 서비스의 답변 아이콘',messages:[
+   row('assistant','Codex의 답변'),{...row('assistant','Claude의 답변'),provider:'claude'},
+  ]});
   const modelCommand={prompt:'반품과 쿠폰을 주문 단위로 다시 묶고, 결제 수수료가 비어 있는 주문 번호만 새 표로 저장해줘',evidence:'결제 수수료가 빠진 주문'};
   const trace=path.join(temp,'추천 합성 전송 기록');await fs.writeFile(trace,'');
   const accountOwner=createHash('sha256').update('flowrium-account:'+backendFixtureAccount.toLowerCase()).digest('hex');
@@ -208,7 +241,7 @@ async function main(){
   require('../electron/conversation-tools.cjs').registerConversationTools(register,controller);
   workflow=require('../electron/workflow.cjs').registerWorkflow(register,store,controller,{canRun:()=>true,accountRevision:()=>0,intervalMs:3600000});
   remote=registerRemote(register,{store,controller,handlers,isLocked:()=>locked,accountRevision:()=>0,canUseFollowupModel:()=>modelEnabled,
-   version:'261118_02',tunnelFactory:()=>{
+   version:require('../package.json').flowriumVersion,tunnelFactory:()=>{
    const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.exitCode=child.signalCode=null;
    child.kill=()=>{child.exitCode=0;child.emit('exit',0)};
    setTimeout(()=>child.stderr.emit('data',Buffer.from('https://density-fixture.trycloudflare.com Registered tunnel connection')),5);return child;
@@ -227,9 +260,12 @@ async function main(){
   for (const width of [320,390]) {
     await page.setViewportSize({width,height:844});
     const sizes=await typography(page,dashboard);
-    assert.deepEqual(sizes.map(size=>size.font),[20.5,12,10.5],JSON.stringify(sizes));
+    assert(sizes[0].font>=19&&sizes[0].font<20&&sizes[1].font===12&&sizes[2].font===10.5,JSON.stringify(sizes));
     assert(sizes[2].height>=44,JSON.stringify(sizes));
+    const controls=await typography(page,['.mobile-execution button','.mobile-project-search']);
+    assert(controls[0].height>=32&&controls[0].height<=36&&controls[1].height>=34&&controls[1].height<=36,JSON.stringify(controls));
   }
+  await verifyDashboardTouch(page);
   await page.setViewportSize({width:810,height:1080});
   await page.evaluate(()=>{
     Object.defineProperties(screen,{width:{configurable:true,value:810},height:{configurable:true,value:1080}});
@@ -266,8 +302,24 @@ async function main(){
   await retainedButton.waitFor({timeout:8000});
   const retainedMs=Date.now()-retainedStarted;
   assert(retainedMs<10000);
-  await retainedButton.click();
-  assert.equal(await page.getByRole('textbox',{name:'요청',exact:true}).inputValue(),retainedPrompt);
+  const retainedInput=page.getByRole('textbox',{name:'요청',exact:true});
+  assert.equal(await retainedInput.getAttribute('placeholder'),retainedPrompt);
+  assert.equal(await retainedInput.inputValue(),'');
+  assert(await retainedButton.getByText('Touch',{exact:true}).isVisible());
+  assert.equal(await retainedButton.getByText('Tab',{exact:true}).isVisible(),false);
+  await capture('mobile-chat-long-suggestion.png');
+  await retainedButton.scrollIntoViewIfNeeded();
+  const touch=await page.context().newCDPSession(page),rect=await retainedButton.boundingBox();
+  try {
+    await touch.send('Emulation.setTouchEmulationEnabled',{enabled:true});
+    await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:rect.x+rect.width/2,y:rect.y+rect.height/2}]});
+    await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await page.waitForFunction(value=>document.querySelector('.chat-compose textarea')?.value===value,retainedPrompt);
+  } finally {
+    await touch.send('Emulation.setTouchEmulationEnabled',{enabled:false});
+    await touch.detach();
+  }
+  assert.equal(await retainedInput.inputValue(),retainedPrompt);
   console.log('이전 중계가 남은 휴대폰 대화 추천 '+retainedMs+'ms / QR 보존과 교체 후 정리가 편집 가능한 초안에 반영');
   await page.getByRole('button',{name:'프로젝트로',exact:true}).click();
   await verifyCommandDrafts(page,store,finished,model,modelCommand,trace,value=>{modelEnabled=value;});
@@ -278,34 +330,98 @@ async function main(){
   assert.equal(await page.locator('article').getByText(/send_user_message_question_reply|questionItemId|codex-file-citation/).count(),0);
   assert.equal(await page.getByRole('region',{name:'보낸 질문 답변'}).getByRole('button').count(),0);
   const candidate=page.locator('.mobile-followup'),field=page.getByRole('textbox',{name:'요청',exact:true});await candidate.waitFor();
+  await page.locator('[data-chat-picker=effort] select').waitFor();
   assert.equal(await candidate.locator('span').innerText(),'매출 변화에 가장 크게 영향을 준 요인을 분석해줘');
   const calls=[];page.on('request',req=>{if(req.url().endsWith('/api/mobile/call'))calls.push(req.postDataJSON()?.method)});
   await field.focus();await field.press('Tab');assert.equal(await field.inputValue(),'매출 변화에 가장 크게 영향을 준 요인을 분석해줘');
   await field.fill('작성 중인 요청');assert.equal(await candidate.isVisible(),false);await field.fill('');
   await field.dispatchEvent('compositionstart');await field.press('Tab');assert.equal(await field.inputValue(),'');await field.dispatchEvent('compositionend');
   await field.blur();await candidate.waitFor();assert(!calls.includes('send')&&!calls.includes('workflowAction'));
+  const grip=page.getByRole('separator',{name:'입력창 높이 조절'});
+  const height=async()=>(await field.boundingBox()).height;
+  const autoHeight=await height();
+  await grip.focus();await grip.press('ArrowUp');assert(await height()>=autoHeight+16);
+  await grip.press('Enter');assert.equal(await height(),autoHeight);
+  const handle=await grip.boundingBox();
+  await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);
+  await page.mouse.down();await page.mouse.move(handle.x+handle.width/2,handle.y-17,{steps:4});await page.mouse.up();
+  assert(await height()>=autoHeight+16);
+  await grip.press('Enter');assert.equal(await height(),autoHeight);
   await page.evaluate(()=>{document.activeElement?.blur();scrollTo(0,0)});
   await capture('mobile-chat.png');
   const metrics=[];
   for(const [width,height]of [[320,705],[390,844],[430,900],[844,390]]){
    await page.setViewportSize({width,height});await page.evaluate(()=>scrollTo(0,0));
-   const m=await page.evaluate(()=>({width:innerWidth,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,heading:document.querySelector('.mobile-chat-heading').getBoundingClientRect().height,composer:document.querySelector('.chat-compose').getBoundingClientRect().height,zoom:getComputedStyle(document.querySelector('.mobile-timeline')).zoom}));
-   assert.equal(m.overflow,0,JSON.stringify(m));assert(m.heading<=48,JSON.stringify(m));assert(m.composer<=175,JSON.stringify(m));assert.equal(Number(m.zoom),.9);metrics.push(m);
+   const m=await page.evaluate(()=>{
+    const bounds=selector=>document.querySelector(selector).getBoundingClientRect();
+    const heading=bounds('.mobile-chat-heading'), back=bounds('.mobile-chat-back'),states=bounds('.mobile-chat-states'),title=bounds('.mobile-chat-title');
+    const dock=bounds('.mobile-chat-dock'),form=bounds('.chat-compose'),nav=bounds('#nav');
+    const model=document.querySelector('.chat-options select[aria-label="이 채팅의 모델"]');
+    const modelText=bounds('[data-chat-picker=model] .mobile-chat-choice-text > span');
+    const effort=document.querySelector('[data-chat-picker=effort] .mobile-chat-choice-text > span');
+    const recommendation=document.querySelector('.mobile-followup'),work=getComputedStyle(document.querySelector('.mobile-work > button'));
+    const input=getComputedStyle(document.querySelector('.chat-compose textarea'));
+    const send=bounds('.mobile-chat-send'),attach=bounds('.mobile-attach-button');
+    return {width:innerWidth,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,heading:heading.height,navHeight:nav.height,
+      aligned:Math.abs(back.top-states.top)<=1&&title.top>=back.bottom,composer:form.height,dockAboveNav:dock.bottom<=nav.top+1,
+      model:model.getBoundingClientRect().height,modelFill:getComputedStyle(model).backgroundColor,send:send.height,attach:attach.height,
+      caretGap:model.getBoundingClientRect().right-modelText.right,effort:effort.textContent,
+      recommendationHeight:recommendation.getBoundingClientRect().height,recommendationFont:parseFloat(getComputedStyle(recommendation).fontSize),
+      workFill:work.backgroundColor,workBorder:work.borderTopWidth,inputFill:input.backgroundColor,inputBorder:input.borderTopWidth,
+      zoom:getComputedStyle(document.querySelector('.mobile-timeline')).zoom};
+   });
+   assert.equal(m.overflow,0,JSON.stringify(m));
+   assert(m.aligned&&m.heading>=92&&m.heading<=101&&m.navHeight>=53&&m.navHeight<=56,JSON.stringify(m));
+   const [minComposer,maxComposer]=width===844?[134,155]:[153,173];
+   assert(m.composer>=minComposer&&m.composer<=maxComposer&&m.dockAboveNav,JSON.stringify(m));
+   assert(m.model>=44&&m.send>=44&&m.attach>=44&&m.modelFill==='rgba(0, 0, 0, 0)',JSON.stringify(m));
+   assert(m.caretGap>=9&&m.caretGap<=16&&m.effort==='Medium',JSON.stringify(m));
+   assert(m.recommendationHeight>=33&&m.recommendationHeight<=38&&m.recommendationFont<=12,JSON.stringify(m));
+   assert(m.workFill==='rgba(0, 0, 0, 0)'&&m.workBorder==='0px',JSON.stringify(m));
+   assert(m.inputFill==='rgba(0, 0, 0, 0)'&&m.inputBorder==='0px',JSON.stringify(m));
+   assert.equal(Number(m.zoom),.9);metrics.push(m);
    const chatType=await typography(page,['.mobile-markdown','.chat-compose textarea','.mobile-chat-heading h1']);
-   assert.deepEqual(chatType.map(size=>size.font),[15.04,16,15]);
-   assert(chatType[1].height>=44,JSON.stringify(chatType));
+   assert(chatType[0].font>=13&&chatType[0].font<14&&chatType[1].font===16&&chatType[2].font>=14&&chatType[2].font<15,JSON.stringify(chatType));
+   assert(chatType[1].height>=44&&chatType[1].height<=132,JSON.stringify(chatType));
   }
   await verifyChatSafeArea(page);
   await page.setViewportSize({width:390,height:844});await page.evaluate(()=>{document.activeElement?.blur();scrollTo(0,0)});await page.evaluate(()=>document.fonts.ready);
   await capture('mobile-chat.png');
+  await page.getByRole('button',{name:'프로젝트로',exact:true}).click();
+  await page.getByRole('button',{name:/두 서비스의 답변 아이콘/}).click();
+  const authorIcons=async()=>page.locator('article[data-role=assistant]').evaluateAll(articles=>articles.map(article=>({
+   provider:article.dataset.provider,icon:getComputedStyle(article.querySelector('.mobile-message-author'),'::before').backgroundImage,
+  })));
+  await page.getByText('Claude의 답변',{exact:true}).waitFor();
+  assert.deepEqual((await authorIcons()).map(({provider,icon})=>[provider,new URL(icon.match(/url\("(.+)"\)/)[1]).pathname]),
+   [['codex','/chatgpt.svg'],['claude','/claude.svg']]);
+  const liveResponse=store.session(avatarChat.id).messages.at(-1);
+  controller.runs.set(avatarChat.id,{sessionId:avatarChat.id,provider:'claude'});
+  liveResponse.text='Claude의 답변 작성 중';controller.emit('event',{type:'delta',sessionId:avatarChat.id,text:'Claude의 답변 작성 중'});
+  try{
+   await page.getByText(liveResponse.text,{exact:true}).waitFor();
+   assert.match((await authorIcons()).at(-1).icon,/\/claude\.svg/);
+  }finally{controller.runs.delete(avatarChat.id);}
   await page.getByRole('navigation',{name:'모바일 메뉴'}).getByRole('button',{name:'설정',exact:true}).click();
   await page.getByLabel('답변 길이',{exact:true}).waitFor();await page.evaluate(()=>scrollTo(0,0));
   const settingsType=await typography(page,['#content h1','.settings-guides h2','.settings-guides button']);
-  assert.deepEqual(settingsType.map(size=>size.font),[21.5,15,12]);assert(settingsType[2].height>=44);
+  assert(settingsType[0].font>=20&&settingsType[0].font<21&&settingsType[1].font>=14&&settingsType[1].font<15&&settingsType[2].font===12,JSON.stringify(settingsType));
+  assert(settingsType[2].height>=32&&settingsType[2].height<=38,JSON.stringify(settingsType));
+  const updateIcon=page.getByRole('button',{name:'업데이트 확인',exact:true}).locator('svg:first-child');
+  assert.equal(await updateIcon.getAttribute('aria-hidden'),'true');
+  assert(await updateIcon.isVisible());
+  for(const width of [320,390,430]) {
+   await page.setViewportSize({width,height:844});
+   const accountType=await typography(page,['.settings-account-models h2','.settings-account-identities td','.settings-account-models form select']);
+   assert.deepEqual(accountType.map(size=>size.font),[13,11,16]);
+   assert(accountType[2].height<=30,JSON.stringify(accountType));
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth),0);
+  }
+  await page.setViewportSize({width:390,height:844});
   await page.getByRole('button',{name:'도움말',exact:true}).click();
   const guide=page.getByRole('dialog',{name:'도움말'});
   await guide.waitFor();
-  assert.deepEqual((await typography(page,['#install-guide h2','#install-guide h3','#install-guide [data-help] p'])).map(size=>size.font),[16,13,12]);
+  assert.deepEqual((await typography(page,['#install-guide h2','#install-guide h3','#install-guide [data-help] p'])).map(size=>size.font),[15,13,12]);
   await guide.getByRole('button',{name:'도움말 닫기'}).click();
   await guide.waitFor({state:'hidden'});
   await capture('mobile-settings.png');
@@ -331,7 +447,7 @@ async function main(){
   const arrival=page.locator('.mobile-response-notice');await arrival.waitFor();
   assert.equal(await arrival.getByText('어시스턴트가 질문이 있으니 결정 부탁드립니다.',{exact:true}).count(),1);
   assert(!(await arrival.innerText()).includes('추가 분석에 포함할 기간'));
-  const arrivalSize=await arrival.boundingBox();assert(arrivalSize.width<=360&&arrivalSize.height>=176);
+  const arrivalSize=await arrival.boundingBox();assert(arrivalSize.width<=360&&arrivalSize.height>=100&&arrivalSize.height<=165,JSON.stringify(arrivalSize));
   await capture('mobile-question-arrival.png');
   await arrival.getByRole('button',{name:'대화에서 답하기',exact:true}).click();
   const form=page.locator('[data-input-request="'+requestId+'"]');await form.waitFor();

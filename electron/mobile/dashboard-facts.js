@@ -2,10 +2,20 @@ function dayKey(day) {
   return [day.getFullYear(),String(day.getMonth()+1).padStart(2,'0'),String(day.getDate()).padStart(2,'0')].join('-');
 }
 export function dashboardFacts(cards, now=new Date()) {
-  const today=dayKey(now), due=[],goals=[],phases={};
+  const today=dayKey(now), due=[],goals=[],phases={},projects={};
+  const monday=new Date(now);
+  monday.setDate(monday.getDate()-((monday.getDay()+6)%7));
+  const week=dayKey(monday);
   for(const {project,details} of cards){
     if(!details)continue;
     const phase=details.archivedAt?'완료':details.kickoff?.phase||'진행';
+    projects[project.id]={
+      category:details.kickoff?.category??details.category??'',
+      goal:details.goal, owner:details.owner, phase, due:details.dueDate, archived:Boolean(details.archivedAt),
+      checklist:(details.checklist||[]).map(({text,done})=>({text,done})),
+      weeklyGoals:(details.periodGoals||[]).filter(g=>g.period==='week'&&g.key===week&&!g.carriedTo)
+        .map(({text,done,due,current,target})=>({text,done,due,current,target})),
+    };
     phases[phase]=(phases[phase]||0)+1;
     if(details.archivedAt)continue;
     if(details.dueDate && details.dueDate<=today)due.push({projectId:project.id,due:details.dueDate});
@@ -17,5 +27,5 @@ export function dashboardFacts(cards, now=new Date()) {
       if(current)goals.push({projectId:project.id,text:g.text,due:g.due,current:g.current,target:g.target});
     }
   }
-  return {today,due,goals,phases};
+  return {today,due,goals,phases,projects};
 }

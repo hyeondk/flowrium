@@ -356,18 +356,26 @@ class Controller extends EventEmitter {
     const queuedSelection = internal.useCapturedSelection || (internal.fromQueue && input.model !== undefined);
     const inheritsModel = !queuedSelection && !own.model &&
       (!input.model || input.model === settings.model || input.model === settings.chatDefaults?.model);
-    input = provider === 'claude' ? {
-      ...input, provider,
-      model: queuedSelection ? input.model : own.model || input.model || settings.claudeModel || null,
-      effort: queuedSelection ? input.effort : own.effort || input.effort || settings.claudeEffort,
-      speed: undefined,
-    } : {
-      ...input,
-      provider,
-      model: queuedSelection ? input.model : own.model || settings.chatDefaults?.model || input.model || settings.model || null,
-      effort: queuedSelection ? input.effort : own.effort || settings.chatDefaults?.effort || input.effort || settings.effort,
-      speed: (queuedSelection ? input.speed : own.speed ?? settings.chatDefaults?.speed ?? input.speed ?? settings.speed) ?? 'standard',
-    };
+    if (provider === 'claude') {
+      const model = queuedSelection ? input.model : own.model || input.model || settings.claudeModel || null;
+      let effort = queuedSelection ? input.effort : own.effort || input.effort;
+      if (!queuedSelection && !effort && settings.claudeEffort) {
+        const catalog = await this.options.claude.listModels();
+        const selected = catalog.find(row => model ? row.id === model : row.isDefault);
+        if (selected?.supportedReasoningEfforts?.some(row => row.reasoningEffort === settings.claudeEffort)) {
+          effort = settings.claudeEffort;
+        }
+      }
+      input = {...input, provider, model, effort, speed:undefined};
+    } else {
+      input = {
+        ...input,
+        provider,
+        model: queuedSelection ? input.model : own.model || settings.chatDefaults?.model || input.model || settings.model || null,
+        effort: queuedSelection ? input.effort : own.effort || settings.chatDefaults?.effort || input.effort || settings.effort,
+        speed: (queuedSelection ? input.speed : own.speed ?? settings.chatDefaults?.speed ?? input.speed ?? settings.speed) ?? 'standard',
+      };
+    }
     const checkContinuation=()=>{
       const expected=internal.expectedContinuation;if(!expected)return;
       const last=require('./execution-state.js').continuationAnswer(session);

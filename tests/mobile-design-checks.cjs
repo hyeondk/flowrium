@@ -50,7 +50,7 @@ async function checkDesign(app,page,store,folder) {
   const root=(await fontSession.send('DOM.getDocument')).root.nodeId;
   try{
     await page.evaluate(()=>document.fonts.ready);
-    for(const selector of ['.mobile-chat-heading h1','.mobile-markdown p','.mobile-followup span','.mobile-followup kbd','#nav span']){
+    for(const selector of ['.mobile-chat-heading h1','.mobile-markdown p','.mobile-followup span','.mobile-followup .touch-hint','#nav span']){
       const {nodeId}=await fontSession.send('DOM.querySelector',{nodeId:root,selector});
       const {fonts}=await fontSession.send('CSS.getPlatformFontsForNode',{nodeId});
       assert(fonts.some(font=>font.isCustomFont && /NanumSquareRound/i.test(font.familyName)),selector+' / '+JSON.stringify(fonts));
@@ -70,7 +70,7 @@ async function checkDesign(app,page,store,folder) {
     });
     assert.equal(metrics.overflow,0);
     assert(metrics.ratio.every(n=>Math.abs(n-.90)<.02),JSON.stringify(metrics));
-    assert(metrics.head>=47 && metrics.head<=49 && metrics.backInset>=6,JSON.stringify(metrics));
+    assert(metrics.head>=92 && metrics.head<=101 && metrics.backInset>=6,JSON.stringify(metrics));
     ratios.push(metrics);
   }
   await page.setViewportSize({width:390,height:844});

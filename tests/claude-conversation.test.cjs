@@ -22,7 +22,8 @@ async function setup(t, generate, useCodex=false) {
     async start(){assert.fail('Claude 작업에서 Codex를 호출했습니다.');},
   });
   const claude={status:async()=>({configured:true}),listModels:async()=>[
-    {id:'claude-fixture',isDefault:true,contextWindow:200000},
+    {id:'claude-fixture',isDefault:true,contextWindow:200000,supportedReasoningEfforts:[{reasoningEffort:'high'}]},
+    {id:'claude-fixture-low',supportedReasoningEfforts:[{reasoningEffort:'low'}]},
   ],generate};
   const controller=new Controller(store,{claude,...(useCodex?{descriptor:{command:process.execPath,
     prefix:[path.join(__dirname,'backend-fake-codex.cjs')],label:'격리 시험',node:false}}:{client:codex})});
@@ -97,6 +98,19 @@ test('Claude 주간업무보고는 선택한 모델과 수준을 적용하고 �
   const answer=f.store.session(session.id).messages.at(-1);
   const excel=await fs.readFile(path.join(f.profile,'weekly-report-files',`${session.id}--${answer.id}.xlsx`));
   assert.equal(excel.subarray(0,2).toString(),'PK');
+});
+
+test('Claude 대화의 별도 모델이 계정 추론을 지원하지 않으면 공급자의 기본값을 쓴다', async t=>{
+  const selected=[];
+  const f=await setup(t,async ({model,effort})=>{
+    selected.push({model,effort});
+    return {text:'검증 답변'};
+  });
+  await f.store.saveSettings({claudeEnabled:true,claudeModel:'claude-fixture',claudeEffort:'high'});
+  const session=await f.store.createSession(f.project.id,{preferences:{provider:'claude',model:'claude-fixture-low'}});
+  assert.equal((await f.send({sessionId:session.id,text:'기본값 확인'})).status,'completed');
+  assert.equal((await f.send({sessionId:session.id,text:'별도 선택 확인',effort:'low'})).status,'completed');
+  assert.deepEqual(selected,[{model:'claude-fixture-low',effort:undefined},{model:'claude-fixture-low',effort:'low'}]);
 });
 
 test('양방향 동기화 모드에서 분리된 두 대화는 프로젝트의 최신 문맥을 읽으며 동시에 실행된다', async t=>{

@@ -176,6 +176,3 @@ nav.addEventListener('keydown', event => {
   buttons[next].focus();
   buttons[next].click();
 });
-
-document.addEventListener('keydown',()=>{document.documentElement.dataset.keyboardHint='';},true);
-document.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')delete document.documentElement.dataset.keyboardHint;},true);

@@ -258,9 +258,10 @@
 .conversation-dock .message-meta-actions :is(.icon-button,.ui-like-button){display:inline-grid;place-items:center;flex:none;width:28px;height:28px;min-width:28px;min-height:28px;margin:0;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted)}
 .conversation-dock .message-meta-actions :is(.icon-button,.ui-like-button):hover{color:var(--accent);background:var(--selected)}
 .conversation-dock .message-meta-actions .ui-like-button>span:last-child{display:none}
-.message-avatar.assistant:has(.codex-avatar){background:transparent;border:0}
+.message-avatar.assistant:has(.codex-avatar,.claude-avatar){background:transparent;border:0}
 .conversation-dock .message-avatar.assistant{grid-template:100% / 100%}
 .codex-avatar{display:block;width:100%;height:100%;object-fit:contain}
+.claude-avatar{display:block;width:78%;height:78%;object-fit:contain}
 
 @media(max-width:760px){
  .conversation-dock{--chat-gutter:12px}

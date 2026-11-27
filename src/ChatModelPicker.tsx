@@ -3,7 +3,7 @@ import {RotateCcw, Zap} from 'lucide-react';
 import ChoicePicker from './ChoicePicker';
 import type {AIProvider, ChatPreferences, Effort, Model, Speed} from '../shared/types';
 import {modelDisplayName} from '../shared/model-display';
-import {effortOptions, effectiveEffort} from '../shared/model-options';
+import {effortOptions, effectiveEffort, supportedEffort} from '../shared/model-options';
 import {isImeKey} from './ime';
 import {providerNames} from './ProviderSelect';
 import './chat-model-picker.css';
@@ -12,6 +12,7 @@ const speedLabels: Record<Speed,string> = {standard:'Standard',fast:'Fast',ultra
 const speedOrder: Speed[] = ['standard','fast','ultrafast'];
 const effortLabels: Record<Effort,string> = {none:'None',minimal:'Minimal',low:'Low',medium:'Medium',high:'High',xhigh:'XHigh',max:'Max',ultra:'Ultra'};
 const sliderKeys = new Set(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown']);
+type EffortChoice = Effort | '';
 
 function speedAvailable(speed:Speed,model?:Model,pro=false) {
   return speed==='standard'||(speed!=='ultrafast'||pro)&&(model?.supportedSpeeds?.includes(speed)??true);
@@ -61,15 +62,19 @@ function ChatPerformance({provider, model, preferences, defaultEffort, defaultSp
   const trigger=useRef<HTMLButtonElement>(null);
   const popup=useRef<HTMLDivElement>(null);
   const [showSpeed,setShowSpeed]=useState(false);
-  const [preview,setPreview]=useState<Effort>();
-  const pending=useRef<Effort>(undefined);
+  const [preview,setPreview]=useState<EffortChoice>();
+  const pending=useRef<EffortChoice>(undefined);
   const moving=useRef(false);
+  const hasSpeed=provider==='codex';
   const availableEfforts=new Set(effortOptions(model).map(row=>row.reasoningEffort));
   const efforts=(Object.keys(effortLabels) as Effort[]).filter(effort=>availableEfforts.has(effort));
-  const savedEffort=effectiveEffort(model,preferences?.effort??defaultEffort) as Effort|undefined;
-  const position=Math.max(0,efforts.indexOf(preview??savedEffort??efforts[0]));
-  const label=effortLabels[efforts[position]]||'Default';
-  const hasSpeed=provider==='codex';
+  const choices:EffortChoice[]=hasSpeed?efforts:['',...efforts];
+  const savedChoice=hasSpeed?effectiveEffort(model,preferences?.effort??defaultEffort):supportedEffort(model,preferences?.effort)??'';
+  const position=Math.max(0,choices.indexOf(preview??savedChoice??efforts[0]));
+  const effort=choices[position],label=effort?effortLabels[effort]:'Default';
+  const inheritedEffort=!hasSpeed&&effort===''?effectiveEffort(model,defaultEffort):undefined;
+  const displayLabel=inheritedEffort?effortLabels[inheritedEffort]:label;
+  const sliderLabel=inheritedEffort?`Default (${displayLabel})`:label;
   const requestedSpeed=preferences?.speed??defaultSpeed??'standard';
   const speed=hasSpeed&&speedAvailable(requestedSpeed,model,pro)?requestedSpeed:'standard';
 
@@ -82,7 +87,7 @@ function ChatPerformance({provider, model, preferences, defaultEffort, defaultSp
   function commit() {
     const next=pending.current;
     clearPreview();
-    if (!disabled&&next&&next!==savedEffort) onChange({effort:next});
+    if (!disabled&&next!==undefined&&next!==savedChoice) onChange({effort:next});
   }
 
   function closeOnEscape(event:KeyboardEvent<HTMLElement>) {
@@ -96,8 +101,8 @@ function ChatPerformance({provider, model, preferences, defaultEffort, defaultSp
   return <>
     <span className="chat-performance-slot">
       <button className="chat-performance-trigger" type="button" ref={trigger} popoverTarget={id} disabled={disabled}
-        aria-label={hasSpeed?'Reasoning and speed':'Reasoning effort'} title={hasSpeed?speedLabels[speed]+' / '+label:label} data-speed={speed} onKeyDown={closeOnEscape}>
-        {speed!=='standard'&&<Zap size={12} aria-hidden="true"/>}<span>{label}</span>
+        aria-label={hasSpeed?'Reasoning and speed':'Reasoning effort'} title={hasSpeed?speedLabels[speed]+' / '+label:sliderLabel} data-speed={speed} onKeyDown={closeOnEscape}>
+        {speed!=='standard'&&<Zap size={12} aria-hidden="true"/>}<span>{displayLabel}</span>
       </button>
     </span>
     <div id={id} ref={popup} className="chat-performance-popup" popover="auto" role="group" aria-label="Model controls"
@@ -105,24 +110,24 @@ function ChatPerformance({provider, model, preferences, defaultEffort, defaultSp
       <div className="chat-performance-heading">
         {hasSpeed?<button type="button" className="chat-performance-icon" aria-label="Speed" title="Speed" aria-expanded={showSpeed} aria-controls={id+'-speed'}
           data-fast={speed!=='standard'} onClick={()=>setShowSpeed(value=>!value)}><Zap size={16}/></button>:<span aria-hidden="true"/>}
-        <div><span>Reasoning</span><strong>{label}</strong></div>
+        <div><span>Reasoning</span><strong>{sliderLabel}</strong></div>
         <span className="chat-performance-reset" data-local-tooltip>
           <button type="button" className="chat-performance-icon" aria-label="기본값으로 복구" aria-describedby={id+'-reset-tip'} data-local-tooltip
             disabled={disabled||(!preferences?.effort&&(!hasSpeed||!preferences?.speed))} onClick={()=>onChange(hasSpeed?{effort:'',speed:''}:{effort:''})}><RotateCcw size={14}/></button>
-          <span id={id+'-reset-tip'} className="chat-performance-tooltip" role="tooltip">{hasSpeed?'속도와 추론 수준을 계정 기본값으로 복구합니다':'추론 수준을 모델 기본값으로 복구합니다'}</span>
+          <span id={id+'-reset-tip'} className="chat-performance-tooltip" role="tooltip">{hasSpeed?'속도와 추론 수준을 계정 기본값으로 복구합니다':'계정에서 정한 추론 수준이나 모델 기본값을 따릅니다'}</span>
         </span>
       </div>
-      {efforts.length > 1 ? <input className="chat-effort-slider" type="range" aria-label="Reasoning effort" aria-valuetext={label}
-        aria-disabled={disabled} min={0} max={efforts.length-1} step={1} value={position}
-        style={{'--effort-progress':`${100*position/(efforts.length-1)}%`} as CSSProperties}
+      {choices.length > 1 ? <input className="chat-effort-slider" type="range" aria-label="Reasoning effort" aria-valuetext={sliderLabel}
+        aria-disabled={disabled} min={0} max={choices.length-1} step={1} value={position}
+        style={{'--effort-progress':`${100*position/(choices.length-1)}%`} as CSSProperties}
         onPointerDown={event=>{if(disabled)event.preventDefault();else moving.current=true;}}
         onPointerUp={commit} onPointerCancel={clearPreview}
         onKeyDown={event=>{if(sliderKeys.has(event.key)){if(disabled)event.preventDefault();else moving.current=true;}}}
         onKeyUp={event=>{if(sliderKeys.has(event.key))commit();}}
-        onBlur={()=>{if (pending.current) commit();}}
+        onBlur={()=>{if (pending.current!==undefined) commit();}}
         onChange={event=>{
           if(disabled)return;
-          const next=efforts[Number(event.target.value)];
+          const next=choices[Number(event.target.value)];
           pending.current=next;
           setPreview(next);
           if(!moving.current)commit();
@@ -152,7 +157,11 @@ export default function ChatModelPicker({provider, showProvider, providerLocked,
     </div>}
     <div className="model-select chat-model-picker" data-model={model||''} title={model ? `이 대화의 모델 (${label})` : defaultLabel}>
       <ChoicePicker label="이 채팅의 모델" value={model || ''} triggerLabel={label} disabled={disabled} placement="up" menuMinWidth={240} onOpen={onOpen} onFocus={onOpen}
-        onChange={model=>onChange({model})} options={[
+        onChange={model=>{
+          const selected=models.find(row=>row.id===(model||inherited));
+          const clearEffort=provider==='claude'&&selected&&preferences?.effort&&!supportedEffort(selected,preferences.effort);
+          onChange({model,...(clearEffort&&{effort:''})});
+        }} options={[
           {value:'',label:defaultLabel},
           ...(model&&!models.some(item=>item.id===model)?[{value:model,label}]:[]),
           ...models.map(item=>({value:item.id,label:modelDisplayName(item)})),

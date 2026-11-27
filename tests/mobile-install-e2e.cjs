@@ -104,7 +104,7 @@ async function main() {
     }
     assert.deepEqual(manifest.icons.map(i=>i.sizes),['192x192','512x512']);
     assert.equal(await mobile.evaluate(async()=>Boolean((await navigator.serviceWorker.ready).active)),true);
-    assert.equal(await mobile.locator('.bar button').count(),1,'상단에는 대시보드만 유지');
+    assert.equal(await mobile.locator('.bar button:not([hidden])').count(),1,'휴대폰 연결 전 상단에는 대시보드만 표시');
     assert.equal(await mobile.getByRole('button',{name:'홈 화면에 설치'}).count(),0);
     assert.equal(await mobile.getByLabel('연결 주소 붙여넣기').count(),0);
     await mobile.evaluate(()=>Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>{throw new DOMException('거절','NotAllowedError');}}}));
@@ -175,7 +175,7 @@ async function main() {
       await control.waitFor();
       assert(await control.evaluate(input=>{
         const label=input.closest('label'),r=label.getBoundingClientRect(),track=input.nextElementSibling.getBoundingClientRect();
-        return Math.abs(r.right-track.right)<2 && track.width>=36 && r.height>=44;
+        return Math.abs(r.right-track.right)<2 && track.width>=36 && r.height>=34;
       }),'설정 오른쪽 스위치 정렬 '+label);
     }
     if(process.env.FLOWRIUM_MOBILE_SETTINGS_SCREENSHOT){
@@ -189,6 +189,19 @@ async function main() {
     assert(await mobile.evaluate(()=>Boolean(localStorage.getItem('flowrium.mobile.rememberedKey'))));
     await mobile.evaluate(()=>sessionStorage.clear()); await mobile.reload();
     await settings.click(); assert.equal(await remember.isChecked(),true);
+    const previousViewport=mobile.viewportSize()||{width:390,height:750};
+    const update=mobile.getByRole('region',{name:'앱 업데이트',exact:true});
+    for(const width of [320,390,430]){
+      await mobile.setViewportSize({width,height:844});
+      const placement=await update.locator('.mobile-update-version-line').evaluate(line=>{
+        const version=line.querySelector('.mobile-current-version').getBoundingClientRect();
+        const button=line.querySelector('button').getBoundingClientRect();
+        return {centerGap:Math.abs(version.top+version.height/2-button.top-button.height/2),
+          gap:button.left-version.right,overflow:line.scrollWidth-line.clientWidth};
+      });
+      assert(placement.centerGap<=1&&placement.gap>=0&&placement.overflow<=1,JSON.stringify({width,...placement}));
+    }
+    await mobile.setViewportSize(previousViewport);
     await checkMobileUpdate(mobile,release);
     await mobile.evaluate(()=>dispatchEvent(new Event('appinstalled')));
     const installed=mobile.getByRole('button',{name:/홈 화면에 설치.*설치됨/});

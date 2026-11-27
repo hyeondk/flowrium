@@ -246,7 +246,7 @@ function registerRemote(
   }
   function mobileModelSettings(settings) {
     return { model:settings.model,effort:settings.effort,chatDefaults:settings.chatDefaults,aiFollowups:canUseFollowupModel(),
-      ...(settings.claudeEnabled && { claudeEnabled:true,provider:settings.provider,providerMode:settings.providerMode,claudeModel:settings.claudeModel,claudeEffort:settings.claudeEffort }) };
+      ...(settings.claudeEnabled && { claudeEnabled:true,provider:settings.provider,providerMode:settings.providerMode,claudeModel:settings.claudeModel??'',claudeEffort:settings.claudeEffort??'' }) };
   }
   async function mobileCall(method, args, requestScope, requestOwner) {
     const input=args[0];
@@ -331,7 +331,7 @@ function registerRemote(
       checkScope(requestScope,requestOwner);
       const current=store.state.settings;
       return {...mobileModelSettings(current), models:mobileModels(codexModels),
-        ...(current.claudeEnabled&&{claudeConnected:claudeResult?.connected===true,claudeModels:mobileModels(claudeResult?.models)})};
+        ...(current.claudeEnabled&&{claudeConfigured:claudeResult?.configured,claudeConnected:claudeResult?.connected===true,claudeModels:mobileModels(claudeResult?.models)})};
     }
     if (method === "saveMobileSettings") {
       const input = args[0];
@@ -577,6 +577,7 @@ function registerRemote(
               },
               version,
               mobileVersion:mobileUpdater.version,
+              canSetChatEffort:true,
               canSteer:true,
               canUploadRequestChunks:true,
               pushAvailable: !!handlers.get("webPushAction"),
@@ -744,7 +745,15 @@ function registerRemote(
       "/confirmation.js": "confirmation.js",
       "/decision-notice.js": "decision-notice.js",
       "/chatgpt.svg": "chatgpt.svg",
+      "/claude.svg": "claude.svg",
       "/mobile-shell.css": "mobile-shell.css",
+      "/mobile-conversations.css": "mobile-conversations.css",
+      "/mobile-dashboard.css": "mobile-dashboard.css",
+      "/mobile-form-density.css": "mobile-form-density.css",
+      "/mobile-action.css": "mobile-action.css",
+      "/mobile-action.js": "mobile-action.js",
+      "/mobile-loading.css": "mobile-loading.css",
+      "/mobile-loading.js": "mobile-loading.js",
       "/model-display.js": "model-display.js",
       "/usage-credits.js": "usage-credits.js",
       "/style.css": "style.css",

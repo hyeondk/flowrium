@@ -50,8 +50,12 @@ async function main() {
       mock('configureClaude', (_event, input) => {
         globalThis.claudeUiTest.credentialActions.push(input.remove ? 'removed' : 'configured');
         state.configured = state.connected = input.apiKey === '가상 키 값';
-        state.models = state.connected ? [{ id: 'claude-sonnet-fixture', displayName: 'Claude Sonnet 시험 모델', isDefault: true,
-          defaultReasoningEffort: 'medium', supportedReasoningEfforts: [{ reasoningEffort: 'medium' }, { reasoningEffort: 'high' }] }] : [];
+        state.models = state.connected ? [
+          { id: 'claude-sonnet-fixture', displayName: 'Claude Sonnet 시험 모델', isDefault: true,
+            supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }] },
+          { id: 'claude-low-fixture', displayName: 'Claude Low 전용 모델',
+            supportedReasoningEfforts: [{ reasoningEffort: 'low' }] },
+        ] : [];
         return state;
       });
       mock('readChatConnection', () => {
@@ -91,6 +95,11 @@ async function main() {
     const claudeReply = page.locator(`[data-message-id="${claudeReplyId}"][data-provider="claude"]`);
     await codexReply.getByText('Codex', { exact: true }).waitFor();
     await claudeReply.getByText('Claude', { exact: true }).waitFor();
+    for (const [reply, selector] of [[codexReply, '.codex-avatar'], [claudeReply, '.claude-avatar']]) {
+      const icon=reply.locator(selector);
+      await icon.waitFor();
+      assert(await icon.evaluate(image=>image.decode().then(()=>image.naturalWidth>0)));
+    }
 
     let dialog = await settings();
     const switchLabel = { name: 'Claude 사용', exact: true };
@@ -99,6 +108,26 @@ async function main() {
     await dialog.getByLabel('Anthropic API 키', { exact: true }).fill('가상 키 값');
     await dialog.getByRole('button', { name: 'API 키 연결', exact: true }).click();
     await dialog.getByText('Claude에 연결됨', { exact: true }).waitFor();
+    await dialog.getByLabel('기본값을 편집할 AI 서비스', { exact: true }).selectOption('claude');
+    const defaultModel=dialog.getByLabel('기본 모델', { exact: true });
+    const defaultEffort=dialog.getByLabel('추론 수준', { exact: true });
+    const waitDefault=async (model,effort)=>page.waitForFunction(async ({model,effort})=>{
+      const settings=(await window.flowrium.bootstrap()).settings;
+      return (settings.claudeModel??'')===model&&(settings.claudeEffort??'')===effort;
+    },{model,effort});
+    await defaultEffort.selectOption('high');
+    await waitDefault('','high');
+    await defaultModel.selectOption('claude-low-fixture');
+    await waitDefault('claude-low-fixture','');
+    assert.equal(await defaultEffort.inputValue(),'');
+    await defaultEffort.selectOption('low');
+    await waitDefault('claude-low-fixture','low');
+    await defaultEffort.selectOption('');
+    await waitDefault('claude-low-fixture','');
+    await defaultModel.selectOption('');
+    await waitDefault('','');
+    await defaultEffort.selectOption('high');
+    await waitDefault('','high');
     await closeSettings(page);
 
     await chooseService('Claude');
@@ -106,15 +135,36 @@ async function main() {
     await draft.waitFor();
     await page.getByText('Claude로 보내면 최근 대화 내용이 Anthropic으로 전송됩니다.', { exact: false }).waitFor();
     const model = page.getByRole('combobox', { name: '이 채팅의 모델', exact: true });
-    await model.click();
-    await page.getByRole('listbox', { name: '이 채팅의 모델', exact: true })
-      .getByRole('option', { name: 'Claude Sonnet 시험 모델', exact: true }).click();
-    await page.getByRole('button', { name: 'Reasoning effort', exact: true }).click();
+    const chooseModel=async (name)=>{
+      await model.click();
+      await page.getByRole('listbox',{name:'이 채팅의 모델',exact:true}).getByRole('option',{name,exact:true}).click();
+    };
+    await chooseModel('Claude Low 전용 모델');
+    const reasoning=page.getByRole('button',{name:'Reasoning effort',exact:true});
+    assert.equal(await reasoning.innerText(),'Default');
+    await reasoning.click();
     const performance = page.getByRole('group', { name: 'Model controls', exact: true });
     assert.equal(await performance.getByRole('button', { name: 'Speed', exact: true }).count(), 0);
     const slider = performance.getByRole('slider', { name: 'Reasoning effort', exact: true });
+    assert.equal(await slider.getAttribute('aria-valuetext'),'Default');
+    assert.equal(await slider.getAttribute('max'),'1');
+    const waitEffort=async effort=>page.waitForFunction(async ({id,effort})=>
+      (await window.flowrium.bootstrap()).sessions.find(row=>row.id===id)?.preferences?.effort===effort,{id:session.id,effort});
+    await slider.press('ArrowRight');
+    await waitEffort('low');
+    assert.equal(await reasoning.innerText(),'Low');
+    await performance.getByRole('button',{name:'기본값으로 복구',exact:true}).click();
+    await waitEffort(undefined);
+    assert.equal(await reasoning.innerText(),'Default');
+    await slider.press('Escape');
+    await draft.fill('이 대화의 Claude 모델 기본 추론 수준으로 요청해 줘.');
+    await page.getByRole('button', { name: '작업 보내기', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('textarea[aria-label="Claude에 보낼 작업 요청"]').value);
+    await chooseModel('Claude Sonnet 시험 모델');
+    await reasoning.click();
+    assert.equal(await slider.getAttribute('aria-valuetext'),'Default (High)');
     await slider.press('End');
-    await page.waitForFunction(async id => (await window.flowrium.bootstrap()).sessions.find(row => row.id === id)?.preferences?.effort === 'high', session.id);
+    await waitEffort('high');
     await slider.press('Escape');
 
     await draft.fill('같은 대화에서 이 내용을 Claude로 이어서 보내 줘.');
@@ -122,10 +172,13 @@ async function main() {
     await page.waitForFunction(() => !document.querySelector('textarea[aria-label="Claude에 보낼 작업 요청"]').value);
     const calls = await app.evaluate(() => globalThis.claudeUiTest);
     assert.equal(calls.codexChecks, 0);
-    assert.deepEqual(calls.trusted, [{ id: project.id, provider: 'claude' }]);
-    assert.equal(calls.sent.length, 1);
+    assert.deepEqual(calls.trusted, Array.from({length:2},()=>({id:project.id,provider:'claude'})));
+    assert.equal(calls.sent.length, 2);
+    for (const [key,value] of Object.entries({sessionId:session.id,provider:'claude',model:'claude-low-fixture',effort:undefined})) {
+      assert.equal(calls.sent[0][key],value,key);
+    }
     for (const [key, value] of Object.entries({ sessionId: session.id, provider: 'claude', model: 'claude-sonnet-fixture', effort: 'high' })) {
-      assert.equal(calls.sent[0][key], value, key);
+      assert.equal(calls.sent[1][key], value, key);
     }
     assert.deepEqual(calls.credentialActions, ['configured']);
     assert.deepEqual((await page.evaluate(() => window.flowrium.bootstrap())).sessions.map(session => session.id), [session.id]);
@@ -145,7 +198,7 @@ async function main() {
     await page.getByRole('button',{name:'작업 보내기',exact:true}).click();
     await page.waitForFunction(() => !document.querySelector('textarea[aria-label="Codex에 보낼 작업 요청"]').value);
     const parallelCalls = await app.evaluate(()=>globalThis.claudeUiTest);
-    assert.deepEqual(parallelCalls.sent.map(row=>[row.sessionId,row.provider,row.delivery]), [[session.id,'claude',undefined],[session.id,'codex',undefined]]);
+    assert.deepEqual(parallelCalls.sent.map(row=>[row.sessionId,row.provider,row.delivery]), [[session.id,'claude',undefined],[session.id,'claude',undefined],[session.id,'codex',undefined]]);
     const sendCodexStreaming={id:randomUUID(),createdAt:now};
     await emit({type:'status',status:'running',provider:'codex',runningProviders:['claude','codex']});
     await emit({type:'delta',provider:'codex',text:'Codex 동시 답변',streamingMessage:sendCodexStreaming,runningProviders:['claude','codex']});

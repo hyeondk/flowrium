@@ -8,7 +8,7 @@ const { _electron } = require("playwright");
 const { Store } = require("../electron/store.cjs");
 const { registerRemote } = require("../electron/remote.cjs");
 const { registerWorkbench } = require("../electron/workbench.cjs");
-const {verifyDashboardLoading, verifyChatLoading, verifyRefreshingChat} = require('./mobile-loading-checks.cjs');
+const {verifyDashboardLoading, verifyChatLoading, verifyRefreshingChat, verifyProjectLoading} = require('./mobile-loading-checks.cjs');
 const {verifyStopSheet, observeToast, verifyToast} = require('./mobile-feedback-checks.cjs');
 const {settledLayout} = require('./shell-test-helpers.cjs');
 
@@ -71,7 +71,7 @@ async function run() {
         createdAt: at,
       });
       session.updatedAt = at;
-      controller.runs.set(session.id, {});
+      controller.runs.set(session.id, { sessionId: session.id });
       requests = [
         {
           type: "approval",
@@ -144,6 +144,21 @@ async function run() {
       note(index + 1),
     );
     const remote = await handlers.get("startRemoteAccess")();
+    const mobileOrigin = new URL(remote.localUrl).origin;
+    const mobilePage = await (await fetch(mobileOrigin + '/')).text();
+    const touchIcon = mobilePage.match(/rel="apple-touch-icon"[^>]+href="([^"]+)"/)?.[1];
+    assert.equal(touchIcon, '/icon.png?v=flowrium-f');
+    const touchResponse = await fetch(mobileOrigin + touchIcon);
+    assert.equal(touchResponse.headers.get('content-type'), 'image/png');
+    assert.deepEqual(Buffer.from(await touchResponse.arrayBuffer()), await fs.readFile(path.join(__dirname, '../assets/flowrium.png')));
+    const manifest = await (await fetch(mobileOrigin + '/manifest.webmanifest')).json();
+    assert.equal(manifest.id, '/', '홈 화면 앱의 기존 설치 식별자를 유지합니다.');
+    for (const { src, sizes } of manifest.icons) {
+      const response = await fetch(mobileOrigin + src);
+      assert.equal(response.headers.get('content-type'), 'image/png');
+      const icon = Buffer.from(await response.arrayBuffer());
+      assert.equal(`${icon.readUInt32BE(16)}x${icon.readUInt32BE(20)}`, sizes);
+    }
     const fixture = path.join(temp, "window.cjs");
     await fs.writeFile(
       fixture,
@@ -181,6 +196,49 @@ async function run() {
     const recentWork=page.getByRole('region',{name:'최근 업무'});
     const recentEntry=recentWork.getByRole('button',{name:/지난 현장 기록/});
     await recentEntry.waitFor();
+    await btn('대화함 열기').click();
+    const conversationList=page.locator('.mobile-conversation-list');
+    await conversationList.getByRole('heading',{name:'대화',exact:true}).waitFor();
+    await conversationList.getByRole('button',{name:'프로젝트',exact:true}).click();
+    assert.equal(await conversationList.getByLabel('프로젝트',{exact:true}).inputValue(),p.id);
+    for (const width of [320,390,430]) {
+      await page.setViewportSize({width,height:844});
+      const layout=await conversationList.evaluate(list=>{
+        const bounds=selector=>list.querySelector(selector).getBoundingClientRect();
+        return {
+          tabsHeight:bounds('.mobile-conversation-scope').height,
+          statusGap:bounds('.mobile-conversation-states').top-bounds('.mobile-conversation-controls').bottom,
+          overflow:document.documentElement.scrollWidth-innerWidth,
+        };
+      });
+      assert(Math.abs(layout.tabsHeight-34)<1&&Math.abs(layout.statusGap-5)<1&&layout.overflow<=1,JSON.stringify({width,layout}));
+    }
+    await page.setViewportSize({width:390,height:844});
+    const conversationSearch=conversationList.getByRole('searchbox',{name:'대화 검색'});
+    await conversationSearch.fill('없는 대화');
+    await conversationList.getByText('조건에 맞는 대화가 없습니다.',{exact:true}).waitFor();
+    await conversationSearch.fill('지난 현장');
+    await conversationList.getByRole('button',{name:/지난 현장 기록/}).waitFor();
+    const runningFilter=conversationList.getByRole('group',{name:'대화 진행 상태'}).getByRole('button',{name:/작업중/});
+    await runningFilter.click();
+    await conversationList.getByText('조건에 맞는 대화가 없습니다.',{exact:true}).waitFor();
+    await runningFilter.click();
+    await conversationList.getByRole('button',{name:/지난 현장 기록/}).waitFor();
+    const newConversation=conversationList.locator('.mobile-conversation-list-heading').getByRole('button',{name:'새 대화',exact:true});
+    const newButtonLayout=await newConversation.evaluate(button=>{
+      const box=button.getBoundingClientRect();
+      const header=button.parentElement.getBoundingClientRect();
+      const heading=button.parentElement.querySelector('h1').getBoundingClientRect();
+      return {rightGap:header.right-box.right,centerGap:Math.abs((box.top+box.bottom-heading.top-heading.bottom)/2)};
+    });
+    assert(newButtonLayout.rightGap<=1&&newButtonLayout.centerGap<=1,JSON.stringify(newButtonLayout));
+    await newConversation.click();
+    await page.getByRole('heading',{name:'새 업무 대화',exact:true}).waitFor();
+    await btn('프로젝트로').click();
+    await conversationSearch.waitFor();
+    assert.equal(await conversationSearch.inputValue(),'지난 현장');
+    await btn('대화함에서 뒤로').click();
+    await page.getByRole('heading',{name:'대시보드',exact:true}).waitFor();
     for(const width of [320,390,430]){
       await page.setViewportSize({width,height:844});
       const regions=await page.locator('#content[data-view=projects] > :is(.workspace-overview,.mobile-dashboard-panel)').evaluateAll(panels=>panels.map(panel=>{
@@ -330,10 +388,10 @@ async function run() {
     locked = false;
     await btn("다시 확인").click();
     await openProject();
-    await btn("팀").click();
+    await verifyProjectLoading(page,()=>btn("팀").click(),'readTeams','project');
     await page.getByText("편집 팀 / 기획 / 교정", { exact: true }).waitFor();
     await btn("문서").click();
-    await page.getByRole("button", { name: /안내.md/ }).click();
+    await verifyProjectLoading(page,()=>page.getByRole("button", {name:/안내.md/}).click(),'readWorkArtifact','document');
     await page.getByText("공개 전 확인할 항목", { exact: true }).waitFor();
     await btn("업무").click();
     await btn("새 업무 대화").click();
@@ -350,9 +408,29 @@ async function run() {
     await page.getByText("접근성을 살펴주세요.", { exact: true }).waitFor();
     await btn("승인함").click();
     await page.getByText("시험 파일 작성 요청").waitFor();
-    await btn("이번 작업 승인").click();
+    const approvalActions=page.locator('.mobile-approval-actions');
+    for(const width of [320,390,430]){
+      await page.setViewportSize({width,height:844});
+      const layout=await approvalActions.evaluate(actions=>{
+        const [approve,decline]=actions.querySelectorAll('button');
+        const [group,left,right]=[actions,approve,decline].map(element=>element.getBoundingClientRect());
+        return {
+          aligned:Math.abs(group.right-right.right)<=1&&Math.abs(left.top-right.top)<=1&&left.right<right.left,
+          colors:[approve,decline].map(button=>getComputedStyle(button).backgroundColor),
+          icons:[approve,decline].map(button=>button.querySelectorAll('svg[aria-hidden=true] path').length),
+        };
+      });
+      assert.deepEqual(layout,{aligned:true,colors:['rgb(11, 104, 206)','rgb(178, 60, 69)'],icons:[1,1]});
+    }
+    await page.setViewportSize({width:390,height:844});
+    const rejectedRequest={...requests[0],requestId:'거절 시험'};
+    await btn("작업 승인").click();
     await page.getByText("대기 중인 승인 요청이 없습니다.").waitFor();
     assert.deepEqual(decisions, ["accept"]);
+    requests=[rejectedRequest];
+    await btn("거절").click();
+    await page.getByText("대기 중인 승인 요청이 없습니다.").waitFor();
+    assert.deepEqual(decisions, ["accept","decline"]);
     const requestId = "업무 질문";
     const followup = {
       type: "input",
@@ -399,7 +477,7 @@ async function run() {
       .getByText("이 질문은 데스크톱 Flowrium에서 확인하고 답해 주세요.")
       .waitFor();
     assert.equal(await page.getByText("보이지 않을 비밀 제목").count(), 0);
-    assert.equal(await btn("이번 작업 승인").count(), 0);
+    assert.equal(await btn("작업 승인").count(), 0);
     const pick = page.getByLabel("어떤 형식으로 작성할까요?", { exact: true }),
       free = page.getByLabel("추가할 내용을 적어 주세요.", { exact: true });
     await pick.selectOption("other");

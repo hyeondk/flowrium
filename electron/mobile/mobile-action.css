@@ -1,0 +1,68 @@
+button.mobile-emphasized-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  max-inline-size: 100%;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-align: center;
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--accent-fill) 22%, transparent);
+  transition: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.mobile-emphasized-action,
+#content button.mobile-emphasized-action {
+  background: var(--accent-fill);
+  color: var(--accent-text);
+  border: 1px solid color-mix(in srgb, var(--accent-fill) 88%, var(--panel));
+  border-radius: 9px;
+}
+
+#content[data-view] .actions.mobile-approval-actions {
+  justify-content: flex-end;
+  gap: 8px;
+  margin-block: 8px 0;
+}
+
+.mobile-approval-actions button { --accent-text: #fff; }
+.mobile-approval-actions button[data-decision=accept] { --accent-fill: #0b68ce; }
+.mobile-approval-actions button[data-decision=decline] { --accent-fill: #b23c45; }
+:root[data-theme=dark] #content .mobile-approval-actions button {
+  border-color: color-mix(in srgb, var(--accent-fill) 78%, white);
+}
+
+.mobile-action-icon {
+  display: block;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.settings-account-line > .mobile-account-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+button.mobile-emphasized-action:enabled:active,
+#content button.mobile-emphasized-action:enabled:active {
+  background: color-mix(in srgb, var(--accent-fill) 92%, black);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :root:not([data-touch-input]) button.mobile-emphasized-action:hover:enabled,
+  :root:not([data-touch-input]) #content button.mobile-emphasized-action:hover:enabled {
+    background: color-mix(in srgb, var(--accent-fill) 92%, black);
+  }
+}

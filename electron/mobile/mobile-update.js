@@ -1,4 +1,5 @@
 import {confirmationButton} from './confirmation.js';
+import {emphasizeAction} from './mobile-action.js';
 
 const versionStamp = document.querySelector('meta[name="flowrium-mobile-version"]')?.content;
 const returnFlag = 'flowrium.mobile.updated';
@@ -49,14 +50,17 @@ export function mobileUpdateSection({data, call, refresh, onError, hasDrafts, ca
 
   const section = el('section', '', 'settings-block mobile-update');
   section.setAttribute('aria-label','앱 업데이트');
-  section.append(el('h2','앱 버전 및 업데이트'), el('p','현재 버전 ' + openedVersion));
+  const versionLine = el('div','','mobile-update-version-line');
+  const currentVersion = el('p','현재 버전 ' + openedVersion,'mobile-current-version');
+  const check = control('업데이트 확인',() => run('checking', () => call('checkMobileUpdate')), 'check-mobile-version');
+  emphasizeAction(check,'refresh');
+  versionLine.append(currentVersion,check);
+  section.append(el('h2','앱 버전 및 업데이트'),versionLine);
   if (message) {
     const status = el('p', message,'hint');
     status.setAttribute('role','status');
     section.append(status);
   }
-  const buttons = el('div','','mobile-update-actions');
-  section.append(buttons);
   async function run(nextPhase, task) {
     if (phase) return;
     const epoch = generation;
@@ -88,7 +92,6 @@ export function mobileUpdateSection({data, call, refresh, onError, hasDrafts, ca
     // A user can move to a conversation and type while the download runs.
     if (canReload() && (discardConfirmed || !hasDrafts())) reload();
   }
-  buttons.append(control('업데이트 확인',() => run('checking', () => call('checkMobileUpdate')), 'check-mobile-version'));
   if (available || ready) {
     const applyButton = hasDrafts()
       ? confirmationButton('업데이트 적용','mobile-ui-update','새 화면을 열까요?',
@@ -96,7 +99,10 @@ export function mobileUpdateSection({data, call, refresh, onError, hasDrafts, ca
       : control('업데이트 적용', () => apply(false), 'apply-mobile-version');
     applyButton.disabled = Boolean(phase);
     applyButton.classList.add('main-action');
+    emphasizeAction(applyButton,'download');
+    const buttons = el('div','','mobile-update-actions');
     buttons.append(applyButton);
+    section.append(buttons);
   }
   return section;
 }

@@ -17,10 +17,12 @@ import {mobileUpdateSection, resetUpdate, resumeUpdateSettings} from './mobile-u
 import {confirmationButton, reconcileConfirmation} from './confirmation.js';
 import {QUESTION_DECISION_NOTICE} from './decision-notice.js';
 import {modelDisplayName,effortDisplayName,reasoningEffortOptions} from './model-display.js';
+import {createMobileLoading,updateMobileLoading} from './mobile-loading.js';
+import {addActionIcon,emphasizeAction} from './mobile-action.js';
 const content = document.querySelector("#content");
-const loadingTemplate = content.querySelector('.mobile-skeleton').cloneNode(true);
 const navigation = document.querySelector("#nav");
 const connection = document.querySelector("#status");
+const conversationHome = document.querySelector('#conversation-home');
 installDatePicker();
 installKeyboardFocus();
 const notice = document.querySelector("#notice");
@@ -72,6 +74,7 @@ let data,
   selectedProject = "",
   selectedSession = "",
   detailTab = "work";
+let conversationFilters = { projectOnly:false, projectId:'', state:'', query:'' };
 let teamBoard,
   files,
   preview,
@@ -91,6 +94,7 @@ let historyPage, mobileRecommendation,
   historyEpoch = 0;
 function resetHistory() {
   historyEpoch++;
+  loadingStages.delete('최근 메시지');
   historyPage = undefined;
   mobileRecommendation = undefined;
   historyBusy = historyLoadingOlder = historyOlderQueued = historyErrorOlder = false;
@@ -113,6 +117,7 @@ let photoObserver;
 let queueItems=[],workflowData,mobileSettings,usageData,pushData,extrasEpoch=0;
 const pendingExtras = new Map();
 const loadErrors = new Map();
+const loadingStages = new Map();
 const preferenceWrites = new Map();
 let workflowTab='decisions',editingTeam=null;
 let teamDraft={name:'',roles:[{name:'',instruction:'',mode:'plan'},{name:'',instruction:'',mode:'review'}]};
@@ -216,11 +221,39 @@ const action = (text, callback, className) => {
 function loadingRegion(name, layout = 'rows') {
   const error = loadErrors.get(name);
   if (error) return node('p', error, 'hint');
-  const region = loadingTemplate.cloneNode(true);
-  region.dataset.layout = layout;
-  region.setAttribute('aria-label', name + ' 불러오는 중');
-  return region;
+  return createMobileLoading(name, layout, loadingStages.get(name));
 }
+function beginLoading(name, detail = '데스크톱에 자료를 요청하는 중', total = 2) {
+  const progress = {value:0,total,detail};
+  loadingStages.set(name,progress);
+  const current = () => loadingStages.get(name) === progress;
+  const update = () => {
+    for (const region of content.querySelectorAll('.mobile-loading[data-loading-name="'+CSS.escape(name)+'"]'))
+      updateMobileLoading(region,progress);
+  };
+  const discard = () => { if (current()) loadingStages.delete(name); };
+  const advance = description => {
+    if (!current() || progress.value >= total) return;
+    progress.value++;
+    progress.detail = description;
+    update();
+  };
+  update();
+  return {
+    advance,
+    received:() => advance('받은 자료를 읽는 중'),
+    finish() {
+      if (!current()) return;
+      progress.value = total;
+      progress.detail = '화면에 표시하는 중';
+      update();
+      discard();
+    },
+    discard,
+  };
+}
+let connectingLoad;
+const connectionScreen = () => route === 'settings' ? ['설정','settings'] : ['대시보드','dashboard'];
 let noticeExitTimer;
 const hideNotice = () => {
   clearTimeout(errorTimer);
@@ -308,7 +341,18 @@ function row(title, description, callback, badge) {
   if (badge) item.append(node("i", badge));
   return item;
 }
-async function request(path, body, timeout = 18000) {
+function compactRefresh(name, refresh) {
+  const button=action('',async()=>{
+    button.disabled=true;
+    button.setAttribute('aria-busy','true');
+    try { await refresh(); }
+    finally { button.disabled=false;button.removeAttribute('aria-busy'); }
+  },'mobile-compact-refresh');
+  button.setAttribute('aria-label',name);
+  button.title=name;
+  return button;
+}
+async function request(path, body, timeout = 18000, onResponse) {
   const headers = { Authorization: "Bearer " + key };
   if (body) headers["Content-Type"] = "application/json";
   const response = await fetch(path, {
@@ -320,6 +364,7 @@ async function request(path, body, timeout = 18000) {
     referrerPolicy: "no-referrer",
     signal: AbortSignal.timeout(timeout),
   });
+  if (response.ok) onResponse?.();
   const value = await response.json();
   if (!response.ok) {
     const error = new Error(value.error || "연결 상태를 확인해 주세요.");
@@ -334,29 +379,33 @@ async function request(path, body, timeout = 18000) {
   }
   return value;
 }
-const call = (method, ...args) =>
-  request("/api/mobile/call", { method, args }).then((r) => r.result);
+const call = (method, ...args) => callWithLoading(undefined,method,...args);
+const callWithLoading = (loading, method, ...args) =>
+  request("/api/mobile/call", { method, args }, undefined, loading?.received).then(r => r.result);
 let dashboardFacts, dashboardFetched=0, dashboardRequest;
 async function loadDashboard(retry=false){
-  if(route!=='projects' || gate || !data || dashboardRequest || (!retry && Date.now()-dashboardFetched<15000))return;
+  const visible=()=>route==='projects'||route==='project';
+  if(!visible() || gate || !data || dashboardRequest || (!retry && Date.now()-dashboardFetched<15000))return;
   const epoch=accessEpoch;
+  const loading = !dashboardFacts ? beginLoading('오늘 할 일') : undefined;
   if(retry && loadErrors.delete('오늘 할 일')) render();
-  const work=request('/api/mobile/dashboard');dashboardRequest=work;
+  const work=request('/api/mobile/dashboard',undefined,undefined,loading?.received);dashboardRequest=work;
   try {
     const facts=await work;
     if(accessEpoch!==epoch)return;
     const changed=loadErrors.delete('오늘 할 일') || JSON.stringify(facts)!==JSON.stringify(dashboardFacts);
     dashboardFacts=facts;
-    if(changed && route==='projects')render();
+    loading?.finish();
+    if(changed && visible())render();
   } catch(error){
     if(epoch!==accessEpoch)return;
     if(error.gate)clearPrivateState(error.gate);
     else if(!dashboardFacts){
       loadErrors.set('오늘 할 일','오늘 할 일을 불러오지 못했습니다.');
-      if(route==='projects')render();
+      if(visible())render();
     }
   }
-  finally{if(dashboardRequest===work){dashboardRequest=undefined;dashboardFetched=Date.now();}}
+  finally{loading?.discard();if(dashboardRequest===work){dashboardRequest=undefined;dashboardFetched=Date.now();}}
 }
 function applyAppearance(settings={}) {
   const html=document.documentElement, dark=settings.theme==='dark';
@@ -376,6 +425,8 @@ function clearPrivateState(nextGate) {
   resetUpdate();
   connection.removeAttribute('data-connected');
   loadErrors.clear();
+  loadingStages.clear();
+  connectingLoad=undefined;
   pendingExtras.clear();
   dashboardFacts=undefined;dashboardRequest=undefined;dashboardFetched=0;
   accessEpoch++;
@@ -394,6 +445,7 @@ function clearPrivateState(nextGate) {
   preferenceWrites.clear();
   selectedSession = selectedProject = "";
   statusFilter = "running";
+  conversationFilters = { projectOnly:false, projectId:'', state:'', query:'' };
   conversationProviderChoice = undefined;
   chatOriginStatus = "";
   route = "projects";
@@ -419,8 +471,9 @@ async function poll() {
   if (polling || !key || document.hidden) return;
   polling = true;
   const epoch = accessEpoch;
+  const loading = !data && !gate ? connectingLoad : undefined;
   try {
-    const next = await request("/api/mobile/state");
+    const next = await request("/api/mobile/state",undefined,undefined,loading?.received);
     if (epoch !== accessEpoch) return;
     next.approvals = (next.approvals || []).filter(
       (event) =>
@@ -449,8 +502,9 @@ async function poll() {
     connection.textContent = data.connection?.authenticated
       ? "데스크톱 연결됨"
       : "계정 연결 필요";
+    loading?.finish();
     if (changed) render();
-    if(route==="projects") void loadDashboard();
+    if(route==='projects'||route==='project') void loadDashboard();
     if (["assistant","settings"].includes(route)) void loadExtras(false);
     if (route === "chat") {
       void loadChatModels();
@@ -473,6 +527,8 @@ async function poll() {
       }
     }
   } finally {
+    loading?.discard();
+    if (connectingLoad === loading) connectingLoad=undefined;
     polling = false;
   }
 }
@@ -519,8 +575,9 @@ function go(view, id, options={}) {
   const previous=routeEntry(),focus=document.activeElement?.closest('.row');
   browserRoutes[routeIndex]=previous;
   routePositions.set(routeKey(previous),{y:scrollY,row:focus?[...content.querySelectorAll('.row')].indexOf(focus):-1});
-  if(['chat','project','new','status'].includes(view) && !options.replace && !options.back && routeKey(previous)!==routeKey({view,id}))recentRoutes.push(previous);
-  else if(!options.back && !['chat','project','new','status'].includes(view))recentRoutes.length=0;
+  const detailRoute=['chat','project','new','status','conversations'].includes(view);
+  if(detailRoute && !options.replace && !options.back && routeKey(previous)!==routeKey({view,id}))recentRoutes.push(previous);
+  else if(!options.back && !detailRoute)recentRoutes.length=0;
   if(recentRoutes.length>35)recentRoutes.shift();
 
   assetRequest++;
@@ -538,6 +595,7 @@ function go(view, id, options={}) {
     teamBoard = files = undefined;
     loadErrors.delete('팀'); loadErrors.delete('문서');
   }
+  if (view === 'new' && id && project(id)) selectedProject=id;
   if (view === "chat") {
     selectedSession = id;
     queueItems=[];
@@ -555,7 +613,10 @@ function go(view, id, options={}) {
     const id=view==='chat'?session(selectedSession)?.projectId:selectedProject;
     if(id && project(id)?.trustedForFileAccess===false && !shownFolderGuides.has(id) && openFolderGuide(id))shownFolderGuides.add(id);
   }
-  if(view==='project' && detailTab!=='work')void loadAssets(false);
+  if(view==='project'){
+    void loadDashboard();
+    if(detailTab!=='work'||project(id)?.trustedForFileAccess===true)void loadAssets(false);
+  }
   const restored=options.back && routePositions.get(routeKey(routeEntry()));
   window.scrollTo({top:restored?.y||0,behavior:'instant'});
   if(restored?.row>=0)content.querySelectorAll('.row')[restored.row]?.focus({preventScroll:true});
@@ -582,6 +643,7 @@ async function loadMessages(older = false) {
   historyLoadingOlder = older;
   historyError = "";
   historyErrorOlder = false;
+  const loading = !older && !previous ? beginLoading('최근 메시지') : undefined;
   render();
   const query = new URLSearchParams({ limit: "50", progress: "1" });
   if (older) query.set("before", previous.before);
@@ -589,6 +651,7 @@ async function loadMessages(older = false) {
   try {
     const page = await request(
       "/api/mobile/sessions/" + encodeURIComponent(id) + "?" + query.toString(),
+      undefined,undefined,loading?.received,
     );
     if (
       historyEpoch !== epoch ||
@@ -627,6 +690,7 @@ async function loadMessages(older = false) {
           }
         : page;
     }
+    loading?.finish();
   } catch (error) {
     if (epoch !== historyEpoch) return;
     if (error.gate) {
@@ -641,6 +705,7 @@ async function loadMessages(older = false) {
       historyErrorOlder = older;
     }
   } finally {
+    loading?.discard();
     if (epoch === historyEpoch) {
       const loadQueuedOlder = historyOlderQueued;
       historyBusy = historyLoadingOlder = historyOlderQueued = false;
@@ -660,22 +725,24 @@ async function loadAssets(announce = true) {
   const id = ++assetRequest,
     tab = detailTab, label = tab === 'team' ? '팀' : '문서';
   pendingAssetRequest = id;
+  const loading = (tab === 'team' ? !teamBoard : tab === 'files' && !files) ? beginLoading(label) : undefined;
   if (announce && loadErrors.delete(label)) render();
   try {
     if (tab === "team") {
-      const result = await call("readTeams", selectedProject);
+      const result = await callWithLoading(loading,"readTeams", selectedProject);
       if (
         id !== assetRequest ||
         JSON.stringify(result) === JSON.stringify(teamBoard)
       )
         return;
       teamBoard = result;
-    } else if (tab === "files") {
-      const result = await call("readWorkbench", selectedProject);
+    } else if (tab === 'files'||tab === 'work') {
+      const result = await callWithLoading(loading,"readWorkbench", selectedProject);
       if (id !== assetRequest) return;
       files = result;
     }
     loadErrors.delete(label);
+    loading?.finish();
     render();
   } catch (error) {
     if (id !== assetRequest) return;
@@ -685,6 +752,7 @@ async function loadAssets(announce = true) {
       render();
     } else if (announce) showNotice(error.message, "error");
   } finally {
+    loading?.discard();
     if(pendingAssetRequest===id)pendingAssetRequest=undefined;
   }
 }
@@ -693,7 +761,7 @@ function openTab(tab) {
   detailTab = tab;
   preview = undefined;
   render();
-  if (tab === "team" || tab === "files") void loadAssets();
+  if (tab === 'team'||tab === 'files'||(!files&&project(selectedProject)?.trustedForFileAccess===true))void loadAssets();
 }
 function sessionRow(s) {
   return row(
@@ -702,6 +770,63 @@ function sessionRow(s) {
     () => go("chat", s.id),
     executionNames[s.executionState],
   );
+}
+function conversationListPage(root) {
+  const section=node('section',undefined,'mobile-conversation-list');
+  const projects=data.projects||[];
+  const target=projects.find(p=>p.id===conversationFilters.projectId)||projects.find(p=>p.id===selectedProject)||projects[0];
+  const heading=node('header',undefined,'mobile-conversation-list-heading');
+  const back=action('홈',()=>goBack('projects'),'mobile-conversation-back');
+  back.setAttribute('aria-label','대화함에서 뒤로');
+  heading.append(back,node('h1','대화'));
+  if (conversationFilters.projectOnly&&target)
+    heading.append(emphasizeAction(action('새 대화',()=>go('new',target.id),'main-action mobile-conversation-create'),'plus'));
+  section.append(heading);
+  const provider=appendConversationProviderFilter(section);
+  const scope=node('div',undefined,'tabs mobile-conversation-scope');
+  scope.setAttribute('role','group');scope.setAttribute('aria-label','대화 범위');
+  for(const [projectOnly,title] of [[false,'전체'],[true,'프로젝트']]) {
+    const tab=action(title,()=>{conversationFilters.projectOnly=projectOnly;conversationFilters.state='';render();});
+    tab.setAttribute('aria-pressed',String(projectOnly===conversationFilters.projectOnly));
+    if(projectOnly===conversationFilters.projectOnly)tab.setAttribute('aria-current','page');
+    scope.append(tab);
+  }
+  section.append(scope);
+  const controls=node('div',undefined,'mobile-conversation-controls');
+  if(conversationFilters.projectOnly) {
+    const projectPicker=select(projects.length?projects.map(p=>[p.id,p.name]):[['','프로젝트 없음']],target?.id||'');
+    projectPicker.disabled=!projects.length;
+    projectPicker.addEventListener('change',()=>{conversationFilters.projectId=projectPicker.value;render();});
+    controls.append(label('프로젝트',projectPicker));
+  }
+  const search=node('input');
+  search.type='search';search.placeholder='대화 검색';search.value=conversationFilters.query;
+  search.dataset.field='mobile-conversation-search';search.setAttribute('aria-label','대화 검색');
+  controls.append(search);
+  section.append(controls);
+  const sessions=data.sessions.filter(s=>!s.scope&&(!provider||sessionProvider(s)===provider)&&
+    (!conversationFilters.projectOnly||s.projectId===target?.id))
+    .sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+  const states=node('div',undefined,'mobile-conversation-states');states.setAttribute('role','group');states.setAttribute('aria-label','대화 진행 상태');
+  for(const [state,title] of Object.entries(executionNames)) {
+    const count=sessions.filter(s=>s.executionState===state).length;
+    const button=action('',()=>{conversationFilters.state=conversationFilters.state===state?'':state;render();});
+    button.dataset.state=state;
+    button.setAttribute('aria-pressed',String(conversationFilters.state===state));
+    button.append(node('span',title),node('strong',String(count)));
+    states.append(button);
+  }
+  section.append(states);
+  const entries=node('div',undefined,'mobile-conversation-entries');entries.setAttribute('aria-label','대화 목록');
+  function redraw() {
+    const query=conversationFilters.query.trim().toLocaleLowerCase();
+    const list=sessions.filter(s=>(!conversationFilters.state||s.executionState===conversationFilters.state)&&
+      (!query||[s.title,project(s.projectId)?.name].some(name=>name?.toLocaleLowerCase().includes(query))));
+    entries.replaceChildren(list.length?sessionList(list):node('p',query||conversationFilters.state?'조건에 맞는 대화가 없습니다.':'아직 대화가 없습니다.','hint'));
+  }
+  search.addEventListener('input',()=>{conversationFilters.query=search.value;redraw();});
+  redraw();section.append(entries);
+  root.append(section);
 }
 function inputCard(entry) {
   const card = node("section", undefined, "box mobile-question");
@@ -827,10 +952,10 @@ function approvals(list, root) {
       node("h2", session(entry.sessionId)?.title || "작업 승인 요청"),
       node("p", entry.details || entry.method || "작업 실행 요청", "body"),
     );
-    const buttons = node("div", undefined, "actions");
-    for (const [title, decision] of [
-      ["이번 작업 승인", "accept"],
-      ["거절", "decline"],
+    const buttons = node("div", undefined, "actions mobile-approval-actions");
+    for (const [title, decision, icon] of [
+      ["작업 승인", "accept", "circle"],
+      ["거절", "decline", "x"],
     ]) {
       const b = action(title, () =>
         run(async () => {
@@ -841,8 +966,9 @@ function approvals(list, root) {
           showNotice(decision === "accept" ? "승인했습니다." : "거절했습니다.");
         }),
       );
+      b.dataset.decision = decision;
       b.disabled = busy;
-      buttons.append(b);
+      buttons.append(emphasizeAction(b, icon));
     }
     card.append(buttons);
     root.append(card);
@@ -850,19 +976,28 @@ function approvals(list, root) {
 }
 function projects(root) {
   const today = new Date();
+  const dayFormat=new Intl.DateTimeFormat('sv-SE');
   const header = node('header', undefined, 'page-heading');
   const heading = node('div');
   const calendar = node('time', new Intl.DateTimeFormat('ko-KR', {month:'long',day:'numeric',weekday:'short'}).format(today));
-  calendar.dateTime = new Intl.DateTimeFormat('sv-SE').format(today);
+  calendar.dateTime=dayFormat.format(today);
   heading.append(calendar,node('h1','대시보드'));
-  const refresh = action('새로고침', async () => {
-    refresh.disabled = true;
-    try { await Promise.all([poll(),loadDashboard(true)]); }
-    finally { refresh.disabled = false; }
-  }, 'mobile-dashboard-refresh');
+  const refresh=compactRefresh('새로고침',()=>Promise.all([poll(),loadDashboard(true)]));
   header.append(heading,refresh);
   const overview = node('section', undefined, 'workspace-overview');
-  overview.append(header);
+  const {due=[],goals=[],phases={},projects:projectDetails={}}=dashboardFacts||{};
+  const activeProjects=data.projects.filter(p=>!projectDetails[p.id]?.archived);
+  const activeIds=new Set(activeProjects.map(p=>p.id));
+  const work=data.sessions.filter(s=>!s.scope);
+  const progress=work.filter(s=>s.workflow?.status!=='done'&&activeIds.has(s.projectId));
+  const completed=work.filter(s=>s.workflow?.status==='done');
+  const summary=node('div',undefined,'mobile-portfolio-summary');
+  summary.setAttribute('role','group');summary.setAttribute('aria-label','프로젝트 업무 요약');
+  for(const [icon,title,count] of [['folder','진행 프로젝트',activeProjects.length],['tasks','진행 중인 업무',progress.length],['check','완료한 업무',completed.length]]){
+    const metric=node('div');metric.dataset.icon=icon;
+    metric.append(node('span',title),node('strong',String(count)));summary.append(metric);
+  }
+  overview.append(header,summary);
   const status=node('section',undefined,'mobile-execution');
   status.setAttribute('aria-label','프로젝트 대화 진행 상태');
   const sessionsByProject = new Map(), counts = {running:0,waiting:0,decision:0};
@@ -880,63 +1015,78 @@ function projects(root) {
   }
   overview.append(status);
   root.append(overview);
-  const tasks=node('section',undefined,'mobile-today mobile-dashboard-panel'),todo=data.sessions
-    .filter(s=>s.workflow && s.workflow.status!=='done')
+  const tasks=node('section',undefined,'mobile-today mobile-dashboard-panel'),todo=progress
+    .filter(s=>s.workflow)
     .sort((a,b)=>Number(b.executionState==='decision')-Number(a.executionState==='decision')||b.updatedAt.localeCompare(a.updatedAt));
   const tasksHeading=node('header',undefined,'list-heading');
-  tasksHeading.append(node('h2','오늘 할 일'));
+  const taskDate=node('time',calendar.dateTime);taskDate.dateTime=calendar.dateTime;
+  tasksHeading.append(node('h2','오늘 할 일'),taskDate);
   tasks.setAttribute('aria-label','오늘 할 일');
   tasks.append(tasksHeading);
-  const {due=[],goals=[],phases={}}=dashboardFacts||{};
-  for(const item of due.slice(0,3))if(project(item.projectId))tasks.append(row(project(item.projectId).name,item.due,()=>go('project',item.projectId),item.due===dashboardFacts.today?'오늘 기한':'기한 경과'));
+  for(const item of due.slice(0,3))if(project(item.projectId))tasks.append(row(project(item.projectId).name,projectDetails[item.projectId]?.goal||item.due,()=>go('project',item.projectId),item.due===dashboardFacts.today?'오늘 기한':'기한 경과'));
   for(const item of goals.slice(0,5))if(project(item.projectId))tasks.append(row(item.text,project(item.projectId).name,()=>go('project',item.projectId),item.target!=null?(item.current||0)+' / '+item.target:'목표'));
   for(const s of todo.slice(0,3))tasks.append(row(s.workflow.nextTask||s.title,project(s.projectId)?.name,()=>go('chat',s.id),executionNames[s.executionState]));
   if(!dashboardFacts){
     tasks.append(loadingRegion('오늘 할 일'));
     if(loadErrors.has('오늘 할 일'))tasks.append(action('오늘 할 일 다시 불러오기',()=>loadDashboard(true)));
   }else if(!todo.length && !due.length && !goals.length)tasks.append(node('p','진행할 업무가 없습니다.','hint'));
-  const projectList = node('section', undefined, 'mobile-list-panel mobile-dashboard-panel');
+  const projectList = node('section', undefined, 'mobile-list-panel mobile-dashboard-panel mobile-project-list');
   projectList.setAttribute('aria-label','프로젝트 현황');
   const projectsHeading=node('header',undefined,'list-heading');
   projectsHeading.append(node('h2','프로젝트 현황'),node('small',data.projects.length+'개'));
-  projectList.append(projectsHeading);
-  root.append(tasks,projectList);
-  if(Object.keys(phases).length){
-    const phaseCounts=node('p',undefined,'mobile-project-phases');
-    phaseCounts.textContent=Object.entries(phases).map(([phase,count])=>phase+' '+count+'개').join(' / ');
-    projectList.append(phaseCounts);
+  const search=bindDraft(node('input'),'dashboard/project-search','');
+  search.type='search';search.placeholder='이름, 담당자, 목표 검색';
+  const searchField=label('프로젝트 검색',search);searchField.className='mobile-project-search';
+  searchField.firstChild.remove();
+  const cards=node('div',undefined,'mobile-project-cards');
+  projectList.append(projectsHeading,searchField,cards);
+  root.append(projectList);
+  work.sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+  const recent=node('section',undefined,'mobile-list-panel mobile-dashboard-panel mobile-recent');
+  recent.setAttribute('aria-label','최근 업무');
+  const recentHeading=node('header',undefined,'list-heading');
+  recentHeading.append(node('h2','최근 업무'));
+  function filterProjects() {
+    const query=search.value.trim().toLocaleLowerCase('ko');
+    const matches=name=>!query||name?.toLocaleLowerCase('ko').includes(query);
+    const shown=data.projects.filter(p=>{
+      const info=projectDetails[p.id];
+      return [p.name,info?.owner,info?.goal,info?.category].some(matches);
+    });
+    cards.replaceChildren(...shown.map(p=>dashboardProjectCard(p,projectDetails[p.id],sessionsByProject.get(p.id)||[])));
+    if(!shown.length)cards.append(node('p',query?'조건에 맞는 프로젝트가 없습니다.':'데스크톱의 프로젝트 추가에서 작업할 폴더를 지정하세요.','hint'));
+    const projectIds=new Set(shown.map(p=>p.id));
+    const recentSessions=work.filter(s=>matches(s.title)||projectIds.has(s.projectId)).slice(0,4);
+    recent.replaceChildren(recentHeading);
+    for(const s of recentSessions){
+      const entry=row(s.title,[project(s.projectId)?.name,kinds[s.workflow?.kind]||'대화'].filter(Boolean).join(' / '),()=>go('chat',s.id));
+      const time=node('time',s.updatedAt?dayFormat.format(new Date(s.updatedAt)):undefined);time.dateTime=s.updatedAt;
+      entry.append(time);recent.append(entry);
+    }
+    if(!recentSessions.length)recent.append(node('p','표시할 최근 업무가 없습니다.','hint'));
   }
-  if (!data.projects.length)
-    projectList.append(
-      node(
-        "p",
-        "데스크톱의 프로젝트 추가에서 작업할 폴더를 지정하세요.",
-        "hint",
-      ),
-    );
-  for (const p of data.projects) {
-    const list = sessionsByProject.get(p.id) || [];
-    projectList.append(
-      row(
-        p.name,
-        "업무 " + list.length + "개",
-        () => go("project", p.id),
-        list.some(s=>s.executionState==='decision') ? '결정' : list.some(s=>s.executionState==='running') ? '작업중' : list.some(s=>s.executionState==='waiting') ? '대기' : undefined,
-      ),
-    );
-  }
-  const recentSessions = data.sessions.slice().sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).slice(0,4);
-  if(recentSessions.length) {
-    const recent = node('section',undefined,'mobile-list-panel mobile-dashboard-panel mobile-recent');
-    recent.setAttribute('aria-label','최근 업무');
-    const recentHeading = node('header',undefined,'list-heading');
-    recentHeading.append(node('h2','최근 업무'));
-    recent.append(recentHeading,...recentSessions.map(sessionRow));
-    root.append(recent);
-  }
-  root.append(activityChart());
+  search.addEventListener('input',event=>{if(!event.isComposing)filterProjects();});
+  search.addEventListener('compositionend',filterProjects);
+  filterProjects();
+  root.append(recent,tasks,activityChart(phases));
 }
-function activityChart(){
+function dashboardProjectCard(project,info,sessions) {
+  const state=['decision','running','waiting'].find(key=>sessions.some(s=>s.executionState===key));
+  const card=action('',()=>go('project',project.id),'row mobile-project-card');
+  const top=node('span',undefined,'mobile-project-card-top');
+  const icon=node('span',undefined,'mobile-project-category-icon');icon.setAttribute('aria-hidden','true');
+  top.append(icon,node('small',info?.category||'미분류','mobile-project-category'),node('small',info?.phase||'진행','mobile-project-phase'));
+  const title=node('span',undefined,'mobile-project-card-title');
+  const foot=node('span',undefined,'mobile-project-card-foot');
+  foot.append(node('small','업무 '+sessions.length+'개'));
+  if(state)foot.append(node('i',executionNames[state]));
+  title.append(node('strong',project.name),foot);
+  card.append(top,title);
+  const description=info?.goal||info?.owner;
+  if(description)card.append(node('small',description,'mobile-project-card-goal'));
+  return card;
+}
+function activityChart(phases){
   const chart=node('section',undefined,'activity-chart mobile-dashboard-panel'), days=[];
   for(let offset=6;offset>=0;offset--){
     const day=new Date();day.setHours(0,0,0,0);day.setDate(day.getDate()-offset);
@@ -959,6 +1109,10 @@ function activityChart(){
   const legend=node('p',undefined,'chart-legend');
   legend.append(node('span','시작','started'),document.createTextNode(' / '),node('span','완료','done'));
   chart.append(bars,legend);
+  if(Object.keys(phases).length){
+    const info=node('p',Object.entries(phases).map(([phase,count])=>phase+' '+count+'개').join(' / '),'mobile-project-phases');
+    info.setAttribute('aria-label','프로젝트 단계별 현황');chart.append(info);
+  }
   return chart;
 }
 function statusPage(root){
@@ -976,7 +1130,7 @@ function sessionList(sessions) {
 function team(root) {
   const reset = action("팀 상태 새로 고침", () => loadAssets());
   root.append(reset);
-  if (!teamBoard) { root.append(loadingRegion('팀')); return; }
+  if (!teamBoard) { root.append(loadingRegion('팀', 'project')); return; }
   root.append(action('새 팀 만들기',()=>{editingTeam='new';teamDraft={name:'',roles:[{name:'',instruction:'',mode:'plan'},{name:'',instruction:'',mode:'review'}]};render()}));
   if(editingTeam) teamEditor(root);
   for (const t of teamBoard.teams){
@@ -1035,37 +1189,34 @@ function artifacts(root) {
         render();
       }),
       node("h2", preview.name),
-      preview.loading ? loadingRegion('문서 내용') : node("pre", preview.body, "body box"),
+      preview.loading ? loadingRegion('문서 내용', 'document') : node("pre", preview.body, "body box"),
     );
     return;
   }
   root.append(action("문서 새로 고침", () => loadAssets()));
-  if (!files) { root.append(loadingRegion('문서')); return; }
+  if (!files) { root.append(loadingRegion('문서', 'project')); return; }
   if (!files.artifacts.length)
     root.append(node("p", "아직 저장한 문서가 없습니다.", "hint"));
   for (const file of files.artifacts) {
-    const item = row(
-      file.path.split("/").pop(),
-      file.path,
-      () =>
-        run(async () => {
-          const id = ++assetRequest;
-          preview = {name:file.path, loading:true};
-          render();
-          try {
-            const body = await call("readWorkArtifact", selectedProject, file.path);
-            if (id === assetRequest) preview = {name:file.path, body};
-          } catch (error) {
-            if (id !== assetRequest) return;
-            preview = undefined;
-            throw error;
-          }
-        }),
-      file.preview ? "미리보기" : "데스크톱에서 열기",
-    );
-    item.disabled = !file.preview || busy;
-    root.append(item);
+    root.append(projectArtifactRow(file,file.path));
   }
+}
+function projectArtifactRow(file,description) {
+  const item=row(file.path.split('/').pop(),description,()=>run(async()=>{
+    detailTab='files';
+    const id=++assetRequest;
+    const loading=beginLoading('문서 내용');
+    preview={name:file.path,loading:true};render();
+    try{
+      const body=await callWithLoading(loading,'readWorkArtifact',selectedProject,file.path);
+      if(id===assetRequest){preview={name:file.path,body};loading.finish();}
+    }catch(error){
+      if(id!==assetRequest)return;
+      preview=undefined;throw error;
+    }finally{loading.discard();}
+  }),file.preview?'미리보기':'데스크톱에서 열기');
+  item.disabled=!file.preview||busy;
+  return item;
 }
 function folderGuide(root,p) {
   if(!p || p.trustedForFileAccess===true)return;
@@ -1090,11 +1241,19 @@ function mayStartProjectWork(id) {
 function projectPage(root) {
   const p = project(selectedProject);
   if (!p) return projects(root);
-  root.append(
-    action("프로젝트 목록으로", () => goBack("projects")),
-    node("h1", p.name),
-  );
-  const tabs = node("div", undefined, "tabs");
+  const info=dashboardFacts?.projects?.[p.id];
+  const header=node('header',undefined,'mobile-project-header');
+  const toolbar=node('div',undefined,'mobile-project-toolbar');
+  toolbar.append(action('프로젝트 목록으로',()=>goBack('projects'),'mobile-project-back'),node('span','프로젝트'));
+  const heading=node('div',undefined,'mobile-project-heading'),name=node('div');
+  name.append(node('p',[(info?.category||'프로젝트'),info?.phase].filter(Boolean).join(' / '),'mobile-project-path'),node('h1',p.name));
+  if(info?.goal)name.append(node('p',info.goal,'mobile-project-heading-goal'));
+  if(info?.due)name.append(node('small','기한 '+info.due,'mobile-project-deadline'));
+  heading.append(name,emphasizeAction(action('새 업무 대화',()=>go('new'),'main-action mobile-project-new'),'plus'));
+  header.append(toolbar,heading);
+  root.append(header);
+  const tabs = node('nav',undefined,'tabs mobile-project-tabs');
+  tabs.setAttribute('aria-label','프로젝트 보기');
   for (const [tab, name] of [
     ["work", "업무"],
     ["team", "팀"],
@@ -1108,14 +1267,63 @@ function projectPage(root) {
   folderGuide(root,p);
   if (detailTab === "team") return team(root);
   if (detailTab === "files") return artifacts(root);
-  const provider=appendConversationProviderFilter(root);
-  const list = ownSessions()
-    .filter(s=>!provider||sessionProvider(s)===provider)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  root.append(action("새 업무 대화", () => go("new"), "main-action"));
-  if (!list.length)
-    root.append(node("p", "이 프로젝트에서 맡길 첫 업무를 고르세요.", "hint"));
-  if (list.length) root.append(sessionList(list));
+  const weekly=projectSection('이번 주 목표',dashboardFacts?.today);
+  if(info?.weeklyGoals?.length){
+    for(const goal of info.weeklyGoals){
+      const item=node('div',undefined,'mobile-project-goal');
+      const copy=node('div');copy.append(node('strong',goal.text),node('small',goal.target>0?(goal.current||0)+' / '+goal.target:goal.done?'완료':'진행 중'));
+      item.append(copy);
+      if(goal.target>0){
+        const meter=node('progress');meter.max=goal.target;meter.value=Math.min(goal.current||0,goal.target);
+        meter.setAttribute('aria-label',goal.text+' 진척');item.append(meter);
+      }
+      if(goal.due)item.append(node('small','기한 '+goal.due));
+      weekly.append(item);
+    }
+  }else if(loadErrors.has('오늘 할 일')){
+    weekly.append(node('p','프로젝트 목표를 불러오지 못했습니다.','hint'),action('프로젝트 정보 다시 불러오기',()=>loadDashboard(true),'mobile-project-section-action'));
+  }else weekly.append(node('p',dashboardFacts?'이번 주에 등록한 목표가 없습니다.':'프로젝트 목표를 불러오고 있습니다.','hint'));
+  const tasks=projectSection('프로젝트 할 일',info?.checklist?String(info.checklist.length):undefined);
+  if(info?.checklist?.length){
+    const list=node('ol',undefined,'mobile-project-checklist');
+    for(const task of info.checklist){
+      const item=node('li');item.toggleAttribute('data-completed',Boolean(task.done));
+      const detail=node('div');detail.append(node('strong',task.text),node('small',task.done?'완료':'진행 예정'));
+      item.append(detail);list.append(item);
+    }
+    tasks.append(list);
+  }else if(!loadErrors.has('오늘 할 일'))tasks.append(node('p',dashboardFacts?'등록한 할 일이 없습니다.':'프로젝트 할 일을 불러오고 있습니다.','hint'));
+  root.append(weekly,tasks);
+  const recent=projectSection('최근 활동','최근 대화');
+  const provider=appendConversationProviderFilter(recent);
+  const list=ownSessions().filter(s=>!provider||sessionProvider(s)===provider).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
+  if(list.length)recent.append(sessionList(list.slice(0,3)));
+  else recent.append(node('p','이 프로젝트에서 맡길 첫 업무를 고르세요.','hint'));
+  const saved=projectSection('저장된 산출물',files?String(files.artifacts.length):undefined);
+  const documents=action('문서 보기',()=>openTab('files'),'mobile-project-section-action');
+  saved.firstChild.append(documents);
+  if(files?.artifacts.length){
+    const rows=node('div',undefined,'mobile-list-panel mobile-project-artifact-list');
+    const dayFormat=new Intl.DateTimeFormat('sv-SE');
+    for(const file of files.artifacts.slice(0,3))rows.append(projectArtifactRow(file,file.modifiedAt?dayFormat.format(new Date(file.modifiedAt)):undefined));
+    saved.append(rows);
+  }else if(files)saved.append(node('p','저장된 산출물이 없습니다.','hint'));
+  else if(loadErrors.has('문서'))saved.append(node('p','저장된 산출물을 불러오지 못했습니다.','hint'));
+  else if(p.trustedForFileAccess===true)saved.append(loadingRegion('저장된 산출물'));
+  root.append(recent,saved);
+  if(list.length>3){
+    const earlier=projectSection('이전 업무',String(list.length-3));
+    earlier.append(sessionList(list.slice(3)));
+    root.append(earlier);
+  }
+}
+function projectSection(title,meta) {
+  const section=node('section',undefined,'mobile-project-section');
+  section.setAttribute('aria-label',title);
+  const header=node('header',undefined,'list-heading');header.append(node('h2',title));
+  if(meta)header.append(node('small',meta));
+  section.append(header);
+  return section;
 }
 function bindDraft(el, id, initial) {
   el.dataset.field = id;
@@ -1148,7 +1356,7 @@ function newWork(root) {
     label("업무 이름", title),
     label("목표와 요청", brief),
   );
-  const b = node("button", "대화 만들기", "main-action");
+  const b = emphasizeAction(node("button", "대화 만들기", "main-action"),'plus');
   b.type = "submit";
   b.disabled = busy;
   form.append(b);
@@ -1218,19 +1426,39 @@ function chatModelPicker(s){
   const models=(claude?catalog.claudeModels:catalog.models)||[],own=preferences?.model||'';
   const inherited=(claude?data.settings.claudeModel:data.settings.model)||models.find(m=>m.isDefault)?.id;
   const name=id=>modelDisplayName(models.find(row=>row.id===id)||id);
-  const options=[['',inherited?name(inherited)+' / 기본':'기본 설정 따르기']];
+  const options=[['',inherited?name(inherited):'기본 모델']];
   if(own&&!models.some(m=>m.id===own))options.push([own,name(own)]);
   for(const model of models)options.push([model.id,modelDisplayName(model)]);
   const group=document.createDocumentFragment(),picker=select(options,own);
-  function addPicker(name,control) {
-    const field=label(name,control);field.firstChild.remove();group.append(field);
+  const effortSupported=multi||data.canSetChatEffort===true;
+  function addPicker(name,control,kind,defaultCaption='') {
+    const field=label(name,control);field.firstChild.remove();
+    field.dataset.chatPicker=kind;
+    const caption=node('span',undefined,'mobile-chat-choice-text');caption.setAttribute('aria-hidden','true');
+    const value=node('span');caption.append(value);
+    const syncCaption=()=>{value.textContent=(!control.value&&defaultCaption)||control.selectedOptions[0]?.textContent||'';};
+    syncCaption();control.addEventListener('change',syncCaption);
+    field.prepend(caption);
+    control.dataset.chatControl=name;group.append(field);
   }
   function change(selection) {
+    const current=session(s.id);
+    if(busy||!current)return;
+    const previous=current.preferences;
+    const optimistic={...previous,model:selection.model||undefined,
+      ...(effortSupported&&{provider:selection.provider,effort:selection.effort||undefined})};
+    current.preferences=optimistic;
     void run(async()=>{
-      const saved=await call('setMobileChatModel',s.id,multi?selection:selection.model);
-      const current=session(s.id);
-      if(current)current.preferences={...current.preferences,model:saved.model||undefined,
-        ...(multi&&{provider:saved.provider||selection.provider,effort:saved.effort||undefined})};
+      try {
+        const saved=await call('setMobileChatModel',s.id,effortSupported?selection:selection.model);
+        const updated=session(s.id);
+        if(updated)updated.preferences={...updated.preferences,model:saved.model||undefined,
+          ...(effortSupported&&{provider:saved.provider||selection.provider,effort:saved.effort||undefined})};
+      } catch(error) {
+        const updated=session(s.id);
+        if(updated?.preferences===optimistic)updated.preferences=previous;
+        throw error;
+      }
     });
   }
   if(multi){
@@ -1239,31 +1467,134 @@ function chatModelPicker(s){
     const serial=data.settings.providerMode!=='mixed'||Boolean(s.workflow);
     service.disabled=busy||(serial&&running(s.id))||s.providerLocked||Boolean(s.scope);
     service.addEventListener('change',()=>change({provider:service.value,model:'',effort:''}));
-    addPicker('이 채팅의 AI 서비스',service);
+    addPicker('이 채팅의 AI 서비스',service,'provider');
   }
   picker.disabled=busy||Boolean(s.scope)||(!own&&!models.length)||(claude&&!data.settings.claudeEnabled);
   picker.addEventListener('change',()=>change({provider,model:picker.value,effort:''}));
-  addPicker('이 채팅의 모델',picker);
-  if(multi){
-    const available=reasoningEffortOptions(models.find(m=>m.id===(own||inherited)));
-    const effort=select([['','모델 기본 수준'],...available.map(row=>[row.reasoningEffort,effortDisplayName(row.reasoningEffort)])],preferences?.effort||'');
-    effort.disabled=busy||Boolean(s.scope)||!available.length||(claude&&!data.settings.claudeEnabled);
+  addPicker('이 채팅의 모델',picker,'model');
+  const selectedModel=models.find(m=>m.id===(own||inherited));
+  const available=reasoningEffortOptions(selectedModel);
+  if(effortSupported&&available.length){
+    const preferred=claude?data.settings.claudeEffort:data.settings.effort;
+    const inheritedEffort=available.some(row=>row.reasoningEffort===preferred)?preferred:selectedModel.defaultReasoningEffort;
+    const shortName=id=>effortDisplayName(id).match(/\(([^()]+)\)$/)?.[1]||id;
+    const effort=select([['','Default'],
+      ...available.map(row=>[row.reasoningEffort,shortName(row.reasoningEffort)])],preferences?.effort||'');
+    effort.disabled=busy||Boolean(s.scope)||(claude&&!data.settings.claudeEnabled);
     effort.addEventListener('change',()=>change({provider,model:picker.value,effort:effort.value}));
-    addPicker('이 채팅의 추론 수준',effort);
+    addPicker('이 채팅의 추론 수준',effort,'effort',inheritedEffort?shortName(inheritedEffort):'');
   }
   return group;
+}
+const chatIcons={
+  back:'m12 5-7 7 7 7M5 12h14',
+  folder:'M4 7V5h6l2 2h8v12H4z',
+  message:'M4 5h16v11H9l-5 4z',
+  attach:'m20 11-8.4 8.4a4 4 0 0 1-5.7-5.7l9.2-9.2a2.5 2.5 0 0 1 3.5 3.5l-9.2 9.2a1 1 0 0 1-1.4-1.4l8.4-8.4',
+  send:'m6 11 6-6 6 6m-6-6v14',
+  stop:'M7 7h10v10H7z',
+  sparkles:'M9 3 7.3 8.3 2 10l5.3 1.7L9 17l1.7-5.3L16 10l-5.3-1.7ZM18 2v6m-3-3h6m-1 8v6m-3-3h6',
+};
+function chatIcon(kind) {
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg'), path=document.createElementNS(svg.namespaceURI,'path');
+  svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
+  path.setAttribute('d',chatIcons[kind]);svg.append(path);return svg;
+}
+let preferredMobileComposerHeight, activeComposerGrip;
+const nativeComposerFit=CSS.supports('field-sizing','content');
+function fitMobileComposer(text) {
+  if(nativeComposerFit || text.hasAttribute('data-manual-height') || !text.isConnected)return;
+  text.style.height='';
+  text.style.height=text.scrollHeight+'px';
+}
+function composerGrip(text,sessionId,signal) {
+  const grip=node('div',undefined,'mobile-composer-grip');
+  text.id='mobile-chat-request';
+  grip.tabIndex=0;
+  grip.setAttribute('role','separator');
+  grip.setAttribute('aria-orientation','horizontal');
+  grip.setAttribute('aria-label','입력창 높이 조절');
+  grip.setAttribute('aria-controls',text.id);
+  grip.dataset.chatControl='composer-grip';
+  const minimum=44;
+  const maximum=()=>Math.max(minimum,Math.min(132,Math.floor((window.visualViewport?.height||innerHeight)*.28)));
+  const applyHeight=()=>{
+    text.style.height=preferredMobileComposerHeight?preferredMobileComposerHeight+'px':'';
+    text.toggleAttribute('data-manual-height',preferredMobileComposerHeight!==undefined);
+    fitMobileComposer(text);
+    updateValue();
+  };
+  const resize=height=>{
+    preferredMobileComposerHeight=height===undefined?undefined:Math.max(minimum,Math.min(maximum(),Math.round(height)));
+    applyHeight();
+  };
+  const updateValue=()=>{
+    grip.setAttribute('aria-valuemin',String(minimum));
+    grip.setAttribute('aria-valuemax',String(maximum()));
+    grip.setAttribute('aria-valuenow',String(Math.min(maximum(),text.offsetHeight||preferredMobileComposerHeight||minimum)));
+  };
+  let drag;
+  grip.addEventListener('pointerdown',event=>{
+    if(event.button!==0||activeComposerGrip)return;
+    event.preventDefault();
+    grip.setPointerCapture(event.pointerId);
+    drag={id:event.pointerId,y:event.clientY,height:text.offsetHeight};
+    activeComposerGrip={grip,sessionId,epoch:accessEpoch};
+  });
+  grip.addEventListener('pointermove',event=>{
+    if(drag?.id===event.pointerId)resize(drag.height+drag.y-event.clientY);
+  });
+  grip.addEventListener('lostpointercapture',()=>{
+    drag=undefined;
+    if(activeComposerGrip?.grip!==grip)return;
+    activeComposerGrip=undefined;
+    if(pendingComposerRender)requestAnimationFrame(()=>{if(pendingComposerRender)render();});
+  });
+  signal.addEventListener('abort',()=>{if(activeComposerGrip?.grip===grip)activeComposerGrip=undefined;},{once:true});
+  grip.addEventListener('dblclick',()=>resize(undefined));
+  grip.addEventListener('focus',updateValue);
+  grip.addEventListener('keydown',event=>{
+    if(event.key==='Enter')resize(undefined);
+    else if(event.key==='ArrowUp')resize(text.offsetHeight+18);
+    else if(event.key==='ArrowDown')resize(text.offsetHeight-18);
+    else return;
+    event.preventDefault();
+  });
+  // Restore the chosen height when the current chat receives updates.
+  applyHeight();
+  return grip;
+}
+function chatHeading(s,provider) {
+  const heading=node('header',undefined,'mobile-chat-heading'), origin=recentRoutes.at(-1);
+  const backLabel=origin?.view==='conversations'?'대화 목록으로':origin?.view==='projects'?'대시보드로':chatOriginStatus?executionNames[chatOriginStatus]+' 대화 목록으로':'프로젝트로';
+  const back=action('',()=>goBack('project',s.projectId),'mobile-chat-back');
+  back.setAttribute('aria-label',backLabel);back.title=backLabel;back.dataset.chatControl='back';
+  back.append(chatIcon('back'),node('span','뒤로'));
+  const counts={running:0,waiting:0,decision:0};
+  for(const item of data.sessions)if(Object.hasOwn(counts,item.executionState))counts[item.executionState]++;
+  const states=node('div',undefined,'mobile-chat-states');
+  states.setAttribute('role','group');states.setAttribute('aria-label','대화 진행 상태');
+  for(const [state,label] of Object.entries(executionNames)){
+    const control=action('',()=>go('status',state),'chat-state');
+    control.dataset.execution=state;control.dataset.chatControl='state:'+state;
+    const current=s.executionState===state;
+    if(current)control.dataset.state=state;
+    control.setAttribute('aria-label',label+' 대화 '+counts[state]+'개'+(current?' / 현재 대화 상태':''));
+    control.append(node('span',label),node('strong',String(counts[state])));states.append(control);
+  }
+  const tools=node('div',undefined,'mobile-chat-header-tools');tools.append(back,states);
+  const context=node('p',undefined,'chat-context'), projectName=project(s.projectId)?.name;
+  const service=data.settings.claudeEnabled||provider==='claude'?(provider==='claude'?'Claude':'Codex'):'';
+  const contextText=[s.scope==='general'?'일반 대화':projectName||'대화',kinds[s.workflow?.kind],service].filter(Boolean).join(' / ');
+  context.append(chatIcon(s.scope==='general'||!projectName?'message':'folder'),node('span',contextText));
+  const title=node('div',undefined,'mobile-chat-title'),name=node('h1',s.title);name.title=s.title;
+  title.append(context,name);heading.append(tools,title);return heading;
 }
 function chat(root) {
   const s = session(selectedSession);
   if (!s) return projects(root);
-  const heading=node('header',undefined,'mobile-chat-heading'),origin=recentRoutes.at(-1);
-  const backLabel=origin?.view==='projects'?'대시보드로':chatOriginStatus?executionNames[chatOriginStatus]+' 대화 목록으로':'프로젝트로';
-  const back=action('',()=>goBack('project',s.projectId));back.setAttribute('aria-label',backLabel);back.title=backLabel;
-  const title=node('div',undefined,'mobile-chat-title'),name=node('h1',s.title);name.title=s.title;
   const provider=sessionProvider(s), connected=providerConnected(provider);
-  const service=data.settings.claudeEnabled||provider==='claude'?(provider==='claude'?'Claude':'Codex'):'';
-  title.append(name,node('p',[project(s.projectId)?.name,kinds[s.workflow?.kind]||'대화',service].filter(Boolean).join(' / '),'chat-context'));
-  heading.append(back,title);root.append(heading);
+  root.append(chatHeading(s,provider));
   if(!s.scope)folderGuide(root,project(s.projectId));
   const pending = data.approvals.filter((a) => a.sessionId === s.id);
   if (pending.length) approvals(pending, root);
@@ -1290,17 +1621,23 @@ function chat(root) {
     const citations=presentCitations(m.text||'',m.role,running(s.id)&&m.id===s.lastMessageId);
 
     const meta=node('div',undefined,'mobile-message-meta'),clock=chatClock(m.createdAt);
-    meta.append(node('small',m.role==='user'?'나':m.role==='assistant'?(m.provider==='claude'?'Claude':'Codex'):'작업 상태'));
+    const bubble=node('div',undefined,'mobile-message-bubble'),bubbleRow=node('div',undefined,'mobile-message-row');
+    if(m.role==='assistant'){
+      const claude=m.provider==='claude';
+      const author=node('div',undefined,'mobile-message-author');
+      block.dataset.provider=claude?'claude':'codex';
+      author.append(node('strong',claude?'Claude':'Codex'));block.append(author);
+    }else if(m.role==='user')block.setAttribute('aria-label','내 메시지');
     if(clock){
       const time=node('time');
       time.dateTime=m.createdAt;
       time.append(node('span',clock.date),node('span',clock.time));
       meta.append(time);
     }
-    block.append(meta,messageBody(m.role==='user'&&!m.attachmentHeaderRemoved?attachmentDisplayText(citations.text):citations.text));
+    bubble.append(messageBody(m.role==='user'&&!m.attachmentHeaderRemoved?attachmentDisplayText(citations.text):citations.text));
     const cited=new Set(citations.references?.map(ref=>ref.attachmentId).filter(Boolean));
-    appendAttachments(block,(m.attachments||[]).filter(file=>!cited.has(file.id)),s.projectId,m.id);
-    for(const group of citations.groups)block.append(citationCard(s,m,group));
+    appendAttachments(bubble,(m.attachments||[]).filter(file=>!cited.has(file.id)),s.projectId,m.id);
+    for(const group of citations.groups)bubble.append(citationCard(s,m,group));
     if(m.sourceOnly){
       const details=node('details'),summary=node('summary','요청 원문 읽기'),body=node('p'),buttons=node('div',undefined,'actions');
       let offset=0,next=null;const previous=[];
@@ -1309,17 +1646,23 @@ function chat(root) {
       const forward=action('다음 부분',async()=>{if(next!==null){previous.push(offset);offset=next;await load().catch(e=>showNotice(e.message,'error'));}});
       body.style.whiteSpace='pre-wrap';body.style.overflowWrap='anywhere';buttons.append(back,forward);details.append(summary,body,buttons);
       details.addEventListener('toggle',()=>{if(details.open && !body.textContent)load().catch(error=>showNotice(error.message,'error'));});
-      block.append(details);
+      bubble.append(details);
     }
+    if(m.role==='user'&&clock)bubbleRow.append(meta);
+    bubbleRow.append(bubble);block.append(bubbleRow);
+    if(m.role!=='user'&&clock)block.append(meta);
     history.append(block);
   }
   const runningServices=s.runningProviders||(running(s.id)?[undefined]:[]);
+  const stopControls=new Map();
   for(const engine of runningServices){
     const stopLabel=engine?(engine==='claude'?'Claude':'Codex')+' 작업 중단':'작업 중단';
     const stop = confirmationButton(stopLabel, 'interrupt/'+s.id+(engine?'/'+engine:''), '실행 중인 작업을 중단할까요?', s.title, () =>
       run(async () => { await call('interrupt',s.id,...(engine?[engine]:[]));showNotice('작업 중단을 요청했습니다.'); }));
     stop.disabled = busy;
-    root.append(stop);
+    stop.classList.add('mobile-chat-stop');stop.title=stopLabel;
+    stop.firstChild.replaceWith(node('span',stopLabel,'chat-visually-hidden'),chatIcon('stop'));
+    stopControls.set(engine||provider,stop);
   }
   const waitingRequests=queueItems.filter(isPendingQueuedInput);
   if(waitingRequests.length){
@@ -1342,7 +1685,8 @@ function chat(root) {
     if(waitingRequests.some(item=>item.error&&queuedInputView(item).canResume))queue.append(action("대기 지시 다시 시작",()=>run(async()=>{if(!mayStartProjectWork(s.projectId))return;await call("resumeQueuedMessages",s.id);await loadQueue()})));
     root.append(queue);
   }
-  const form = node("form",undefined,"chat-compose"),draftId = "chat/" + s.id;
+  const dock=node('div',undefined,'mobile-chat-dock'), form=node('form',undefined,'chat-compose'), draftId='chat/'+s.id;
+  form.setAttribute('aria-label','작업 요청');
   const oldInput=content.querySelector('.markdown-input > textarea');
   const text=oldInput?.dataset.field===draftId ? oldInput : node('textarea');
   text.dataset.field=draftId;
@@ -1350,7 +1694,7 @@ function chat(root) {
   const listener={signal:chatRenderEvents.signal};
 
   const mode = projectMode(s);
-  text.addEventListener('input',()=>{
+  text.addEventListener('flowrium-draft-change',()=>{
     const previous=submissionReceipts.get(s.id);
     if(!busy && previous && previous.text!==fullText()){
       if(previous.chunked)discardUpload(s.id,previous.id,key);
@@ -1363,14 +1707,16 @@ function chat(root) {
   const submit = node("button", canSteer ? "지금 전달" : waits ? "추가 지시 대기열에 넣기" : "요청 보내기", "main-action");
   submit.type = "submit";
   submit.disabled = busy || !connected;
+  submit.dataset.chatControl='submit';
   const options=node('div',undefined,'chat-options');
   options.toggleAttribute('data-multiple-providers',Boolean(data.settings.claudeEnabled||provider==='claude'));
   options.append(chatModelPicker(s));
   const textLabel=label('요청',text),editor=node('span',undefined,'markdown-input');
   const ink=node('span',undefined,'markdown-input-ink');ink.setAttribute('aria-hidden','true');
   text.replaceWith(editor);editor.append(text,ink);
-  text.rows=1;text.placeholder='이어서 요청하세요';textLabel.firstChild.remove();
-  form.append(textLabel);
+  const emptyHint='어떤 작업을 함께 해볼까요?';
+  text.rows=2;text.placeholder=emptyHint;textLabel.firstChild.remove();
+  form.append(composerGrip(text,s.id,listener.signal),textLabel);
   const pages=node('div',undefined,'mobile-draft-pages');
   const previousPage=action('이전',()=>mobileDraftEditor.go(pageNumber-1));
   const nextPage=action('다음',()=>mobileDraftEditor.go(pageNumber+1));
@@ -1398,7 +1744,10 @@ function chat(root) {
     const surface={input:text,update:updatePage};
     mobileDraftSurface=surface;
     mobileDraftEditor=attachDraftEditor(text,{
-      read:fullText,change:value=>drafts.set(draftId,value),
+      read:fullText,change:value=>{
+        drafts.set(draftId,value);
+        text.dispatchEvent(new Event('flowrium-draft-change'));
+      },
       render:view=>{surface.view=view;surface.update(view);}
     });
     if(requestedPage)mobileDraftEditor.go(requestedPage);
@@ -1432,13 +1781,20 @@ function chat(root) {
       recommendation.setAttribute('aria-label','작업 추천 중');
       recommendation.setAttribute('aria-valuemax','100');
       const progress=percent=>{
-        recommendation.textContent='작업 추천 중 ('+percent.toFixed(1)+'%)';
+        recommendation.replaceChildren(chatIcon('sparkles'),node('span','작업 추천 중 ('+percent.toFixed(1)+'%)'));
         recommendation.setAttribute('aria-valuenow',String(percent));
       };
       let suggestionButton,suggestionLabel;
       const show=suggested=>{
         nextCommand=suggested.prompt;
-        if(suggestionButton){suggestionLabel.textContent=suggested.title;return;}
+        const syncPreview=()=>{
+          const preview=!fullText()&&!composingField;
+          text.placeholder=preview?nextCommand:emptyHint;
+          text.toggleAttribute('data-inline-suggestion',preview);
+          if(suggestionButton)suggestionButton.hidden=!preview;
+          fitMobileComposer(text);
+        };
+        if(suggestionButton){suggestionLabel.textContent=suggested.title;syncPreview();return;}
         const accept=()=>{
           if(fullText() || composingField || busy)return;
           text.value=nextCommand;text.dispatchEvent(new Event('input',{bubbles:true}));
@@ -1447,10 +1803,12 @@ function chat(root) {
         const button=action('',accept,'mobile-followup');
         suggestionButton=button;
         suggestionLabel=node('span',suggested.title);
-        button.append(node('small','다음 작업 추천'),suggestionLabel,node('kbd','Tab'));
-        const sync=()=>{button.hidden=!!fullText() || !!composingField;};
-        sync();
-        text.addEventListener('input',sync,listener);text.addEventListener('compositionstart',()=>button.hidden=true,listener);text.addEventListener('compositionend',()=>queueMicrotask(sync),listener);
+        button.append(chatIcon('sparkles'),node('small','다음 작업 추천'),suggestionLabel,
+          node('kbd','Tab','mobile-followup-hint'),node('small','Touch','mobile-followup-hint touch-hint'));
+        syncPreview();
+        text.addEventListener('flowrium-draft-change',syncPreview,listener);
+        text.addEventListener('compositionstart',()=>{button.hidden=true;text.placeholder=emptyHint;text.removeAttribute('data-inline-suggestion');},listener);
+        text.addEventListener('compositionend',()=>queueMicrotask(syncPreview),listener);
         text.addEventListener('keydown',event=>{
           if(event.key==='Tab' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.isComposing && event.keyCode!==229 && !composingField && !fullText() && !button.hidden){
             event.preventDefault();accept();
@@ -1489,12 +1847,6 @@ function chat(root) {
       });
     }
   }
-  form.append(options);
-  if (s.executionState) {
-    const state=node('p',executionNames[s.executionState],'chat-state');
-    state.dataset.state=s.executionState;
-    heading.append(state);
-  }
   const continuationMessageId=s.continuationMessageId||s.lastMessageId;
   if(s.canCompleteWaiting&&continuationMessageId){
     const choices=node('div',undefined,'actions continuation-actions');
@@ -1509,22 +1861,43 @@ function chat(root) {
     }));
     proceed.disabled=busy||!connected;complete.disabled=busy;choices.append(proceed,complete);form.append(choices);
   }
-  attachmentComposer(form,s);
-  const attachmentFields=form.querySelector('.attachments');
-  if(options.hasAttribute('data-multiple-providers'))options.after(attachmentFields);
-  else form.insertBefore(attachmentFields,options);
-  if (canSteer) {
-    const choices=node('div',undefined,'actions mobile-delivery-actions'), queue=node('button','다음 차례');
-    submit.dataset.delivery='steer';
-    submit.setAttribute('aria-label','현재 작업에 추가 지시 보내기');
-    queue.type='submit'; queue.dataset.delivery='queue'; queue.disabled=submit.disabled;
-    queue.setAttribute('aria-label','추가 지시 대기열에 넣기');
-    choices.append(submit,queue);form.append(choices);
-  } else form.append(submit);
+  const toolbar=node('div',undefined,'mobile-chat-toolbar'),attach=attachmentComposer(form,s);
+  toolbar.append(attach,options);
+  const otherStops=[...stopControls].filter(([engine])=>engine!==provider);
+  if(runningServices.length){
+    const live=node('div',undefined,'mobile-chat-live'), status=node('p',undefined,'mobile-chat-live-copy');
+    const names=runningServices.map(engine=>engine==='claude'?'Claude':engine==='codex'?'Codex':'').filter(Boolean);
+    status.setAttribute('aria-live','polite');
+    status.append(node('strong',names.length?names.join(' / ')+' 작업 중':'작업 중'));
+    if(s.activity)status.append(node('span',s.activity));
+    live.append(status,...otherStops.map(([,button])=>button));dock.append(live);
+  }
+  if(waits){
+    const choices=node('div',undefined,'actions mobile-delivery-actions');
+    const queue=canSteer?node('button','다음 차례'):submit;
+    queue.textContent='다음 차례';queue.type='submit';queue.dataset.delivery='queue';
+    queue.dataset.chatControl='queue';queue.disabled=submit.disabled;
+    queue.setAttribute('aria-label','추가 지시 대기열에 넣기');choices.append(queue);
+    if(canSteer){submit.dataset.delivery='steer';submit.setAttribute('aria-label','현재 작업에 추가 지시 보내기');choices.append(submit);}
+    form.append(choices);
+    const stop=stopControls.get(provider);
+    if(stop)toolbar.append(stop);
+  }else{
+    submit.setAttribute('aria-label','요청 보내기');submit.title='요청 보내기';
+    submit.replaceChildren(chatIcon('send'));submit.classList.add('mobile-chat-send');toolbar.append(submit);
+    const syncSend=()=>{submit.disabled=busy||!connected||(!fullText().trim()&&!(attachedDrafts.get(s.id)||[]).length);};
+    text.addEventListener('flowrium-draft-change',syncSend,listener);syncSend();
+  }
+  form.append(toolbar);
   if (!connected)
     form.append(
       node("p", provider==='claude'?"컴퓨터의 Flowrium 설정에서 Claude 사용을 켜고 API 키를 연결하세요.":"데스크톱 설정에서 본인의 ChatGPT 계정을 연결하세요.", "hint"),
     );
+  if(!nativeComposerFit) {
+    const fit=()=>fitMobileComposer(text);
+    text.addEventListener('flowrium-draft-change',fit,listener);
+    window.addEventListener('resize',fit,listener);
+  }
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const value = fullText();
@@ -1544,7 +1917,7 @@ function chat(root) {
       showNotice(result.steered ? "현재 작업에 추가 지시를 전달했습니다." : result.waitingForWriter ? writerWaitNotice : result.queued ? "추가 지시를 대기열에 넣었습니다." : "요청을 보냈습니다.");
     });
   });
-  root.append(form);
+  dock.append(form);root.append(dock);
 }
 async function mobileChatInput(session,text){
   if(text.length<=maxChatInput)return {text};
@@ -1675,19 +2048,26 @@ function appendAttachments(parent,items,projectId,id,remove) {
   }
   for(const a of items.filter(a=>!a.type?.startsWith('image/'))){
     const box=node('div',undefined,'attachment');box.append(node('span',a.name+' / '+Math.ceil(a.size/1024)+'KB'));
-    if(remove)box.append(action(a.name+' 첨부 해제',()=>remove(a.id)));parent.append(box);
+    if(remove){
+      const button=action('×',()=>remove(a.id),'mobile-file-remove');
+      button.setAttribute('aria-label',a.name+' 첨부 해제');box.append(button);
+    }
+    parent.append(box);
   }
 }
 function attachmentComposer(form,s){
   const box=node('section',undefined,'attachments'),picker=node('input');picker.type='file';picker.multiple=true;picker.disabled=busy;picker.setAttribute('aria-label','파일 첨부');
+  box.setAttribute('aria-label','첨부한 파일');
   picker.addEventListener('click',e=>{if(!s.scope&&!mayStartProjectWork(s.projectId))e.preventDefault();});
   picker.addEventListener('change',()=>{const files=[...picker.files];void uploadAttachments(s,files)});
-  const choose=label('파일 첨부',picker);choose.className='mobile-attach-button';box.append(choose);
+  const choose=label('파일 첨부',picker);choose.className='mobile-attach-button';choose.title='파일 첨부';
+  choose.firstChild.remove();choose.prepend(chatIcon('attach'));picker.dataset.chatControl='attachments';
   appendAttachments(box,attachedDrafts.get(s.id)||[],s.projectId,'draft:'+s.id,id=>{attachedDrafts.set(s.id,(attachedDrafts.get(s.id)||[]).filter(x=>x.id!==id));render()});
   form.addEventListener('dragover',e=>{if(e.dataTransfer?.types.includes('Files'))e.preventDefault()});
   form.addEventListener('drop',e=>{if(e.dataTransfer?.files.length){e.preventDefault();void uploadAttachments(s,[...e.dataTransfer.files])}});
   form.addEventListener('paste',e=>{const files=[...(e.clipboardData?.files||[])];if(files.length){e.preventDefault();void uploadAttachments(s,files)}});
-  form.append(box);
+  if(box.hasChildNodes())form.append(box);
+  return choose;
 }
 let uploadTail=Promise.resolve();
 function uploadAttachments(s,files){
@@ -1798,16 +2178,19 @@ async function loadExtras(announce=true){
   if(target==='settings' && mobileSettings && !announce)return;
   const label=target==='assistant'?'비서 상태':'계정 설정';
   const epoch=accessEpoch, ticket=Symbol();
+  const loading = !(target==='assistant' ? workflowData : mobileSettings) ? beginLoading(label) : undefined;
   pendingExtras.set(target,ticket);
   const current=()=>epoch===accessEpoch && settingsRevision===extrasEpoch && target===route && pendingExtras.get(target)===ticket;
   if(announce && loadErrors.delete(label))render();
   try{
     if(target==='assistant'){
-      const result=await call('mobileWorkflowState');if(!current())return;
+      const result=await callWithLoading(loading,'mobileWorkflowState');if(!current())return;
+      loading?.finish();
       if(loadErrors.delete(label)||JSON.stringify(result)!==JSON.stringify(workflowData)){workflowData=result;render()}
     }else{
-      const [settings,usage,push]=await Promise.all([call('mobileSettings'),call('readAccountUsage').catch(()=>null),data.pushAvailable?call('webPushState').catch(()=>null):null]);
+      const [settings,usage,push]=await Promise.all([callWithLoading(loading,'mobileSettings'),call('readAccountUsage').catch(()=>null),data.pushAvailable?call('webPushState').catch(()=>null):null]);
       if(!current())return;
+      loading?.finish();
       loadErrors.delete(label);mobileSettings=chatCatalog=settings;chatCatalogChecked=Date.now();usageData=usage;pushData=push;render();
     }
   }catch(error){
@@ -1817,7 +2200,7 @@ async function loadExtras(announce=true){
       loadErrors.set(label, label+' 정보를 불러오지 못했습니다.');
       render();
     }else if(announce) showNotice(error.message, "error");
-  }finally{if(pendingExtras.get(target)===ticket)pendingExtras.delete(target);}
+  }finally{loading?.discard();if(pendingExtras.get(target)===ticket)pendingExtras.delete(target);}
 }
 function workflowDo(input){return run(async()=>{await call('workflowAction',input);await loadExtras();showNotice('반영했습니다.')})}
 function reminderRepeat() {
@@ -1891,8 +2274,10 @@ function assistantPreferences(root) {
   root.append(form);
 }
 function assistantPage(root){
-  root.append(node('h1','업무 센터'),action('업무 센터 새로고침',()=>loadExtras()));
-  if(!workflowData){root.append(loadingRegion('비서 상태'));return}
+  const heading=node('header',undefined,'mobile-page-toolbar');
+  heading.append(node('h1','업무 센터'),compactRefresh('업무 센터 새로고침',()=>loadExtras()));
+  root.append(heading);
+  if(!workflowData){root.append(loadingRegion('비서 상태','assistant'));return}
   const tabs=node('div',undefined,'tabs');for(const [id,title]of [['decisions','결정'],['messages','대화 연결'],['reminders','예약 알림'],['reports','보고'],['preferences','비서 설정']]){const b=action(title,()=>{workflowTab=id;render()});if(workflowTab===id)b.setAttribute('aria-current','page');tabs.append(b)}root.append(tabs);
   if(workflowTab==='decisions'){
     const visible=workflowData.proposals.filter(p=>!p.hidden),bulk=node('div',undefined,'actions');
@@ -1975,12 +2360,32 @@ function settingsPage(root){
   device.append(node('h2','기기 연결'));
   root.append(device);
   const remember=node('input');remember.type='checkbox';remember.checked=rememberDevice;remember.addEventListener('change',()=>{try{rememberDevice=remember.checked;if(rememberDevice){localStorage.setItem(rememberFlag,'1');localStorage.setItem(rememberedKeyStorage,key)}else{localStorage.removeItem(rememberFlag);localStorage.removeItem(rememberedKeyStorage)}showNotice(rememberDevice?'이 기기에 연결을 보관했습니다.':'탭을 닫으면 연결 정보를 보관하지 않습니다.')}catch{rememberDevice=false;remember.checked=false;showNotice('이 브라우저에서 연결을 보관할 수 없습니다.', 'error')}});device.append(settingsSwitch('이 기기에서 연결 유지',remember),node('p','개인 기기에서만 켜세요. 알림으로 새 창을 열 때도 연결하며 데스크톱의 연결 종료로 언제든 취소할 수 있습니다.','hint'));
-  const account=node('section',undefined,'settings-block');
+  const account=node('section',undefined,'settings-block settings-account-models');
   const accountLine=node('div',undefined,'settings-account-line');
-  accountLine.append(node('p',data.connection.accountLabel||'ChatGPT','hint'),action('설정과 사용량 새로 고침',()=>loadExtras()));
+  const identities=node('table',undefined,'settings-account-identities');
+  identities.setAttribute('aria-label','계정 연결 상태');
+  const plan=/^ChatGPT\s*\(([^()]+)\)$/.exec(data.connection.accountLabel||'')?.[1];
+  const chatGptStatus=data.connection.authenticated?(plan||'연결됨'):'연결 필요';
+  let claudeStatus='꺼짐';
+  if(data.settings.claudeEnabled){
+    if(!mobileSettings)claudeStatus='연결 확인 중';
+    else if(mobileSettings.claudeConnected)claudeStatus='API 연결됨';
+    else claudeStatus=mobileSettings.claudeConfigured?'연결 확인 필요':'연결 필요';
+  }
+  const accounts=node('tbody');
+  for(const [name,status] of [['ChatGPT',chatGptStatus],['Claude',claudeStatus]]){
+    const row=node('tr'), heading=node('th',name);
+    heading.scope='row';
+    row.append(heading,node('td',status));
+    accounts.append(row);
+  }
+  identities.append(accounts);
+  const refresh=addActionIcon(action('새로고침',()=>loadExtras(),'mobile-account-refresh'),'refresh');
+  refresh.setAttribute('aria-label','설정과 사용량 새로고침');
+  accountLine.append(identities,refresh);
   account.append(node('h2','계정과 모델'),accountLine);
   root.append(account);
-  if(!mobileSettings){account.append(loadingRegion('계정 설정'));return}
+  if(!mobileSettings){account.append(loadingRegion('계정 설정','settings'));return}
   const {model:defaultModel,effort:defaultEffort,aiFollowups,provider:configuredProvider,claudeModel,claudeEffort}=mobileSettings;
   const preferences=optimisticPreferences('account',{...mobileSettings.chatDefaults,model:defaultModel,effort:defaultEffort,aiFollowups,provider:configuredProvider,claudeModel,claudeEffort});
   const save=async ({model,effort,aiFollowups,provider,claudeModel,claudeEffort,...chatDefaults})=>{
@@ -2005,6 +2410,7 @@ function settingsPage(root){
   function refreshEfforts(preferred){
     const selected=models.find(m=>m.id===model.value)||(!model.value?models.find(m=>m.isDefault):undefined),available=reasoningEffortOptions(selected);
     const choices=available.length?available.map(row=>[row.reasoningEffort,effortDisplayName(row.reasoningEffort)]):[['','모델 기본값']];
+    if(service.value==='claude'&&available.length)choices.unshift(['','모델 기본값']);
     effort.replaceChildren(...choices.map(([value,title])=>{const option=node('option',title);option.value=value;return option}));
     const values=choices.map(([value])=>value);
     effort.value=[preferred,selected?.defaultReasoningEffort,values[0]].find(value=>values.includes(value));
@@ -2031,8 +2437,9 @@ function settingsPage(root){
   model.addEventListener('change',()=>{
     refreshEfforts(effort.value);
     preferences[modelKey()]=model.value;
-    if(effort.value)preferences[effortKey()]=effort.value;
-    queuePreferenceWrite('account',{[modelKey()]:model.value,...(effort.value?{[effortKey()]:effort.value}:{})},save);
+    const change={[modelKey()]:model.value};
+    if(effort.value||service.value==='claude')change[effortKey()]=preferences[effortKey()]=effort.value;
+    queuePreferenceWrite('account',change,save);
   });
   effort.addEventListener('change',()=>{
     preferences[effortKey()]=effort.value;
@@ -2146,11 +2553,14 @@ function visibleMessageAnchor(){
     else hi=middle;
   }
   const first=messages[lo],top=first?.getBoundingClientRect().top;
-  if(first && top<innerHeight)return {id:first.dataset.messageId,top};
+  const dockTop=content.querySelector('.mobile-chat-dock')?.getBoundingClientRect().top ?? innerHeight;
+  if(first && top<Math.min(innerHeight,dockTop))return {id:first.dataset.messageId,top};
 }
 let mobileEditor, mobileDraftEditor, mobileDraftSurface, composingField, compositionContext, composerHistory, chatRenderEvents, pendingComposerRender=false;
 function render() {
-  if (composingField?.isConnected && compositionContext?.route===route && compositionContext?.session===selectedSession && compositionContext?.epoch===accessEpoch && !gate && data && key) {
+  const composingCurrent=composingField?.isConnected&&compositionContext?.route===route&&compositionContext?.session===selectedSession&&compositionContext?.epoch===accessEpoch;
+  const resizingCurrent=route==='chat'&&activeComposerGrip?.grip.isConnected&&activeComposerGrip.sessionId===selectedSession&&activeComposerGrip.epoch===accessEpoch;
+  if ((composingCurrent||resizingCurrent) && !gate && data && key) {
     pendingComposerRender=true;return;
   }
   const calendar = document.querySelector('.flow-date-picker[open]');
@@ -2166,9 +2576,12 @@ function render() {
   const active = document.activeElement,
     progressFocus=active?.dataset?.workGroup,
     field = active?.dataset?.field,
+    chatControl=route==='chat' && renderedChatId===selectedSession && active?.dataset?.chatControl,
     settingsGuide = route === 'settings' && active?.dataset?.settingsGuide,
     confirmAction = active?.dataset?.confirmAction,
-    anchor=visibleMessageAnchor();
+    followEnd=route==='chat' && renderedChatId===selectedSession && !historyLoadingOlder && !historyError &&
+      document.scrollingElement.scrollHeight-innerHeight-window.scrollY<24,
+    anchor=followEnd?undefined:visibleMessageAnchor();
   const fieldTop=field && renderedChatId===selectedSession && route==='chat' ? active.getBoundingClientRect().top : undefined;
   const fieldOffset=active?.scrollTop;
   const start =
@@ -2177,6 +2590,10 @@ function render() {
   const root = document.createDocumentFragment();
   content.dataset.view = gate || !data ? 'connection' : route;
   navigation.hidden = !data || !!gate;
+  if(conversationHome) {
+    conversationHome.hidden=navigation.hidden;
+    conversationHome.setAttribute('aria-pressed',String(route==='conversations'));
+  }
   for (const btn of navigation.querySelectorAll("button")) {
     const current =
       (["project", "new", "chat", "status"].includes(route) ? "projects" : route) ===
@@ -2188,7 +2605,7 @@ function render() {
   content.setAttribute('aria-busy', String(connecting));
   if (connecting) {
     connection.textContent = '연결 중';
-    root.append(loadingRegion('대시보드', 'dashboard'));
+    root.append(loadingRegion(...connectionScreen()));
   } else if (!data || gate) {
     const title =
       gate === "locked"
@@ -2209,8 +2626,9 @@ function render() {
     root.append(node("h1", title), node("p", hint, "hint"));
     if (key) root.append(action("다시 확인", () => poll()));
     if (gate!=="locked" && !handoff && (!key || gate==="offline"))
-      root.append(action("QR 코드로 연결", () => openPairingScanner(connectScannedQR), 'main-action'));
+      root.append(emphasizeAction(action("QR 코드로 연결", () => openPairingScanner(connectScannedQR), 'main-action'),'qr'));
   } else if (route === "projects") projects(root);
+  else if (route === 'conversations') conversationListPage(root);
   else if (route === "status") statusPage(root);
   else if (route === "running") {
     root.append(node("h1", "실행 중인 업무"));
@@ -2230,6 +2648,7 @@ function render() {
   for(const strip of content.querySelectorAll('[data-gallery]'))strip.scrollLeft=galleryPositions.get(strip.dataset.gallery)||0;
   const composingInput=content.querySelector('.markdown-input > textarea');
   if(composingInput){
+    fitMobileComposer(composingInput);
     if(composerHistory?.id!==selectedSession)composerHistory={id:selectedSession};
     mobileEditor=attachComposerMarkdown(composingInput,composingInput.nextElementSibling,composerHistory);
   }else{
@@ -2242,11 +2661,15 @@ function render() {
   }
   renderedChatId=data && !gate && route==='chat' ? selectedSession : undefined;
   const restored=anchor && content.querySelector('[data-message-id="'+CSS.escape(anchor.id)+'"]');
-  if(restored){
+  if(followEnd && renderedChatId){
+    window.scrollTo({top:document.scrollingElement.scrollHeight,behavior:'instant'});
+    historyScrollTop=window.scrollY;
+  }else if(restored){
     window.scrollBy(0,restored.getBoundingClientRect().top-anchor.top);
     historyScrollTop=window.scrollY;
   }
   if(progressFocus)content.querySelector('[data-work-group="'+CSS.escape(progressFocus)+'"]')?.focus({preventScroll:true});
+  if(chatControl)content.querySelector('[data-chat-control="'+CSS.escape(chatControl)+'"]')?.focus({preventScroll:true});
   if (field) {
     const next = [...content.querySelectorAll("[data-field]")].find(
       (el) => el.dataset.field === field,
@@ -2256,19 +2679,22 @@ function render() {
       if (start !== null && typeof next.setSelectionRange === "function")
         next.setSelectionRange(start, end);
       if(fieldOffset)next.scrollTop=fieldOffset;
-      if(!restored && fieldTop!==undefined && fieldTop>=0 && fieldTop<innerHeight)
+      if(!followEnd && !restored && fieldTop!==undefined && fieldTop>=0 && fieldTop<innerHeight)
         window.scrollBy(0,next.getBoundingClientRect().top-fieldTop);
     }
   }
 }
 document.addEventListener('flowrium-install-state', () => { if (route === 'settings') render(); });
 document.querySelector("#home").addEventListener("click", () => go("projects"));
+conversationHome?.addEventListener('click',()=>{if(route!=='conversations')go('conversations');});
 for (const btn of navigation.querySelectorAll("button"))
   btn.addEventListener("click", () => go(btn.dataset.view));
 document.addEventListener("visibilitychange", () => {
   renderQuestionArrival();
   if (!document.hidden) void poll();
 });
+if (handoff || key) connectingLoad=beginLoading(connectionScreen()[0],
+  handoff ? '기기 연결을 확인하는 중' : '데스크톱에 작업 공간을 요청하는 중',handoff ? 3 : 2);
 render();
 async function redeemHandoff(value,signal) {
   const response=await fetch('/api/mobile/handoff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({handoff:value}),credentials:'omit',referrerPolicy:'no-referrer',signal});
@@ -2293,6 +2719,10 @@ async function connectScannedQR(code,signal) {
   }
   key=nextKey;
   gate=null;
+  if(!data) {
+    connectingLoad=beginLoading(connectionScreen()[0],'기기 연결을 확인하는 중',3);
+    connectingLoad.advance('데스크톱에 작업 공간을 요청하는 중');
+  }
   render();
   void poll();
 }
@@ -2301,7 +2731,8 @@ async function initialize(){
     try{
       key=await redeemHandoff(handoff,AbortSignal.timeout(18000));
       try{sessionStorage.setItem(keyStorage,key);if(rememberDevice)localStorage.setItem(rememberedKeyStorage,key)}catch{}
-    }catch(e){key=null;showNotice(e.message, "error")}finally{handoff=null;render();}
+      connectingLoad?.advance('데스크톱에 작업 공간을 요청하는 중');
+    }catch(e){key=null;connectingLoad?.discard();connectingLoad=undefined;showNotice(e.message, "error")}finally{handoff=null;render();}
   }
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(()=>{});
   void poll();

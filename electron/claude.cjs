@@ -155,12 +155,14 @@ function modelRow(raw) {
   const id = raw?.id;
   if (typeof id !== 'string' || !modelIdPattern.test(id) || raw.lifecycle === 'retired') return null;
   const effort = raw.capabilities?.effort;
+  const thinking = raw.capabilities?.thinking;
   const supported = effortLevels.filter(level => effort?.supported === true && effort[level]?.supported === true);
   return {
     id, model:id,
     displayName: typeof raw.display_name === 'string' ? raw.display_name.slice(0, 128) || id : id,
     isDefault:false,
     supportedReasoningEfforts:supported.map(reasoningEffort => ({reasoningEffort})),
+    supportsAdaptiveThinking:thinking?.supported === true && thinking.types?.adaptive?.supported === true,
     ...(Number.isSafeInteger(raw.max_input_tokens) && raw.max_input_tokens > 0 && {contextWindow:raw.max_input_tokens}),
     ...(Number.isSafeInteger(raw.max_tokens) && raw.max_tokens > 0 && {maxOutputTokens:raw.max_tokens}),
   };
@@ -371,9 +373,13 @@ class ClaudeClient {
       throw new ClaudeError('CLAUDE_EFFORT_UNSUPPORTED', '선택한 Claude 모델에서 지원하는 추론 수준을 선택해 주세요.');
     }
     const requestedMax = Number.isSafeInteger(maxTokens) && maxTokens > 0 ? maxTokens : 16384;
+    const reasoning = effort ? {
+      output_config:{effort},
+      ...(selected.supportsAdaptiveThinking && {thinking:{type:'adaptive'}}),
+    } : {};
     const body = JSON.stringify({
       model:selected.id, max_tokens:Math.min(requestedMax, selected.maxOutputTokens ?? 65536),
-      messages, stream:true, ...(system && {system}), ...(effort && {output_config:{effort}}),
+      messages, stream:true, ...(system && {system}), ...reasoning,
       ...(tools?.length && {tools, ...(toolChoice && {tool_choice:toolChoice})}),
     });
     if (Buffer.byteLength(body, 'utf8') > maxRequestBytes) throw failHttp(413);

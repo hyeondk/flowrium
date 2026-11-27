@@ -6,6 +6,7 @@ import {isPendingQueuedInput, maxChatInput, nativeQueueNotice, writerWaitNotice}
 import {projectMode} from '../electron/mobile/project-mode.js';
 import {useModelCatalog} from './useModelCatalog';
 import codexAvatar from "../electron/mobile/chatgpt.svg?no-inline";
+import claudeAvatar from "../electron/mobile/claude.svg?no-inline";
 import WorkflowHub from "./WorkflowHub";
 import CommandCenter, {openCommandCenter} from "./CommandCenter";
 import {isImeKey} from "./ime";
@@ -32,7 +33,7 @@ import MusicPanel from "./MusicPanel";
 import IntegrationPanel from "./IntegrationPanel";
 import RemotePanel from "./RemotePanel";
 import { VoiceSettings, VoiceComposer, SpeakMessageButton } from "./VoiceTools";
-import {effortOptions,effortLabels,effectiveEffort} from "../shared/model-options";
+import {effortOptions,effortLabels,effectiveEffort,supportedEffort} from "../shared/model-options";
 import {modelDisplayName} from '../shared/model-display';
 import { ProjectCategorySettings } from "./ProjectCategorySettings";
 import SettingsLayout,{SettingsGroup} from "./SettingsLayout";
@@ -137,6 +138,10 @@ type CodexHistoryItem = {
   imported: boolean;
 };
 const api = window.flowrium;
+
+function claudeEffortFor(model:Model|undefined,requested:Effort|undefined,accountEffort:Effort|undefined) {
+  return supportedEffort(model,requested)??supportedEffort(model,accountEffort);
+}
 
 function previewChatModel(preferences?:ChatPreferences,selection?:ChatModelSelection):ChatPreferences|undefined {
   if(!selection)return preferences;
@@ -467,6 +472,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const chatModels=chatProvider==='claude'?claudeModels:models;
   const chatDefaultModel=chatProvider==='claude'?data.settings.claudeModel:data.settings.chatDefaults?.model||data.settings.model;
   const chatDefaultEffort=chatProvider==='claude'?data.settings.claudeEffort:data.settings.chatDefaults?.effort??data.settings.effort;
+  const chatModel=chatPreferences?.model||chatDefaultModel;
+  const chatRequestedEffort=chatPreferences?.effort||chatDefaultEffort;
+  const chatEffort=chatProvider==='claude'?
+    claudeEffortFor(claudeModels.find(row=>chatModel?row.id===chatModel:row.isDefault),chatPreferences?.effort,chatDefaultEffort):chatRequestedEffort;
   const [outgoing,setOutgoing]=useState<{sessionId:string;message:Message}>();
   const [workToolsSession,setWorkToolsSession]=useState<string>();
   const workProgress=useMemo(()=>session?.messages && latestWorkProgress(session.messages),[session?.messages]);
@@ -1094,9 +1103,9 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const chosenModel=overrides?.model||preferences?.model||(provider==='claude'?data.settings.claudeModel:data.settings.model);
     const catalog=provider==='claude'?claudeModels:models;
     const metadata=catalog.find(row=>row.id===chosenModel)||(!chosenModel?catalog.find(row=>row.isDefault):undefined);
-    const requested=overrides?.effort||preferences?.effort||(provider==='claude'?data.settings.claudeEffort:data.settings.effort);
-    const supported=effortOptions(metadata);
-    const chosenEffort=supported.some(row=>row.reasoningEffort===requested)?requested:metadata?.defaultReasoningEffort||supported[0]?.reasoningEffort;
+    const requested=overrides?.effort||preferences?.effort;
+    const chosenEffort=provider==='claude'?claudeEffortFor(metadata,requested,data.settings.claudeEffort):
+      supportedEffort(metadata,requested||data.settings.effort)??metadata?.defaultReasoningEffort??effortOptions(metadata)[0]?.reasoningEffort;
     const result=await api.send({ sessionId: value.id, text: request, mode, provider, model:chosenModel, effort:chosenEffort, submissionId:overrides?.submissionId });
     if(!result.accepted)throw new Error('요청을 전송하지 못했습니다. 대화 초안은 보존했습니다.');
     setDrafts(prev => prev[key]?.text === request ? { ...prev, [key]: { text: "", mode } } : prev);
@@ -1265,11 +1274,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const state=await api.securityState();
     if(state.locked||state.accountRevision!==security.state.accountRevision)
       throw Error('계정이나 잠금 상태가 바뀌었습니다. 대상 대화를 다시 확인해 주세요.');
+    const model=preferences?.model||(provider==='claude'?data.settings.claudeModel:data.settings.model||undefined);
+    const effort=provider==='claude'?
+      claudeEffortFor(claudeModels.find(row=>model?row.id===model:row.isDefault),preferences?.effort,data.settings.claudeEffort):preferences?.effort||data.settings.effort;
     const sent=await api.send({
       sessionId:current.id,text,submissionId,
       mode:projectMode(current,current.workflow?workKinds[current.workflow.kind].mode:undefined),
-      provider,model:preferences?.model||(provider==='claude'?data.settings.claudeModel:data.settings.model||undefined),
-      effort:preferences?.effort||(provider==='claude'?data.settings.claudeEffort:data.settings.effort),
+      provider,model,effort,
     });
     if(!sent.accepted)throw Error('대화에 요청을 접수하지 못했습니다.');
     return {queued:sent.queued,queueId:sent.queueId};
@@ -1362,8 +1373,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         codexReferences:originalReferences,
         mode,
         provider: chatProvider,
-        model: chatPreferences?.model||chatDefaultModel,
-        effort: chatPreferences?.effort||chatDefaultEffort,
+        model: chatModel,
+        effort: chatEffort,
       });
       submissionReceipts.current.delete(restoreKey);
       if(sent.steered)notify("현재 작업에 추가 지시를 전달했습니다.");
@@ -1435,6 +1446,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     if (focused instanceof HTMLElement && settingsDialog.current?.contains(focused))
       focused.blur();
     setSettingsOpen(false);
+  }
+  function saveDefaultModel(model:string) {
+    if(editedService==='codex') {void saveSettings({model});return;}
+    const metadata=claudeModels.find(row=>model?row.id===model:row.isDefault);
+    const clearEffort=metadata&&defaultEffort&&!supportedEffort(metadata,defaultEffort);
+    void saveSettings({claudeModel:model,...(clearEffort&&{claudeEffort:undefined})});
   }
   async function saveSettings(patch: Partial<Bootstrap["settings"]>) {
     const request = ++nextSettingsRequest.current;
@@ -1511,7 +1528,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         if(originalReferences.length) throw Error('Claude에 보내려면 입력창에서 Codex 플러그인 참조를 제거해 주세요.');
       }
       if (!await confirmChatFolders(session.projectId,session,chatProvider)) return;
-      await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,...longSubmission(originKey,request,originalReferences),text:request,attachments:originalAttachments.map(a=>a.id),codexReferences:originalReferences,mode,provider:chatProvider,model:chatPreferences?.model||chatDefaultModel,effort:chatPreferences?.effort||chatDefaultEffort});
+      await api.workflowAction({action:'continueConversation',sessionId:session.id,messageId,...longSubmission(originKey,request,originalReferences),text:request,attachments:originalAttachments.map(a=>a.id),codexReferences:originalReferences,mode,provider:chatProvider,model:chatModel,effort:chatEffort});
       submissionReceipts.current.delete(originKey);
       setDrafts(previous=>{const draft=previous[originKey];return {...previous,[originKey]:{...draft,mode:draft?.mode||mode,text:draft?.text===originalInput?'':draft?.text||'',attachments:(draft?.attachments||[]).filter(item=>!originalAttachments.some(sent=>sent.id===item.id)),codexReferences:(draft?.codexReferences||[]).filter(item=>!originalReferences.some(sent=>sent.kind===item.kind&&sent.id===item.id))}}});
       stickToBottom.current=true;
@@ -1687,7 +1704,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                           {(message.role!=="user"||message.delegated)&&<div className="message-meta">
                         <span className={`message-avatar ${message.role}`}>
                           {message.role === "assistant" ? (
-                            message.provider==='claude' ? <Sparkles size={14} aria-hidden="true"/> : <img className="codex-avatar" src={codexAvatar} width="24" height="24" alt="" draggable={false}/>
+                            <img className={message.provider==='claude'?'claude-avatar':'codex-avatar'}
+                              src={message.provider==='claude'?claudeAvatar:codexAvatar} width="24" height="24" alt="" draggable={false}/>
                           ) : message.role === "user" ? (
                             <UserRound size={16} aria-hidden="true" />
                           ) : (
@@ -2583,7 +2601,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                     className="text-input"
                     aria-label="기본 모델"
                     value={defaultModel || ""}
-                    onChange={(e) => saveSettings(editedService==='claude'?{claudeModel:e.target.value}:{model:e.target.value})}
+                    onChange={(e) => saveDefaultModel(e.target.value)}
                   >
                     <option value="">{editedService==='claude'?'Claude 기본 모델':'계정 기본 모델'}</option>
                     {defaultModel &&
@@ -2610,12 +2628,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                   추론 수준
                   <select
                     className="text-input"
-                    value={effectiveEffort(defaultMetadata,defaultEffort)||''}
+                    aria-label="추론 수준"
+                    value={(editedService==='claude'?supportedEffort(defaultMetadata,defaultEffort):effectiveEffort(defaultMetadata,defaultEffort))||''}
                     onChange={(e) =>
-                      saveSettings(editedService==='claude'?{claudeEffort:e.target.value as Effort}:{effort:e.target.value as Effort})
+                      saveSettings(editedService==='claude'?{claudeEffort:(e.target.value||undefined) as Effort|undefined}:{effort:e.target.value as Effort})
                     }
                   >
-                    <option value="" disabled>모델 기본값</option>
+                    <option value="" disabled={editedService==='codex'}>모델 기본값</option>
                     {effortOptions(defaultMetadata).map(row=><option key={row.reasoningEffort} value={row.reasoningEffort}>{effortLabels[row.reasoningEffort]}</option>)}
                   </select>
                 </label>

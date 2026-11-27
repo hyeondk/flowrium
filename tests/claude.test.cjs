@@ -149,6 +149,35 @@ test('선택한 문맥과 수준을 보내고 글자 스트림 및 앱 내부 �
   assert.equal(answer.stopReason, 'tool_use');
 });
 
+test('추론 수준을 직접 고르고 적응형 지원이 확인된 요청에만 적응형 추론을 넣는다', async t => {
+  const effort={supported:true,high:{supported:true},xhigh:{supported:true},max:{supported:true}};
+  const adaptive={supported:true,types:{adaptive:{supported:true}}};
+  const advertised={...rows[1],id:'claude-adaptive-test',capabilities:{effort,thinking:adaptive}};
+  const missing={...rows[1],id:'claude-unknown-thinking-test',capabilities:{effort}};
+  const unsupported={...rows[1],id:'claude-no-thinking-test',capabilities:{effort,thinking:{...adaptive,supported:false}}};
+  const requests=[];
+  const {client}=await fixture(t,async (url,init)=>{
+    if(url.includes('/models'))return json({data:[advertised,missing,unsupported],has_more:false});
+    const body=JSON.parse(init.body);
+    requests.push(body);
+    return stream([{type:'message_start',message:{model:body.model}},{type:'message_stop'}]);
+  });
+  await client.configure(key);
+  const messages=[{role:'user',content:'작업 내용을 검토해 줘'}];
+  await client.generate({model:advertised.id,messages,effort:'xhigh'});
+  await client.generate({model:advertised.id,messages,effort:'max'});
+  await client.generate({model:advertised.id,messages});
+  await client.generate({model:missing.id,messages,effort:'high'});
+  await client.generate({model:unsupported.id,messages,effort:'high'});
+  assert.deepEqual(requests.map(({output_config,thinking})=>({output_config,thinking})), [
+    {output_config:{effort:'xhigh'},thinking:{type:'adaptive'}},
+    {output_config:{effort:'max'},thinking:{type:'adaptive'}},
+    {output_config:undefined,thinking:undefined},
+    {output_config:{effort:'high'},thinking:undefined},
+    {output_config:{effort:'high'},thinking:undefined},
+  ]);
+});
+
 test('잘린 스트림과 중간 API 실패를 완료로 처리하지 않는다', async t => {
   let attempt = 0;
   const {client} = await fixture(t, async (url) => {

@@ -14,6 +14,7 @@
 @font-face{font-family:NanumSquareRound;src:url("/fonts/NanumSquareRoundEB.woff2") format("woff2");font-style:normal;font-weight:800;font-display:swap}
 :root {
   color-scheme: light;
+  -webkit-tap-highlight-color: transparent;
   --bg: #f7f7f6;
   --panel: #fff;
   --text: #252728;

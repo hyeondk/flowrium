@@ -97,6 +97,21 @@ async function main(){
   await choose('');assert.equal(store.session(chat.id).preferences?.model,undefined);
   await page.getByLabel('요청',{exact:true}).fill('전송 모델 확인 (휴대폰 기본값 복귀)');
   await btn('요청 보내기').click();await page.getByText('실제 전송 / gpt-6.1-sol / high',{exact:true}).waitFor();
+  const effort=page.getByLabel('이 채팅의 추론 수준',{exact:true});
+  await effort.locator('option[value="ultra"]').waitFor({state:'attached'});
+  await page.setViewportSize({width:320,height:740});
+  const aligned=await page.locator('.mobile-chat-toolbar').evaluate(toolbar=>{
+    const model=toolbar.querySelector('[data-chat-picker=model]'),effort=toolbar.querySelector('[data-chat-picker=effort]');
+    const [m,e]=[model,effort].map(field=>field.getBoundingClientRect());
+    return Math.abs(m.top-e.top)<=1&&m.right<=e.left&&e.height>=44;
+  });
+  assert(aligned,'좁은 화면의 모델과 추론 선택은 같은 줄에서 44px 터치 영역을 유지합니다.');
+  const changedEffort=page.waitForResponse(r=>r.url().endsWith('/api/mobile/call')&&r.request().postDataJSON()?.method==='setMobileChatModel');
+  await effort.selectOption('ultra');assert.equal((await changedEffort).status(),200);
+  await page.waitForFunction(()=>document.querySelector('select[aria-label="이 채팅의 추론 수준"]')?.value==='ultra');
+  await page.getByLabel('요청',{exact:true}).fill('전송 모델 확인 (휴대폰 추론 변경)');
+  await btn('요청 보내기').click();await page.getByText('실제 전송 / gpt-6.1-sol / ultra',{exact:true}).waitFor();
+  await page.setViewportSize({width:390,height:844});
   const stale=await post('send',{sessionId:sibling.id,mode:'plan',text:'전송 모델 확인 / 오래된 휴대폰 화면',model:'gpt-6.1-terra',effort:'low'});
   assert.equal(stale.status,200);await page.waitForTimeout(100);
   for(let start=Date.now();!store.session(sibling.id).messages.some(m=>m.text==='실제 전송 / gpt-6.1-sol / high');){
@@ -108,7 +123,17 @@ async function main(){
   await page.getByLabel('모바일 운영팀의 목표',{exact:true}).fill('대기검증');await page.getByLabel('배정 방식',{exact:true}).selectOption('manual');await btn('팀 업무 시작').click();await page.getByLabel('배정 업무 1',{exact:true}).waitFor();await btn('배정하고 실행').click();await btn('일시 중지').click();await btn('다시 시작').waitFor();await btn('다시 시작').click();await confirmAction(page,'팀 중단');await btn('팀 다시 열기').waitFor();
   const board=await handlers.get('readTeams')(project.id);assert.equal(board.teams.length,1);assert.equal(board.runs[0].directed.phase,'stopped');
   await btn('설정').click();
+  const accountIdentities=page.getByRole('table',{name:'계정 연결 상태'});
+  await accountIdentities.getByRole('cell',{name:'Pro',exact:true}).waitFor();
+  assert.deepEqual(await accountIdentities.getByRole('rowheader').allTextContents(),['ChatGPT','Claude']);
+  assert.deepEqual(await accountIdentities.getByRole('cell').allTextContents(),['Pro','꺼짐']);
   await page.getByText('남은 크레딧 / 1,234.50',{exact:true}).waitFor();
+  const refreshAccount=btn('설정과 사용량 새로고침');
+  assert.equal(await refreshAccount.innerText(),'새로고침');
+  assert(await refreshAccount.locator('svg[aria-hidden=true]').isVisible());
+  const refreshedUsage=page.waitForResponse(r=>r.url().endsWith('/api/mobile/call')&&r.request().postDataJSON()?.method==='readAccountUsage');
+  await refreshAccount.click();
+  assert.equal((await refreshedUsage).status(),200);
   await page.getByText('사용 한도 재설정 / 2회',{exact:true}).waitFor();
   const resetLabel=await page.evaluate(stamp=>'초기화 '+new Date(stamp).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}),resetsAt);
   await page.getByText(resetLabel,{exact:true}).waitFor();
@@ -279,6 +304,37 @@ async function main(){
   await btn('설정').click();await confirmAction(page,'이 기기 알림 해제');assert.equal((await push.status()).devices.length,0);
   locked=true;await page.getByRole('heading',{name:'작업 공간이 잠겼습니다'}).waitFor();assert.equal(await page.getByText('화면 검증 기기',{exact:true}).count(),0);locked=false;await btn('다시 확인').click();await openProject();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await require('./mobile-design-checks.cjs').checkDesign(app,page,store,directory);
+  const claudeModels=[
+    {id:'claude-opus-test',displayName:'Claude Opus 검증',isDefault:true,supportedReasoningEfforts:['low','medium','high','xhigh','max'].map(reasoningEffort=>({reasoningEffort}))},
+    {id:'claude-sonnet-test',displayName:'Claude Sonnet 검증',supportedReasoningEfforts:['low','medium','high'].map(reasoningEffort=>({reasoningEffort}))},
+  ];
+  register('readClaudeConnection',()=>({configured:true,connected:true,models:claudeModels}));
+  await store.saveSettings({claudeEnabled:true});
+  const claudeChat=await store.createSession(project.id,{title:'Claude 추론 검증',provider:'claude'});
+  await page.goto(access.localUrl);await openProject();await btn('설정').click();
+  await accountIdentities.getByRole('cell',{name:'API 연결됨',exact:true}).waitFor();
+  assert.deepEqual(await accountIdentities.getByRole('cell').allTextContents(),['Pro','API 연결됨']);
+  const defaultService=page.getByLabel('기본 AI 서비스',{exact:true});
+  const savedClaude=mobileWrite('saveMobileSettings',value=>value.provider==='claude');
+  await defaultService.selectOption('claude');assert.equal((await savedClaude).status(),200);
+  assert.equal(await effortDefault.inputValue(),'');
+  const savedMax=mobileWrite('saveMobileSettings',value=>value.claudeEffort==='max');
+  await effortDefault.selectOption('max');assert.equal((await savedMax).status(),200);
+  assert.equal(store.state.settings.claudeEffort,'max');
+  const changedClaudeModel=mobileWrite('saveMobileSettings',value=>value.claudeModel==='claude-sonnet-test');
+  await page.getByLabel('기본 Claude 모델',{exact:true}).selectOption('claude-sonnet-test');
+  assert.equal((await (await changedClaudeModel).json()).result.claudeEffort,'');
+  assert.equal(store.state.settings.claudeEffort,undefined);
+  await btn('홈').click();await openProject();await page.getByRole('button',{name:/Claude 추론 검증/}).click();
+  await effort.locator('option[value=high]').waitFor({state:'attached'});
+  const effortName=page.locator('[data-chat-picker=effort] .mobile-chat-choice-text > span');
+  assert.equal(await effortName.textContent(),'Default');
+  assert.deepEqual(await effort.locator('option').allTextContents(),['Default','Low','Medium','High']);
+  const savedLow=mobileWrite('setMobileChatModel',value=>value===claudeChat.id);
+  await effort.selectOption('low');assert.equal((await savedLow).status(),200);
+  assert.equal(store.session(claudeChat.id).preferences.effort,'low');
+  assert.equal(await effortName.textContent(),'Low');
+  console.log('휴대폰 Claude 추론 / 기본값 유지 / 모델 변경 시 미지원 수준 제거 / 대화별 Low 선택 통과');
   const old=remote.issueLink({ttlMinutes:5});owner++;const invalid=await fetch(origin+'/api/mobile/handoff',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify({handoff:new URLSearchParams(new URL(old.url).hash.slice(1)).get('handoff')})});assert.equal(invalid.status,400);
   console.log('모바일 확장 실제 화면 통과 / 단회 연결 주소 / 첨부 업로드·미리보기·전송 / 실행 중 지시 큐·취소 / 팀 생성·수동 배정·중지·재개·종료 / 비서 요청·결정·예약 / 모델 동작 설정·사용량 / 실제 서비스워커 등록과 모의 Push 구독·시험·해제 / 잠금·계정 격리');
  }catch(e){if(app)console.error('모바일 확장 진단',await(await app.firstWindow()).locator('body').innerText().catch(()=>''));throw e;}finally{if(app)await app.close();if(remote)await remote.shutdown();if(workflow)await workflow.shutdown();if(push)await push.shutdown();if(controller)await controller.shutdown();await fs.rm(directory,{recursive:true,force:true,maxRetries:6,retryDelay:200});}

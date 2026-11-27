@@ -10,7 +10,7 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="flowrium-mobile-version" content="">
     <title>Flowrium</title>
-    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="1024x1024" href="/icon.png?v=flowrium-f" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="theme-color" content="#ffffff" />
@@ -18,16 +18,24 @@
     <link rel="stylesheet" href="/install.css" />
     <link rel="stylesheet" href="/date-picker.css" />
     <link rel="stylesheet" href="/mobile-shell.css" />
+    <link rel="stylesheet" href="/mobile-conversations.css" />
+    <link rel="stylesheet" href="/mobile-loading.css" />
+    <link rel="stylesheet" href="/mobile-dashboard.css" />
     <link rel="stylesheet" href="/composer-markdown.css" />
     <link rel="stylesheet" href="/close-button.css" />
     <link rel="stylesheet" href="/keyboard-focus.css" />
+    <link rel="stylesheet" href="/mobile-form-density.css" />
+    <link rel="stylesheet" href="/mobile-action.css" />
     <script type="module" src="/navigation.js"></script>
     <script type="module" src="/app.js"></script>
   </head>
   <body>
     <header class="bar">
-      <button id="home" aria-label="대시보드" type="button"><img alt="" src="/icon-192.png" width="30" height="30">Flowrium</button
-      ><span id="status" role="status">연결 중</span>
+      <button id="home" aria-label="대시보드" type="button"><img alt="" src="/icon.png?v=flowrium-f" width="30" height="30">Flowrium</button>
+      <span id="status" role="status">연결 중</span>
+      <button id="conversation-home" type="button" aria-label="대화함 열기" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2z"/><path d="M8 9h7M8 12h5"/></svg>
+      </button>
     </header>
     <dialog id="install-guide" aria-labelledby="guide-title">
       <header><h2 id="guide-title">도움말</h2><button type="button" class="popup-close-button" data-close aria-label="안내 닫기">닫기</button></header>
