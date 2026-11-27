@@ -1325,7 +1325,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         return { ...previous, settings: { ...previous.settings, ...changed } };
       });
     }
-    const saving = settingsSaveQueue.current.then(async () => {
+    const persist = async () => {
       try {
         const saved = api ? await api.saveSettings(patch) : patch;
         Object.assign(persistedSettings.current,Object.fromEntries(keys.map(key=>[key,saved[key]])));
@@ -1342,8 +1342,13 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
           return next;
         });
       }
-    });
-    settingsSaveQueue.current = saving.then(()=>{});
+    };
+    const pending = settingsSaveQueue.current;
+    // Hand every appearance choice to the main process while the window still exists.
+    // The store queues the disk writes and the main process drains them on quit.
+    const appearanceOnly = appearanceKeys.length > 0 && appearanceKeys.length === keys.length;
+    const saving = appearanceOnly ? persist() : pending.then(persist);
+    settingsSaveQueue.current = Promise.all([pending, saving]).then(()=>{});
     return saving;
   }
   async function decide(event: FlowriumEvent, decision: "accept" | "decline") {
