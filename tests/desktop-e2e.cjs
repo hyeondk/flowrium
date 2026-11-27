@@ -67,6 +67,8 @@ async function run() {
       dialog.showOpenDialog = async () => ({canceled: false, filePaths:[selection]});
     }, project);
     await btn("프로젝트 추가").click();await (await selectExistingProjectFolder(page)).click();
+    await page.getByRole('heading',{name:path.basename(project),exact:true}).waitFor();
+    await goHome();
     await page.locator("[data-work-kind=task]").waitFor();
     await trustRegisteredFixtureFolder(profile, project);
     await page.locator(".settings-button").click();
