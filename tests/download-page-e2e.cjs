@@ -201,6 +201,39 @@ async function run() {
     await page.getByRole("link", {name:"설치 후 시작하기"}).click();
     assert.equal(new URL(page.url()).hash, "#start");
     assert.equal(await page.locator(".start-steps li").count(),3);
+    const exeHelp = page.locator("#help").getByRole("link", {
+      name: "공식 설치 파일 명령 보기",
+      exact: true,
+      includeHidden: true,
+    });
+    if (!await exeHelp.isVisible()) {
+      await exeHelp.locator("xpath=ancestor::details[1]/summary").click();
+    }
+    await exeHelp.click();
+    assert.equal(new URL(page.url()).origin, downloadOrigin);
+    assert.equal(new URL(page.url()).hash, "#windows-exe-terminal");
+    const exeCommand = page.locator("#windows-exe-terminal #win-exe-command");
+    await exeCommand.waitFor();
+    const exeText = await exeCommand.textContent();
+    assert.match(exeText, /\$repo\s*=\s*'hyeondk\/flowrium'/);
+    assert.match(exeText, /https:\/\/api\.github\.com\/repos\/\$repo\/releases\/latest/);
+    assert.match(exeText, /-win-x64\.exe/);
+    assert.match(exeText, /\$base\s*=\s*"https:\/\/github\.com\/\$repo\/releases\/download\/\$tag"/);
+    assert.match(exeText, /\$base\/SHA256SUMS\.txt/);
+    assert.match(exeText, /\$base\/\$name/);
+    assert.match(exeText, /\[byte\[\]\].*UTF8\.GetString/);
+    assert.match(exeText, /\[Security\.Cryptography\.SHA256\]::Create\(\)/);
+    assert.match(exeText, /\.ComputeHash\(\$file\)/);
+    assert.match(exeText, /Start-Process/);
+    assert.ok(exeText.indexOf(".ComputeHash(") < exeText.indexOf("Start-Process"));
+    assert.doesNotMatch(exeText, /Unblock-File|ExecutionPolicy|Invoke-Expression|-Verb\s+RunAs/i);
+    await page.evaluate(() => {
+      window.rejectClipboard = false;
+      window.copiedCommand = undefined;
+    });
+    await page.getByRole("button", {name: "Windows 공식 설치 파일 명령 복사"}).click();
+    await page.getByRole("status").filter({hasText:"명령을 클립보드에 복사했습니다"}).waitFor();
+    assert.equal(await page.evaluate(() => window.copiedCommand), exeText);
     const detachedDocs = await page.locator('a[href*="/blob/"][href$=".md"]').evaluateAll(links =>
       links.every(link => link.closest(".guide-links,.help-answer")));
     assert.equal(detachedDocs,true,"일반 안내의 이동은 홈페이지 안에서 완료");
@@ -289,6 +322,8 @@ async function run() {
     await page.reload({waitUntil:'domcontentloaded'});
     await page.getByRole('status').filter({hasText:'첫 공개 릴리스'}).waitFor();
     assert.equal(await page.locator('[data-download][href]').count(),0);
+    assert.equal(await exeCommand.textContent(), exeText, "브라우저의 공개 릴리스 조회와 별도로 PowerShell 명령 제공");
+    assert.ok(await page.getByRole("button", {name: "Windows 공식 설치 파일 명령 복사"}).isEnabled());
     noRelease = false; missing = true;
     await page.getByRole('button',{name:'다시 확인'}).click();
     await page.getByRole('status').filter({hasText:'설치 파일을 추가'}).waitFor();

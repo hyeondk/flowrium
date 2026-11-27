@@ -117,6 +117,7 @@ nav a,.support-links a { display: inline-flex; align-items: center; min-height: 
 .guide-section .section-intro,.getting-started > p { max-width: 51rem; }
 .command-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem; margin-top: 1.25rem; }
 .command-card { min-width: 0; padding: clamp(.85rem,2vw,1.4rem); border: 1px solid var(--rule); border-radius: .85rem; background: white; }
+.command-card-wide { grid-column: 1 / -1; }
 .command-card h3 { margin-bottom: .5rem; font-size: 1.25rem; }
 .command-card > p { color: var(--muted); }
 .command-card > p code,.help-answer code { overflow-wrap: anywhere; color: var(--ink); font-size: .9em; }
