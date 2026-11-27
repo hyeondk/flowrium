@@ -426,12 +426,14 @@ async function main(){
   await guide.getByRole('button',{name:'도움말 닫기'}).click();
   await guide.waitFor({state:'hidden'});
   await capture('mobile-settings.png');
-  const picker=page.locator('select').first();await picker.scrollIntoViewIfNeeded();await picker.click();
-  await page.waitForFunction(()=>document.querySelector('select')?.matches(':open'));
-  await page.waitForTimeout(250);
-  const selectBounds=await picker.boundingBox(),optionBounds=await picker.locator('option').first().boundingBox();
-  assert(optionBounds&&selectBounds&&optionBounds.x>=selectBounds.x-1&&optionBounds.x+optionBounds.width<=selectBounds.x+selectBounds.width+1);
-  assert(optionBounds.y>=0&&optionBounds.y+optionBounds.height<=844);
+  await page.getByLabel('답변 길이',{exact:true}).click();
+  await page.waitForFunction(()=>{
+   const select=document.querySelector('.settings-account-models select:open');
+   const option=select?.querySelector('option');
+   if(!option)return false;
+   const field=select.getBoundingClientRect(),item=option.getBoundingClientRect();
+   return item.width>0&&item.height>0&&item.left>=field.left-1&&item.right<=field.right+1&&item.top>=0&&item.bottom<=innerHeight;
+  });
   await capture('mobile-picker.png');await page.keyboard.press('Escape');
   const refresh=async()=>{
     const response=page.waitForResponse(r=>r.url().endsWith('/api/mobile/state')&&r.ok());
