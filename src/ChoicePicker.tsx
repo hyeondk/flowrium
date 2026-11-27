@@ -124,7 +124,10 @@ export default function ChoicePicker({label,value,options,onChange,disabled,edit
       list.style.width=width+'px';
       const style=getComputedStyle(list),borders=parseFloat(style.borderTopWidth)+parseFloat(style.borderBottomWidth);
       const natural=Math.min(224,list.scrollHeight+borders),below=Math.max(0,bottomLimit-rect.bottom-6),above=Math.max(0,rect.top-topLimit-6);
-      const side=placement==='up'?'up':placement==='down'?'down':below>=natural||below>=above?'down':'up';
+      const preferred = placement==='up'?above:below;
+      const opposite = placement==='up'?below:above;
+      const side = placement!=='auto' && (preferred>=natural || preferred>=opposite) ? placement
+        : below>=natural || (above<natural && below>=above) ? 'down' : 'up';
       const maxHeight=Math.max(1,Math.min(224,side==='up'?above:below));
       list.style.maxHeight=maxHeight+'px';
       const height=list.getBoundingClientRect().height;

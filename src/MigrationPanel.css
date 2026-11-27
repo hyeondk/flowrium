@@ -1,6 +1,5 @@
-.settings-backup { border-top: 1px solid var(--line-soft); padding: 16px 0 4px; }
-.settings-backup > summary { cursor: pointer; font-weight: 700; }
-.settings-backup > .migration-panel { margin-top: 18px; }
+.settings-backup { margin: 14px 16px; }
+.settings-backup > .migration-panel { margin: 0; padding: 16px 20px; border: 0; border-radius: 0; }
 :is(.app-shell,.settings-modal,.motion-overlay) .migration-panel { display: flex; flex-direction: column; gap: 20px; min-width: 0; word-break: keep-all; overflow-wrap: normal; font-size: 13px; line-height: 22px; }
 :is(.app-shell,.settings-modal,.motion-overlay) .migration-panel :is(header,.migration-path,.migration-project,.migration-restart) { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-width: 0; }
 :is(.app-shell,.settings-modal,.motion-overlay) .migration-panel > header { align-items: flex-start; }

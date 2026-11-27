@@ -14,6 +14,7 @@ async function productRelease() {
       files[name] = await fs.readFile(path.join(mobile, name), 'utf8');
     }
   }
+  files['qr-decoder.js'] = await require('../electron/qr-decoder.cjs').qrDecoderSource();
   // Only the new document has this marker, so a stale page cannot pass a reload check.
   files['index.html'] = files['index.html'].replace('<title>Flowrium</title>',
     '<meta name="update-fixture" content="applied"><title>Flowrium</title>');

@@ -34,36 +34,39 @@ function checkedBounds(value,window){
 class DotsView {
  constructor(options){
   this.options=options;this.electron=options.electron||require('electron');this.view=null;this.host=null;this.attached=false;this.visible=false;this.loading=false;this.error='';this.external=null;this.owner='';this.closed=false;this.sessions=new Map();this.listeners=[];this.loginReady=false;this.readinessFlight=null;this.lastReadiness=0;
-  this.watchdog=setInterval(()=>{try{if(this.view&&this.owner!==this.identity())this.destroy();else if(this.visible&&!this.allowed())this.hide();else if(this.visible&&Date.now()-this.lastReadiness>=1200)void this.inspectReadiness().catch(()=>{});}catch{this.hide();}},150);this.watchdog.unref?.();
+  this.requested=null;this.sheet=false;this.resizeTimer=null;
+  this.watchdog=setInterval(()=>{try{if(this.view&&this.owner!==this.identity())this.destroy();else if(this.requested&&!this.allowed())this.hide();else if(this.visible&&!this.presentable())this.suspend();else if(this.requested&&!this.visible&&this.presentable())this.restore();else if(this.visible&&Date.now()-this.lastReadiness>=1200)void this.inspectReadiness().catch(()=>{});}catch{this.hide();}},150);this.watchdog.unref?.();
  }
  identity(){const revision=this.options.accountRevision?.()??0,owner=this.options.ownerHash?.()||'signed-out';
   if(!Number.isSafeInteger(revision)||revision<0||typeof owner!=='string'||owner.length>200)throw Error('Dots 계정 구분을 확인해 주세요.');
   return createHash('sha256').update('flowrium-dots-v1:'+owner+'\0'+revision).digest('hex');
  }
- allowed(){const win=this.options.getWindow();return !this.closed&&this.options.canShow?.()!==false&&win&&!win.isDestroyed()&&win.isVisible()&&(!win.isFocused||win.isFocused());}
- state(){return {available:!this.closed,visible:this.visible&&!!this.allowed(),loading:this.loading,error:this.error||undefined,externalHost:this.external?safeURL(this.external.url)?.hostname:undefined,noticeKey:this.identity(),loginReady:this.loginReady};}
+ allowed(){const win=this.options.getWindow();return !this.closed&&this.options.canShow?.()!==false&&!!win&&!win.isDestroyed();}
+ presentable(){const win=this.options.getWindow();return this.allowed()&&win.isVisible()&&!win.isMinimized?.()&&(!win.isFocused||win.isFocused())&&!this.sheet;}
+ state(){return {available:!this.closed,visible:this.visible&&this.presentable(),suspended:!!this.requested&&this.allowed()&&!this.presentable(),loading:this.loading,error:this.error||undefined,externalHost:this.external?safeURL(this.external.url)?.hostname:undefined,noticeKey:this.identity(),loginReady:this.loginReady};}
  async inspectReadiness(){
-  const view=this.view;if(!view||this.readinessFlight||!this.visible||!this.allowed()||view.webContents.isDestroyed())return;
+  const view=this.view;if(!view||this.readinessFlight||!this.visible||!this.presentable()||view.webContents.isDestroyed())return;
   this.lastReadiness=Date.now();const url=view.webContents.getURL?.();
   if(!readinessURL(url)){this.loginReady=false;return;}
   const flight={view,owner:this.owner,url};this.readinessFlight=flight;let timer;
   try{
    const result=await Promise.race([view.webContents.executeJavaScript(READINESS_SCRIPT,false),new Promise(resolve=>{timer=setTimeout(()=>resolve(false),1200)})]);
-   if(this.view===view&&this.owner===flight.owner&&this.owner===this.identity()&&!this.closed&&!view.webContents.isDestroyed()&&this.visible&&this.allowed()&&view.webContents.getURL()===url)this.loginReady=result===true;
+   if(this.view===view&&this.owner===flight.owner&&this.owner===this.identity()&&!this.closed&&!view.webContents.isDestroyed()&&this.visible&&this.presentable()&&view.webContents.getURL()===url)this.loginReady=result===true;
   }catch{/* 공식 화면이 바뀌거나 로드 중이면 수동 안내 확인을 유지한다. */}
   finally{clearTimeout(timer);if(this.readinessFlight===flight)this.readinessFlight=null;}
  }
- guard(){if(!this.allowed())throw Error('잠금과 열린 창을 확인한 뒤 Dots 탭을 다시 열어 주세요.');}
+ guard(){if(!this.allowed())throw Error('잠금을 해제하고 연결 계정을 확인한 뒤 Dots를 열어 주세요.');}
  listen(target,event,callback){target.on(event,callback);this.listeners.push(()=>target.removeListener(event,callback));}
  destroy(){
-  const view=this.view;this.hide();this.view=null;this.host=null;this.owner='';this.loading=false;this.external=null;this.error='';this.loginReady=false;this.readinessFlight=null;for(const remove of this.listeners.splice(0))remove();
+  const view=this.view;this.hide();this.view=null;this.host=null;this.owner='';this.sheet=false;this.loading=false;this.external=null;this.error='';this.loginReady=false;this.readinessFlight=null;for(const remove of this.listeners.splice(0))remove();
   if(view&&!view.webContents.isDestroyed())view.webContents.close({waitForBeforeUnload:false});
  }
  invalidate(){this.destroy();}
- hide(){
+ suspend(){
   if(this.view){this.view.setVisible(false);if(!this.view.webContents.isDestroyed())this.view.webContents.setAudioMuted(true);if(this.attached&&this.host&&!this.host.isDestroyed())this.host.contentView.removeChildView(this.view);}
   this.attached=false;this.visible=false;return this.state();
  }
+ hide(){this.requested=null;clearTimeout(this.resizeTimer);return this.suspend();}
  externalRequest(value){const url=safeURL(value);if(!url)return;this.external={url:url.href,owner:this.owner};}
  ensure(){
   this.guard();const owner=this.identity(),host=this.options.getWindow();
@@ -83,17 +86,35 @@ class DotsView {
   this.listen(view.webContents,'did-stop-loading',()=>{if(own())this.loading=false;});
   this.listen(view.webContents,'did-fail-load',(_event,code,_description,_url,mainFrame)=>{if(own()&&code!==-3&&mainFrame!==false){this.loading=false;this.error='공식 Dots 화면을 열지 못했습니다. 다시 시도하거나 외부 브라우저에서 여세요.';}});
   this.listen(view.webContents,'render-process-gone',()=>{if(own()){this.hide();this.loading=false;this.error='Dots 화면이 종료됐습니다. 새로고침하거나 외부 브라우저에서 여세요.';}});
-  this.listen(host,'blur',()=>this.hide());this.listen(host,'resize',()=>this.hide());this.listen(host,'sheet-begin',()=>this.hide());this.listen(host,'closed',()=>this.destroy());
+  const restore=()=>this.restore();
+  for(const event of ['blur','hide','minimize'])this.listen(host,event,()=>this.suspend());
+  for(const event of ['focus','show','restore'])this.listen(host,event,restore);
+  this.listen(host,'resize',()=>{this.suspend();clearTimeout(this.resizeTimer);this.resizeTimer=setTimeout(restore,120);});
+  this.listen(host,'sheet-begin',()=>{this.sheet=true;this.suspend();});
+  this.listen(host,'sheet-end',()=>{this.sheet=false;this.restore();});
+  this.listen(host,'closed',()=>this.destroy());
   const download=(event,item,contents)=>{if(contents===view.webContents){event.preventDefault();if(own())this.externalRequest(item.getURL());}};
   this.listen(session,'will-download',download);
   view.webContents.loadURL(HOME).catch(()=>{if(own()){this.loading=false;this.error='공식 Dots 화면에 연결하지 못했습니다. 외부 브라우저에서 열 수 있습니다.';}});
   return view;
  }
- show(input){this.guard();const bounds=checkedBounds(input,this.options.getWindow()),view=this.ensure();this.guard();
-  if(this.owner!==this.identity()){this.destroy();throw Error('계정이 바뀌었습니다. Dots를 다시 열어 주세요.');}
+ restore(){
+  if(!this.requested||!this.presentable()||this.requested.owner!==this.identity()||this.requested.host!==this.options.getWindow())return this.state();
+  const requested=this.requested;
+  let bounds;
+  try{bounds=checkedBounds(requested.input,requested.host);}catch{return this.suspend();}
+  const view=this.ensure();
+  if(!this.presentable()||this.owner!==requested.owner)return this.suspend();
   if(view.webContents.getZoomFactor?.()!==DOTS_ZOOM)view.webContents.setZoomFactor(DOTS_ZOOM);
   view.setBounds(bounds);if(!this.attached){this.host.contentView.addChildView(view);this.attached=true;}
   view.setVisible(true);view.webContents.setAudioMuted(false);this.visible=true;return this.state();
+ }
+ show(input){
+  this.guard();const host=this.options.getWindow(),owner=this.identity();checkedBounds(input,host);
+  if(this.view&&(this.owner!==owner||this.host!==host||this.view.webContents.isDestroyed()))this.destroy();
+  this.requested={host,owner,input:{...input}};
+  if(!this.presentable())return this.suspend();
+  return this.restore();
  }
  resetZoom(){if(this.view&&!this.view.webContents.isDestroyed())this.view.webContents.setZoomFactor(DOTS_ZOOM);}
  reload(){this.guard();if(!this.view||this.owner!==this.identity())throw Error('Dots 탭을 먼저 열어 주세요.');this.error='';this.external=null;this.view.webContents.reload();return this.state();}

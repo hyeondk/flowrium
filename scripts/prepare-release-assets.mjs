@@ -6,6 +6,7 @@ import {pipeline} from 'node:stream/promises';
 import {createGzip} from 'node:zlib';
 import {fileURLToPath} from 'node:url';
 import versions from '../electron/version.cjs';
+import decoder from '../electron/qr-decoder.cjs';
 const root=fileURLToPath(new URL('..',import.meta.url)),directory=resolve(process.argv[2]||'release');
 const pkg=JSON.parse(await readFile(new URL('../package.json',import.meta.url),'utf8'));
 const version=versions.releaseVersion(pkg);
@@ -21,6 +22,7 @@ for (const name of mobilePaths) {
   mobileFiles[name]=execFileSync('git',['show',commit+':electron/mobile/'+name],{cwd:root,encoding:'utf8'});
 }
 if (!mobileFiles['index.html'] || !mobileFiles['app.js']) throw Error('휴대폰 화면의 시작 파일을 찾지 못했습니다.');
+mobileFiles['qr-decoder.js']=await decoder.qrDecoderSource();
 await writeFile(join(directory,`Flowrium-${version}-mobile-v1.json`),JSON.stringify({format:1,version,files:mobileFiles})+'\n','utf8');
 for(const [source,name] of [['install.sh','install.sh'],['install.ps1','install.ps1'],['scripts/installer-support.cjs','flowrium-install-support.cjs']])await copyFile(join(root,source),join(directory,name));
 const file=join(directory,`Flowrium-${version}-source.tar.gz`),temporary=file+'.tmp';

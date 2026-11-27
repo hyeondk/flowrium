@@ -6,6 +6,7 @@ const {
   shell,
   clipboard,
   Menu,
+  nativeImage,
   powerMonitor, powerSaveBlocker, Notification,
 } = require("electron");
 const fs = require("node:fs/promises");
@@ -54,6 +55,8 @@ let quitting = false;
 let launchComplete = false;
 let windowRequestPending = false;
 let creatingWindow = false;
+let desktopAppearance = { theme: "light", accentColor: "blue" };
+const themeImages = new Map();
 const lifecycleDiagnostics = process.env.FLOWRIUM_LIFECYCLE_DIAGNOSTICS === '1';
 const DEV_URL = process.env.ELECTRON_RENDERER_URL;
 if (!app.isPackaged && process.env.FLOWRIUM_USER_DATA)
@@ -87,7 +90,7 @@ async function invokeRegistered(name,handler,args){
   if(['send','startWork','logoutSecurity','installUpdate','lockSecurity'].includes(name)||
     (name==='workflowAction'&&args[0]?.action==='continueConversation')||
     (name==='saveSettings'&&(args[0]?.aiFollowups===false||Object.hasOwn(args[0]??{},'codexPath'))))followupGenerator?.invalidate();
-  const independent=/^(read|list)/.test(name)||['bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','openChatWebLink','voiceServersState','voiceStatus','voicePreferences','workflowState','dictionaryState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','readDotsState','selectKickoffLocation'].includes(name);
+  const independent=/^(read|list)/.test(name)||['bootstrap','securityState','securityPending','lockSecurity','unlockSecurity','updateState','connectionStatus','writeDrafts','interrupt','cancelQueuedMessage','openChatWebLink','voiceServersState','voiceStatus','voicePreferences','workflowState','dictionaryState','macPimStatus','linkDeliveryState','webPushState','remoteAccess','musicState','musicPlayer','terminalRead','terminalList','hideDotsView','showDotsView','readDotsState','selectKickoffLocation'].includes(name);
   const query=args[0];
   // 실행 파일과 프로젝트를 바꾸는 작업은 기존 동기화를 기다린다.
   const settingsOnly=(name==='saveSettings'&&!Object.hasOwn(query??{},'codexPath')) ||
@@ -170,17 +173,46 @@ function ensureWindow() {
   }
   return null;
 }
+function appearanceIcon(appearance) {
+  const key = `${appearance.theme}-${appearance.accentColor}`;
+  if (!themeImages.has(key)) {
+    const folder = app.isPackaged ? "dist" : "public";
+    const file = key === "light-blue" ? "flowrium.png" : `flowrium-themes/${key}.png`;
+    const icon = nativeImage.createFromPath(path.join(__dirname, "..", folder, file));
+    themeImages.set(key, icon.isEmpty() ? nativeImage.createFromPath(path.join(__dirname, "..", "assets", "flowrium.png")) : icon);
+  }
+  return themeImages.get(key);
+}
+function appearanceBackground(appearance) {
+  return appearance.theme === "dark" ? "#16171a" : "#f3f8fc";
+}
+function applyAppearance(appearance) {
+  const nextAppearance = {
+    theme: appearance?.theme === "dark" ? "dark" : "light",
+    accentColor: ["green", "purple"].includes(appearance?.accentColor) ? appearance.accentColor : "blue",
+  };
+  if (window && desktopAppearance.theme !== nextAppearance.theme) window.setBackgroundColor(appearanceBackground(nextAppearance));
+  desktopAppearance = nextAppearance;
+  const icon = appearanceIcon(desktopAppearance);
+  if (process.platform === "darwin") app.dock?.setIcon(icon);
+  else if (window && !window.isDestroyed()) window.setIcon(icon);
+}
+ipcMain.on("flowrium:previewAppearance", (event, appearance) => {
+  try { validateSender(event); } catch { return; }
+  applyAppearance(appearance);
+});
 function createWindow() {
   window = new BrowserWindow({
     width: 1440,
     height: 940,
     minWidth: 780,
     minHeight: 600,
-    backgroundColor: "#f3f8fc",
+    backgroundColor: appearanceBackground(desktopAppearance),
     title: "Flowrium",
-    icon: path.join(__dirname, "..", "assets", "flowrium.png"),
+    icon: appearanceIcon(desktopAppearance),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
+      additionalArguments: [`--flowrium-appearance=${desktopAppearance.theme}-${desktopAppearance.accentColor}`],
       zoomFactor: DEFAULT_DESKTOP_ZOOM,
       contextIsolation: true,
       sandbox: true,
@@ -230,6 +262,7 @@ function createWindow() {
 }
 async function launch() {
   lifecycleDiagnostic('launch-start');
+  if (process.platform === "win32") app.setAppUserModelId(require("../package.json").build.appId);
   await acknowledgeUpdateLaunch(app, "starting");
   const { Security, registerSecurity } = require("./security.cjs");
   security = new Security(app.getPath("userData"));
@@ -240,6 +273,7 @@ async function launch() {
     const recovered=await require('./migration.cjs').recoverMigrations(app.getPath('userData'));
     if(recovered.some(row=>row.status==='recovery-required'))throw Error('자료 이관 복구가 완료되지 않았습니다. 원본과 백업을 보존하고 복구 결과를 확인해 주세요. / '+path.join(app.getPath('userData'),'migration-records'));
     await store.load();
+    applyAppearance(store.state.settings);
     lifecycleDiagnostic('store-ready');
   } catch (error) {
     dialog.showErrorBox("Flowrium 작업 공간 확인", error.message);

@@ -1,4 +1,19 @@
 const { contextBridge, ipcRenderer } = require("electron");
+const appearanceArgument = process.argv.find(arg => arg.startsWith("--flowrium-appearance="));
+let appearanceName = appearanceArgument?.split("=")[1];
+try { appearanceName = sessionStorage.getItem("flowrium.window.appearance") || appearanceName; } catch {}
+const [theme, accentColor] = appearanceName?.split("-") ?? [];
+const startupAppearance = Object.freeze({
+  theme: theme === "dark" ? "dark" : "light",
+  accentColor: ["green", "purple"].includes(accentColor) ? accentColor : "blue",
+});
+function applyStartupAppearance() {
+  document.documentElement.dataset.theme = startupAppearance.theme;
+  document.documentElement.dataset.accent = startupAppearance.accentColor;
+}
+if (document.documentElement) applyStartupAppearance();
+else document.addEventListener("readystatechange", applyStartupAppearance, { once: true });
+
 async function invoke(method, ...args) {
   const channel = `flowrium:${method}`;
   try {
@@ -14,6 +29,8 @@ async function invoke(method, ...args) {
 contextBridge.exposeInMainWorld(
   "flowrium",
   Object.freeze({
+    startupAppearance,
+    previewAppearance: appearance => ipcRenderer.send("flowrium:previewAppearance", appearance),
     projectShortcutAction:(id,input)=>invoke('projectShortcutAction',id,input),
     repositoryAccessAction:(project,input)=>invoke('repositoryAccessAction',project,input),
     readDotsState:()=>invoke('readDotsState'),

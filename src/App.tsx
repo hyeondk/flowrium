@@ -69,7 +69,7 @@ import WeeklyReportFile from "./WeeklyReportFile";
 import { UpdatePanel, useDesktopUpdate } from "./UpdatePanel";
 import { workKinds } from "../shared/workbench";
 import packageInfo from "../package.json";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   PanelRight,
@@ -99,6 +99,7 @@ import {
   Menu,
   MessageSquare,
   Plus,
+  Plug,
   Search,
   Settings2,
   ShieldCheck,
@@ -142,7 +143,7 @@ function previewChatModel(preferences?:ChatPreferences,selection?:ChatModelSelec
 const initial: Bootstrap = {
   projects: [],
   sessions: [],
-  settings: { effort: "medium", theme: "light", accentColor:"blue" },
+  settings: { effort: "medium", theme: "light", accentColor:"blue", ...window.flowrium?.startupAppearance },
   version: packageInfo.flowriumVersion || packageInfo.version,
   platform: "preview",
 };
@@ -389,6 +390,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
   const submittingRef = useRef(false);
   const settingsDialog = useRef<HTMLElement>(null);
   const settingsRequests = useRef<Partial<Record<keyof Bootstrap["settings"], number>>>({});
+  const [appearancePreview, setAppearancePreview] = useState<Partial<Pick<Bootstrap["settings"], "theme" | "accentColor">>>({});
   const nextSettingsRequest = useRef(0);
   const settingsSaveQueue = useRef(Promise.resolve());
   const persistedSettings = useRef<Partial<Bootstrap["settings"]>>({});
@@ -789,10 +791,14 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
       off();
     };
   }, [fail, notify]);
-  useEffect(() => {
-    document.documentElement.dataset.theme = data.settings.theme;
-    document.documentElement.dataset.accent = data.settings.accentColor || "blue";
-  }, [data.settings.theme,data.settings.accentColor]);
+  const visibleTheme = appearancePreview.theme ?? data.settings.theme;
+  const visibleAccent = appearancePreview.accentColor ?? data.settings.accentColor ?? "blue";
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = visibleTheme;
+    document.documentElement.dataset.accent = visibleAccent;
+    try { sessionStorage.setItem("flowrium.window.appearance", `${visibleTheme}-${visibleAccent}`); } catch {}
+    api?.previewAppearance?.({ theme: visibleTheme, accentColor: visibleAccent });
+  }, [visibleTheme, visibleAccent]);
   useEffect(() => {
     const el = messages.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
@@ -1308,6 +1314,10 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     const request = ++nextSettingsRequest.current;
     const keys = Object.keys(patch) as (keyof Bootstrap["settings"])[];
     for (const key of keys) settingsRequests.current[key] = request;
+    const appearanceKeys = (["theme", "accentColor"] as const).filter(key => Object.hasOwn(patch, key));
+    if (appearanceKeys.length) setAppearancePreview(previous => ({
+      ...previous, ...Object.fromEntries(appearanceKeys.map(key => [key, patch[key]])),
+    }));
     function applySavedSettings() {
       setData((previous) => {
         const changed = Object.fromEntries(keys.filter(key => settingsRequests.current[key] === request && Object.hasOwn(persistedSettings.current,key))
@@ -1325,6 +1335,12 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         applySavedSettings();
         fail(error);
         return false;
+      } finally {
+        if (appearanceKeys.length) setAppearancePreview(previous => {
+          const next = { ...previous };
+          for (const key of appearanceKeys) if (settingsRequests.current[key] === request) delete next[key];
+          return next;
+        });
       }
     });
     settingsSaveQueue.current = saving.then(()=>{});
@@ -1790,6 +1806,17 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
     if(!projectId&&next.projects[0])setProjectId(next.projects[0].id);
     return next;
   };
+  const refreshDashboard=async()=>{
+    if(!api)return;
+    await Promise.all([
+      api.bootstrap().then(next=>setData(current=>({
+        ...current,
+        projects:current.projects===data.projects ? next.projects : current.projects,
+        sessions:current.sessions===data.sessions ? next.sessions : current.sessions,
+      }))),
+      refreshAttention(),
+    ]);
+  };
   const openTransferredConversation=(id:string)=>{
     void refreshAfterCodexTransfer().then(next=>{
       const found=next?.sessions.find(row=>row.id===id);
@@ -1843,8 +1870,8 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         ) : view === "music" ? null : view === "workflow" ? (
           <div className="page-scroll"><div className="page-inner">
             <WorkflowHub onOpen={openWork} onOpenInbox={()=>setView("inbox")}/>
-            <details className="work-resources">
-              <summary>연결 서비스</summary>
+            <details className="work-resources disclosure-card">
+              <summary><Plug size={17} aria-hidden="true"/><span>연결 서비스</span><ChevronDown size={15} aria-hidden="true"/></summary>
               <div className="work-resource-content"><IntegrationPanel projectId={projectId}/></div>
             </details>
           </div></div>
@@ -1875,7 +1902,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
         ) : (view==="dashboard"||view==="kickoff"||view==="archive"||view==="outputs"||view==="timeline") ? (
           <ProjectPortfolio categoryRevision={categoryRevision} onProjectMenu={(event,p)=>itemContext(event,{kind:"project",id:p.id,name:p.name})} view={view} projects={navigation.projects} sessions={projectOnlySessions}
             dashboard={{accountRevision:security.state.accountRevision,drafts,decisionSessionIds:dashboardDecisions,workClose:attentionState?.workClose,revealResume,onResumeRevealed:resumeRevealed,onDraft:openDashboardDraft,onSend:sendDashboardDraft}}
-            onProjectMove={navigation.move}
+            onProjectMove={navigation.move} onRefresh={refreshDashboard}
             onNavigate={setView} onProject={selectProject} onOpenSession={openWork}
             onSessionChange={rememberSession} onArchived={(id,value)=>setArchived(prev=>({...prev,[id]:value}))}
             tools={<>
@@ -2443,14 +2470,14 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
                 </div>
                 <div className="segmented">
                   <button
-                    className={data.settings.theme === "dark" ? "selected" : ""}
+                    className={visibleTheme === "dark" ? "selected" : ""}
                     onClick={() => saveSettings({ theme: "dark" })}
                   >
                     어둡게
                   </button>
                   <button
                     className={
-                      data.settings.theme === "light" ? "selected" : ""
+                      visibleTheme === "light" ? "selected" : ""
                     }
                     onClick={() => saveSettings({ theme: "light" })}
                   >
@@ -2460,7 +2487,7 @@ function UnlockedWorkspace({security}:{security:ReturnType<typeof useSecurity>})
               </div>
               <div className="settings-section appearance"><div><h3>강조색</h3><p>선택한 항목과 주요 버튼에 적용합니다.</p></div>
                 <div className="segmented accent-options" role="group" aria-label="강조색">
-                  {([['blue','파랑'],['green','초록'],['purple','보라']] as const).map(([key,label])=><button type="button" key={key} aria-pressed={(data.settings.accentColor||'blue')===key} className={(data.settings.accentColor||'blue')===key?'selected':''} onClick={()=>saveSettings({accentColor:key})}><i data-swatch={key}/>{label}</button>)}
+                  {([['blue','파랑'],['green','초록'],['purple','보라']] as const).map(([key,label])=><button type="button" key={key} aria-pressed={visibleAccent===key} className={visibleAccent===key?'selected':''} onClick={()=>saveSettings({accentColor:key})}><i data-swatch={key}/>{label}</button>)}
                 </div>
               </div>
               <div className="settings-note">

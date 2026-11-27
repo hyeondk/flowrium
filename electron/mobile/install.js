@@ -104,44 +104,4 @@ export function settingsGuides() {
   return group;
 }
 
-export function reconnectForm() {
-  const form = document.createElement('form');
-  form.className = 'reconnect-form';
-  const label = document.createElement('label');
-  label.textContent = '연결 주소 붙여넣기';
-  const input = document.createElement('input');
-  input.type = 'password';
-  input.inputMode = 'url';
-  input.autocomplete = 'off';
-  input.autocapitalize = 'none';
-  input.spellcheck = false;
-  input.required = true;
-  input.maxLength = 2048;
-  label.append(input);
-  const button = document.createElement('button');
-  button.type = 'submit';
-  button.textContent = '이 기기에서 연결';
-  const message = document.createElement('p');
-  message.setAttribute('role', 'alert');
-  message.hidden = true;
-  form.append(label, button, message);
-  form.addEventListener('submit', event => {
-    event.preventDefault();
-    const address = input.value.trim();
-    input.value = '';
-    try {
-      const url = new URL(address);
-      if (url.origin !== location.origin) throw Error('데스크톱 연결을 다시 켜면 주소가 바뀔 수 있습니다. 받은 새 주소를 브라우저에서 직접 열고 홈 화면에 다시 추가하세요.');
-      if (url.username || url.password || url.pathname !== '/' || url.search || !/^#(?:key|handoff)=[\w-]{43}$/.test(url.hash))
-        throw Error('데스크톱 설정에서 복사한 전체 연결 주소를 붙여넣으세요.');
-      // 비밀값을 쿼리나 설치 주소에 넣지 않고 현재 출처의 기존 로그인 절차로 넘깁니다.
-      history.replaceState(null, '', '/' + url.hash);
-      location.reload();
-    } catch (error) {
-      message.textContent = error instanceof TypeError ? '올바른 연결 주소를 붙여넣으세요.' : error.message;
-      message.hidden = false;
-      input.focus();
-    }
-  });
-  return form;
-}
+export function isHomeScreenApp() { return Boolean(installedMode.matches || navigator.standalone); }

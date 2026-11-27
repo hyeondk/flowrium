@@ -24,7 +24,7 @@
 .side-brand-row,.side-brand,.side-project-head,.side-account,.workspace-side .side-row{display:flex;align-items:center}
 .side-brand-row{height:32px;min-height:32px;flex:none;gap:4px;margin:0 0 12px}
 .workspace-side .side-brand{justify-content:flex-start;gap:10px;min-width:38px;flex:1;padding:0 3px;color:var(--text);font-size:18px;font-weight:800;line-height:26px;border:0;background:none;white-space:nowrap;letter-spacing:-.02em}
-.side-brand img{width:32px;height:32px;flex:none;border-radius:9px}
+.side-brand .flow-brand-icon{width:32px;height:32px}
 .side-collapse,.side-project-head button{display:grid;place-items:center;flex:none;width:28px;min-width:28px;height:26px;min-height:26px;padding:0;border:0;border-radius:6px;color:var(--muted)}
 .side-collapse:hover,.side-project-head button:hover,.workspace-side .side-row:hover{color:var(--text);background:var(--selected)}
 .workspace-side nav{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior:contain}

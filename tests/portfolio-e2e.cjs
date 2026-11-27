@@ -45,6 +45,35 @@ async function main() {
     await page
       .getByRole("heading", { name: "프로젝트 대시보드", exact: true })
       .waitFor();
+    const homeRefresh=page.locator('.dashboard-heading .portfolio-refresh');
+    await app.evaluate(({ipcMain})=>{
+      const names=['readPortfolio','bootstrap','workflowState'];
+      const gate=Promise.withResolvers(),counts={};
+      const handlers=new Map(names.map(id=>[id,ipcMain._invokeHandlers.get('flowrium:'+id)]));
+      for(const [id,original] of handlers){
+        const channel='flowrium:'+id;
+        ipcMain.removeHandler(channel);
+        ipcMain.handle(channel,async(...args)=>{counts[id]=(counts[id]||0)+1;await gate.promise;return original(...args);});
+      }
+      globalThis.homeRefreshCounts=counts;
+      globalThis.releaseHomeRefresh=()=>{
+        for(const [id,original] of handlers){ipcMain.removeHandler('flowrium:'+id);ipcMain.handle('flowrium:'+id,original);}
+        gate.resolve();
+      };
+    });
+    try {
+      await homeRefresh.click();
+      await page.waitForFunction(()=>document.querySelector('.dashboard-heading .portfolio-refresh')?.getAttribute('aria-busy')==='true');
+      const counts=await app.evaluate(()=>globalThis.homeRefreshCounts);
+      assert(counts.readPortfolio&&counts.bootstrap&&counts.workflowState,'프로젝트 카드, 현재 대화, 업무 상태 모두 다시 읽어야 합니다.');
+      await page.getByRole('heading',{name:'프로젝트 대시보드',exact:true}).waitFor();
+    } finally {await app.evaluate(()=>globalThis.releaseHomeRefresh());}
+    await page.waitForFunction(()=>document.querySelector('.dashboard-heading .portfolio-refresh')?.getAttribute('aria-busy')==='false');
+    assert(Array.isArray(await page.evaluate(()=>window.flowriumTestClicks)),'새로고침이 데스크톱 문서를 통째로 변경하지 않습니다.');
+    if(process.argv.includes('--refresh-only')){
+      console.log('홈 새로고침 / 프로젝트 카드, 대화, 업무 상태 다시 읽기 / 응답 중 화면 유지');
+      return;
+    }
     const nav = page.getByRole("navigation", { name: "주 메뉴" });
     const toolGroups = page.locator(".pf-dashboard-tools [role=group]");
     assert.deepEqual(await toolGroups.evaluateAll(groups => groups.map(group => group.getAttribute("aria-label"))), ["작성과 분석", "업무 관리", "프로젝트 관리"]);
@@ -124,29 +153,15 @@ async function main() {
     assert.ok(await dueDate.evaluate(field => field === document.activeElement));
     await dueDate.press("Alt+ArrowDown");
     await calendar.waitFor();
-    // Exercise a native close event that arrives while the next field receives
-    // input. Windows can post the event on a later rendering frame.
-    await calendar.evaluate(dialog => {
-      const goal = document.querySelector(".pf-form textarea");
-      function holdClose(event) {
-        if (event.target !== dialog) return;
-        document.removeEventListener("close", holdClose, true);
-        event.stopImmediatePropagation();
-        window.flowriumDateCloseHeld = true;
-        goal.addEventListener("focus", () => queueMicrotask(() => {
-          dialog.dispatchEvent(new Event("close"));
-          window.flowriumDateCloseReplayed = true;
-        }), {once:true});
-      }
-      document.addEventListener("close", holdClose, true);
-    });
+    const previousCalendar = await calendar.elementHandle();
     await page.keyboard.press("ArrowRight");await page.keyboard.press("Enter");
     assert.equal(await dueDate.inputValue(),"2026-11-20");
-    await page.waitForFunction(() => window.flowriumDateCloseHeld);
+    await calendar.waitFor({state:"hidden"});
     const goalField = page.locator(".pf-form textarea").first();
     const goalText = "동네 안내 자료를 발간합니다.";
     await page.getByLabel("프로젝트 목표", {exact:true}).fill(goalText);
-    await page.waitForFunction(() => window.flowriumDateCloseReplayed);
+    await previousCalendar.evaluate(dialog => dialog.dispatchEvent(new Event("close")));
+    await previousCalendar.dispose();
     assert.ok(await goalField.evaluate(field => field === document.activeElement));
     assert.equal(await goalField.inputValue(), goalText);
     await page.getByLabel("담당자 또는 내 역할").fill("지역 편집팀");

@@ -1,3 +1,11 @@
+:root { --flowrium-icon: url('/flowrium.png'); }
+:root[data-accent=green] { --flowrium-icon: url('/flowrium-themes/light-green.png'); }
+:root[data-accent=purple] { --flowrium-icon: url('/flowrium-themes/light-purple.png'); }
+:root[data-theme=dark] { --flowrium-icon: url('/flowrium-themes/dark-blue.png'); }
+:root[data-theme=dark][data-accent=green] { --flowrium-icon: url('/flowrium-themes/dark-green.png'); }
+:root[data-theme=dark][data-accent=purple] { --flowrium-icon: url('/flowrium-themes/dark-purple.png'); }
+:root[data-theme=dark] { background-color: #16171a; color-scheme: dark; }
+.flow-brand-icon { display: inline-block; content: var(--flowrium-icon); object-fit: contain; flex: none; }
 .flow-loading {
   display: grid;
   justify-items: start;
@@ -7,7 +15,7 @@
   line-height: 20px;
 }
 .flow-loading-startup { justify-items: center; margin: auto; padding: 20px; }
-.flow-loading-startup img { border-radius: 10px; margin-bottom: 4px; }
+.flow-loading-startup .flow-brand-icon { width: 40px; height: 40px; margin-bottom: 4px; }
 .flow-loading-track { position: relative; overflow: hidden; width: min(180px, 100%); height: 4px; border-radius: 8px; background: var(--line-soft, #dae6f1); }
 .flow-loading-track::after { content: ''; display: block; height: 100%; width: 46%; border-radius: inherit; background: linear-gradient(90deg, #438ac5, #146ac4, #78b6e2); animation: flow-loading-pass 1.4s ease-in-out infinite; }
 @keyframes flow-loading-pass { from {transform: translateX(-100%)} to {transform: translateX(225%)} }

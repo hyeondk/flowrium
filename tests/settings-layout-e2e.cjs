@@ -51,13 +51,13 @@ async function verifyRelaySettings(app,page){
   ipcMain.handle('flowrium:updateRemoteRelay',async()=>{gate.calls++;await paused;replacement=true;return state();});
  },{oldUrl,newUrl});
  const dialog=await openSettings(page,'휴대폰');
- const address=dialog.getByLabel('휴대폰 연결 주소',{exact:true});
  const update=dialog.getByRole('button',{name:'중계 업데이트',exact:true});
  const confirmation=dialog.getByRole('region',{name:'휴대폰 중계 업데이트 확인'});
  const currentQR=dialog.getByRole('img',{name:'휴대폰 연결 QR 코드'});
  const expectedQR=url=>[...renderToStaticMarkup(createElement(QRCodeSVG,{value:url,size:204,level:'M',marginSize:4})).matchAll(/ d="([^"]+)"/g)].at(-1)[1];
  try {
-  await expect(address).toHaveValue(oldUrl);
+  await expect(dialog.getByLabel('휴대폰 연결 주소',{exact:true})).toHaveCount(0);
+  await expect(dialog.getByRole('button',{name:'연결 주소 복사',exact:true})).toHaveCount(0);
   await dialog.getByRole('button',{name:'QR 코드 보기',exact:true}).click();
   await expect(currentQR.locator('path').last()).toHaveAttribute('d',expectedQR(oldUrl));
   await update.click();
@@ -65,7 +65,6 @@ async function verifyRelaySettings(app,page){
   await confirmation.getByRole('button',{name:'취소',exact:true}).click();
   await expect(confirmation).toHaveCount(0);
   assert.equal(await app.evaluate(()=>globalThis.relaySettingsGate.calls),0);
-  await expect(address).toHaveValue(oldUrl);
   await expect(currentQR.locator('path').last()).toHaveAttribute('d',expectedQR(oldUrl));
   await update.click();
   for(const [width,height] of [[1440,1000],[800,1000],[390,844],[320,844]]){
@@ -83,9 +82,8 @@ async function verifyRelaySettings(app,page){
   await confirmation.getByRole('button',{name:'업데이트하고 새 QR 코드 보기',exact:true}).click();
   await expect.poll(()=>app.evaluate(()=>globalThis.relaySettingsGate.calls)).toBe(1);
   await expect(confirmation.getByRole('button',{name:'새 중계 연결 확인 중',exact:true})).toBeDisabled();
-  await expect(address).toHaveValue(oldUrl);
+  await expect(currentQR.locator('path').last()).toHaveAttribute('d',expectedQR(oldUrl));
   await app.evaluate(()=>globalThis.relaySettingsGate.resume());
-  await expect(address).toHaveValue(newUrl);
   await expect(currentQR.locator('path').last()).toHaveAttribute('d',expectedQR(newUrl));
   await expect(dialog.getByText('휴대폰 중계 2026.11.1',{exact:true})).toBeVisible();
   await expect(dialog.getByRole('status').filter({hasText:'새 중계를 연결했습니다.'})).toBeVisible();
@@ -134,6 +132,38 @@ async function verifySendDuringCatalogRead(page,syncGate,sessionId) {
   await assert.rejects(fs.access(syncGate+'.release'),{code:'ENOENT'});
  } finally { await fs.writeFile(syncGate+'.release',''); }
  console.log('다른 대화의 목록 응답이 없는 중에도 같은 대화의 사용자 요청과 답변을 기록했습니다.');
+}
+
+async function verifySettingsBackdropFrames(app,page) {
+ const settings=await openSettings(page,'화면');
+ await settings.getByRole('button',{name:'어둡게',exact:true}).click();
+ await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
+ await settledLayout(settings);
+ async function sample(action,label) {
+  const frames=app.evaluate(async({BrowserWindow})=>{
+   const window=BrowserWindow.getAllWindows()[0];
+   const background={x:46,y:194,width:8,height:8};
+   const brightness=[];
+   for(let index=0;index<32;index++){
+    const bitmap=(await window.webContents.capturePage(background)).toBitmap();
+    let rgb=0;
+    for(let byte=0;byte<bitmap.length;byte+=4)rgb+=bitmap[byte]+bitmap[byte+1]+bitmap[byte+2];
+    brightness.push(bitmap.length ? Math.round(rgb/(bitmap.length*.75)) : 255);
+    await new Promise(resolve=>setTimeout(resolve,8));
+   }
+   return brightness;
+  });
+  await new Promise(resolve=>setTimeout(resolve,100));
+  await action();
+  const brightness=await frames;
+  const measured={label,frames:brightness.length,minimum:Math.min(...brightness),maximum:Math.max(...brightness)};
+  assert(measured.maximum<110,'설정 뒤의 화면이 순간적으로 밝아졌습니다. '+JSON.stringify({measured,brightness}));
+  console.log(JSON.stringify(measured));
+ }
+ await sample(()=>accentButton(settings,'보라').click(),'설정에서 강조색 변경');
+ await sample(()=>page.locator('.dashboard-heading .portfolio-refresh').evaluate(button=>button.click()),'설정을 열어 둔 채 홈 데이터 갱신');
+ await sample(()=>page.reload(),'같은 창에서 문서 새로고침');
+ await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
 }
 
 async function verifyAutomaticSave(app,page,codexPath) {
@@ -227,6 +257,7 @@ async function run(){
  try{
   const profile=path.join(temp,'profile'),store=new Store(profile);await store.load();await store.saveSettings({codexPath:path.join(__dirname,'backend-fake-codex.cjs')});
   const relayOnly=process.argv.includes('--relay-only'),sendOnly=process.argv.includes('--send-priority-only');
+  const backdropOnly=process.argv.includes('--backdrop-frames-only');
   let sendingSession;
   if(sendOnly){
    const folder=path.join(temp,'project');await fs.mkdir(folder);
@@ -242,6 +273,7 @@ async function run(){
    await page.setViewportSize({width:1440,height:1000});
   }
   await launch();
+  if(backdropOnly){await verifySettingsBackdropFrames(app,page);assert.deepEqual(errors,[]);return;}
   if(sendOnly){await verifySendDuringCatalogRead(page,syncGate,sendingSession.id);assert.deepEqual(errors,[]);return;}
   if(relayOnly){await verifyRelaySettings(app,page);assert.deepEqual(errors,[]);return;}
   await verifyFirstSaveDuringSync(page,profile,syncGate);

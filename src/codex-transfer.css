@@ -18,7 +18,11 @@
 .codex-transfer-entry small{font-size:12px;line-height:20px;color:var(--muted)}
 .codex-transfer-entry strong{font-size:13px;line-height:22px}
 .codex-transfer-error{color:var(--danger)!important;white-space:pre-line}
-.codex-transfer-receipts{display:grid;gap:20px;padding-top:16px}
+.codex-transfer-history-summary { display:grid; gap:4px; padding:10px 20px 12px; font-size:12px; line-height:22px; color:var(--muted); }
+.codex-transfer-history-summary > p,.codex-transfer-history-summary > div > span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.codex-transfer-history-summary > div { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.codex-transfer-history-summary > div > button { flex:none; min-height:24px; margin:0; padding:0 6px; font-size:12px; line-height:22px; white-space:nowrap; }
+.codex-transfer-receipts{display:grid;gap:20px;max-height:min(42vh,320px);overflow:auto;overscroll-behavior:contain;padding:16px 20px;border-top:1px solid var(--line-soft)}
 .codex-transfer-receipts article{display:grid;gap:10px}
 .codex-transfer-result{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
 .codex-transfer-original{max-height:280px;overflow:auto;padding:16px;border-radius:10px;background:var(--card-subtle);font:12px/1.7 monospace;white-space:pre-wrap;overflow-wrap:anywhere}

@@ -6,6 +6,7 @@ html[data-dock-resizing=true],html[data-dock-resizing=true] *{cursor:col-resize!
 .conversation-dock[data-resizing=true]{transition:none!important}
 @media(max-width:760px){.dock-resize-handle{display:none}}
 .conversation-dock .dock-panel-menu.flow-context-menu{position:absolute;inset:38px 0 auto auto;transform:none;min-width:194px;max-width:calc(100vw - 24px);padding:5px;border:1px solid var(--line);border-radius:10px;background:var(--panel);box-shadow:0 12px 34px #17304c24;z-index:250;word-break:keep-all}
+.conversation-dock[data-minimized=true] .dock-panel-menu.flow-context-menu {inset:auto 0 38px auto;--context-menu-travel:6px;transform-origin:bottom right}
 .dock-panel-menu[role=menu]>button{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;min-height:35px;padding:7px 10px;border:0;border-radius:6px;background:transparent;text-align:left;color:var(--text);font-size:12px;line-height:20px}
 .dock-panel-menu[role=menu]>button:is(:hover,:focus-visible){background:var(--accent-bg);outline:none;color:var(--accent)}
 .dock-panel-menu[role=menu]>button[aria-checked=true]{font-weight:700}.dock-panel-menu i{width:12px;text-align:center;font-style:normal;color:var(--accent)}

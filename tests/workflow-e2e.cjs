@@ -43,7 +43,31 @@ async function main(){
     await button("업무 센터").click();await page.getByRole("heading",{name:"업무 센터",exact:true}).waitFor();
     const refresh=button("새로고침");
     assert(await refresh.locator('svg.lucide-refresh-cw').count());
-    await refresh.click();
+    const services=page.locator('.work-resources');
+    const spacing=await services.evaluate(card=>{
+      const header=card.querySelector('summary'),style=getComputedStyle(header);
+      const other=card.previousElementSibling.getBoundingClientRect(),position=card.getBoundingClientRect();
+      return {top:parseFloat(style.paddingTop),bottom:parseFloat(style.paddingBottom),marker:style.listStyleType,
+        radius:parseFloat(getComputedStyle(card).borderRadius),side:Math.abs(other.left-position.left)+Math.abs(other.right-position.right)};
+    });
+    assert(spacing.top>=12&&spacing.top===spacing.bottom&&spacing.radius>=10&&spacing.marker==='none'&&spacing.side<1,JSON.stringify(spacing));
+    await services.locator(':scope > summary').click();
+    await services.getByRole('heading',{name:'모바일 연결 주소 전달',exact:true}).waitFor();
+    await services.locator(':scope > summary').click();
+    await app.evaluate(({ipcMain})=>{
+      const name='flowrium:workflowState',handler=ipcMain._invokeHandlers.get(name),gate=Promise.withResolvers();
+      globalThis.releaseWorkflowRefresh=()=>{ipcMain.removeHandler(name);ipcMain.handle(name,handler);gate.resolve();};
+      ipcMain.removeHandler(name);ipcMain.handle(name,async(...args)=>{await gate.promise;return handler(...args);});
+    });
+    try {
+      await refresh.click();
+      await page.waitForFunction(()=>document.querySelector('.workflow-refresh')?.getAttribute('aria-busy')==='true');
+      assert(await refresh.isDisabled());
+      assert(await refresh.locator('svg.spin').count());
+      await page.getByText('확인할 결정이 없습니다.',{exact:true}).waitFor();
+    } finally {await app.evaluate(()=>globalThis.releaseWorkflowRefresh());}
+    await page.waitForFunction(()=>document.querySelector('.workflow-refresh')?.getAttribute('aria-busy')==='false');
+    console.log('업무 센터 읽기 대기 중 화면 유지와 새로고침 표시 / 연결 서비스 카드 상하·가로 정렬',JSON.stringify(spacing));
     await button("비서와 예약").click();
     const schedule=page.locator('.workflow-schedule');
     await schedule.waitFor();

@@ -33,6 +33,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
   const [data,setData]=useState<WorkflowState>();
   const [tab,setTab]=useState<"decisions"|"notifications"|"messages"|"assistant">("decisions");
   const [error,setError]=useState(""),[notice,setNotice]=useState(""),[busy,setBusy]=useState(false);
+  const [refreshing,setRefreshing]=useState(false);
   const [showHidden,setShowHidden]=useState(false),[showHistory,setShowHistory]=useState(false),[unreadOnly,setUnreadOnly]=useState(false);
   const [selected,setSelected]=useState<string[]>([]);
   const [source,setSource]=useState(""),[target,setTarget]=useState(""),[title,setTitle]=useState(""),[message,setMessage]=useState(""),[project,setProject]=useState("");
@@ -101,6 +102,14 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
     catch(e){setError(describe(e));await refresh().catch(()=>{});}
     finally{sending.current=false;setBusy(false);}
   }
+  async function refreshWorkflow(){
+    if(!api||refreshing)return;
+    setRefreshing(true);
+    setError('');
+    try{await refresh();}
+    catch(e){if(alive.current)setError(describe(e));}
+    finally{if(alive.current)setRefreshing(false);}
+  }
   async function open(sessionId:string|null){
     if(!sessionId||!api)return;
     try{const snapshot=await api.bootstrap();const session=snapshot.sessions.find(s=>s.id===sessionId);if(!session)throw new Error("대화가 삭제됐거나 다른 위치로 옮겨졌습니다.");
@@ -125,7 +134,7 @@ export default function WorkflowHub({onOpen,onOpenInbox}:{onOpen?:(session:Sessi
   const unread=data?.notifications.filter(n=>!n.readAt).length||0;
   return <section className="workflow-hub" aria-label="업무 센터">
     <header><div className="ui-title-stagger"><h2>업무 센터</h2><p>대화 사이의 요청과 결과, 필요한 결정과 알림을 한곳에서 확인합니다.</p></div>
-      <button type="button" className="button primary workflow-refresh" disabled={busy} onClick={()=>void refresh().catch(e=>setError(describe(e)))}><RefreshCw size={15} aria-hidden="true"/>새로고침</button></header>
+      <button type="button" className="button primary workflow-refresh" title="결정, 알림, 전달, 보고 상태 다시 불러오기" disabled={busy||refreshing} aria-busy={refreshing} onClick={()=>void refreshWorkflow()}><RefreshCw size={15} className={refreshing?'spin':undefined} aria-hidden="true"/>새로고침</button></header>
     <nav aria-label="업무 센터 화면">{([
       ["decisions","결정과 보고"],["notifications",`알림 ${unread}`],["messages","대화에 전달"],["assistant","비서와 예약"]
     ] as const).map(([key,label])=><button key={key} aria-pressed={tab===key} onClick={()=>setTab(key)}>{label}</button>)}</nav>

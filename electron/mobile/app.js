@@ -11,7 +11,8 @@ import {messageBody,groupMobileHistory,progressButton,clearProgressChoices} from
 import {chatClock} from './chat-clock.js';
 import {installDatePicker} from './date-picker.js';
 import {installKeyboardFocus} from './keyboard-focus.js';
-import {settingsGuides, reconnectForm} from './install.js';
+import {settingsGuides,isHomeScreenApp} from './install.js';
+import {openPairingScanner} from './pairing-qr.js';
 import {mobileUpdateSection, resetUpdate, resumeUpdateSettings} from './mobile-update.js';
 import {confirmationButton, reconcileConfirmation} from './confirmation.js';
 import {QUESTION_DECISION_NOTICE} from './decision-notice.js';
@@ -2094,7 +2095,7 @@ function render() {
       gate === "locked"
         ? "작업 공간이 잠겼습니다"
         : !key
-          ? "새 연결 주소가 필요합니다"
+          ? "휴대폰 연결이 필요합니다"
           : gate === "offline"
             ? "데스크톱에 연결할 수 없습니다"
             : "데스크톱 연결 중";
@@ -2102,13 +2103,14 @@ function render() {
       gate === "locked"
         ? "데스크톱 Flowrium에서 잠금을 해제하면 이 화면이 다시 열립니다."
         : !key
-          ? "데스크톱 설정에서 모바일 연결을 켜고 새 주소를 여세요."
+          ? "컴퓨터 Flowrium의 휴대폰 설정에 표시된 QR 코드를 스캔하세요."
           : "데스크톱의 모바일 연결과 네트워크를 확인하세요.";
     connection.textContent =
       gate === "locked" ? "잠김" : !key ? "연결 필요" : gate === "offline" ? "연결 재시도 중" : "연결 중";
     root.append(node("h1", title), node("p", hint, "hint"));
     if (key) root.append(action("다시 확인", () => poll()));
-    else if (!handoff) root.append(reconnectForm());
+    if (gate!=="locked" && !handoff && (!key || gate==="offline"))
+      root.append(action("QR 코드로 연결", () => openPairingScanner(connectScannedQR), 'main-action'));
   } else if (route === "projects") projects(root);
   else if (route === "status") statusPage(root);
   else if (route === "running") {
@@ -2169,12 +2171,37 @@ document.addEventListener("visibilitychange", () => {
   if (!document.hidden) void poll();
 });
 render();
+async function redeemHandoff(value,signal) {
+  const response=await fetch('/api/mobile/handoff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({handoff:value}),credentials:'omit',referrerPolicy:'no-referrer',signal});
+  const result=await response.json();
+  if(!response.ok)throw Error(result.error||'연결 QR 코드가 만료됐습니다.');
+  return result.key;
+}
+async function connectScannedQR(code,signal) {
+  const deadline=AbortSignal.any?.([signal,AbortSignal.timeout(18000)])||signal;
+  const nextKey=code.kind==='handoff'?await redeemHandoff(code.secret,deadline):code.secret;
+  if(typeof nextKey!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(nextKey))throw Error('휴대폰 연결 QR 코드를 확인해 주세요.');
+  const response=await fetch('/api/mobile/state',{headers:{Authorization:'Bearer '+nextKey},credentials:'omit',referrerPolicy:'no-referrer',signal:deadline});
+  const locked=response.status===403&&response.headers.get('content-type')?.startsWith('application/json')&&
+    (await response.json().catch(()=>null))?.locked===true;
+  if(!response.bodyUsed)await response.body?.cancel().catch(()=>{});
+  if(!response.ok&&!locked)throw Error('오래됐거나 사용할 수 없는 QR 코드입니다. 컴퓨터에서 코드를 다시 띄워 주세요.');
+  if(signal.aborted)return;
+  try{sessionStorage.setItem(keyStorage,nextKey);}catch{}
+  if(isHomeScreenApp()||rememberDevice){
+    try{localStorage.setItem(rememberedKeyStorage,nextKey);localStorage.setItem(rememberFlag,'1');rememberDevice=true;}
+    catch{showNotice('현재 연결을 사용할 수 있습니다. 이 기기에서 연결을 저장할 공간을 확인해 주세요.','error');}
+  }
+  key=nextKey;
+  gate=null;
+  render();
+  void poll();
+}
 async function initialize(){
   if(handoff){
     try{
-      const response=await fetch('/api/mobile/handoff',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({handoff}),credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(18000)});
-      const result=await response.json();if(!response.ok)throw Error(result.error||'연결 주소가 만료됐습니다.');
-      key=result.key;try{sessionStorage.setItem(keyStorage,key);if(rememberDevice)localStorage.setItem(rememberedKeyStorage,key)}catch{}
+      key=await redeemHandoff(handoff,AbortSignal.timeout(18000));
+      try{sessionStorage.setItem(keyStorage,key);if(rememberDevice)localStorage.setItem(rememberedKeyStorage,key)}catch{}
     }catch(e){key=null;showNotice(e.message, "error")}finally{handoff=null;render();}
   }
   if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(()=>{});

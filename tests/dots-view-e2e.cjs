@@ -14,7 +14,10 @@ async function main(){
  async function open(){if(!await page.locator('.conversation-dock').isVisible())await page.locator('.dock-reopen-tab').click();await page.locator('.dock-scope-tabs').getByRole('button',{name:'개인 비서 보기',exact:true}).click();await page.getByRole('region',{name:'Dots 공식 화면'}).waitFor();await waitForDots({visible:true,loading:false});await waitForNative();}
  async function waitForNative(){const until=Date.now()+18000;while(Date.now()<until){const ready=await app.evaluate(async({webContents})=>{const contents=webContents.getAllWebContents().find(w=>w.getURL()==='https://chatgpt.com/dots');if(!contents||contents.isLoading())return false;return contents.executeJavaScript('document.documentElement.hasAttribute("data-flowrium-dots-fixture")').catch(()=>false);});if(ready)return;await page.waitForTimeout(80);}throw Error('합성 Dots 문서의 실제 로드가 완료되지 않았습니다.');}
  async function native(code){return app.evaluate(async({webContents},code)=>{const contents=webContents.getAllWebContents().find(w=>w.getURL().startsWith('https://chatgpt.com/dots'));if(!contents)throw Error('모의 Dots 화면이 없습니다.');if(!await contents.executeJavaScript('document.documentElement.hasAttribute("data-flowrium-dots-fixture")'))throw Error('합성 페이지 이외에는 검사하지 않습니다.');return contents.executeJavaScript(code);},code);}
- const nativeCount=()=>app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].contentView.children.filter(v=>v.webContents&&!v.webContents.isDestroyed()&&v.webContents.getURL().startsWith('https://chatgpt.com/dots')).length);
+ const nativeCount=()=>app.evaluate(({BrowserWindow})=>{
+   const host=globalThis.focusFixture?.host||BrowserWindow.getAllWindows()[0];
+   return host.contentView.children.filter(v=>v.webContents&&!v.webContents.isDestroyed()&&v.webContents.getURL().startsWith('https://chatgpt.com/dots')).length;
+ });
  async function waitForAttached(expected){const until=Date.now()+10000;while(Date.now()<until){if(await nativeCount()===expected)return;await page.waitForTimeout(50);}assert.equal(await nativeCount(),expected,'실제 하위 Dots 화면의 부착 상태');}
  async function modalDetached(name,start){
   const sample=async label=>({label,at:Date.now()-start,attached:await nativeCount()});
@@ -33,6 +36,23 @@ async function main(){
   const embeddedZoom=await app.evaluate(({webContents})=>webContents.getAllWebContents().find(w=>w.getURL()==='https://chatgpt.com/dots').getZoomFactor());assert.equal(embeddedZoom,.9);proof.embeddedZoom=embeddedZoom;
   await page.getByRole('button',{name:'Dots 로그인 도움말',exact:true}).click();await page.locator('.dots-caption').waitFor();await page.getByRole('button',{name:'확인했어요',exact:true}).click();
   const marker='preserved-'+Date.now();await native('document.cookie='+JSON.stringify('dots_fixture='+marker+'; path=/; SameSite=Lax; Secure'));
+  const beforeFocus=await app.evaluate(({webContents})=>webContents.getAllWebContents().find(w=>w.getURL()==='https://chatgpt.com/dots').id);
+  await app.evaluate(({BrowserWindow})=>{
+    const host=BrowserWindow.getAllWindows()[0],other=new BrowserWindow({show:true,width:360,height:240});
+    globalThis.focusFixture={host,other};other.focus();
+  });
+  await waitForDots({visible:false,suspended:true});
+  await waitForAttached(0);
+  const background=await page.evaluate(()=>{
+    const {x,y,width,height}=document.querySelector('.dots-native-host').getBoundingClientRect();
+    return window.flowrium.showDotsView({x,y,width,height});
+  });
+  assert.equal(background.suspended,true);assert.equal(background.error,undefined);
+  await app.evaluate(()=>{const {host,other}=globalThis.focusFixture;other.destroy();host.focus();});
+  await waitForDots({visible:true,suspended:false});await waitForAttached(1);
+  assert.equal(await page.locator('.dots-error').count(),0);
+  assert.equal(await app.evaluate(({webContents})=>webContents.getAllWebContents().find(w=>w.getURL()==='https://chatgpt.com/dots').id),beforeFocus);
+  assert((await native('document.cookie')).includes(marker));proof.restoredAfterWindowSwitch=true;
   for(const input of [{x:-1,y:0,width:200,height:200},{x:0,y:0,width:99999,height:200},{x:0,y:0,width:200,height:200,extra:'bad'}])assert.equal(await page.evaluate(async bounds=>{try{await window.flowrium.showDotsView(bounds);return false}catch{return true}},input),true);
   await native('document.getElementById("external").click()');await page.getByText('example.com에서 외부 페이지를 열려고 합니다.',{exact:true}).waitFor();assert.equal(await app.evaluate(()=>globalThis.dotsExternal),undefined);await page.getByRole('button',{name:'외부 브라우저에서 열기',exact:true}).click();await expect.poll(()=>app.evaluate(()=>globalThis.dotsExternal),{timeout:10000}).toBe('https://example.com/dots-fixture');assert.equal(await native('document.querySelector("h1").textContent'),'Dots 모의 공식 화면');
   // root 상태에 없는 대화 상자와 메뉴도 MutationObserver가 가려야 한다.

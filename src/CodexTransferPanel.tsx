@@ -1,5 +1,5 @@
-import {useEffect,useRef,useState} from 'react';
-import {ArrowRight,FileText,FolderSync,Link2,LoaderCircle,RefreshCw} from 'lucide-react';
+import {useEffect,useId,useRef,useState} from 'react';
+import {ArrowRight,ChevronDown,FileText,FolderSync,History,Link2,LoaderCircle,RefreshCw} from 'lucide-react';
 import { CloseButton, AnimatedCheckbox } from './ui-motion';
 import type {Session} from '../shared/types';
 import type {CodexTransferEntry,CodexTransferMode,CodexTransferPlan,CodexTransferResult} from '../shared/codex-transfer';
@@ -24,6 +24,11 @@ export default function CodexTransferPanel({onChanged,onOpen}:{onChanged():Promi
  const [selection,setSelection] = useState<Selection>(emptySelection);
  const [mode,setMode] = useState<CodexTransferMode>('linked');
  const [receipts,setReceipts] = useState<CodexTransferResult[]>([]), [original,setOriginal] = useState('');
+ const [showReceipts,setShowReceipts] = useState(false);
+ const receiptListId = useId();
+ const receiptList = useRef<HTMLDivElement>(null);
+ const latestReceipt = receipts[0];
+ useEffect(()=>{if(original)receiptList.current?.scrollTo({top:0});},[original]);
  useEffect(()=>{
   let active = true;
   alive.current=true;
@@ -132,7 +137,18 @@ export default function CodexTransferPanel({onChanged,onOpen}:{onChanged():Promi
   </div>}
   {error&&<p role="alert" className="codex-transfer-error">{error}</p>}
   {notice&&<p role="status">{notice}</p>}
-  {!!receipts.length&&<details><summary>대화 연결 기록 {receipts.length}건</summary><div className="codex-transfer-receipts">{receipts.map(receipt=><article key={receipt.id}>
+  {latestReceipt&&<details className="codex-transfer-history disclosure-card" onToggle={event=>{
+   if(!event.currentTarget.open){setShowReceipts(false);setOriginal('');}
+  }}>
+   <summary><History size={16} aria-hidden="true"/><span>대화 연결 기록 {receipts.length}건</span><ChevronDown size={15} aria-hidden="true"/></summary>
+   <div className="codex-transfer-history-summary">
+    <p>최근 {latestReceipt.mode==='linked'?'연결':'복사'} / <time dateTime={latestReceipt.at}>{new Date(latestReceipt.at).toLocaleString('ko-KR',{dateStyle:'short',timeStyle:'short'})}</time></p>
+    <p>프로젝트 {latestReceipt.projects??0}개 / 대화 {latestReceipt.imported}개 / 갱신 {latestReceipt.updated}개</p>
+    <div><span>확인 필요 {latestReceipt.failed}개</span><button type="button" className="button subtle" aria-expanded={showReceipts} aria-controls={receiptListId} onClick={()=>{setShowReceipts(!showReceipts);setOriginal('');}}>{showReceipts?'전체 기록 접기':'전체 기록 보기'}</button></div>
+   </div>
+   {showReceipts&&<div className="codex-transfer-receipts" id={receiptListId} ref={receiptList}>
+    {original&&<section aria-label="이 기기에 보관한 원문"><h4>이 기기에 보관한 원문</h4><pre className="codex-transfer-original">{original}</pre><div className="settings-buttons"><CloseButton onClick={()=>setOriginal('')}>원문 닫기</CloseButton></div></section>}
+    {receipts.map(receipt=><article key={receipt.id}>
    <strong>{new Date(receipt.at).toLocaleString('ko-KR')} ({receipt.mode==='linked'?'대화 연결':'독립 사본'})</strong>
    <p>{receipt.projects!==undefined?`프로젝트 ${receipt.projects}개 / `:''}대화 {receipt.mode==='linked'?'연결':'복사'} {receipt.imported}개 / 갱신 {receipt.updated}개 / 확인 필요 {receipt.failed}개</p>
    {receipt.attachments&&<p>첨부 {receipt.attachments.copied}개 복사 / 기록 사본 {receipt.attachments.recovered}개 복구 / 원문 참조 {receipt.attachments.missing}개 보관</p>}
@@ -147,8 +163,9 @@ export default function CodexTransferPanel({onChanged,onOpen}:{onChanged():Promi
      })}><FileText size={14} aria-hidden="true"/>보관 원문</button>
     </div>}
    </div>)}
-  </article>)}</div></details>}
-  {original&&<details open><summary>이 기기에 보관한 원문</summary><pre className="codex-transfer-original">{original}</pre><div className="settings-buttons"><CloseButton onClick={()=>setOriginal('')}>원문 닫기</CloseButton></div></details>}
+    </article>)}
+   </div>}
+  </details>}
  </section>;
 }
 export function CodexLinkBar({session,running}:{session:Session;running:boolean}) {

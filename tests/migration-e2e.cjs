@@ -10,6 +10,13 @@ const {_electron}=require('playwright');const{randomUUID}=require('node:crypto')
   async function launch(){app=await _electron.launch({args:[root],env,timeout:45000});page=await app.firstWindow();page.setDefaultTimeout(18000);page.on('pageerror',e=>errors.push(e.message));await page.setViewportSize({width:1440,height:1000});await waitForCodexConnection(page);await page.getByRole('button',{name:'업무 센터',exact:true}).click();await page.locator('.work-resources>summary').click();assert.equal(await page.getByRole('region',{name:'전체 자료 이관',exact:true}).count(),0);assert.equal(await page.locator('.work-resources .migration-panel').count(),0);await page.locator('.workspace-side').hover();await page.getByRole('button',{name:'설정',exact:true}).click();await page.locator('.settings-backup>summary').click();await page.getByRole('region',{name:'Flowrium 백업 및 복원',exact:true}).waitFor();await app.evaluate(({dialog},v)=>{dialog.showOpenDialog=async(_window,options)=>({canceled:false,filePaths:[options.title.includes('저장 위치')?v.target:options.title.includes('저장 위치 선택')?v.target:options.title.includes('저장')?v.exports:v.bundle]});},{target,exports,bundle});}
   const panel=()=>page.getByRole('region',{name:'Flowrium 백업 및 복원',exact:true}),button=name=>panel().getByRole('button',{name,exact:true});
   await launch();
+  const backupCard=await page.locator('.settings-backup').evaluate(card=>{
+   const header=card.querySelector('summary'),style=getComputedStyle(header);
+   return {top:parseFloat(style.paddingTop),bottom:parseFloat(style.paddingBottom),horizontal:parseFloat(style.paddingLeft),
+    radius:parseFloat(getComputedStyle(card).borderRadius),marker:style.listStyleType,icons:header.querySelectorAll('svg').length};
+  });
+  assert(backupCard.top>=12&&backupCard.top===backupCard.bottom&&backupCard.horizontal>=12&&backupCard.radius>=10&&backupCard.marker==='none'&&backupCard.icons===2,JSON.stringify(backupCard));
+  console.log('백업 및 복원 카드 여백과 기본 삼각 표시 제거',JSON.stringify(backupCard));
   await app.evaluate(({app})=>{
    const require=process.getBuiltinModule('node:module').createRequire(app.getAppPath()+'/package.json');
    const connection=require('./electron/chat-connection.cjs'),original=connection.desktopAppInstalled;

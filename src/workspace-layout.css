@@ -104,8 +104,23 @@
 .settings-section .idle-row {align-items:start}
 .idle-row>span {line-height:34px}
 .idle-row .idle-picker{width:min(160px,52%);min-width:0}
-.work-resources{border-block:1px solid var(--line);margin-block:20px;padding-block:12px}.work-resources>summary{cursor:pointer;font-weight:700}
-.work-resource-content { display: grid; gap: 22px; margin-top: 16px; }
+.disclosure-card {
+  min-width: 0; border: 1px solid var(--line-soft); border-radius: 12px;
+  background: var(--panel); word-break: keep-all;
+}
+.disclosure-card > summary {
+  display: flex; align-items: center; gap: 10px; padding: 14px 20px;
+  min-height: 49px; list-style: none; border-radius: 11px;
+  font-size: 14px; line-height: 22px; font-weight: 700; cursor: pointer;
+}
+.disclosure-card > summary::-webkit-details-marker { display: none; }
+.disclosure-card > summary:hover { background: var(--card-subtle); }
+.disclosure-card > summary > svg { flex: none; color: var(--muted); }
+.disclosure-card > summary > svg:last-child { margin-inline-start: auto; transition: transform 160ms var(--ease-enter); }
+.disclosure-card[open] > summary { border-bottom: 1px solid var(--line-soft); border-radius: 11px 11px 0 0; }
+.disclosure-card:not([open]) > summary > svg:last-child { transform: rotate(-90deg); }
+.work-resources { margin-block: 16px; }
+.work-resource-content { display: grid; gap: 22px; padding: 16px 20px; }
 .work-resource-content > .settings-section { margin: 0; padding-block: 0 18px; }
 .work-resource-content > .settings-section:last-child { padding-bottom: 4px; border-bottom: 0; }
 :is(.page-scroll,.pf-content,.settings-modal,.motion-overlay) :is(p,.settings-hint) + :is(h2,h3,h4) { margin-top: 16px; }

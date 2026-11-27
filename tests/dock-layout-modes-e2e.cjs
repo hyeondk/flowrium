@@ -53,6 +53,15 @@ async function main(){
   await menuButton().click();const first=page.getByRole('menuitemradio',{name:'대시보드 옆에 고정',exact:true});await first.focus();await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement?.textContent?.trim()),'겹쳐 보기');await page.keyboard.press('Enter');await settledLayout(dock);
   assert.equal(await dock.getAttribute('data-layout-mode'),'overlay');assert.equal(await dock.evaluate(e=>getComputedStyle(e).position),'fixed');assert((await main.boundingBox()).width>initial.main.width+200);assert.equal(await main.isVisible(),true);assert.equal(await input.inputValue(),'보관할 미전송 초안');assert.equal(await element.evaluate(e=>e===document.querySelector('textarea[aria-label="Codex에 보낼 작업 요청"]')),true);
   await choose('입력창만 보기');assert.equal(await dock.getAttribute('data-minimized'),'true');assert.equal(await input.isEditable(),true);assert.equal(await input.inputValue(),'보관할 미전송 초안');assert.equal(await page.locator('.messages').isVisible(),false);assert.equal(await element.evaluate(e=>e===document.querySelector('textarea[aria-label="Codex에 보낼 작업 요청"]')),true);assert((await dock.boundingBox()).height<initial.dock.height/2);assert.equal(await main.isVisible(),true);
+  await menuButton().click();
+  const compactMenu=page.getByRole('menu',{name:'대화 패널 보기',exact:true});
+  await settledLayout(compactMenu);
+  assert(await compactMenu.evaluate(menu=>{
+    const trigger=menu.parentElement.querySelector('button');
+    return menu.getBoundingClientRect().bottom<=trigger.getBoundingClientRect().top &&
+      getComputedStyle(menu).getPropertyValue('--context-menu-travel').trim()==='6px';
+  }),'입력창만 보일 때 보기 방식 메뉴가 화면 위쪽으로 열립니다.');
+  await page.keyboard.press('Escape');
   await page.getByRole('button',{name:'대화 패널 다시 펼치기',exact:true}).click();assert.equal(await dock.getAttribute('data-minimized'),'false');assert.equal(await dock.getAttribute('data-layout-mode'),'overlay');assert.equal(await page.locator('.messages').isVisible(),true);assert.equal(await input.inputValue(),'보관할 미전송 초안');
   await choose('대시보드 옆에 고정');assert.equal(await dock.getAttribute('data-layout-mode'),'docked');assert.equal(await dock.evaluate(e=>getComputedStyle(e).position),'relative');const narrow=await dock.boundingBox();await page.getByRole('button',{name:'대화 패널 넓히기',exact:true}).click();await settledLayout(dock);assert((await dock.boundingBox()).width>narrow.width+60);assert.equal(await main.isVisible(),true);assert((await main.boundingBox()).width>200);
   await choose('겹쳐 보기');await choose('입력창만 보기');const savedPreference=await page.evaluate(()=>JSON.parse(localStorage.getItem('flowrium.dock.presentation.v1')));assert.deepEqual(savedPreference,{layout:'overlay',minimized:true});assert(!JSON.stringify(savedPreference).includes(session.id));assert(!JSON.stringify(savedPreference).includes('미전송'));

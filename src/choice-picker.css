@@ -41,11 +41,11 @@
 .category-choice-field {display:grid; gap:4px; min-width:0; align-content:start}
 .category-edit-form>button {align-self:start; margin-block-start:26px; min-height:36px}
 @keyframes choice-reveal {
-  from {opacity:0; clip-path:inset(0 0 100% 0 round 9px); translate:0 -4px}
+  from {opacity:0; clip-path:inset(0 0 100% 0 round 9px); translate:0 -6px}
   to {opacity:1; clip-path:inset(0 round 9px); translate:0 0}
 }
 @keyframes choice-reveal-up {
-  from {opacity:0; clip-path:inset(100% 0 0 0 round 9px); translate:0 4px}
+  from {opacity:0; clip-path:inset(100% 0 0 0 round 9px); translate:0 6px}
   to {opacity:1; clip-path:inset(0 round 9px); translate:0 0}
 }
 @media (prefers-reduced-motion:reduce) {.choice-options {animation:none}}

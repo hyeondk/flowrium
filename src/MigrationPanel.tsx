@@ -1,12 +1,13 @@
 import {useEffect,useState} from 'react';
+import {ArchiveRestore,ChevronDown} from 'lucide-react';
 import { CloseButton, AnimatedCheckbox } from './ui-motion';
 import type {MigrationAPI,MigrationPlan,MigrationStatus} from '../shared/migration';
 import './MigrationPanel.css';
 const size=(n:number)=>n>=1073741824?(n/1073741824).toFixed(2)+'GB':(n/1048576).toLocaleString('ko-KR',{maximumFractionDigits:1})+'MB';
 export default function MigrationSettings(){
  const [visited,setVisited]=useState(false);
- return <details className="settings-backup" onToggle={event=>{if(event.currentTarget.open)setVisited(true);}}>
-  <summary>Flowrium 백업 및 복원</summary>
+ return <details className="settings-backup disclosure-card" onToggle={event=>{if(event.currentTarget.open)setVisited(true);}}>
+  <summary><ArchiveRestore size={17} aria-hidden="true"/><span>Flowrium 백업 및 복원</span><ChevronDown size={15} aria-hidden="true"/></summary>
   {visited&&<MigrationPanel/>}
  </details>;
 }

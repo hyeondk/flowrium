@@ -421,7 +421,7 @@ function registerRemote(
     }
     if (u.pathname.startsWith("/api/")) {
       if (!authorized(req)) {
-        json(res, 401, { error: "데스크톱에서 새 연결 주소를 받아 주세요." });
+        json(res, 401, { error: "데스크톱에서 새 QR 코드를 스캔해 주세요." });
         return;
       }
       if (isLocked()) {
@@ -707,6 +707,8 @@ function registerRemote(
       "/usage-credits.js": "usage-credits.js",
       "/style.css": "style.css",
       "/install.js": "install.js",
+      "/pairing-qr.js": "pairing-qr.js",
+      "/qr-decoder.js": "qr-decoder.js",
       "/mobile-update.js": "mobile-update.js",
       "/install.css": "install.css",
       "/icon-192.png": "icon-192.png",
@@ -729,7 +731,8 @@ function registerRemote(
       return;
     }
     try {
-      let content = updated ?? await fs.readFile(path.join(__dirname, "mobile", name));
+      let content = updated ?? (name==='qr-decoder.js' ? await require('./qr-decoder.cjs').qrDecoderSource()
+        : await fs.readFile(path.join(__dirname, "mobile", name)));
       if (name === 'index.html') {
         const stamp = String(mobileUpdater.version).replace(/[^\w.-]/g, '');
         content = content.toString().replace('name="flowrium-mobile-version" content=""', 'name="flowrium-mobile-version" content="'+stamp+'"');

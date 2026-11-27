@@ -1,0 +1,3 @@
+@container flow-native-select anchored(fallback: flip-block) or anchored(fallback: flip-block flip-inline) {
+  :is(.app-shell,.motion-overlay,.modal-backdrop) select:open option {--option-travel:6px}
+}

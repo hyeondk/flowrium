@@ -205,7 +205,10 @@ body input[type=checkbox]:disabled {opacity:.55; cursor:default}
   :is(.app-shell,.motion-overlay,.modal-backdrop) select::picker(select) {
     margin-block-start:5px; max-height:min(240px,50dvh); padding:4px; border:1px solid var(--line);
     border-radius:9px; background:var(--panel); color:var(--text); box-shadow:0 8px 24px #15294120;
-    font-family:var(--font-ui); animation:choice-reveal 175ms ease-out both;
+    font-family:var(--font-ui); animation:ui-fade-in 175ms ease-out both;
+    position-area:block-end span-inline-end;
+    position-try-fallbacks:flip-inline,flip-block,flip-block flip-inline;
+    container:flow-native-select / anchored;
   }
   :is(.app-shell,.motion-overlay,.modal-backdrop) select option {
     display:flex; align-items:center; gap:8px; min-height:32px; padding:5px 8px;
@@ -214,7 +217,13 @@ body input[type=checkbox]:disabled {opacity:.55; cursor:default}
   :is(.app-shell,.motion-overlay,.modal-backdrop) select option:is(:checked,:hover,:focus-visible) {
     color:var(--accent); background:var(--accent-bg);
   }
+  :is(.app-shell,.motion-overlay,.modal-backdrop) select:open option {
+    --option-travel:-6px;
+    animation:flow-native-option-in 175ms cubic-bezier(.2,.7,.2,1) both;
+  }
+  @keyframes flow-native-option-in {from{translate:0 var(--option-travel)}to{translate:0 0}}
   @media(prefers-reduced-motion:reduce) {
-    :is(.app-shell,.motion-overlay,.modal-backdrop) select::picker(select) {animation:none}
+    :is(.app-shell,.motion-overlay,.modal-backdrop) select::picker(select),
+    :is(.app-shell,.motion-overlay,.modal-backdrop) select:open option {animation:none}
   }
 }

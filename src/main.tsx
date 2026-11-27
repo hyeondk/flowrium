@@ -15,9 +15,16 @@ import "./compact-density.css";
 import "./composer-layout.css";
 import "../electron/mobile/close-button.css";
 import "../electron/mobile/keyboard-focus.css";
+import nativeSelectPosition from "./native-select-position.css?raw";
 
 installDatePicker();
 installKeyboardFocus();
+if(CSS.supports('container-type','anchored')){
+  // Chromium supports anchored container queries before the CSS minifier does.
+  const rules=document.createElement('style');
+  rules.textContent=nativeSelectPosition;
+  document.head.append(rules);
+}
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -94,7 +94,20 @@ async function main(){const root=path.resolve(__dirname,'..'),temp=await fs.real
   assert(!snapshot.projects.some(row=>row.name==='불러오지 않을 프로젝트'),'선택하지 않은 프로젝트 등록 금지');
   await assert.rejects(fs.access(path.join(excluded,'.flowrium')),{code:'ENOENT'});
   assert.deepEqual(snapshot.sessions.find(row=>row.id===unrelated.id)?.messages,[preserved],'다른 프로젝트에 있던 원문을 보존한다');
-  await panel.locator('summary').filter({hasText:'대화 연결 기록'}).click();await panel.getByRole('button',{name:'보관 원문',exact:true}).click();await panel.locator('pre').filter({hasText:'flowrium-codex-source'}).waitFor();
+  await panel.locator('summary').filter({hasText:'대화 연결 기록'}).click();
+  const historySummary=panel.locator('.codex-transfer-history-summary');
+  await historySummary.waitFor();
+  assert.equal(await historySummary.locator(':scope > *').count(),3,'대화 연결 기록의 첫 펼침은 핵심 세 줄로 제한합니다.');
+  assert.equal(await panel.getByRole('button',{name:'보관 원문',exact:true}).count(),0,'전체 목록은 명시적으로 펼친 뒤 표시합니다.');
+  await page.setViewportSize({width:390,height:844});
+  const summaryFits=await historySummary.evaluate(node=>{
+   const rows=[...node.children].map(row=>row.getBoundingClientRect());
+   return rows.every((row,index)=>row.height<37&&(!index||row.top>=rows[index-1].bottom))&&node.scrollWidth<=node.clientWidth+1;
+  });
+  assert(summaryFits,'좁은 설정에서 연결 기록 요약 세 줄이 겹치거나 넘치지 않습니다.');
+  await page.setViewportSize({width:1440,height:1000});
+  await historySummary.getByRole('button',{name:'전체 기록 보기',exact:true}).click();
+  await panel.getByRole('button',{name:'보관 원문',exact:true}).click();await panel.locator('pre').filter({hasText:'flowrium-codex-source'}).waitFor();
   await panel.getByRole('button',{name:'대화 열기',exact:true}).click();await settings.waitFor({state:'detached'});
   await page.locator('.dock-chat .session-heading').getByRole('heading',{name:source.title,exact:true}).waitFor();
   const assistantReplies=page.locator('.dock-chat .messages article.message.assistant .message-bubble');

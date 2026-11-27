@@ -227,6 +227,8 @@ export interface FlowriumAPI
     ProjectDetailsAPI,
     ActivityAPI,
     TerminalAPI {
+  startupAppearance?: Pick<Settings, "theme" | "accentColor">;
+  previewAppearance?(appearance: Pick<Settings, "theme" | "accentColor">): void;
   reactMessage(input:{sessionId:string;messageId:string;liked:boolean}):Promise<Session>;
   openGeneralAssistant():Promise<Session>;
   createHubConversation(input:{scope:ConversationScope;title?:string}):Promise<Session>;

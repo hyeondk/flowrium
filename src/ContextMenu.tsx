@@ -5,9 +5,15 @@ import {usePresence} from './ui-motion';
 import './context-menu.css';
 export interface ContextMenuItem {id:string;label:string;onSelect():void;disabled?:boolean;danger?:boolean}
 export default function ContextMenu({anchor,label,items,onClose}:{anchor:{x:number;y:number}|null;label:string;items:ContextMenuItem[];onClose():void}){
- const panel=useRef<HTMLDivElement>(null),last=useRef({anchor:anchor||{x:0,y:0},label,items}),[position,setPosition]=useState({x:0,y:0}),close=useRef(onClose),active=Boolean(anchor),{present,phase}=usePresence(active,220);close.current=onClose;
+ const panel=useRef<HTMLDivElement>(null),last=useRef({anchor:anchor||{x:0,y:0},label,items}),[position,setPosition]=useState({x:0,y:0,up:false}),close=useRef(onClose),active=Boolean(anchor),{present,phase}=usePresence(active,220);close.current=onClose;
  if(anchor)last.current={anchor,label,items};
- useLayoutEffect(()=>{if(!anchor||!present)return;const rect=panel.current?.getBoundingClientRect();setPosition({x:Math.max(8,Math.min(anchor.x,innerWidth-(rect?.width||240)-8)),y:Math.max(8,Math.min(anchor.y,innerHeight-(rect?.height||200)-8))});},[anchor?.x,anchor?.y,items.length,present]);
+ useLayoutEffect(()=>{
+  if(!anchor||!present||!panel.current)return;
+  const {offsetWidth:width,offsetHeight:height}=panel.current;
+  const above=anchor.y-8, below=innerHeight-anchor.y-8;
+  const up=height>below && above>below;
+  setPosition({x:Math.max(8,Math.min(anchor.x,innerWidth-width-8)),y:Math.max(8,Math.min(up?anchor.y-height:anchor.y,innerHeight-height-8)),up});
+ },[anchor?.x,anchor?.y,items.length,present]);
  useEffect(()=>{if(!active||!present)return;const before=document.activeElement instanceof HTMLElement?document.activeElement:null;
   const targets=()=>[...(panel.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')||[])];targets()[0]?.focus();
   const outside=(event:PointerEvent)=>{if(!panel.current?.contains(event.target as Node))close.current();};
@@ -15,5 +21,5 @@ export default function ContextMenu({anchor,label,items,onClose}:{anchor:{x:numb
   document.addEventListener('pointerdown',outside,true);document.addEventListener('keydown',key,true);const resize=()=>close.current();window.addEventListener('resize',resize);window.addEventListener('blur',resize);
   return()=>{document.removeEventListener('pointerdown',outside,true);document.removeEventListener('keydown',key,true);window.removeEventListener('resize',resize);window.removeEventListener('blur',resize);if(before?.isConnected)before.focus();};
  },[active,present]);
- return present?createPortal(<div className="flow-context-menu" ref={panel} role="menu" aria-label={last.current.label} data-phase={phase} inert={phase==='exit'} style={{left:position.x,top:position.y}}>{last.current.items.map(item=><button role="menuitem" key={item.id} disabled={item.disabled} data-danger={item.danger||undefined} onClick={()=>{close.current();item.onSelect();}}>{item.label}</button>)}</div>,document.body):null;
+ return present?createPortal(<div className="flow-context-menu" ref={panel} role="menu" aria-label={last.current.label} data-phase={phase} data-placement={position.up?'up':'down'} inert={phase==='exit'} style={{left:position.x,top:position.y}}>{last.current.items.map(item=><button role="menuitem" key={item.id} disabled={item.disabled} data-danger={item.danger||undefined} onClick={()=>{close.current();item.onSelect();}}>{item.label}</button>)}</div>,document.body):null;
 }

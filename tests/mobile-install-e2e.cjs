@@ -4,9 +4,23 @@ const path = require('node:path');
 const os = require('node:os');
 const {EventEmitter} = require('node:events');
 const {_electron} = require('playwright');
+const {createElement}=require('react');
+const {renderToStaticMarkup}=require('react-dom/server');
+const {QRCodeSVG}=require('qrcode.react');
 const {Store} = require('../electron/store.cjs');
 const {registerRemote} = require('../electron/remote.cjs');
 const {checkMobileUpdate, productRelease, startingVersion} = require('./mobile-update-checks.cjs');
+
+function qrSVG(value){return renderToStaticMarkup(createElement(QRCodeSVG,{value,size:320,level:'M',marginSize:4,xmlns:'http://www.w3.org/2000/svg'}));}
+async function qrImage(page,value){
+  const data=await page.evaluate(async svg=>{
+    const image=new Image();image.src='data:image/svg+xml,'+encodeURIComponent(svg);await image.decode();
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=320;
+    canvas.getContext('2d').drawImage(image,0,0,320,320);
+    return canvas.toDataURL('image/png').split(',')[1];
+  },qrSVG(value));
+  return {name:'시험-QR.png',mimeType:'image/png',buffer:Buffer.from(data,'base64')};
+}
 
 function simulatedTunnel() {
   const child = new EventEmitter();
@@ -51,7 +65,8 @@ async function main() {
     await desktop.locator('.workspace-side').getByRole('button',{name:'설정',exact:true}).evaluate(button=>button.click());
     await desktop.getByRole('navigation',{name:'설정 분류'}).getByRole('button',{name:'휴대폰',exact:true}).evaluate(button=>button.click());
     const remotePanel=desktop.locator('.remote-panel');
-    assert.equal(await remotePanel.getByLabel('휴대폰 연결 주소').getAttribute('type'),'password');
+    assert.equal(await remotePanel.getByLabel('휴대폰 연결 주소').count(),0);
+    assert.equal(await remotePanel.getByRole('button',{name:'연결 주소 복사',exact:true}).count(),0);
     const qr=remotePanel.getByRole('img',{name:'휴대폰 연결 QR 코드'});
     assert.equal(await qr.count(),0);
     await remotePanel.getByRole('button',{name:'QR 코드 보기'}).click();
@@ -78,7 +93,9 @@ async function main() {
       return route.continue();
     });
     await mobile.goto(origin);
-    await mobile.getByRole('heading',{name:'새 연결 주소가 필요합니다'}).waitFor();
+    const scan=mobile.getByRole('button',{name:'QR 코드로 연결',exact:true});
+    const scanner=mobile.getByRole('dialog',{name:'QR 코드로 연결',exact:true});
+    await mobile.getByRole('heading',{name:'휴대폰 연결이 필요합니다'}).waitFor();
     const manifest=await (await mobile.request.get(origin+'/manifest.webmanifest')).json();
     assert.equal(manifest.display,'standalone'); assert.equal(manifest.start_url,'/'); assert.equal(manifest.id,'/');
     for (const icon of manifest.icons) {
@@ -89,14 +106,18 @@ async function main() {
     assert.equal(await mobile.evaluate(async()=>Boolean((await navigator.serviceWorker.ready).active)),true);
     assert.equal(await mobile.locator('.bar button').count(),1,'상단에는 대시보드만 유지');
     assert.equal(await mobile.getByRole('button',{name:'홈 화면에 설치'}).count(),0);
-    const paste=mobile.getByLabel('연결 주소 붙여넣기');
-    await paste.fill('https://different.invalid/#key='+'x'.repeat(43));
-    await mobile.getByRole('button',{name:'이 기기에서 연결'}).click();
-    await mobile.getByText(/데스크톱 연결을 다시 켜면 주소가 바뀔 수/).waitFor();
-    assert.equal(await paste.inputValue(),'');
+    assert.equal(await mobile.getByLabel('연결 주소 붙여넣기').count(),0);
+    await mobile.evaluate(()=>Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>{throw new DOMException('거절','NotAllowedError');}}}));
+    await scan.click();
+    await scanner.getByText(/카메라를 사용할 수 없습니다/).waitFor();
+    const picture=scanner.locator('input[type=file]');
+    await picture.setInputFiles(await qrImage(mobile,'https://different.invalid/#key='+'x'.repeat(43)));
+    await scanner.getByText('Flowrium 연결 QR 코드를 읽어 주세요.',{exact:true}).waitFor();
+    await picture.setInputFiles(await qrImage(mobile,'https://other-flowrium.trycloudflare.com/#key='+'y'.repeat(43)));
+    await scanner.getByText(/중계 주소가 바뀌었습니다/).waitFor();
+    assert.equal(await mobile.evaluate(()=>location.origin),origin);
     const oneTime=service.issueLink({ttlMinutes:5}).url;
-    await paste.fill(origin+'/'+ new URL(oneTime).hash);
-    await mobile.getByRole('button',{name:'이 기기에서 연결'}).click();
+    await picture.setInputFiles(await qrImage(mobile,origin+'/'+new URL(oneTime).hash));
     const settings=mobile.getByRole('navigation',{name:'모바일 메뉴'}).getByRole('button',{name:'설정',exact:true});
     await settings.waitFor();
     assert.equal(await mobile.evaluate(()=>location.hash),'');
@@ -176,13 +197,29 @@ async function main() {
     assert.equal(await guide.locator('[data-help]').isVisible(),false);
     assert.equal(await guide.getByRole('button',{name:'앱 설치',exact:true}).isVisible(),false);
     await guide.getByRole('button',{name:'설치 안내 닫기'}).click();
-    await remember.uncheck(); await mobile.evaluate(()=>sessionStorage.clear()); await mobile.reload(); await paste.waitFor();
-    await paste.fill(access.localUrl);
-    await mobile.getByRole('button',{name:'이 기기에서 연결'}).click();
+    await remember.uncheck(); await mobile.evaluate(()=>sessionStorage.clear()); await mobile.reload(); await scan.waitFor();
+    await mobile.evaluate(({svg})=>{
+      Object.defineProperty(navigator,'standalone',{configurable:true,value:true});
+      Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>{
+        const image=new Image();image.src='data:image/svg+xml,'+encodeURIComponent(svg);await image.decode();
+        const canvas=document.createElement('canvas');canvas.width=canvas.height=320;
+        const context=canvas.getContext('2d');
+        const stream=canvas.captureStream(12);window.fixtureQrTrack=stream.getVideoTracks()[0];
+        const next=()=>{if(window.fixtureQrTrack.readyState==='live'){context.drawImage(image,0,0,320,320);requestAnimationFrame(next);}};
+        next();
+        return stream;
+      }}});
+    },{svg:qrSVG(access.localUrl)});
+    await scan.click();
     await settings.waitFor();
-    assert.equal(await mobile.evaluate(()=>localStorage.getItem('flowrium.mobile.rememberedKey')),null);
+    assert.equal(await mobile.evaluate(()=>window.fixtureQrTrack.readyState),'ended');
+    assert.equal(await mobile.evaluate(()=>Boolean(localStorage.getItem('flowrium.mobile.rememberedKey'))),true);
+    await mobile.evaluate(()=>sessionStorage.clear());await mobile.reload();
+    await settings.waitFor();
+    assert.equal(await scan.count(),0);
+    assert.equal(await mobile.evaluate(()=>location.hash),'');
     assert.deepEqual(errors,[]); assert.deepEqual(leaks,[]); assert.deepEqual(external,[]);
-    console.log('설정 첫 그룹의 도움말과 설치 / 독립 중앙 팝업과 초점 복귀 / 상단 설치 항목 제거 / 데스크톱의 로컬 QR 표시와 숨기기 / 앱 아이콘 두 크기 / 서비스 워커 / 아이폰 설치 안내 / 설치 요청과 취소·메뉴 대안 / 설치 상태 / 최초 연결 및 기억 선택 / 원래 출처와 일회용 주소만 연결 / 외부 전송 없음 통과');
+    console.log('휴대폰 QR 전용 연결 / 주소 복사·붙여넣기 삭제 / 다른 주소 차단 / 카메라 거절 시 사진 판독 / 일회용 QR / 홈 화면 앱의 카메라 판독·연결 보존 / 모바일 업데이트 뒤 다시 연결 통과');
   } finally {
     if (app) await app.close().catch(()=>{});
     if (service) await service.shutdown();

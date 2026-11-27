@@ -318,6 +318,7 @@ interface Props {
   onProjectMove: MoveProject;
   onOpenSession(session: Session): void;
   onCreated(project: Project): void;
+  onRefresh(): Promise<void>;
   onSessionChange?(session: Session): void;
   onArchived?(id: string, value: boolean): void;
   onProjectMenu(event: React.MouseEvent, project: Project): void;
@@ -498,6 +499,7 @@ export function ProjectPortfolio({
   onProjectMove,
   onOpenSession,
   onCreated,
+  onRefresh,
   onSessionChange,
   onArchived,
   onProjectMenu,
@@ -527,11 +529,25 @@ export function ProjectPortfolio({
         })
         .catch((e) => {
           if (live) setError(errorText(e));
-        }).finally(()=>{if(live)setRefreshing(false);});
+        });
     return () => {
       live = false;
     };
   }, [keys, rev, view, categoryRevision]);
+  async function refreshDashboard() {
+    if (!api || refreshing) return;
+    setRefreshing(true);
+    setError("");
+    try {
+      const [portfolio,workspace] = await Promise.allSettled([api.readPortfolio(),onRefresh()]);
+      if (portfolio.status === "fulfilled") setCards(portfolio.value);
+      for (const result of [portfolio,workspace]) if (result.status === "rejected") throw result.reason;
+    } catch (failure) {
+      setError(errorText(failure));
+    } finally {
+      setRefreshing(false);
+    }
+  }
   useEffect(() => {
     setQ("");
     setDay("");
@@ -664,7 +680,7 @@ export function ProjectPortfolio({
             </p>}
           </div>
           {view === "dashboard" && <div className="dashboard-heading-actions">
-            <button className="pf-primary portfolio-refresh" disabled={refreshing||!api} onClick={()=>{setRefreshing(true);reload(value=>value+1);}}><RefreshCw size={15} className={refreshing?'spin':undefined} aria-hidden="true"/>새로고침</button>
+            <button type="button" className="pf-primary portfolio-refresh" title="프로젝트, 최근 업무, 결정 상태 다시 불러오기" disabled={refreshing||!api} aria-busy={refreshing} onClick={()=>void refreshDashboard()}><RefreshCw size={15} className={refreshing?'spin':undefined} aria-hidden="true"/>새로고침</button>
             <button className="pf-primary" onClick={() => onNavigate("kickoff")}><Plus size={16}/>새 프로젝트</button>
           </div>}
         </header>
