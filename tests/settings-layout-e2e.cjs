@@ -236,7 +236,7 @@ async function verifyAutomaticSave(app,page,codexPath) {
  const account=await openSettings(page,'계정과 모델');
  const followups=account.getByRole('switch',{name:'모델로 다음 작업 추천',exact:true});
  await expect(followups).not.toBeChecked();
- await expect(followups).toHaveAccessibleDescription(/현재 대화의 일부.*사용량이나 크레딧/);
+ await expect(followups).toHaveAccessibleDescription(/Codex 대화의 일부.*사용량이나 크레딧/);
  await assert.rejects(page.evaluate(()=>window.flowrium.saveSettings({aiFollowups:'true'})),/모델 추천 설정/);
  await followups.click();
  await expect.poll(()=>generalSettings(page)).toMatchObject({aiFollowups:true});
